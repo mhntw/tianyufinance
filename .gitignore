@@ -9,6 +9,7 @@ cloudfunctions/
 serve.py
 启动.command
 启动.bat
+发布新版.command
 
 # 数据红线：账套/备份/导入等数据文件绝不进入静态托管（数据在本地 sj/ 与云端数据库）
 data/
