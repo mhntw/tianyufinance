@@ -21,15 +21,51 @@
 
 ## 安装与获取安装包
 
-软件为桌面应用，需按平台使用对应安装包（不提供浏览器在线版数据，浏览器仅用于开发预览）：
+软件为桌面应用，按平台取安装包（浏览器仅用于开发预览，不出在线版）：
 
-| 平台 | 获取方式 |
-|---|---|
-| macOS | 在本机 `tauri/` 目录执行 `npm run tauri build`，产物为 `.app` / `.dmg` |
-| Windows | 仓库已接入 GitHub Actions：手动触发或推送 `v*` 标签，云端自动构建 NSIS 安装包（`*-setup.exe`），见 `.github/workflows/windows-build.yml` |
+| 平台 | 产物 | 构建方式 |
+|---|---|---|
+| Windows | `*-setup.exe`（NSIS x64） | **GitHub Actions 云端自动构建** |
+| macOS | `.app` / `.dmg` | 本机 `tauri/` 目录 `npm run tauri build` |
 
-> 手动触发：仓库 Actions →「Windows 打包」→ Run workflow；打标签：`git tag v1.0.0 && git push --tags`（自动生成 Release 草稿）。
-> 日常改完想「存档 + 可选发布 + 可选打 mac 包」：双击根目录 `发布新版.command`（仅本机本地脚本，未入库）。
+### Windows 安装包：GitHub Actions 自动打包
+
+工作流 `.github/workflows/windows-build.yml`，两种触发方式、产物去向不同：
+
+| 触发方式 | 操作 | 产物去哪 |
+|---|---|---|
+| 手动预览 | Actions →「Windows 打包」→ **Run workflow** | 仅该次运行记录的 **Artifacts**（不生成 Release） |
+| 正式发布 | 推送 `v` 开头的 tag | **自动发布为正式 Release** 并挂上安装包（无需手动 Publish） |
+
+正式发布一条命令（**tag 必须与 `tauri/src-tauri/tauri.conf.json` 的 `version` 一致**）：
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+云端构建约 10~20 分钟后，到仓库 **Releases** 页可见 `v1.0.1`，从 Assets 下载 `*-setup.exe` 即可分发。
+
+### macOS 安装包：本机构建
+
+```bash
+cd tauri
+npm install           # 首次
+npm run tauri build   # 产物在 src-tauri/target/release/bundle/dmg 与 .../macos
+```
+
+### 日常发布入口（推荐）
+
+双击根目录「发布新版.command」（仅本机本地脚本，未入库）即可完成上两节的全部操作：
+
+- **日常存档**：第 3 步直接回车 → 提交并推送代码
+- **出 Windows 正式版**：第 3 步输 `y` → 自动 bump 版本号 + 打 tag → GitHub 自动打包并发布 Release
+- **出 macOS 包**：第 4 步输 `y` → 本机自动打包
+
+### 常见问题
+
+- **手动 Run 之后找不到安装包？** 手动 Run 的产物只在运行记录底部 **Artifacts**，不会进 Release；想进 Release 用上面的 tag 方式。
+- **版本号怎么定？** 打 tag 前先确认 `tauri.conf.json` 的 `version` 与 tag 一致（如 tag `v1.0.1` ↔ version `1.0.1`）。
+- **前端改了没生效？** `tauri build` 前会由 `scripts/build-dist.mjs` 自动同步前端到打包源，无需手动维护。
 
 ## 数据存储位置（重要）
 
