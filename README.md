@@ -21,21 +21,21 @@
 
 ## 安装与获取安装包
 
-软件为桌面应用，按平台取安装包（浏览器仅用于开发预览，不出在线版）：
+软件为桌面应用，**Windows 与 macOS 安装包均由 GitHub Actions 云端自动构建**（浏览器仅用于开发预览）：
 
-| 平台 | 产物 | 构建方式 |
+| 平台 | 产物 | 架构 |
 |---|---|---|
-| Windows | `*-setup.exe`（NSIS x64） | **GitHub Actions 云端自动构建** |
-| macOS | `.app` / `.dmg` | 本机 `tauri/` 目录 `npm run tauri build` |
+| Windows | `*-setup.exe`（NSIS） | x64 |
+| macOS | `*.dmg`（含 `.app`） | Apple Silicon（M 芯片） |
 
-### Windows 安装包：GitHub Actions 自动打包
+### 两种触发方式与产物去向
 
-工作流 `.github/workflows/windows-build.yml`，两种触发方式、产物去向不同：
+工作流 `.github/workflows/build-release.yml`：
 
 | 触发方式 | 操作 | 产物去哪 |
 |---|---|---|
-| 手动预览 | Actions →「Windows 打包」→ **Run workflow** | 仅该次运行记录的 **Artifacts**（不生成 Release） |
-| 正式发布 | 推送 `v` 开头的 tag | **自动发布为正式 Release** 并挂上安装包（无需手动 Publish） |
+| 手动预览 | Actions →「自动打包发布」→ **Run workflow** | 仅该次运行记录的 **Artifacts**（Windows / macOS 各一份，不生成 Release） |
+| 正式发布 | 推送 `v` 开头的 tag | **自动发布为正式 Release**，Windows / macOS 安装包自动上传（无需手动 Publish） |
 
 正式发布一条命令（**tag 必须与 `tauri/src-tauri/tauri.conf.json` 的 `version` 一致**）：
 
@@ -43,9 +43,13 @@
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-云端构建约 10~20 分钟后，到仓库 **Releases** 页可见 `v1.0.1`，从 Assets 下载 `*-setup.exe` 即可分发。
+Windows 与 macOS 并行构建，约 10~30 分钟；完成后仓库 **Releases** 页可见 `v1.0.1`，从 Assets 下载对应平台安装包即可分发。
 
-### macOS 安装包：本机构建
+> macOS 提示：安装包未做 Apple 签名，系统若拦截，右键点击安装包 →「打开」即可（与本机打包行为一致）。
+
+### 本机手动打包（备选）
+
+日常不需要，仅本地自测时使用：
 
 ```bash
 cd tauri
@@ -55,15 +59,16 @@ npm run tauri build   # 产物在 src-tauri/target/release/bundle/dmg 与 .../ma
 
 ### 日常发布入口（推荐）
 
-双击根目录「发布新版.command」（仅本机本地脚本，未入库）即可完成上两节的全部操作：
+双击根目录「发布新版.command」（仅本机本地脚本，未入库）：
 
-- **日常存档**：第 3 步直接回车 → 提交并推送代码
-- **出 Windows 正式版**：第 3 步输 `y` → 自动 bump 版本号 + 打 tag → GitHub 自动打包并发布 Release
-- **出 macOS 包**：第 4 步输 `y` → 本机自动打包
+- **日常存档**：第 3 步直接回车
+- **发布新版本（Windows + macOS 一次全出）**：第 3 步输 `y` → 自动 bump 版本号 + 打 tag → GitHub 自动构建并发布正式 Release
+- 第 4 步「本机打 mac 包」仅用于**立即试装**（CI 已自动出，可跳过）
 
 ### 常见问题
 
 - **手动 Run 之后找不到安装包？** 手动 Run 的产物只在运行记录底部 **Artifacts**，不会进 Release；想进 Release 用上面的 tag 方式。
+- **macOS 包打不开？** 未签名包首次打开请右键 →「打开」。
 - **版本号怎么定？** 打 tag 前先确认 `tauri.conf.json` 的 `version` 与 tag 一致（如 tag `v1.0.1` ↔ version `1.0.1`）。
 - **前端改了没生效？** `tauri build` 前会由 `scripts/build-dist.mjs` 自动同步前端到打包源，无需手动维护。
 
@@ -105,7 +110,7 @@ npm run tauri dev  # 打开桌面调试窗口，前端热改即时生效
 │   ├── scripts/build-dist.mjs# 打包前把最新前端同步到 dist/（跨平台 Node 脚本）
 │   └── WINDOWS_BUILD.md      # Windows 本地打包手册（可选，已由 CI 取代日常使用）
 ├── tools/                    # 验证与诊断脚本（审计 / 不变量 / 兼容性自检）
-├── .github/workflows/        # GitHub Actions：Windows 自动打包
+├── .github/workflows/        # GitHub Actions：Windows/macOS 自动打包发布
 ├── CHANGELOG.md              # 变更记录（功能演进与缺陷修复历史）
 └── README.md
 ```

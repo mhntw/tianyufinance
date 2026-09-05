@@ -1,7 +1,7 @@
 # Windows 打包手册（添钰财务管理系统）
 
 > **日常发布请优先使用 GitHub Actions**：推 `v*` 标签即自动在云端构建 Windows
-> NSIS 安装包并生成 Release（见仓库根 `README.md` 与 `.github/workflows/windows-build.yml`）。
+> NSIS 安装包并生成 Release（见仓库根 `README.md` 与 `.github/workflows/build-release.yml`）。
 > 本手册是「在一台全新 Windows 电脑上手动打包」的备选路径，仅供本地排查 / 离线场景使用。
 
 ## 一、前置条件（4 样缺一不可）

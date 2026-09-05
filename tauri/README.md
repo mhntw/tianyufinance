@@ -2,8 +2,9 @@
 
 本目录是桌面版打包壳（Tauri 2），把仓库根的前端（`index.html` + `css/` + `js/`）打包成可安装的桌面应用。
 
-> **日常 Windows 打包请直接用 GitHub Actions**（推 `v*` 标签自动出 NSIS 包，见仓库根 `README.md`）。
-> 需要在 Windows 本机手动打包时，参考 **[`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)**。
+> **Windows 与 macOS 安装包日常均由 GitHub Actions 自动构建发布**（推 `v*` 标签自动出包，
+> 见仓库根 `README.md` 与 `.github/workflows/build-release.yml`）。本目录内命令仅供本机自测/备选。
+> 需要在 Windows 本机手动打包的完整手册见 **[`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)**。
 
 ## 打包机制
 
@@ -42,5 +43,5 @@ npm run tauri build
 
 - **不要手动改 `dist/`**——它每次由脚本重建，手动改会被覆盖。
 - 开发期验证：`npm run tauri dev`（起本地服务 + 打开调试窗口）。
-- Windows 安装包：日常由 GitHub Actions 自动构建（仓库根 `.github/workflows/windows-build.yml`，
-  手动触发或推 `v*` 标签）；无需本机 Windows 环境。
+- Windows / macOS 安装包：日常均由 GitHub Actions 自动构建（仓库根 `.github/workflows/build-release.yml`，
+  手动触发或推 `v*` 标签即自动发布 Release）；无需本机打包环境。
