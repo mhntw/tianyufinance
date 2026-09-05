@@ -90,6 +90,11 @@ jobs:
       - name: 安装 Rust（stable）
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust 增量缓存（第二次构建起显著提速）
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri -> target
+
       - name: 构建并上传安装包
         uses: tauri-apps/tauri-action@v0
         env:
