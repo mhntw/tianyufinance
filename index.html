@@ -1,0 +1,2565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>添钰财务管理系统</title>
+  <link rel="stylesheet" href="css/style.css?v=2026090307">
+</head>
+<body>
+  <div class="layout">
+      <header class="topbar">
+        <div class="topbar-left">
+          <!-- 顶栏品牌：图标 + 完整标题（品牌统一在顶栏，侧栏不再单独放 logo，消除两处割裂） -->
+          <div class="topbar-brand" id="topbarBrand" title="返回首页">
+            <span class="topbar-brand-ico" aria-hidden="true">
+              <img src="css/logo-icon.svg?v=1" width="30" height="30" alt="">
+            </span>
+            <span class="topbar-brand-text-wrap">
+              <span class="topbar-brand-text">添钰财务管理系统</span>
+            </span>
+          </div>
+
+          <input type="file" id="aisFile" accept=".json,.ais" hidden>
+        </div>
+
+        <div class="topbar-center">
+          <div class="right-menu" id="topRightMenu">
+            <!-- 当前账期（JinBooks 右侧第一块：文字期别） -->
+            <div class="right-menu-item acct-period-block">
+              <span class="acct-label">当前账期：</span>
+              <span class="acct-period-val" id="topPeriodText">2026年第7期</span>
+            </div>
+            <span class="el-divider-vertical" role="separator"></span>
+
+            <!-- 账套选择（JinBooks："账套："+ el-select 下拉 250px；复用 topAcctBtn 作为下拉触发，JS 渲染下拉列表） -->
+            <div class="right-menu-item acct-book-block">
+              <span class="acct-label">账套：</span>
+              <div class="topbar-acct-btn" id="topAcctBtn" tabindex="0" role="button" aria-haspopup="listbox">
+                <span class="acct-book-name" id="topCompany">演示账套</span>
+                <i class="acct-book-arrow">▾</i>
+              </div>
+              <div class="book-dropdown" id="bookDropdown" hidden></div>
+            </div>
+            <span class="el-divider-vertical" role="separator"></span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+
+          <div class="topbar-search" id="topSearch">
+
+            <div class="search-bar" id="searchBar">
+              <div class="search-input-wrap">
+                <input type="text" id="searchInput" class="search-input" placeholder="输入金额/核算项目/科目/摘要" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
+                <button class="search-submit" id="searchToggle" title="搜索">
+                  <i class="topbar-search-ico">🔍</i>
+                </button>
+              </div>
+
+              <div class="search-dropdown" id="searchDropdown" hidden>
+                <div class="search-result" id="searchResult"></div>
+              </div>
+            </div>
+          </div>
+          <span class="el-divider-vertical" role="separator"></span>
+          <div class="topbar-user" id="topUser" title="当前操作员">
+            <span id="topOperator">会计</span>
+            <i class="topbar-user-arrow">∨</i>
+          </div>
+        </div>
+      </header>
+    <!-- 左侧导航：由 app.js 依据 QUICK_MENU_ITEMS 单一数据源渲染（与常用功能设置弹窗同源，自动同步） -->
+        <div class="layout-body">
+      <nav class="sidenav" id="sidenav"></nav>
+
+    <main class="content" id="content">
+
+
+      <!-- 运行期自检横幅（防算错：期初/凭证/报表恒等式异常时顶部红字告警） -->
+      <div class="selftest-banner" id="selftestBanner" hidden></div>
+
+      <div class="content-toolbar">
+        <div class="home-trigger active" data-page="home" title="首页">
+          <span class="tab-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg></span>
+        </div>
+        <div class="tab-bar" id="tabBar"></div>
+      </div>
+
+      <!-- 首页工作台 -->
+      <section class="page" id="page-home">
+        <!-- 首页容器（本地版已移除右侧资讯栏，左主区单栏全宽） -->
+        <div class="wrapper--nEFLj">
+
+        <div class="contentL--1JUu7">
+
+        <div class="contentItemWrapper--1cQtp wrapper--2ZSon">
+          <!-- 常用功能：整行标题栏已删除，设置图标下移到网格右上角（.home-quick-edit 绝对定位） -->
+          <div class="content--2vKQI home-content">
+          <div class="home-quick">
+            <span class="editBtn--2VJ9T is-link home-section-edit home-quick-edit" title="自定义常用功能">
+              <i class="iconcool zidingyi"></i>
+            </span>
+
+            <div class="qk-newvoucher" data-page="voucher">
+              <div class="qk-new-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2f95ff" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+              <div class="qk-new-text">
+                <div class="qk-new-title">新增凭证</div>
+                <div class="qk-new-sub">立即录入</div>
+              </div>
+            </div>
+
+            <div class="home-quick-grid">
+            </div>
+          </div>
+          </div>
+        </div>
+
+        <div class="contentItemWrapper--1cQtp">
+          <div class="wrapper--ifBdg">
+            <div class="titleWrapper--2ThdD" style="margin-bottom: 16px;">
+              <ul class="">
+                <li>财务指标</li>
+              </ul>
+            </div>
+            <div>
+              <div style="display: block;">
+                <div class="drag-container">
+                  <div>
+                    <div class="drag-wrapper-container">
+
+          <div class="grid-square-wrapper width-1" data-metric="fundBalance">
+            <div class="drag-rect grid-square fundBalance-drag-rect">
+              <div class="fund-balance-card">
+                <div class="drag-header">
+                  <div class="title">资金余额</div>
+                </div>
+                <div class="padding">
+                  <div class="fv1 money-line-jump">
+                    <div class="fv1-f">资金余额</div>
+                    <div class="fv1-v" id="mFundBalance">--</div>
+                  </div>
+                  <div class="fv2 money-line money-line-jump"><div class="fv2-f">银行存款</div><div class="fv2-v" id="mBank">--</div></div>
+                  <div class="fv2 money-line money-line-jump"><div class="fv2-f">库存现金</div><div class="fv2-v" id="mCash">--</div></div>
+                  <div class="fv2 money-line"><div class="fv2-f">其他货币资金</div><div class="fv2-v" id="mOtherCash">--</div></div>
+                  <div class="fv3 marginT24">
+                    <div class="fv3-f">资金净收入</div>
+                    <div class="fv3-v" id="mFundNet">--</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-square-wrapper width-1" data-metric="arap">
+            <div class="drag-rect grid-square ARAP-drag-rect">
+              <div class="arap-card">
+                <div class="drag-header">
+                  <div class="tab-wrapper"><ul><li class="active" data-arap="ar">应收</li><li data-arap="ap">应付</li></ul></div>
+                </div>
+                <div style="height:100%;">
+                  <div class="padding">
+                    <div class="arap-body" data-arap="ar">
+                      <div class="fv1"><div class="fv1-f">应收账款</div><div class="fv1-v" id="mReceivable">--</div></div>
+                      <div class="arap-items" id="arapItemsAr"></div>
+                    </div>
+                    <div class="arap-body" data-arap="ap" style="display:none;">
+                      <div class="fv1"><div class="fv1-f">应付账款</div><div class="fv1-v" id="mPayable">--</div></div>
+                      <div class="arap-items" id="arapItemsAp"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-square-wrapper width-1" data-metric="estimatedBalance">
+            <div class="drag-rect grid-square estimatedBalance-drag-rect">
+              <div class="estimated-balance-card">
+                <div class="drag-header">
+                  <div class="title">预计可用资金</div>
+                </div>
+                <div>
+                  <div class="padding">
+                    <div class="fv1"><div class="fv1-f">预计可用资金</div><div class="fv1-v" id="mAvailCash">--</div></div>
+                    <div class="fv2 money-line"><div class="fv2-f">现有资金</div><div class="fv2-v" id="mAvailFund">--</div></div>
+                    <div class="fv2 money-line"><div class="fv2-f">短期应收款</div><div class="fv2-v" id="mAvailAr">--</div></div>
+                    <div class="fv2 money-line"><div class="fv2-f">短期应付款</div><div class="fv2-v" id="mAvailAp">--</div></div>
+                  </div>
+                  <div class="details"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-square-wrapper width-1" data-metric="netProfit">
+            <div class="drag-rect grid-square netProfit-drag-rect">
+              <div class="net-profit-card">
+                <div class="drag-header">
+                  <div class="title">净利润<span class="title-tag">（全年）</span></div>
+                </div>
+                <div class="padding">
+                  <div class="detail">
+                    <div class="fv7"><div class="fv7-f">净利润</div><div class="fv7-v" id="mNetProfit">--</div></div>
+                  </div>
+                  <div class="detail" style="margin-top:24px;">
+                    <div class="fv7"><div class="fv7-f">净利润率</div><div class="fv7-v" id="mProfitRate">--%</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-square-wrapper width-1" data-metric="revenueCost">
+            <div class="drag-rect grid-square revenueCost-drag-rect">
+              <div class="revenue-cost-card">
+                <div class="drag-header">
+                  <div class="title">收入成本<span class="title-tag">（全年）</span></div>
+                </div>
+                <div class="padding">
+                  <div class="detail">
+                    <div class="fv7" style="width:57%;">
+                      <div class="fv7-f">收入</div><div class="fv7-v" id="bIncome">--</div>
+                    </div>
+                  </div>
+                  <div class="detail" style="margin-top:24px;">
+                    <div style="width:57%;">
+                      <div class="fv7"><div class="fv7-f">成本</div><div class="fv7-v" id="bCost">--</div></div>
+                      <div class="fv8"><div class="fv8-f">毛利率</div><div class="fv8-v" id="bGrossMargin">：--%</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-square-wrapper width-1" data-metric="fee">
+            <div class="drag-rect grid-square fee-drag-rect">
+              <div class="cost-card">
+                <div class="drag-header">
+                  <div class="title">费用<span class="title-tag">（全年）</span></div>
+                </div>
+                <div class="fee-body">
+                  <div class="padding">
+                    <div class="detail">
+                      <div class="fv7"><div class="fv7-f">费用</div><div class="fv7-v" id="bExpense">--</div></div>
+                    </div>
+                  </div>
+                  <div class="detail-split-wrapper">
+                    <div class="detail-split"><div class="fv5"><div class="fv5-f">费用占收入比</div><div class="fv5-v" id="feeToIncome">--%</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /卡片容器（包住全部 7 张卡片） -->
+      </div>
+    </div>
+  </div>
+</div>
+        </div>
+        </div><!-- /财务指标 -->
+        </div><!-- /左主区（本地版已移除右侧资讯栏） -->
+
+        </div>
+      </section>
+
+      <section class="page" id="page-voucher">
+
+        <div id="vEntryView">
+          <div class="voucher-entry-cards">
+            <a class="v-entry-card" href="#" id="vEntryArchive" onclick="return false;">
+              <span class="v-entry-ico">📄</span>
+              <span class="v-entry-text">电子档案</span>
+            </a>
+          </div>
+          <div class="voucher-func-list">
+            <a class="v-func-item" href="#" id="vFuncNew" data-tip="录凭证" onclick="return false;">录凭证</a>
+            <a class="v-func-item" href="#" id="vFuncOriginal" data-tip="原始凭证" onclick="return false;">原始凭证</a>
+            <a class="v-func-item" href="#" id="vFuncQuery" data-tip="查凭证" onclick="return false;">查凭证</a>
+            <a class="v-func-item" href="#" id="vFuncSum" data-tip="凭证汇总表" onclick="return false;">凭证汇总表</a>
+          </div>
+        </div>
+
+        <div id="vEditView" data-unsaved-scope="voucher" style="display:none;">
+
+          <div class="voucher-toolbar">
+            <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
+            <button class="btn" id="btnSaveVoucher">保存</button>
+            <button class="btn" id="btnDraftVoucher" title="保存为未审核凭证">暂存</button>
+            <button class="btn" id="btnVoucherPref">偏好设置</button>
+          </div>
+
+          <div class="voucher-head-row">
+            <div class="vh-left">
+              <span>凭证字</span>
+              <select id="vWord" class="inp inp-sm">
+                <option value="记" selected>记</option>
+                <option value="收">收</option>
+                <option value="付">付</option>
+                <option value="转">转</option>
+              </select>
+              <span class="vh-no-label">字第</span>
+              <input id="vNo" type="number" value="1" class="inp inp-xs" min="1">
+              <span>号</span>
+              <span class="vh-date-label">日期</span>
+              <input id="vDate" type="date" class="inp inp-sm">
+            </div>
+            <div class="vh-center">
+              <h2 class="vh-title">记账凭证</h2>
+              <span class="vh-period" id="vPeriodText">2026年第7期</span>
+            </div>
+            <div class="vh-right">
+              <span class="vh-attach-icon">📎</span>
+              <span>附件</span>
+              <input id="vAttach" type="number" value="0" class="inp inp-xs" min="0">
+              <span>张</span>
+              <a href="#" class="vh-upload" id="vUploadAttach">上传附件</a>
+              <input type="file" id="vAttachFile" multiple hidden>
+              <div class="vh-attach-panel" id="vAttachPanel" hidden></div>
+            </div>
+          </div>
+
+          <div class="voucher-grid-wrap">
+          <table class="grid voucher-grid" id="vGrid">
+            <thead>
+              <tr>
+                <th class="col-num"></th>
+                <th class="col-summary">摘要</th>
+                <th class="col-account">科目</th>
+                <th class="col-amount dr" id="vThDr"></th>
+                <th class="amount cr" id="vThCr"></th>
+              </tr>
+            </thead>
+            <tbody id="vRows"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="ta-r total-label">合计：</td>
+                <td class="ta-r mono col-amount" id="vDrTotal">0.00</td>
+                <td class="ta-r mono col-amount" id="vCrTotal">0.00</td>
+              </tr>
+            </tfoot>
+          </table>
+          </div>
+          <div class="voucher-balance" id="vBalanceTip"></div>
+
+          <div class="voucher-footer">
+            <div class="vf-left">
+              <span class="vf-maker">制单人：<span id="vMakerName">会计</span></span>
+              <a href="#" class="vf-edit-maker" onclick="return false;">✎</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="modal" id="voucherPrefModal">
+        <div class="modal-box">
+          <div class="modal-title">凭证录入偏好设置<button class="modal-x" id="btnVoucherPrefClose">×</button></div>
+          <div class="modal-body">
+            <label class="pref-row"><input type="checkbox" id="prefThousand"> 金额显示千分位分隔符</label>
+            <label class="pref-row"><input type="checkbox" id="prefDefaultWord"> 默认凭证字"记"</label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn" id="btnVoucherPrefCancel">取消</button>
+            <button class="btn btn-primary" id="btnVoucherPrefSave">确定</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 风险检测报告 -->
+      <div class="modal" id="healthCheckModal" style="display:none">
+        <div class="modal-box modal-wide">
+          <div class="modal-title">风险检测报告<button class="modal-x" id="healthCheckClose">×</button></div>
+          <div class="modal-body">
+            <div id="healthCheckSummary" class="health-summary"></div>
+            <div class="table-box">
+              <table class="kd-table" id="healthCheckTable"></table>
+            </div>
+            <div class="modal-tip">
+              说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。
+              如发现异常，请穿透到对应科目/凭证核实，必要时回金蝶规范后重新导出账套。
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btnHealthCheckClose2">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 多年合并跨年校验报告（事后查看入口）-->
+      <div class="modal" id="yearBoundaryModal" style="display:none">
+        <div class="modal-box modal-wide">
+          <div class="modal-title">跨年一致性校验报告<button class="modal-x" id="yearBoundaryClose">×</button></div>
+          <div class="modal-body">
+            <div class="table-box">
+              <table class="kd-table" id="yearBoundaryTable"></table>
+            </div>
+            <div class="modal-tip">
+              说明：差异来源于金蝶年结时未达账、折旧未生成凭证、手动调整期初等。
+              xzys 如实呈现账套原貌，不做掩盖；如需修正请回金蝶规范后重新导出。
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btnYearBoundaryClose2">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 凭证回收站（软删除还原入口）-->
+      <div class="modal" id="recycleBinModal" style="display:none">
+        <div class="modal-box modal-wide">
+          <div class="modal-title">凭证回收站 · 已删除凭证<button class="modal-x" id="recycleBinClose">×</button></div>
+          <div class="modal-body">
+            <div class="table-box">
+              <table class="kd-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>凭证号</th>
+                    <th>摘要</th>
+                    <th class="ta-r">借方合计</th>
+                    <th>删除时间/人</th>
+                    <th class="col-op">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="recycleBody"></tbody>
+              </table>
+            </div>
+            <div class="modal-tip">
+              软删除说明：删除凭证仅打标，不真正清除数据，可随时还原。还原后凭证恢复为未审核状态。
+              如需彻底清除（不可恢复），请通过设置-操作日志-审计明细。
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn" id="btnPurgeRecycle" title="物理清除所有已删除凭证，不可恢复">彻底清除</button>
+            <button class="btn btn-primary" id="btnRecycleBinClose2">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal" id="operatorModal">
+        <div class="modal-box operator-box modal-compact">
+          <div class="modal-title">记账员设置<button class="modal-x" id="btnOpX">×</button></div>
+          <div class="modal-body">
+            <div class="operator-guide">请填写你的真实姓名</div>
+            <div class="form-row"><label>姓名</label><input id="opNameInput" class="inp" placeholder="如：张伟、李娜" maxlength="20"></div>
+            <p class="operator-hint">你的姓名将用于：凭证的制单人、审核人，以及操作日志记录。修改后，新录入凭证会记录你的名字；历史凭证仍保留原制单人信息，便于追溯。</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btnOpSave">确定</button>
+            <button class="btn" id="btnOpCancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+
+      <section class="page" id="page-voucher-sum">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="sumPeriodStart" data-end-id="sumPeriodEnd" data-on-change="__renderSum">
+              <div class="kd-period-trigger" id="sumPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="sumPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="sumPeriodStart" />
+              <input type="hidden" id="sumPeriodEnd" />
+            </div>
+          </div>
+        </div>
+        <div class="grid-wrap">
+          <table class="grid" id="sumGrid">
+            <thead><tr><th>科目编码</th><th>科目名称</th><th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th></tr></thead>
+            <tbody id="sumBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="page" id="page-voucher-query">
+
+        <div class="vq-filter">
+          <div class="vq-filter-left">
+            <div class="kd-period-range" data-start-id="qPeriodStart" data-end-id="qPeriodEnd" data-on-change="__renderQuery">
+              <div class="kd-period-trigger" id="qPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="qPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="qPeriodStart" />
+              <input type="hidden" id="qPeriodEnd" />
+            </div>
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-subject-range" id="qCodeWrap">
+                  <input type="text" id="qCode" placeholder="科目编码，可填范围" title="留空=全部科目；支持 1001 或 1001,1009 或 2121-2131">
+                  <button type="button" class="kd-subject-trigger" id="qCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="vq-filter-right">
+            <button class="btn btn-primary" id="btnQNewVoucher">新增</button>
+            <button class="btn" id="btnRecycleBin" title="查看已删除的凭证并可还原">回收站</button>
+            <!-- 原「审核/打印/导出/删除」各带一个 ▾ 倒三角，但背后并无任何下拉菜单，
+                 纯装饰性元素且会误导用户以为有次级操作，故移除。 -->
+            <button class="btn" id="btnQAudit">审核</button>
+            <button class="btn" id="btnQPrint" data-print>打印</button>
+            <button class="btn" id="btnQExport">导出</button>
+            <button class="btn" id="btnQDelete">删除</button>
+          </div>
+        </div>
+
+        <table class="grid vq-grid" id="qGrid">
+          <colgroup>
+            <col style="width:40px"><col style="width:60px">
+            <col style="width:100px"><col style="width:104px">
+            <col><col style="width:200px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:60px"><col style="width:120px">
+            <col style="width:90px"><col style="width:90px">
+          </colgroup>
+          <thead><tr>
+            <th><input type="checkbox" id="qCheckAll"></th>
+            <th>操作</th>
+            <th>日期</th><th class="vq-th-no" id="qThNo" title="点击按凭证字号排序">凭证字号<span class="kd-sort-icon" id="qSortIcon"></span></th><th>摘要</th><th>科目</th>
+            <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
+            <th>附件</th><th>原单据编号</th><th>制单人</th><th>审核人</th>
+          </tr></thead>
+          <tbody id="qBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-general-ledger">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="glPeriodStart" data-end-id="glPeriodEnd" data-on-change="__renderGl">
+              <div class="kd-period-trigger" id="glPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="glPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="glPeriodStart" />
+              <input type="hidden" id="glPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid gl-grid" id="glGrid">
+          <!-- 金额列须固定宽（否则千分位金额会折行），文本列吸收剩余空间；窄屏由表格容器横滚。 -->
+          <colgroup>
+            <col style="width:104px">
+            <col>
+            <col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+          </colgroup>
+          <thead><tr>
+            <th rowspan="2">科目编码</th><th rowspan="2">科目名称</th>
+            <th rowspan="2">期初余额</th>
+            <th colspan="2">本期发生额</th>
+            <th colspan="2">本年累计发生额</th>
+            <th colspan="2">期末余额</th>
+          </tr><tr>
+            <th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th>
+          </tr></thead>
+          <tbody id="glBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-detail-ledger">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-subject-range" id="dlCodeWrap">
+                  <input type="text" id="dlCode" placeholder="科目编码，可填范围" title="留空=全部科目；支持 1001 或 1001,1009 或 2121-2131">
+                  <button type="button" class="kd-subject-trigger" id="dlCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+            <div class="kd-period-range" data-start-id="dlPeriodStart" data-end-id="dlPeriodEnd" data-on-change="__renderDl">
+              <div class="kd-period-trigger" id="dlPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="dlPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="dlPeriodStart" />
+              <input type="hidden" id="dlPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="dlGrid">
+          <colgroup>
+            <col style="width:100px"><col style="width:104px">
+            <col>
+            <col style="width:124px"><col style="width:124px"><col style="width:124px">
+            <col style="width:60px">
+          </colgroup>
+          <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>借方</th><th>贷方</th><th>余额</th><th>方向</th></tr></thead>
+          <tbody id="dlBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-multi-ledger">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-subject-range" id="mlCodeWrap">
+                  <input type="text" id="mlCode" placeholder="请选择非明细科目" title="多栏账需选择有下级科目的科目">
+                  <button type="button" class="kd-subject-trigger" id="mlCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+            <div class="kd-period-range" data-start-id="mlPeriodStart" data-end-id="mlPeriodEnd" data-on-change="__renderMl">
+              <div class="kd-period-trigger" id="mlPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="mlPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="mlPeriodStart" />
+              <input type="hidden" id="mlPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <div class="open-check" id="mlTip">多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。</div>
+        <table class="grid ml-grid" id="mlGrid">
+          <thead id="mlHead"></thead>
+          <tbody id="mlBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-qty-general">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-subject-range" id="qgCodeWrap">
+                  <input type="text" id="qgCode" placeholder="请选择数量核算科目">
+                  <button type="button" class="kd-subject-trigger" id="qgCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+            <div class="kd-period-range" data-start-id="qgPeriodStart" data-end-id="qgPeriodEnd" data-on-change="__renderQg">
+              <div class="kd-period-trigger" id="qgPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="qgPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="qgPeriodStart" />
+              <input type="hidden" id="qgPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="qgGrid">
+          <colgroup>
+            <col style="width:96px">
+            <col>
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+            <col style="width:56px">
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowspan="2">期间</th><th rowspan="2">摘要</th>
+              <th colspan="3">借方</th><th colspan="3">贷方</th>
+              <th rowspan="2">方向</th><th colspan="3">余额</th>
+            </tr>
+            <tr>
+              <th>数量</th><th>单价</th><th>金额</th>
+              <th>数量</th><th>单价</th><th>金额</th>
+              <th>数量</th><th>单价</th><th>金额</th>
+            </tr>
+          </thead>
+          <tbody id="qgBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-qty-ledger">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-subject-range" id="qdCodeWrap">
+                  <input type="text" id="qdCode" placeholder="请选择数量核算科目">
+                  <button type="button" class="kd-subject-trigger" id="qdCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+            <div class="kd-period-range" data-start-id="qdPeriodStart" data-end-id="qdPeriodEnd" data-on-change="__renderQd">
+              <div class="kd-period-trigger" id="qdPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="qdPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="qdPeriodStart" />
+              <input type="hidden" id="qdPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="qdGrid">
+          <colgroup>
+            <col style="width:100px"><col style="width:104px">
+            <col>
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+            <col style="width:56px">
+            <col style="width:96px"><col style="width:104px"><col style="width:124px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowspan="2">日期</th><th rowspan="2">凭证字号</th><th rowspan="2">摘要</th>
+              <th colspan="3">借方</th><th colspan="3">贷方</th>
+              <th rowspan="2">方向</th><th colspan="3">余额</th>
+            </tr>
+            <tr>
+              <th>数量</th><th>单价</th><th>金额</th>
+              <th>数量</th><th>单价</th><th>金额</th>
+              <th>数量</th><th>单价</th><th>金额</th>
+            </tr>
+          </thead>
+          <tbody id="qdBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-aux-ledger">
+        <div class="page-head">
+          <div class="page-actions">
+            <select id="axType"></select>
+            <select id="axItem"></select>
+            <div class="kd-period-range" data-start-id="axPeriodStart" data-end-id="axPeriodEnd" data-on-change="__renderAx">
+              <div class="kd-period-trigger" id="axPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="axPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="axPeriodStart" />
+              <input type="hidden" id="axPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="axGrid">
+          <colgroup>
+            <col style="width:100px"><col style="width:104px">
+            <col><col style="width:180px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:56px"><col style="width:124px">
+          </colgroup>
+          <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>科目</th><th>借方</th><th>贷方</th><th>方向</th><th>余额</th></tr></thead>
+          <tbody id="axBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-aux-balance">
+        <div class="page-head">
+          <div class="page-actions">
+            <select id="abType"></select>
+            <div class="kd-period-range" data-start-id="abPeriodStart" data-end-id="abPeriodEnd" data-on-change="__renderAb">
+              <div class="kd-period-trigger" id="abPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="abPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="abPeriodStart" />
+              <input type="hidden" id="abPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="abGrid">
+          <colgroup>
+            <col style="width:180px"><col style="width:180px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowspan="2">核算项目</th><th rowspan="2">科目</th>
+              <th colspan="2">期初余额</th><th colspan="2">本期发生额</th><th colspan="2">期末余额</th>
+            </tr>
+            <tr><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th></tr>
+          </thead>
+          <tbody id="abBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-aux-combine">
+        <div class="page-head">
+          <div class="page-actions">
+            <select id="acMode">
+              <option value="subject-aux">科目-辅助核算组合</option>
+              <option value="aux-aux">双辅助核算组合</option>
+            </select>
+            <div class="kd-period-range" data-start-id="acPeriodStart" data-end-id="acPeriodEnd" data-on-change="__renderAc">
+              <div class="kd-period-trigger" id="acPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="acPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="acPeriodStart" />
+              <input type="hidden" id="acPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="acGrid">
+          <colgroup>
+            <col>
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowspan="2">组合</th>
+              <th colspan="2">期初余额</th><th colspan="2">本期发生额</th><th colspan="2">期末余额</th>
+            </tr>
+            <tr><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th></tr>
+          </thead>
+          <tbody id="acBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-trial-balance">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="tbPeriodStart" data-end-id="tbPeriodEnd" data-on-change="__renderTrialBalance">
+              <div class="kd-period-trigger" id="tbPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="tbPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="tbPeriodStart" />
+              <input type="hidden" id="tbPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+            <button class="btn" id="btnTbExport">导出</button>
+          </div>
+        </div>
+        <table class="grid tb-grid" id="tbGrid">
+          <!-- 金额列须固定宽，文本列吸收剩余空间。
+               勿改回各列均分：此前均分导致长科目名压到相邻金额列，且千分位金额放不下。 -->
+          <colgroup>
+            <col style="width:104px">
+            <col>
+            <col style="width:116px"><col style="width:116px">
+            <col style="width:116px"><col style="width:116px">
+            <col style="width:116px"><col style="width:116px">
+            <col style="width:116px"><col style="width:116px">
+          </colgroup>
+          <thead><tr>
+            <th rowspan="2">科目编码</th><th rowspan="2">科目名称</th>
+            <th colspan="2">期初余额</th>
+            <th colspan="2">本期发生额</th>
+            <th colspan="2">本年累计发生额</th>
+            <th colspan="2">期末余额</th>
+          </tr><tr>
+            <th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th>
+          </tr></thead>
+          <tbody id="tbBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-report-balance">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="bsPeriodStart" data-end-id="bsPeriodEnd" data-on-change="__renderBs">
+              <div class="kd-period-trigger" id="bsPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="bsPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="bsPeriodStart" />
+              <input type="hidden" id="bsPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+            <button class="btn" id="btnBsExport">导出</button>
+          </div>
+        </div>
+        <div id="bsWip" class="bs-wip" style="display:none"></div>
+        <table class="grid bs-grid rpt-grid" id="bsGrid">
+          <thead><tr class="grid-title" id="bsTitleRow"></tr>
+            <tr>
+            <th class="col-name">资产</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
+            <th class="col-name">负债和所有者权益</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
+          </tr></thead>
+          <tbody id="bsBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-report-profit">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="plPeriodStart" data-end-id="plPeriodEnd" data-on-change="__renderPl">
+              <div class="kd-period-trigger" id="plPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="plPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="plPeriodStart" />
+              <input type="hidden" id="plPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+            <button class="btn" id="btnPlExport">导出</button>
+          </div>
+        </div>
+        <div class="rpt-wrap">
+          <table class="grid rpt-grid" id="plGrid">
+            <thead><tr class="grid-title" id="plTitleRow"></tr>
+            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
+            <tbody id="plBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="page" id="page-report-cashflow">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="cfPeriodStart" data-end-id="cfPeriodEnd" data-on-change="__renderCf">
+              <div class="kd-period-trigger" id="cfPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="cfPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="cfPeriodStart" />
+              <input type="hidden" id="cfPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+            <button class="btn" id="btnCfExport">导出</button>
+          </div>
+        </div>
+        <div class="rpt-wrap">
+          <table class="grid rpt-grid" id="cfGrid">
+            <thead><tr class="grid-title" id="cfTitleRow"></tr>
+            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
+            <tbody id="cfBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="page" id="page-report-tax">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="txPeriodStart" data-end-id="txPeriodEnd" data-on-change="__renderTx">
+              <div class="kd-period-trigger" id="txPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="txPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="txPeriodStart" />
+              <input type="hidden" id="txPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+            <button class="btn" id="btnTxExport">导出</button>
+          </div>
+        </div>
+        <div class="rpt-wrap">
+          <table class="grid rpt-grid" id="txGrid">
+            <thead><tr class="grid-title" id="txTitleRow"></tr>
+            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月数</th><th class="col-amt">本年累计数</th></tr></thead>
+            <tbody id="txBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="page" id="page-asset-card">
+
+        <div class="orig-filter-top">
+          <div class="orig-filter-left" id="assetFilterToggle" title="筛选">
+            <span class="iconcool guolv"></span> 过滤
+          </div>
+          <div class="orig-filter-right">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-content">
+                <input type="month" class="inp inp-month" id="aPeriod" title="会计期">
+              </div>
+            </div>
+            <label class="orig-holdup" style="margin-left:12px;"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
+          </div>
+        </div>
+
+        <div class="orig-filter-fold" id="assetFilterFold" style="display:none;">
+          <div class="orig-fold-grid">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">编码</div>
+              <div class="ykj-filter-item-box-content"><input type="text" class="inp" id="fCode" placeholder="请输入编码"></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">名称</div>
+              <div class="ykj-filter-item-box-content"><input type="text" class="inp" id="fName" placeholder="请输入名称"></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">类别</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fCategory"><option value="">所有</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">部门</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fDept"><option value="">所有</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">开始使用日期</div>
+              <div class="ykj-filter-item-box-content"><input type="date" class="inp inp-date" id="fAcqStart"> ~ <input type="date" class="inp inp-date" id="fAcqEnd"></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">录入期间</div>
+              <div class="ykj-filter-item-box-content"><input type="text" class="inp inp-period" id="fEntryStart" placeholder="开始期"> ~ <input type="text" class="inp inp-period" id="fEntryEnd" placeholder="结束期"></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">折旧方法</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fMethod"><option value="">所有</option><option>平均年限法</option><option>工作量法</option><option>双倍余额递减法</option><option>年数总和法</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">新增资产凭证</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fAddVch"><option value="">所有</option><option value="1">已生成</option><option value="0">未生成</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">状态</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fStatus"><option value="">所有</option><option>正常</option><option>清理</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">清理期间</div>
+              <div class="ykj-filter-item-box-content"><input type="text" class="inp inp-period" id="fCleanStart" placeholder="开始期"> ~ <input type="text" class="inp inp-period" id="fCleanEnd" placeholder="结束期"></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">清理凭证</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="fCleanVch"><option value="">所有</option><option value="1">已生成</option><option value="0">未生成</option></select></div>
+            </div>
+            <label class="orig-holdup" style="margin-left:8px;"><input type="checkbox" id="fShowCleaned"> 显示已清理资产</label>
+          </div>
+          <div class="orig-fold-bottom">
+            <button class="btn btn-primary" id="btnAssetFilterQuery">查询</button>
+            <button class="btn btn-second" id="btnAssetFilterReset">重置</button>
+            <span class="orig-holdup" id="assetFilterHoldup">收起</span>
+          </div>
+        </div>
+
+        <div class="page-actions orig-btns">
+          <button class="btn btn-primary" id="btnNewAsset">新增</button>
+          <button class="btn btn-primary kd-dropdown" id="btnAssetGenVoucher">生成凭证 <i class="kdicon kdicon-arrow-down"></i></button>
+          <button class="btn" id="btnAssetCatMgr" title="资产类别基础资料（折旧方法/科目等）">资产类别</button>
+          <button class="btn btn-primary" id="btnAssetImport">导入</button>
+          <button class="btn kd-dropdown" id="btnAssetExport">导出 <i class="kdicon kdicon-arrow-down"></i></button>
+          <span class="orig-batch-wrap">
+            <button class="btn kd-dropdown" id="btnAssetBatch">批量操作 <i class="kdicon kdicon-arrow-down"></i></button>
+            <div class="orig-batch-menu" id="assetBatchMenu" hidden>
+              <a href="javascript:;" data-batch="clean">批量清理</a>
+              <a href="javascript:;" data-batch="del">批量删除</a>
+            </div>
+          </span>
+        </div>
+
+        <div class="orig-body orig-body-sider-right">
+          <div class="orig-sider" id="assetSider">
+            <div class="orig-sider-box">
+              <div class="orig-sider-title">资产类别</div>
+              <ul class="orig-tree" id="assetCatTree"></ul>
+            </div>
+            <div class="orig-sider-box orig-sider-box-bottom">
+              <div class="orig-sider-title">部门</div>
+              <ul class="orig-tree" id="assetDeptTree"></ul>
+            </div>
+          </div>
+          <div class="orig-table-wrap">
+            <div class="asset-grid-scroll">
+            <table class="grid" id="assetGrid">
+              <colgroup>
+                <col class="c-check"><col class="c-op"><col><col><col><col><col><col>
+                <col class="c-amt"><col class="c-amt"><col class="c-amt"><col class="c-amt">
+                <col class="c-mid"><col class="c-mid"><col class="c-amt"><col class="c-amt">
+                <col class="c-amt"><col class="c-amt"><col class="c-amt"><col><col>
+                <col class="c-mid"><col><col><col><col>
+                <col class="c-vch"><col class="c-vch"><col class="c-vch"><col class="c-vch"><col>
+              </colgroup>
+              <thead><tr>
+                <th class="col-check"><input type="checkbox" id="aCheckAll"></th>
+                <th>操作</th><th>编码</th><th>名称</th><th>类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
+                <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
+                <th class="ta-c">预计使用期限</th><th class="ta-c">已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
+                <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
+                <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
+                <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th>备注</th>
+              </tr></thead>
+              <tbody id="assetBody"></tbody>
+              <tfoot id="assetFoot"></tfoot>
+            </table>
+            </div>
+            <div class="orig-pagination">
+              <span class="orig-total" id="assetCount">共 0 条</span>
+              <ul class="orig-pages" id="assetPages">
+                <li class="disabled" title="上一页"><button id="aPrev"><i class="kdicon kdicon-arrow-left"></i></button></li>
+                <li class="active" title="1"><button id="aPageNo">1</button></li>
+                <li title="下一页"><button id="aNext"><i class="kdicon kdicon-arrow-right"></i></button></li>
+              </ul>
+              <div class="orig-page-size">
+                <select class="inp inp-sm" id="aPageSize"><option>500</option><option>200</option><option>100</option></select>
+                <span>条/页</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-asset-depr">
+
+        <!-- 页内 Tab：折旧凭证 / 折旧汇总表 / 折旧明细表 / 变动记录（外观简化收敛宿主） -->
+        <div class="asset-subtabs" id="assetDeprTabs">
+          <button type="button" class="asset-subtab active" data-sub="voucher">折旧凭证</button>
+          <button type="button" class="asset-subtab" data-sub="sum">折旧汇总表</button>
+          <button type="button" class="asset-subtab" data-sub="detail">折旧明细表</button>
+          <button type="button" class="asset-subtab" data-sub="change">变动记录</button>
+        </div>
+
+        <div class="asset-sub" data-sub="sum" data-name="折旧汇总表">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="dasPeriodStart" data-end-id="dasPeriodEnd" data-on-change="__renderDas">
+              <div class="kd-period-trigger" id="dasPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="dasPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="dasPeriodStart" />
+              <input type="hidden" id="dasPeriodEnd" />
+            </div>
+            <label class="chk"><input type="checkbox" id="dasByDept"> 按部门汇总</label>
+            <label class="chk"><input type="checkbox" id="dasShowCleaned"> 显示已清理</label>
+            <button class="btn" id="btnDasPrint" data-print>打印</button>
+            <button class="btn" id="btnDasExport">导出</button>
+            <button class="btn" id="btnDepreciateAll">计提本月折旧</button>
+          </div>
+        </div>
+        <table class="grid" id="dasGrid">
+          <!-- 金额列须固定宽（否则千分位金额会折行），文本列吸收剩余空间；窄屏由表格容器横滚。 -->
+          <colgroup>
+            <col style="width:100px"><col style="width:100px"><col><col style="width:110px">
+            <col style="width:124px"><col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px"><col style="width:124px"><col style="width:124px">
+          </colgroup>
+          <thead><tr class="grid-title" id="dasTitleRow"></tr>
+            <tr><th>类别</th><th>编码</th><th>名称</th><th>部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dasMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+          <tbody id="dasBody"></tbody>
+          <tfoot id="dasFoot"></tfoot>
+        </table>
+        </div>
+
+        <div class="asset-sub" data-sub="detail" data-name="折旧明细表">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="dadPeriodStart" data-end-id="dadPeriodEnd" data-on-change="__renderDad">
+              <div class="kd-period-trigger" id="dadPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="dadPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="dadPeriodStart" />
+              <input type="hidden" id="dadPeriodEnd" />
+            </div>
+            <label class="chk"><input type="checkbox" id="dadShowCleaned"> 显示已清理</label>
+            <label class="chk"><input type="checkbox" id="dadShowChange"> 显示变动信息</label>
+            <button class="btn" id="btnDadPrint" data-print>打印</button>
+            <button class="btn" id="btnDadExport">导出</button>
+          </div>
+        </div>
+        <table class="grid" id="dadGrid">
+
+          <colgroup>
+            <col style="width:100px"><col style="width:100px"><col><col style="width:110px">
+            <col style="width:124px"><col style="width:124px"><col style="width:124px">
+            <col style="width:124px"><col style="width:124px"><col style="width:124px"><col style="width:124px">
+          </colgroup>
+          <thead><tr class="grid-title" id="dadTitleRow"></tr>
+          <tr><th>类别</th><th>编码</th><th>名称</th><th>部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dadMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+          <tbody id="dadBody"></tbody>
+          <tfoot id="dadFoot"></tfoot>
+        </table>
+        </div>
+
+        <div class="asset-sub" data-sub="change" data-name="资产变动记录">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="aclPeriodStart" data-end-id="aclPeriodEnd" data-on-change="__renderAssetChangeLog">
+              <div class="kd-period-trigger" id="aclPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="aclPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="aclPeriodStart" />
+              <input type="hidden" id="aclPeriodEnd" />
+            </div>
+            <label class="chk"><input type="checkbox" id="aclByDept"> 按部门汇总</label>
+            <label class="chk"><input type="checkbox" id="aclShowCleaned"> 显示已清理</label>
+            <label class="chk"><input type="checkbox" id="aclShowChange"> 显示变动信息</label>
+            <button class="btn" id="btnAclPrint" data-print>打印</button>
+            <button class="btn" id="btnAclExport">导出</button>
+          </div>
+        </div>
+        <table class="grid" id="aclGrid">
+          <thead>
+            <tr class="grid-title" id="aclTitleRow"></tr>
+            <tr>
+              <th>资产编码</th><th>资产名称</th><th>变动项</th><th>变动前内容</th>
+              <th>变动后内容</th><th>变动期间</th><th>修改人</th><th>变动时间</th>
+            </tr>
+          </thead>
+          <tbody id="aclBody"></tbody>
+        </table>
+        </div>
+
+        <div class="asset-sub" data-sub="voucher" data-name="折旧凭证">
+        <div class="page-head">
+          <div class="page-actions">
+            <span class="page-period" id="dvPeriod"></span>
+            <button class="btn" id="btnDeprVchSetting">折旧凭证参数设置</button>
+            <button class="btn btn-primary" id="btnAccrueDepr">生成折旧凭证</button>
+            <button class="btn" id="btnDvExport">导出</button>
+            <button class="btn" id="btnDvBatch">批量操作</button>
+          </div>
+        </div>
+        <div class="k-tip" id="dvTip">点击「生成折旧凭证」按当前期间计提折旧并生成凭证。</div>
+        <table class="grid" id="dvGrid">
+          <!-- 金额列须固定宽（否则千分位金额会折行），文本列吸收剩余空间；表体过宽时横滚。 -->
+          <colgroup>
+            <col style="width:40px"><col style="width:96px">
+            <col style="width:100px"><col style="width:160px">
+            <col style="width:100px"><col style="width:100px">
+            <col style="width:110px"><col style="width:100px">
+            <col style="width:116px"><col style="width:124px"><col style="width:124px"><col style="width:110px">
+            <col style="width:100px"><col style="width:100px"><col style="width:110px"><col style="width:100px">
+            <col style="width:116px"><col style="width:116px"><col style="width:116px">
+            <col style="width:110px"><col style="width:80px">
+            <col style="width:80px"><col style="width:120px"><col style="width:120px">
+            <col style="width:90px"><col style="width:100px">
+            <col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:110px">
+            <col style="width:150px">
+          </colgroup>
+          <thead><tr>
+            <th class="col-check"><input type="checkbox" id="dvCheckAll"></th>
+            <th>操作</th><th>编码</th><th>名称</th><th>类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
+            <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
+            <th class="ta-c">预计使用期限</th><th class="ta-c">已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
+            <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
+            <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
+            <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th>备注</th>
+          </tr></thead>
+          <tbody id="dvBody"></tbody>
+          <tfoot id="dvFoot"></tfoot>
+        </table>
+        </div>
+      </section>
+
+      <section class="page" id="page-salary">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="salPeriodStart" data-end-id="salPeriodEnd" data-on-change="__renderSalary">
+              <div class="kd-period-trigger" id="salPeriodTrigger">
+                <span class="kd-period-trigger-label">期间</span>
+                <span class="kd-period-trigger-text" id="salPeriodText">请选择期间</span>
+              </div>
+              <input type="hidden" id="salPeriodStart" />
+              <input type="hidden" id="salPeriodEnd" />
+            </div>
+            <button class="btn" id="btnNewSalary">新增工资</button>
+            <button class="btn" id="btnGenSalaryAccrual">计提工资凭证</button>
+            <button class="btn" id="btnGenSalaryPay">发放工资凭证</button>
+            <button class="btn" id="btnOpenDeptStaff">部门职员</button>
+            <button class="btn" id="btnOpenSalaryTpl">凭证模板</button>
+          </div>
+        </div>
+        <table class="grid" id="salGrid">
+          <colgroup>
+            <col style="width:100px"><col><col style="width:120px">
+            <col style="width:124px"><col style="width:124px"><col style="width:96px">
+          </colgroup>
+          <thead><tr><th>期间</th><th>姓名</th><th>工资类别</th><th>应发</th><th>实发</th><th>操作</th></tr></thead>
+          <tbody id="salBody"></tbody>
+        </table>
+      </section>
+
+      <section class="page" id="page-salary-statistics">
+        <div class="page-head">
+          <div class="page-actions">
+            <div class="kd-period-range" data-start-id="sstPeriodStart" data-end-id="sstPeriodEnd" data-on-change="__renderSalaryStats">
+              <div class="kd-period-trigger" id="sstPeriodTrigger">
+                <span class="kd-period-trigger-label">月份</span>
+                <span class="kd-period-trigger-text" id="sstPeriodText">请选择月份</span>
+              </div>
+              <input type="hidden" id="sstPeriodStart" />
+              <input type="hidden" id="sstPeriodEnd" />
+            </div>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <table class="grid" id="sstGrid">
+          <colgroup>
+            <col style="width:100px"><col style="width:140px"><col style="width:90px">
+            <col style="width:140px"><col style="width:140px">
+          </colgroup>
+          <thead><tr><th>月份</th><th>工资类别</th><th>职员数</th><th class="ta-r">应发工资汇总</th><th class="ta-r">实发工资汇总</th></tr></thead>
+          <tbody id="sstBody"></tbody>
+        </table>
+      </section>
+
+      <!-- 工资页内弹窗：部门职员（原独立页 page-department-staff 收敛） -->
+      <div class="modal" id="deptStaffModal">
+        <div class="modal-box modal-wide">
+          <div class="modal-title">部门职员</div>
+          <div class="modal-actions" style="padding: 6px 16px 0;">
+            <button class="btn btn-primary" id="btnAddDept">新增部门</button>
+            <span style="flex:1"></span>
+            <button class="btn" id="btnCloseDeptStaff">关闭</button>
+          </div>
+          <div class="asset-cat-scroll">
+            <table class="grid" id="dsGrid">
+              <colgroup>
+                <col style="width:120px"><col><col style="width:100px">
+                <col style="width:150px"><col style="width:96px">
+              </colgroup>
+              <thead><tr><th>编码</th><th>名称</th><th>类型</th><th>上级</th><th>操作</th></tr></thead>
+              <tbody id="dsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 工资页内弹窗：工资凭证模板（原独立页 page-salary-tpl 收敛） -->
+      <div class="modal" id="salaryTplModal">
+        <div class="modal-box modal-wide">
+          <div class="modal-title">工资凭证模板</div>
+          <div class="modal-actions" style="padding: 6px 16px 0;">
+            <button class="btn btn-primary" id="btnAddSalaryTpl">新增</button>
+            <button class="btn" id="btnResetSalaryTpl">恢复默认</button>
+            <span style="flex:1"></span>
+            <button class="btn" id="btnCloseSalaryTpl">关闭</button>
+          </div>
+          <div class="k-tip info" style="margin: 6px 16px 0;">设置计提工资与发放工资凭证的制单规则，生成工资凭证时按模板取凭证字与摘要。</div>
+          <div class="asset-cat-scroll">
+            <table class="grid ag-theme-alpine" id="salaryTplGrid">
+              <thead><tr>
+                <th style="width:160px">模板名称</th>
+                <th style="width:120px">凭证类型</th>
+                <th style="width:120px">工资类别</th>
+                <th style="width:80px">凭证字</th>
+                <th style="width:80px">启用</th>
+                <th>模板说明</th>
+                <th style="width:120px">操作</th>
+              </tr></thead>
+              <tbody id="salaryTplBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <section class="page" id="page-settle">
+        <!-- 结账页：Tab 切换 期末处理 / 结账 / 反结账 -->
+        <div class="settle-tabs" id="settleTabs">
+          <label class="settle-tab active" data-tab="process">
+            <input type="radio" name="settleTab" value="0" checked />期末处理
+          </label>
+          <label class="settle-tab" data-tab="close">
+            <input type="radio" name="settleTab" value="1" />结账
+          </label>
+          <label class="settle-tab" data-tab="reopen">
+            <input type="radio" name="settleTab" value="2" />反结账
+          </label>
+        </div>
+
+        <div class="settle-tab-pane" id="settlePaneProcess">
+
+          <div class="settle-card-list" id="settleProcessCards">
+
+            <div class="settle-card settle-card-checked" id="cardProfit">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" checked /></label>
+                <span class="settle-card-name">结转损益</span>
+                <i class="settle-card-help" title="结转损益">?</i>
+                <span class="settle-card-op"><a class="settle-link" data-act="setting">设置</a></span>
+              </div>
+              <div class="settle-card-body settle-card-body-row">
+                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="profitDone">0.00</span></div>
+                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="profitTodo">0.00</span></div>
+              </div>
+              <div class="settle-card-foot">
+                <span class="settle-vch" id="profitVchNo"></span>
+                <button class="btn btn-sm btn-primary" id="btnReCarryForward">重新结转</button>
+                <!-- 年末结转本年利润（3103 → 3104 未分配利润）：仅 12 月显示 -->
+                <button class="btn btn-sm" id="btnCarryYearEnd" style="display:none" title="将本年利润余额结转至利润分配-未分配利润，避免跨年未分配利润失真">结转本年利润</button>
+              </div>
+            </div>
+            <div class="settle-card settle-card-checked" id="cardDepr">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" /></label>
+                <span class="settle-card-name">计提折旧</span>
+                <i class="settle-card-help" title="折旧计提">?</i>
+                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
+              </div>
+              <div class="settle-card-body">
+                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="depDone">0.00</span></div>
+                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="depTodo">0.00</span></div>
+              </div>
+              <div class="settle-card-foot">
+                <span class="settle-vch" id="depVchNo"></span>
+                <button class="btn btn-sm btn-ghost" id="btnDepVoucher">生成凭证</button>
+              </div>
+            </div>
+            <div class="settle-card settle-card-disabled" id="cardCost">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" disabled /></label>
+                <span class="settle-card-name">结转销售成本</span>
+                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
+              </div>
+              <div class="settle-card-body"><div class="settle-tip" id="costTip"><i class="settle-tip-icon">&#9888;</i>请点击【生成凭证】测算金额</div></div>
+              <div class="settle-card-foot"><span class="settle-vch" id="costVchNo"></span><button class="btn btn-sm btn-ghost" id="btnCarryCost">生成凭证</button></div>
+            </div>
+            <div class="settle-card settle-card-checked" id="cardVat">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" /></label>
+                <span class="settle-card-name">转出未交增值税</span>
+                <i class="settle-card-help" title="转出未交增值税">?</i>
+                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting" id="btnVatew">设置</a></span>
+              </div>
+              <div class="settle-card-body">
+                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="vatDone">0.00</span></div>
+                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="vatTodo">0.00</span></div>
+              </div>
+              <div class="settle-card-foot"><span class="settle-vch" id="vatVchNo"></span><button class="btn btn-sm btn-ghost" id="btnCarryVat">生成凭证</button></div>
+            </div>
+            <div class="settle-card settle-card-checked" id="cardSurTax">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" /></label>
+                <span class="settle-card-name">计提附加税</span>
+                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
+              </div>
+              <div class="settle-card-body">
+                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="surTaxDone">0.00</span></div>
+                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="surTaxTodo">0.00</span></div>
+                <a class="settle-link settle-link-inline" id="surTaxCalc">查看金额计算逻辑</a>
+              </div>
+              <div class="settle-card-foot"><span class="settle-vch" id="surTaxVchNo"></span><button class="btn btn-sm btn-ghost" id="btnAccrueSurTax">生成凭证</button></div>
+            </div>
+            <div class="settle-card settle-card-disabled" id="cardIncTax">
+              <div class="settle-card-head">
+                <label class="settle-card-check"><input type="checkbox" disabled /></label>
+                <span class="settle-card-name">计提所得税</span>
+                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
+              </div>
+              <div class="settle-card-body">
+                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="incTaxDone">0.00</span></div>
+                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="incTaxTodo">0.00</span></div>
+                <a class="settle-link settle-link-inline" id="incTaxCalc">查看金额计算逻辑</a>
+              </div>
+              <div class="settle-card-foot"><span class="settle-vch" id="incTaxVchNo"></span><button class="btn btn-sm btn-ghost" id="btnAccrueIncTax">生成凭证</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settle-tab-pane" id="settlePaneClose" style="display:none;">
+          <div class="settle-close-body">
+            <div class="settle-year-bar settle-year-bar-center">
+              <span class="settle-year-val settle-year-clickable" id="settleYearVal" data-target="close">2026年</span>
+              <span class="settle-year-arrow" id="settleYearArrow">&raquo;</span>
+            </div>
+            <div class="settle-month-nav" id="settleMonthNav"></div>
+            <div class="settle-close-ops">
+              <button class="btn btn-primary btn-close-period" id="btnClosePeriod">检查并结账</button>
+              <button class="btn btn-ghost" id="btnSettleTmpl"><i class="ico ico-setting">&#9881;</i> 检查项设置</button>
+            </div>
+            <div class="settle-check-wrap" id="closeChecklist"></div>
+            <p class="settle-close-notice" id="closeNotice"></p>
+          </div>
+        </div>
+
+        <div class="settle-tab-pane" id="settlePaneReopen" style="display:none;">
+          <div class="settle-reopen-body">
+            <div class="settle-year-bar settle-year-bar-center">
+              <span class="settle-year-val settle-year-clickable" id="reopenYearVal" data-target="reopen">2026年</span>
+            </div>
+            <div class="settle-month-nav" id="reopenMonthNav"></div>
+            <button class="btn btn-primary btn-reopen" id="btnReopenPeriod">反结账</button>
+            <p class="settle-reopen-warn">反结账是违反会计法规的非正常操作，会影响历史报表数据，请慎用！</p>
+            <p class="settle-reopen-hint" id="reopenPeriodHint"></p>
+          </div>
+        </div>
+
+        <div class="settle-year-picker" id="settleYearPicker" style="display:none;">
+          <div class="settle-year-picker-inner">
+            <div class="settle-year-picker-head">
+              <span class="settle-year-picker-arrow" id="yearPickerPrev">&laquo;</span>
+              <span class="settle-year-picker-range" id="yearPickerRange">2011 - 2025</span>
+              <span class="settle-year-picker-arrow" id="yearPickerNext">&raquo;</span>
+            </div>
+            <div class="settle-year-picker-grid" id="yearPickerGrid"></div>
+          </div>
+        </div>
+
+        <div class="settle-audit" id="settleAuditTip"></div>
+      </section>
+
+      <div class="modal" id="settleTmplModal">
+        <div class="modal-box settle-tmpl-box">
+          <div class="modal-title">结账凭证模板设置<button class="modal-x" id="btnSettleTmplClose">×</button></div>
+          <div class="settle-tmpl-body">
+
+            <div class="settle-tmpl-sider">
+              <div class="settle-tmpl-tree">
+                <div class="settle-tmpl-node settle-tmpl-node-group settle-tmpl-node-open" id="settleTmplGroupEnabled">
+                  <span class="settle-tmpl-arrow">▾</span><span>启用模板</span>
+                </div>
+                <ul class="settle-tmpl-list" id="settleTmplEnabled"></ul>
+                <div class="settle-tmpl-node settle-tmpl-node-group" id="settleTmplGroupDisabled">
+                  <span class="settle-tmpl-arrow">▸</span><span>禁用模板</span>
+                </div>
+                <ul class="settle-tmpl-list" id="settleTmplDisabled"></ul>
+              </div>
+              <div class="settle-tmpl-add" id="btnSettleTmplNew"><i class="iconcool tianjia"></i>新增模板</div>
+            </div>
+
+            <div class="settle-tmpl-main">
+              <div class="settle-tmpl-form-panel" id="settleTmplFormPanel">
+              <div class="settle-tmpl-head">
+                <div class="settle-tmpl-head-title">
+                  <span id="settleTmplFormName">结账模板凭证设置</span>
+                  <span class="settle-tmpl-tag" id="settleTmplFormTag">系统</span>
+                </div>
+                <div class="settle-tmpl-head-right">
+                  <span>启用</span>
+                  <label class="settle-tmpl-switch"><input type="checkbox" id="settleTmplFormEnabled" /><i></i></label>
+                </div>
+              </div>
+              <div class="settle-tmpl-form">
+                <div class="flex--3nLNX">
+                  <div class="label--315S5">凭证日期：</div>
+                  <input type="date" class="inp" id="settleTmplFormDate" />
+                </div>
+                <div class="flex--3nLNX">
+                  <div class="label--315S5">凭证字：</div>
+                  <select class="inp" id="settleTmplFormWord"></select>
+                </div>
+                <div class="flex--3nLNX">
+                  <div class="label--315S5">凭证摘要：</div>
+                  <input type="text" class="inp" id="settleTmplFormSummary" />
+                </div>
+
+                <div id="settleTmplCostExtra" style="display:none">
+                  <div class="settle-tmpl-sub">结转成本预估</div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">主营业务收入科目：</div>
+                    <input class="inp" id="settleTmplCostRevSubj" placeholder="输入编码或名称选择" autocomplete="off">
+                    <span class="settle-tmpl-tip" id="settleTmplCostRevAmt">本期金额：0.00</span>
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">预计成本结转百分比(%)：</div>
+                    <input type="number" class="inp settle-tmpl-num" id="settleTmplCostRate" min="0" max="100" step="1" />
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">预计结转成本：</div>
+                    <input type="number" class="inp settle-tmpl-num" id="settleTmplCostAmt" min="0" step="0.01" />
+                    <i class="settle-tmpl-help" title="预计结转成本 = 主营业务收入金额 * 成本结转百分比，支持手工调整">?</i>
+                  </div>
+                  <div class="settle-tmpl-sub">凭证设置</div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">结转成本摘要：</div>
+                    <input type="text" class="inp" id="settleTmplCostSummary" />
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">库存商品科目：</div>
+                    <input class="inp" id="settleTmplCostInvSubj" placeholder="输入编码或名称选择" autocomplete="off">
+                    <span class="settle-tmpl-tip" id="settleTmplCostInvBal">余额：0.00</span>
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">生产成本科目：</div>
+                    <input class="inp" id="settleTmplCostProdSubj" placeholder="输入编码或名称选择" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+              </div>
+
+              <div class="settle-tmpl-new" id="settleTmplNewPanel" style="display:none">
+                <div class="settle-tmpl-new-head">
+                  <div class="settle-tmpl-new-name">
+                    <div class="label--315S5 settle-tmpl-label-req">模板名称：</div>
+                    <input type="text" class="inp" id="settleTmplNewName" placeholder="请输入模板名称" />
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5">凭证字：</div>
+                    <select class="inp settle-tmpl-word-sel" id="settleTmplNewWord"></select>
+                  </div>
+                </div>
+                <div class="settle-tmpl-grid">
+                  <table class="settle-tmpl-table">
+                    <thead>
+                      <tr>
+                        <th class="col-op">操作</th>
+                        <th class="col-summary">摘要</th>
+                        <th class="col-subject">会计科目</th>
+                        <th class="col-dc">方向</th>
+                        <th class="col-amount">金额</th>
+                      </tr>
+                    </thead>
+                    <tbody id="settleTmplNewBody"></tbody>
+                  </table>
+                </div>
+                <div class="settle-tmpl-rule">
+                  <span class="settle-tmpl-rule-link" id="settleTmplRuleToggle">如何设置金额取数规则？</span>
+                  <div class="settle-tmpl-rule-tip" id="settleTmplRuleTip" style="display:none">
+                    <p>生成凭证时，金额取数规则：</p>
+                    <ol>
+                      <li>余额取数：取科目当前期间期末余额，按方向自动借贷。</li>
+                      <li>发生额取数：取科目当前期间借方或贷方发生额。</li>
+                      <li>固定金额：不填写取数规则时，生成凭证需手动补录金额。</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-danger" id="btnSettleTmplDelete" style="display:none">删除模板</button>
+            <button class="btn btn-primary" id="btnSettleTmplSave">保存</button>
+            <button class="btn" id="btnSettleTmplCancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal kd-modal-container" id="vatEditModal">
+        <div class="modal-box">
+          <div class="modal-title">转出未交增值税-凭证设置<button class="modal-x" id="btnVatEditClose2">×</button></div>
+          <div class="modal-body" id="vatEditBody"></div>
+          <div class="modal-actions">
+            <button class="btn btn-sm btn-ghost" id="btnVatEditAdd">+ 新增科目映射</button>
+            <span class="modal-actions-right">
+              <button class="btn btn-primary" id="btnVatEditSave">确定</button>
+              <button class="btn" id="btnVatEditClose">取消</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 计提附加税-金额计算逻辑（结账页 计提附加税「查看金额计算逻辑」浮层，DOM 取自金蝶 结账 计提附加税.md） -->
+      <div class="modal kd-modal-container" id="surTaxCalcModal">
+        <div class="modal-box calc-logic-box">
+          <div class="modal-title">计提附加税-金额计算逻辑<button class="modal-x" id="btnSurTaxCalcClose">×</button></div>
+          <div class="modal-body" id="surTaxCalcBody"></div>
+        </div>
+      </div>
+
+      <!-- 计提所得税-金额计算逻辑（文案待补） -->
+      <div class="modal" id="incTaxCalcModal">
+        <div class="modal-box calc-logic-box">
+          <div class="modal-title">计提所得税-金额计算逻辑<button class="modal-x" id="btnIncTaxCalcClose">×</button></div>
+          <div class="modal-body" id="incTaxCalcBody"></div>
+          <div class="modal-actions modal-actions-right">
+            <button class="btn" id="btnIncTaxCalcClose2">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="page" id="page-subject">
+        <div class="page-head subj-head">
+          <div class="subj-tabs" id="subjTabs">
+            <button class="subj-tab active" data-cls="asset">资产</button>
+            <button class="subj-tab" data-cls="liability">负债</button>
+            <button class="subj-tab" data-cls="common">共同</button>
+            <button class="subj-tab" data-cls="equity">权益</button>
+            <button class="subj-tab" data-cls="cost">成本</button>
+            <button class="subj-tab" data-cls="pl">损益</button>
+          </div>
+          <div class="subj-checks">
+            <label class="subj-check"><input type="checkbox" id="subjExpandAll" checked> 展开所有级次</label>
+            <label class="subj-check"><input type="checkbox" id="subjShowDisabled"> 显示停用科目</label>
+          </div>
+          <div class="page-actions">
+            <button class="btn" id="btnNewSubject">新增</button>
+            <button class="btn" id="btnSubjDelete">停用</button>
+            <button class="btn" id="btnSubjImport">导入</button>
+            <input type="file" id="subjImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+            <button class="btn" id="btnSubjExport">导出</button>
+            <button class="btn" data-print>打印</button>
+          </div>
+        </div>
+        <div class="grid-wrap">
+          <table class="grid pp-grid" id="subjGrid">
+            <thead><tr>
+              <th class="col-check"></th>
+              <th class="col-op">操作</th>
+              <th class="col-code">科目编码</th>
+              <th class="col-name">科目名称</th>
+              <th>科目类别</th>
+              <th>余额方向</th>
+              <th>辅助核算类别</th>
+              <th>数量核算</th>
+              <th>是否现金科目</th>
+            </tr></thead>
+            <tbody id="subjBody"></tbody>
+          </table>
+        </div>
+        <div class="grid-foot" id="subjFoot">已选 <b id="subjSelCount">0</b> 条 / 共 <b id="subjTotalCount">0</b> 条</div>
+      </section>
+
+      <section class="page" id="page-opening" data-unsaved-scope="opening">
+        <div class="page-head">
+          <div class="page-actions">
+            <button class="btn" id="btnSaveOpening">保存</button>
+            <button class="btn" id="btnOpenCheck">试算平衡</button>
+            <button class="btn" id="btnOpenExport">导出</button>
+          </div>
+        </div>
+        <div class="open-check" id="openCheck"></div>
+        <div class="k-tip info">录入规则：年初余额为本年年初数；本年累计借/贷为年初至启用期间前的累计发生额；期初余额 = 年初余额 + 本年累计借 − 本年累计贷（按科目方向填入借/贷列）。</div>
+        <div class="grid-wrap">
+          <table class="grid" id="openGrid">
+            <colgroup>
+              <col style="width:120px"><col><col style="width:70px">
+              <col style="width:124px"><col style="width:124px">
+              <col style="width:124px"><col style="width:124px"><col style="width:124px">
+            </colgroup>
+            <thead><tr><th>科目编码</th><th>科目名称</th><th>方向</th><th>年初余额</th><th>本年累计借</th><th>本年累计贷</th><th>期初借方</th><th>期初贷方</th></tr></thead>
+            <tbody id="openBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 系统设置聚合页：系统参数 + 凭证模板 + 操作日志 三 Tab 合一 -->
+      <section class="page" id="page-auxiliary-accounting">
+        <div class="aux-layout">
+          <div class="aux-types" id="auxTypes"></div>
+          <div class="aux-main">
+            <div class="page-head">
+              <div class="page-actions">
+                <label class="subj-check"><input type="checkbox" id="auxShowDisabled"> 显示停用档案</label>
+                <button class="btn" id="btnAddAuxItem">新增档案</button>
+                <button class="btn" id="btnAuxImport">导入</button>
+                <button class="btn" id="btnAuxExport">导出</button>
+                <button class="btn btn-danger" id="btnAuxReset">恢复默认</button>
+              </div>
+            </div>
+            <div class="k-tip info">① 档案按账套和类型（客户/供应商/部门/职员/项目）分别保存，各账套独立；② 项目利润表默认按「部门」筛选，部门无档案时自动取第一个有档案的类型；③ 新增档案后到报表页查看或点「刷新」即可生效；需给凭证分录挂上对应辅助核算，报表才有分项目数据。</div>
+            <div class="grid-wrap">
+              <table class="grid" id="auxGrid">
+               <colgroup>
+                 <col style="width:120px"><col><col>
+                 <col style="width:90px"><col style="width:96px">
+               </colgroup>
+               <thead><tr><th>编码</th><th>名称</th><th>备注</th><th>启用状态</th><th>操作</th></tr></thead>
+                <tbody id="auxBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 原始凭证（电子档案 / 附件管理） ============ -->
+      <section class="page" id="page-original">
+
+        <div class="orig-filter-top">
+          <div class="orig-filter-left" id="origFilterToggle" title="筛选">
+            <span class="iconcool guolv"></span> 过滤
+          </div>
+          <div class="orig-filter-right">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">附件名称</div>
+              <div class="ykj-filter-item-box-content">
+                <input type="text" class="inp inp-search" id="origName" placeholder="请输入需要搜索的内容">
+                <i class="iconcool sousuo icon--search"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orig-filter-fold" id="origFilterFold" style="display:none;">
+          <div class="orig-fold-grid">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">附件大类</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origBigType"><option value="">所有</option><option value="发票">发票</option><option value="合同">合同</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">附件小类</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origSmallType"><option value="">所有</option><option value="差旅发票">差旅发票</option><option value="购货发票">购货发票</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">是否生成凭证</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origVouched"><option value="">所有</option><option value="1">已生成</option><option value="0">未生成</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">审核状态</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origAudit"><option value="">所有</option><option value="未审核">未审核</option><option value="已审核">已审核</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">是否识别为发票</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origIsInvoice"><option value="">所有</option><option value="1">是</option><option value="0">否</option></select></div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">附件所属组</div>
+              <div class="ykj-filter-item-box-content"><select class="inp" id="origGroup"><option value="">所有</option></select></div>
+            </div>
+          </div>
+          <div class="orig-fold-bottom">
+            <button class="btn btn-primary" id="btnOrigQuery">查询</button>
+            <button class="btn btn-second" id="btnOrigReset">重置</button>
+            <span class="orig-holdup" id="origHoldup">收起</span>
+          </div>
+        </div>
+
+        <div class="page-actions orig-btns">
+          <button class="btn" id="btnOrigPrint" data-print>打印</button>
+          <button class="btn" id="btnOrigExport">导出</button>
+        </div>
+
+        <div class="orig-body orig-body-sider-right">
+          <div class="orig-sider" id="origSider">
+            <div class="orig-sider-tabs" id="origSiderTabs">
+              <span class="tab active" data-tab="small">附件小类</span>
+              <span class="tab" data-tab="period">记账期间</span>
+            </div>
+            <div class="orig-sider-search"><input type="text" class="inp" placeholder="请输入名称"><i class="iconcool sousuo"></i></div>
+            <ul class="orig-tree" id="origTree"></ul>
+          </div>
+          <div class="orig-table-wrap">
+            <table class="grid orig-grid" id="origGrid">
+              <thead>
+                <tr class="grid-title" id="origTitleRow"></tr>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="origCheckAll"></th>
+                  <th class="col-op">操作</th>
+                  <th>附件名称</th>
+                  <th>文件大小</th>
+                  <th>关联凭证</th>
+                  <th>记账期间</th>
+                  <th>上传时间</th>
+                </tr>
+              </thead>
+              <tbody id="origBody"></tbody>
+            </table>
+            <div class="orig-pagination">
+              <span class="orig-total" id="origTotal">共 0 条</span>
+              <ul class="orig-pages" id="origPages">
+                <li class="disabled" title="上一页"><button><i class="kdicon kdicon-arrow-left"></i></button></li>
+                <li class="active" title="1"><button>1</button></li>
+                <li title="下一页"><button><i class="kdicon kdicon-arrow-right"></i></button></li>
+              </ul>
+              <div class="orig-page-size">
+                <select class="inp inp-sm" id="origPageSize"><option>500</option><option>200</option><option>100</option><option>50</option></select>
+                <span>条/页</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 项目利润表（行=利润表行项目、列=项目×核算维度；筛选=起止期间+无发生额不显示） ============ -->
+      <section class="page" id="page-project-profit">
+        <div class="page-head">
+          <div class="page-actions pp-page-actions">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-content">
+                <select id="ppAuxType" class="inp inp-sel"></select>
+              </div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-content">
+                <div class="ed-subj-select" id="ppProjectWrap">
+                  <div class="ed-subj-trigger" id="ppProjectTrigger">
+                    <div class="ed-subj-tags" id="ppProjectTags">
+                      <span class="ed-subj-placeholder" id="ppProjectPlaceholder">全部项目</span>
+                    </div>
+                    <div class="ed-subj-countbox" id="ppProjectCountbox">共<span id="ppProjectCount">0</span>项</div>
+                    <span class="ed-subj-caret"></span>
+                  </div>
+                  <div class="ed-subj-pop" id="ppProjectPop" hidden></div>
+                </div>
+              </div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-period-range" data-start-id="ppFrom" data-end-id="ppTo" data-on-change="refreshPP">
+                  <div class="kd-period-trigger" id="ppPeriodTrigger">
+                    <span class="kd-period-trigger-label">期间</span>
+                    <span class="kd-period-trigger-text" id="ppPeriodText">2023年01期 ~ 2023年12期</span>
+                  </div>
+                  <input type="hidden" id="ppFrom" />
+                  <input type="hidden" id="ppTo" />
+                </div>
+              </div>
+            </div>
+            <button class="kd-btn kd-btn-primary pp-query" id="btnPpQuery">查询</button>
+            <button class="btn" id="btnPpPrint" data-print>打印</button>
+            <button class="btn" id="btnPpExport">导出</button>
+          </div>
+        </div>
+        <div class="grid-wrap">
+          <table class="grid pp-grid" id="ppGrid">
+            <thead id="ppHead">
+              <tr>
+                <th class="col-name pp-name-col">项目</th>
+                <th class="col-no">行次</th>
+                <th class="col-amt">合计</th>
+              </tr>
+            </thead>
+            <tbody id="ppBody"></tbody>
+          </table>
+          <div class="grid-foot" id="ppFoot"></div>
+        </div>
+      </section>
+
+      <!-- ============ 费用明细表（期间范围 + 图表 + 树形多栏表） ============ -->
+      <section class="page" id="page-expense-detail">
+        <div class="page-head">
+          <div class="page-actions ed-page-actions">
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-content">
+                <div class="kd-period-range" data-start-id="edPeriodStart" data-end-id="edPeriodEnd" data-on-change="refreshExpenseDetail">
+                  <div class="kd-period-trigger" id="edPeriodTrigger">
+                    <span class="kd-period-trigger-label">期间</span>
+                    <span class="kd-period-trigger-text" id="edPeriodText">2023年01期 ~ 2023年12期</span>
+                  </div>
+                  <input type="hidden" id="edPeriodStart" />
+                  <input type="hidden" id="edPeriodEnd" />
+                </div>
+              </div>
+            </div>
+            <div class="ykj-filter-item-box">
+              <div class="ykj-filter-item-box-label">科目</div>
+              <div class="ykj-filter-item-box-content">
+                <div class="ed-subj-select" id="edSubjectWrap">
+                  <div class="ed-subj-trigger" id="edSubjectTrigger">
+                    <div class="ed-subj-tags" id="edSubjectTags">
+                      <span class="ed-subj-placeholder" id="edSubjectPlaceholder">全部损益科目</span>
+                    </div>
+                    <div class="ed-subj-countbox" id="edSubjectCountbox">共<span id="edSubjectCount">0</span>项</div>
+                    <span class="ed-subj-caret"></span>
+                  </div>
+                  <div class="ed-subj-pop" id="edSubjectPop" hidden></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ed-opt-row">
+          <div class="ed-opt-checks">
+            <label class="chk"><input type="checkbox" id="edOptYearTotal" checked onchange="__edOptChange()"> 年度合计</label>
+            <label class="chk"><input type="checkbox" id="edOptRatio" onchange="__edOptChange()"> 显示同环比</label>
+            <label class="chk"><input type="checkbox" id="edOptExpand" checked onchange="__edOptChange()"> 展开所有级次</label>
+            <label class="chk"><input type="checkbox" id="edOptFullName" onchange="__edOptChange()"> 明细科目显示全称</label>
+            <label class="chk"><input type="checkbox" id="edOptZero" onchange="__edOptChange()"> 展示发生额为0的科目</label>
+          </div>
+          <div class="ed-opt-actions">
+            <button class="btn" id="btnEdPrint" data-print>打印</button>
+            <button class="btn" id="btnEdExport">导出</button>
+          </div>
+        </div>
+
+        <div class="grid-wrap ed-grid-wrap">
+          <table class="grid pp-grid" id="edGrid">
+            <thead id="edGridHead"></thead>
+            <tbody id="edBody"></tbody>
+            <tfoot id="edFoot"></tfoot>
+          </table>
+          <div class="orig-pagination ed-pagination">
+            <span class="orig-total" id="edTotal">共 0 条</span>
+            <ul class="orig-pages" id="edPages">
+              <li class="disabled" title="上一页"><button><i class="kdicon kdicon-arrow-left"></i></button></li>
+              <li class="active" title="1"><button>1</button></li>
+              <li title="下一页"><button><i class="kdicon kdicon-arrow-right"></i></button></li>
+            </ul>
+            <div class="orig-page-size">
+              <select class="inp inp-sm" id="edPageSize"><option>500</option><option>200</option><option>100</option><option>50</option></select>
+              <span>条/页</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 报表中心（报表清单 + 系统报表导航） ============ -->
+      <section class="page" id="page-report-center">
+        <div class="page-head">
+          <div class="page-actions">
+            <span class="filter-item"><label>报表类型</label><select id="rcType"><option value="">全部</option><option value="系统报表">系统报表</option><option value="自定义报表">自定义报表</option></select></span>
+            <span class="filter-item"><label>关键字</label><input id="rcKw" class="inp inp-sm" type="text" placeholder="报表名称/编号"></span>
+            <button class="btn" id="btnRcFilter">查询</button>
+          </div>
+        </div>
+        <div class="rc-cards" id="rcCards">
+          <div class="rc-dash-card" data-card="fund">
+            <div class="rc-dash-head"><span class="rc-dash-title">资金余额</span><select class="rc-dash-period" data-per="fund"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcFundVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+          <div class="rc-dash-card" data-card="arap">
+            <div class="rc-dash-head"><span class="rc-dash-title">应收</span><select class="rc-dash-period" data-per="arap"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcArVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+          <div class="rc-dash-card" data-card="arap">
+            <div class="rc-dash-head"><span class="rc-dash-title">应付</span><select class="rc-dash-period" data-per="arap"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcApVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+          <div class="rc-dash-card" data-card="profit">
+            <div class="rc-dash-head"><span class="rc-dash-title">净利润</span><select class="rc-dash-period" data-per="profit"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcProfitVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+          <div class="rc-dash-card" data-card="revcost">
+            <div class="rc-dash-head"><span class="rc-dash-title">收入成本</span><select class="rc-dash-period" data-per="revcost"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcRevVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+          <div class="rc-dash-card" data-card="cost">
+            <div class="rc-dash-head"><span class="rc-dash-title">费用</span><select class="rc-dash-period" data-per="cost"></select></div>
+            <div class="rc-dash-body"><span class="rc-dash-val" id="rcCostVal">0.00</span><span class="rc-dash-unit">元</span></div>
+          </div>
+        </div>
+        <table class="grid rc-grid" id="rcGrid">
+          <colgroup>
+            <col style="width:96px"><col><col style="width:120px">
+            <col style="width:110px"><col style="width:90px"><col>
+            <col style="width:110px"><col style="width:90px"><col style="width:110px">
+            <col style="width:100px"><col style="width:120px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col-op">操作</th>
+              <th>报表名称</th>
+              <th>报表编号</th>
+              <th>报表类型</th>
+              <th>收藏状态</th>
+              <th>备注</th>
+              <th>会计制度</th>
+              <th>创建人</th>
+              <th>创建日期</th>
+              <th>最近修改人</th>
+              <th>最近修改日期</th>
+            </tr>
+          </thead>
+          <tbody id="rcBody"></tbody>
+        </table>
+      </section>
+
+      <!-- 设置：现金流量初始余额（对照：工具条 刷新/保存/试算平衡/导出；AG Grid 4列 项目/行次/期初余额/占位）
+           注：本页录入值语义为「现金流量表各项目期初余额（年初结转数）」，将叠加到现金流量表「本年累计」列，
+               并与现金科目（1001/1002/1012）期初余额做试算平衡勾稽。 -->
+      <section class="page" id="page-cashflow-init">
+        <div class="card">
+          <div class="card-head">
+            <span>现金流量初始余额</span>
+            <div class="card-tools">
+              <button class="btn btn-sm btn-primary" id="btnCfOpenSave">保存</button>
+              <button class="btn btn-sm" id="btnCfOpenCheck">试算平衡</button>
+              <button class="btn btn-sm" id="btnCfOpenExport">导出</button>
+            </div>
+          </div>
+          <div class="cf-open-wrap">
+            <table class="grid std-table ag-theme-alpine" id="cfOpenTable">
+              <thead>
+                <tr>
+                  <th style="width:460px">项目</th>
+                  <th style="width:70px">行次</th>
+                  <th style="width:203px;text-align:right">期初余额</th>
+                  <th style="width:525px"></th>
+                </tr>
+              </thead>
+              <tbody id="cfOpenBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-cashflow-project">
+        <div class="k-tip info">设置各科目对应的现金流量主表项目，并区分科目发生额在贷方（现金流入）与借方（现金流出）所归属的主表项目。</div>
+        <div class="card">
+          <div class="card-head"><span>科目 → 现金流量主表项目映射</span></div>
+          <table class="grid std-table" id="cfMapTable">
+            <thead>
+              <tr>
+                <th style="width:100px">科目编码</th>
+                <th style="width:220px">科目名称</th>
+                <th style="width:120px">科目类别</th>
+                <th style="width:80px">方向</th>
+                <th>贷方发生额（现金流入）</th>
+                <th>借方发生额（现金流出）</th>
+              </tr>
+            </thead>
+            <tbody id="cfMapBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 设置：数据与安全（账套备份与恢复 / 账套管理 / 操作日志） -->
+      <section class="page" id="page-system-settings">
+        <div class="card" id="cardSysBase">
+          <div class="card-head"><span>基本信息</span></div>
+          <div class="form-row">
+            <label>公司名称</label><input id="pCompany" class="inp">
+          </div>
+          <div class="form-row">
+            <label>启用期间</label><input id="pStart" class="inp" type="month">
+          </div>
+          <div class="form-row">
+            <label>会计制度</label>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <span class="muted" id="sysStdLabel" style="line-height:32px"></span>
+              <button class="btn btn-sm" id="btnChangeStandard" title="切换会计制度将迁移损益类科目编码并重灌报表规则（不可逆，需操作密码）">切换</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="cardSysVch">
+          <div class="card-head"><span>凭证与账簿</span></div>
+          <div class="card-sub">凭证字</div>
+          <p class="set-hint">“记”为默认凭证字，不可删除。</p>
+          <div class="page-actions">
+            <button class="btn" id="btnAddWord">新增凭证字</button>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid" id="vwGrid">
+              <thead><tr><th>凭证字</th><th>打印标题</th><th class="col-op">操作</th></tr></thead>
+              <tbody id="vwBody"></tbody>
+            </table>
+          </div>
+          <div class="card-sub">凭证选项</div>
+          <label class="chk-row"><input type="checkbox" id="pChkDeficit"> 现金、银行存款、其他货币资金科目赤字检查</label>
+          <label class="chk-row"><input type="checkbox" id="pChkMaker"> 不允许制单人与审核人为同一人</label>
+          <label class="chk-row"><input type="checkbox" id="pChkAuditor"> 审核人与反审核人必须为同一人</label>
+          <label class="chk-row"><input type="checkbox" id="pChkEdit"> 不允许修改/删除别人录入的凭证</label>
+          <div class="card-sub">账簿选项</div>
+          <label class="chk-row"><input type="checkbox" id="pBookHideZero"> 无发生额且余额为0不显示</label>
+          <label class="chk-row"><input type="checkbox" id="pBookExpand"> 展开所有级次</label>
+          <div class="card-sub">结账选项</div>
+          <label class="chk-row"><input type="checkbox" id="pChkSettle"> 凭证审核后才允许结账</label>
+        </div>
+
+        <div class="card" id="cardSysPw">
+          <div class="card-head"><span>操作保护</span></div>
+          <div class="form-row">
+            <label>当前操作密码</label>
+            <input id="opPwCur" class="inp" type="password" placeholder="输入当前操作密码">
+          </div>
+          <div class="form-row">
+            <label>新操作密码</label>
+            <input id="opPwInput" class="inp" type="password" placeholder="4 位以上新密码（留空 = 恢复默认密码）">
+          </div>
+          <div class="page-actions"><button class="btn" id="btnSaveOpPw">保存操作密码</button></div>
+        </div>
+
+        <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
+
+        <!-- ========== 账套与数据（原「数据与安全」页并入） ========== -->
+        <div class="card" id="cardSysBooks">
+          <div class="card-head"><span>账套管理</span></div>
+          <div class="card-tools-wrap">
+            <div class="form-row" style="flex-wrap:wrap">
+              <span class="set-ctrl book-toolbar">
+                <a class="tool-link" id="btnNewBook">新建账套</a>
+                <a class="tool-link" id="btnBmImport" title="导入一个独立的新账套（支持本软件 .json 备份 / 金蝶 KIS .ais）">导入账套</a>
+                <a class="tool-link" id="btnMultiYearImport" title="金蝶按年导出的多个 .ais 文件合并为一个连续多年账套">多年合并导入</a>
+                <a class="tool-link" id="btnViewYearBoundary" title="查看当前合并账套的跨年一致性校验报告">查看校验报告</a>
+                <a class="tool-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡等）">风险检测</a>
+                <a class="tool-link" id="btnBkNow">手动备份</a>
+                <a class="tool-link" id="btnListBackup">查看备份</a>
+                <a class="tool-link" id="btnBkAll">导出账套</a>
+                <a class="tool-link" id="btnImportBackup" title="用 .json 备份文件覆盖恢复当前账套">导入备份</a>
+                <a class="tool-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</a>
+                <input type="file" id="bkFile" accept=".json,application/json" style="display:none">
+                <input type="file" id="multiAisFile" accept=".ais" multiple style="display:none">
+                <span class="muted" style="margin-left:14px;font-size:13px;vertical-align:middle">自动备份已开启（每次保存自动留存，可在「查看备份」中恢复）</span>
+              </span>
+              <p class="muted" style="font-size:12px;margin:6px 2px 0">说明：「导入账套」会新增一个独立账套；「导入备份」用 .json 文件覆盖恢复当前账套。删除的账套进入「回收站」，保留 7 天可还原。</p>
+            </div>
+            <div id="backupList" class="backup-list" style="display:none"></div>
+            <div id="trashPanel" class="backup-list" style="display:none"></div>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid std-table" id="bookGrid">
+              <thead><tr><th style="min-width:120px">账套名称</th><th style="min-width:90px">启用期间</th><th style="min-width:70px">凭证数</th><th style="min-width:80px">状态</th><th style="min-width:200px">操作</th></tr></thead>
+              <tbody id="bookBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 风险检测结果卡片：位于账套管理和操作日志之间 -->
+        <div class="card" id="healthCheckCard" style="display:none">
+          <div class="card-head">
+            <span>风险检测结果</span>
+            <button class="modal-x" id="btnHealthCheckCloseCard" style="float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#5f6368;line-height:1">×</button>
+          </div>
+          <div id="healthCheckSummaryInPage" class="health-summary" style="margin:12px 12px 0"></div>
+          <div class="table-box" style="margin:0 12px 12px">
+            <table class="kd-table" id="healthCheckTableInPage"></table>
+          </div>
+          <div class="modal-tip" style="margin:0 12px 16px;color:#5f6368;font-size:12px">
+            说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。如发现异常，请穿透到对应科目/凭证核实。
+          </div>
+        </div>
+
+        <!-- 跨年一致性校验报告卡片：位于风险检测结果和操作日志之间 -->
+        <div class="card" id="yearBoundaryCard" style="display:none">
+          <div class="card-head">
+            <span>跨年一致性校验报告</span>
+            <button class="modal-x" id="btnYearBoundaryCloseCard" style="float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#5f6368;line-height:1">×</button>
+          </div>
+          <div class="table-box" style="margin:12px">
+            <table class="kd-table" id="yearBoundaryTableInPage"></table>
+          </div>
+          <div class="modal-tip" style="margin:0 12px 16px;color:#5f6368;font-size:12px">
+            说明：本报告对比多年合并账套各年 .ais 的上年期末 vs 本年期初（按科目），差异源于金蝶手动调期初或年结未达账。差异超 1 元的科目标红显示。
+          </div>
+        </div>
+
+        <div class="card" id="cardSysLog">
+          <div class="card-head"><span>操作日志</span></div>
+
+          <div class="card-filter">
+            <div class="filter-row">
+              <div class="kd-period-range" data-start-id="logStart" data-end-id="logEnd" data-on-change="__renderLogs">
+                <div class="kd-period-trigger" id="logPeriodTrigger">
+                  <span class="kd-period-trigger-label">时间</span>
+                  <span class="kd-period-trigger-text" id="logPeriodText">请选择期间</span>
+                </div>
+                <input type="hidden" id="logStart" />
+                <input type="hidden" id="logEnd" />
+              </div>
+              <span class="filter-item"><label>操作人</label><select id="logUser"><option value="">全部</option></select></span>
+              <span class="filter-item"><label>操作类型</label>
+                <select id="logType">
+                  <option value="">全部</option>
+                  <option value="凭证">凭证</option>
+                  <option value="结账">结账</option>
+                  <option value="账套">账套</option>
+                  <option value="设置">设置</option>
+                </select>
+              </span>
+              <span class="filter-item"><label>动作</label>
+                <select id="logActionType">
+                  <option value="">全部</option>
+                </select>
+              </span>
+              <button class="btn btn-primary" id="btnLogQuery">查询</button>
+              <button class="btn btn-second" id="btnLogReset">重置</button>
+            </div>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid std-table" id="logTable">
+              <thead><tr>
+                <th style="min-width:160px">操作时间</th>
+                <th style="min-width:70px">操作人</th>
+                <th style="min-width:80px">操作类型</th>
+                <th style="min-width:80px">操作模块</th>
+                <th>操作详情</th>
+              </tr></thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+          <div class="card-foot">
+            <span class="log-count" id="logCount">共 0 条</span>
+            <div class="log-pager">
+              <button class="btn btn-second log-prev" id="logPrev">上一页</button>
+              <span class="log-page" id="logPage">1 / 1</span>
+              <button class="btn btn-second log-next" id="logNext">下一页</button>
+              <select id="logPageSize" class="log-pagesize">
+                <option value="20">20 条/页</option>
+                <option value="50" selected>50 条/页</option>
+                <option value="100">100 条/页</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 账套与系统事件：跨账套生命周期操作（删除/还原账套等）全局留痕，读取 changelog.json。
+             与上方「操作日志」互补：后者是本账套内业务操作（随账套走），本卡是账套级事件（跨账套可追溯）。 -->
+        <div class="card" id="cardSysEvents">
+          <div class="card-head"><span>账套与系统事件</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 0">
+            <button class="btn btn-sm" id="btnSysEventsRefresh">刷新</button>
+            <span class="muted" style="font-size:12px" id="sysEventsCount"></span>
+          </div>
+          <p class="muted" style="font-size:12px;margin:6px 18px 0">跨账套生命周期操作（新建/删除/导入/还原账套、清空回收站等）在此留痕，读取全局 changelog.json。与上方「操作日志」互补：后者是本账套内业务操作（随账套文件走、含审计明细），删除的账套其业务日志已随文件进回收站，只能在这里看到删除记录。</p>
+          <div class="grid-wrap">
+            <table class="grid std-table" id="sysEventsTable">
+              <thead><tr>
+                <th style="min-width:160px">操作时间</th>
+                <th style="min-width:70px">操作人</th>
+                <th style="min-width:90px">操作类型</th>
+                <th style="min-width:70px">操作模块</th>
+                <th>操作详情</th>
+              </tr></thead>
+              <tbody id="sysEventsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+    </div>
+  </div>
+
+  <div class="modal" id="newBookModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">新建账套</div>
+      <div class="form-row">
+        <label>账套名称</label><input id="nbName" class="inp" placeholder="如：XX公司">
+      </div>
+      <div class="form-row">
+        <label>会计准则</label>
+        <select id="nbStandard" class="inp">
+          <option value="old">旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</option>
+          <option value="small2013" selected>小企业会计准则（2013，收入/费用 6xxx）</option>
+        </select>
+      </div>
+      <p class="set-hint" style="margin-top:6px">创建后将自动带入对应准则的常用科目表；启用期间默认为本月，可在「基本信息」修改。建议接着到「期初余额」录入期初数据。</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnCreateBook">创建账套</button>
+        <button class="btn" id="btnCancelNewBook">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="stdChangeModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">变更会计准则</div>
+      <p class="set-hint" style="margin:2px 0 12px">切换将迁移损益类科目编码（5xxx↔6xxx）于科目表 / 期初余额 / 凭证分录 / 现金流映射，并重灌报表取数规则。<b>不可逆</b>，强烈建议先做备份。此操作需验证操作密码。</p>
+      <div class="chk-group" style="flex-direction:column;gap:10px;margin-bottom:14px">
+        <label><input type="radio" name="stdNew" value="old"> 旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</label>
+        <label><input type="radio" name="stdNew" value="small2013"> 小企业会计准则（2013，收入/费用 6xxx）</label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnDoChangeStd">验证并切换</button>
+        <button class="btn" id="btnCancelStdChange">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="subjectModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">新增科目</div>
+      <div class="form-row"><label>科目编码</label><input id="subCode" class="inp" placeholder="一级 4 位；下级=父编码+2位，如 1122 → 112201"></div>
+      <div class="form-row"><label>科目名称</label><input id="subName" class="inp" placeholder="如 应收账款-客户"></div>
+      <div class="form-row"><label>科目类别</label>
+        <select id="subCls" class="inp">
+          <option value="asset">资产</option>
+          <option value="liability">负债</option>
+          <option value="equity">权益</option>
+          <option value="revenue">收入</option>
+          <option value="expense">费用</option>
+        </select>
+      </div>
+      <div class="form-row"><label>辅助核算</label>
+        <div class="chk-group" id="subAux">
+          <label><input type="checkbox" value="customer">客户</label>
+          <label><input type="checkbox" value="supplier">供应商</label>
+          <label><input type="checkbox" value="employee">职员</label>
+          <label><input type="checkbox" value="dept">部门</label>
+          <label><input type="checkbox" value="project">项目</label>
+          <label><input type="checkbox" value="stock">存货</label>
+        </div>
+      </div>
+      <div class="form-row"><label>数量核算</label>
+        <div class="chk-group">
+          <label><input type="checkbox" id="subQty"> 启用数量核算</label>
+          <label>计量单位 <input id="subUnit" class="inp inp-xs" style="margin-left:4px"></label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="btnSaveSubject">保存</button>
+        <button class="btn" id="btnCloseSubject">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="assetModal">
+    <div class="modal-box modal-wide">
+      <div class="modal-title">固定资产卡片</div>
+      <div class="form-grid">
+        <div class="form-section-title">基本信息</div>
+        <div class="form-row"><label class="req">资产编码</label><input id="aCode" class="inp"></div>
+        <div class="form-row"><label class="req">资产名称</label><input id="aName" class="inp"></div>
+        <div class="form-row"><label class="req">固定资产科目</label><input id="aFaAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">使用部门</label><input id="aDept" class="inp"></div>
+        <div class="form-row"><label class="req">开始使用日期</label><input id="aAcq" class="inp" type="date"></div>
+        <div class="form-row"><label class="req">原值</label><input id="aOriginal" class="inp" type="number"></div>
+        <div class="form-row"><label class="req">累计折旧科目</label><input id="aAccDeprAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">折旧方法</label><select id="aMethod" class="inp-sel"><option>平均年限法</option><option>工作量法</option><option>年数总和法</option><option>双倍余额递减法</option></select></div>
+        <div class="form-row"><label class="req">折旧费用科目</label><input id="aDeprFeeAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">资产清理科目</label><input id="aCleanAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">资产购入对方科目</label><input id="aPurchaseAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label>税金科目</label><input id="aTaxAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label>减值准备对方科目</label><input id="aImpairAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">残值率%</label><input id="aSalvageRate" class="inp" type="number"></div>
+        <div class="form-row"><label class="req">预计使用期数(月)</label><input id="aLife" class="inp" type="number" value="60"></div>
+        <div class="form-row"><label class="req">已折旧期间</label><input id="aPeriodUsed" class="inp" type="number" value="0"></div>
+        <div class="form-row"><label class="req">期初累计折旧</label><input id="aAccumDeprBegin" class="inp" type="number" value="0"></div>
+        <div class="form-row"><label class="req">月折旧额</label><input id="aMonthDepr" class="inp" readonly></div>
+        <div class="form-row"><label class="req">本年已折旧</label><input id="aYearDepr" class="inp" type="number" value="0"></div>
+        <div class="form-row"><label class="req">数量</label><input id="aQty" class="inp" type="number" value="1"></div>
+        <div class="form-section-title">其他信息</div>
+        <div class="form-row"><label>类别</label><select id="aCategory" class="inp-sel"><option value="">请选择</option></select></div>
+        <div class="form-row"><label>规格型号</label><input id="aSpec" class="inp"></div>
+        <div class="form-row"><label>存放地点</label><input id="aLocation" class="inp"></div>
+        <div class="form-row"><label>使用人</label><input id="aUser" class="inp"></div>
+        <div class="form-row"><label>录入期间</label><input id="aEntryPeriod" class="inp" placeholder="如 2022-02"></div>
+        <div class="form-row"><label>减值准备</label><input id="aImpairment" class="inp" type="number" value="0"></div>
+        <div class="form-row"><label>状态</label><select id="aStatus" class="inp-sel"><option>正常</option><option>清理</option></select></div>
+        <div class="form-row"><label>清理期间</label><input id="aCleanPeriod" class="inp"></div>
+        <div class="form-row form-row-full"><label>备注</label><input id="aMemo" class="inp"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnSaveAsset">保存</button>
+        <button class="btn" id="btnSaveCopyAsset">保存并复制</button>
+        <button class="btn" id="btnSaveAddAsset">保存并新增</button>
+        <button class="btn" id="btnCloseAsset">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="assetCatListModal">
+    <div class="modal-box modal-wide">
+      <div class="modal-title">资产类别</div>
+      <div class="modal-actions" style="padding: 6px 16px 0;">
+        <button class="btn btn-primary" id="btnNewCat">新增</button>
+        <button class="btn" id="btnDelCat">停用</button>
+        <button class="btn" id="btnResetCat">恢复默认</button>
+        <span style="flex:1"></span>
+        <button class="btn" id="btnCloseAssetCatList">关闭</button>
+      </div>
+      <div class="asset-cat-scroll">
+        <table class="grid" id="catGrid">
+          <colgroup>
+            <col style="width:40px"><col style="width:96px">
+            <col style="width:110px"><col>
+            <col style="width:110px"><col style="width:110px"><col style="width:110px">
+            <col style="width:150px"><col style="width:150px"><col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" id="catCheckAll"></th>
+              <th>操作</th><th>类别编码</th><th>类别名称</th><th>折旧方法</th><th>预计使用年限</th>
+              <th>预计净残值率%</th><th>固定资产科目</th><th>累计折旧科目</th><th>备注</th>
+            </tr>
+          </thead>
+          <tbody id="catBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="catModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">编辑资产类别</div>
+      <div class="form-grid">
+        <div class="form-row"><label>类别编码</label><input id="catCode" class="inp"></div>
+        <div class="form-row"><label>类别名称</label><input id="catName" class="inp"></div>
+        <div class="form-row"><label>折旧方法</label><select id="catMethod" class="inp"><option>平均年限法</option><option>工作量法</option><option>年数总和法</option><option>双倍余额递减法</option></select></div>
+        <div class="form-row"><label>预计使用年限</label><input id="catLife" class="inp" type="number" value="5"></div>
+        <div class="form-row"><label>预计净残值率%</label><input id="catSalvage" class="inp" type="number" value="5"></div>
+        <div class="form-row"><label>固定资产科目</label><input id="catAsset" class="inp" value="1601"></div>
+        <div class="form-row"><label>累计折旧科目</label><input id="catDepr" class="inp" value="1602"></div>
+        <div class="form-row form-row-full"><label>备注</label><input id="catMemo" class="inp"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="btnSaveCat">保存</button>
+        <button class="btn" id="btnCloseCat">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="deprVchSettingModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">折旧凭证参数设置</div>
+      <div class="form-grid">
+        <div class="form-row"><label>凭证分类</label><input id="dvsVoucherType" class="inp" value="记"></div>
+        <div class="form-row"><label>折旧科目</label><input id="dvsDeprSubject" class="inp" value="1602"></div>
+        <div class="form-row"><label>费用科目</label><input id="dvsExpenseSubject" class="inp" value="5602"></div>
+        <div class="form-row"><label>结转方式</label><select id="dvsCategory" class="inp"><option>收益和损失分开结转</option><option>同时结转</option></select></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="btnSaveDvs">保存</button>
+        <button class="btn" id="btnCloseDvs">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="salaryModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">新增工资</div>
+      <div class="form-row"><label>期间</label><input id="sMonth" class="inp" type="month"></div>
+      <div class="form-row"><label>姓名</label><input id="sName" class="inp"></div>
+      <div class="form-row"><label>工资类别</label><select id="sCat" class="inp"><option value="">全部</option><option value="前台">前台</option><option value="客房">客房</option><option value="餐厅">餐厅</option></select></div>
+      <div class="form-row"><label>应发</label><input id="sShould" class="inp" type="number"></div>
+      <div class="form-row"><label>实发</label><input id="sReal" class="inp" type="number"></div>
+      <div class="modal-actions">
+        <button class="btn" id="btnSaveSalary">保存</button>
+        <button class="btn" id="btnCloseSalary">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 纯本地单机版：已移除登录门与云端账号弹窗，数据全在本地。 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Tauri 桌面存储引擎：经 window.__TAURI__.core.invoke 调用 Rust 端读写
+       <应用数据目录>/心中有数/books/ 真实文件，彻底去除 Python 服务端依赖。 -->
+  <script src="js/storage.js?v=2026083002"></script>
+  <script src="js/standards.js?v=2026090207"></script>
+  <script src="js/store.js?v=2026090505"></script>
+  <script src="js/xlsx.full.min.js?v=2026082131"></script>
+  <script src="js/kindee.js?v=2026082131"></script>
+  <script src="js/kd-menu-icons.js?v=2026082131"></script>
+  <script src="js/buffer.js?v=2026082131"></script>
+  <script src="js/mdb-reader.js?v=2026082131"></script>
+  <script src="js/kis-import.js?v=2026090504"></script>
+  <script src="js/dialog-bridge.js?v=2026082727"></script>
+  <script src="js/file-save-bridge.js?v=2026082931"></script>
+  <script src="js/app.js?v=2026090501"></script>
+  <script type="module" src="js/main.js?v=2026090501"></script>
+
+  <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
+    <div class="quick-settings-modal" id="quickSettingsModal">
+      <div class="qs-header">
+        <span class="qs-title">常用功能设置</span>
+        <span class="qs-close" id="qsClose">&times;</span>
+      </div>
+      <div class="qs-body" id="qsBody">
+
+      </div>
+      <div class="qs-footer">
+        <button class="btn btn-primary" id="qsConfirm">确定</button>
+        <button class="btn" id="qsReset">恢复默认</button>
+        <button class="btn" id="qsCancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="kd-period-range-pop" id="kdPeriodRangePop" hidden>
+    <div class="kd-period-range-mask" data-close="kdPeriodRangePop"></div>
+    <div class="kd-period-range-box">
+      <div class="kd-period-range-panels">
+        <div class="kd-period-panel" data-side="start">
+          <div class="kd-period-panel-head">开始期间</div>
+          <div class="kd-period-year-nav">
+            <button type="button" class="kd-period-year-prev" data-step="-1">«</button>
+            <span class="kd-period-year-text">2023年</span>
+            <button type="button" class="kd-period-year-next" data-step="1">»</button>
+          </div>
+          <div class="kd-period-grid"></div>
+        </div>
+        <div class="kd-period-panel" data-side="end">
+          <div class="kd-period-panel-head">结束期间</div>
+          <div class="kd-period-year-nav">
+            <button type="button" class="kd-period-year-prev" data-step="-1">«</button>
+            <span class="kd-period-year-text">2023年</span>
+            <button type="button" class="kd-period-year-next" data-step="1">»</button>
+          </div>
+          <div class="kd-period-grid"></div>
+        </div>
+      </div>
+      <div class="kd-period-range-shortcuts">
+        <button type="button" data-shortcut="current-period">本期</button>
+        <button type="button" data-shortcut="last-period">上期</button>
+        <button type="button" data-shortcut="current-month">本月</button>
+        <button type="button" data-shortcut="last-month">上月</button>
+        <button type="button" data-shortcut="current-year">今年</button>
+        <button type="button" data-shortcut="last-year">去年</button>
+      </div>
+      <div class="kd-period-range-footer">
+        <button type="button" class="kd-btn kd-btn-primary" data-act="periodRangeConfirm">查询</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

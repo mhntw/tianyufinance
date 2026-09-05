@@ -1,0 +1,36 @@
+# 本地专用 / 不部署到云端
+node_modules/
+.cloudfunctions/
+cloudfunctions/
+.DS_Store
+*.log
+
+# 仅在本地运行，不参与静态托管
+serve.py
+启动.command
+启动.bat
+
+# 数据红线：账套/备份/导入等数据文件绝不进入静态托管（数据在本地 sj/ 与云端数据库）
+data/
+books/
+backups/
+imports/
+
+# Tauri 打包产物与依赖（前端 dist 为构建时生成，target 为 Rust 编译产物）
+tauri/dist/
+tauri/node_modules/
+tauri/src-tauri/target/
+
+# ===== 推送 GitHub 前的数据红线（一律不进入远程仓库）=====
+# 真实账套数据目录（含 cwrj/books 下的账套文件）
+cwrj/
+# 历史备份目录（早期版本快照，含数据痕迹，无外推价值）
+backups_*/
+# 工具导出产物（tools/_out 含真实账套 JSON 导出 = 客户财务数据）
+tools/_out/
+# 内部审计 / 上线文档（含真实账套指标与账套名）
+docs/
+# 运行时探针与助手会话数据
+_ais_probe.json
+.codebuddy/
+.workbuddy/

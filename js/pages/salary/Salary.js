@@ -1,0 +1,246 @@
+// 页面模块（B 方案解耦，由 tools/migrate_domain.py 生成骨架）
+// 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
+// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
+
+const H = globalThis.__KINGDEE_HELPERS__ || {};
+const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const $ = H.$;
+const money = H.money;
+const esc = H.esc;
+const showToast = H.showToast;
+const currentPeriod = H.currentPeriod;
+const safeFillPeriod = H.safeFillPeriod;
+const syncAll = H.syncAll;
+const S = H.S || (EX && EX.store);
+const U = H.U || (EX && EX.util);
+const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
+// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
+const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
+const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
+// 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
+// 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
+// 口径：回填默认期间 + 同步触发器文本，返回结束期间。
+const periodRangeValue = H.periodRangeValue;
+
+  /* ============================================================
+   * 工资
+   * ============================================================ */
+  function refreshSalary() {
+    var month = periodRangeValue('salPeriod', currentPeriod());
+    renderSalary(month);
+  }
+  function renderSalary(month) {
+    var tb = $('salBody'); tb.innerHTML = '';
+    S.state.payrolls.filter(function (p) { return !month || p.month === month; }).forEach(function (p) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + p.month + '</td><td>' + p.name + '</td><td>' + (p.category || '全部') + '</td><td class="ta-r mono">' + money(p.should) + '</td><td class="ta-r mono">' + money(p.real) + '</td><td><a class="link-del" data-id="' + p.id + '">删除</a></td>';
+      tb.appendChild(tr);
+    });
+  }
+  $('salBody').addEventListener('click', async function (e) {
+    if (e.target.classList.contains('link-del')) {
+      var pid = e.target.getAttribute('data-id');
+      var r0 = S.removePayroll(pid);
+      if (!r0.ok) return showToast(r0.msg, 'error');
+      renderSalary($('salPeriodEnd').value); showToast('已删除');
+    }
+  });
+  $('btnNewSalary').addEventListener('click', function () {
+    $('sMonth').value = currentPeriod();
+    $('salaryModal').classList.add('show');
+  });
+  $('btnCloseSalary').addEventListener('click', function () { $('salaryModal').classList.remove('show'); });
+  $('btnSaveSalary').addEventListener('click', function () {
+    S.addPayroll({ month: $('sMonth').value, name: $('sName').value, category: $('sCat').value || '', should: U.num($('sShould').value), real: U.num($('sReal').value) });
+    $('salaryModal').classList.remove('show');
+    $('sName').value = ''; $('sShould').value = ''; $('sReal').value = ''; $('sCat').value = '';
+    renderSalary($('salPeriodEnd').value); showToast('工资已保存');
+  });
+  $('btnGenSalaryAccrual').addEventListener('click', function () {
+    var month = $('salPeriodEnd').value || currentPeriod();
+    var r = S.genPayrollVoucher(month, 'accrual');
+    if (!r.ok) return showToast(r.msg, 'error');
+    showToast('已生成计提工资凭证 ' + r.voucher.word + '-' + r.voucher.no);
+    syncAll();
+  });
+  $('btnGenSalaryPay').addEventListener('click', function () {
+    var month = $('salPeriodEnd').value || currentPeriod();
+    var r = S.genPayrollVoucher(month, 'pay');
+    if (!r.ok) return showToast(r.msg, 'error');
+    showToast('已生成发放工资凭证 ' + r.voucher.word + '-' + r.voucher.no);
+    syncAll();
+  });
+
+  /* ============================================================
+   * 工资统计 / 部门职员（新手导航静态页已随外观简化移除）
+   * ============================================================ */
+  function refreshSalaryStats() {
+    var month = periodRangeValue('sstPeriod', currentPeriod());
+    renderSalaryStats(month);
+  }
+  function renderSalaryStats(month) {
+    var tb = $('sstBody'); tb.innerHTML = '';
+    var rows = {};
+    S.state.payrolls.forEach(function (p) {
+      if (month && p.month !== month) return;
+      var r = rows[p.month] || (rows[p.month] = { month: p.month, cat: '工资', n: 0, should: 0, real: 0 });
+      r.n += 1; r.should += (+p.should || 0); r.real += (+p.real || 0);
+    });
+    var list = Object.keys(rows).sort().map(function (k) { return rows[k]; });
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-hint">暂无工资数据</td></tr>'; return; }
+    list.forEach(function (r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + r.month + '</td><td>' + r.cat + '</td><td class="ta-c">' + r.n + '</td>' +
+        '<td class="ta-r mono">' + money(r.should) + '</td><td class="ta-r mono">' + money(r.real) + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+  // 期间组件兜底：hidden input change（组件 applySelection 已触发 data-on-change，此为幂等双保险）
+  ['salPeriodStart', 'salPeriodEnd', 'sstPeriodStart', 'sstPeriodEnd'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', function () {
+      if (id.indexOf('salPeriod') === 0) refreshSalary(); else refreshSalaryStats();
+    });
+  });
+
+  var DEFAULT_DEPTS = [
+    { code: '001', name: '前台', type: '部门', parent: '' },
+    { code: '002', name: '客房', type: '部门', parent: '' },
+    { code: '003', name: '餐厅', type: '部门', parent: '' }
+  ];
+  function refreshDeptStaff() {
+    if (!S.state.depts) S.state.depts = DEFAULT_DEPTS.slice();
+    renderDeptStaff();
+  }
+  function renderDeptStaff() {
+    var tb = $('dsBody'); tb.innerHTML = '';
+    var depts = S.state.depts || [];
+    var staff = {};
+    S.state.payrolls.forEach(function (p) { staff[p.name] = true; });
+    depts.forEach(function (d, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="mono">' + d.code + '</td><td>' + d.name + '</td><td>' + d.type + '</td>' +
+        '<td>' + (d.parent || '—') + '</td><td><a class="link-toggle" data-i="' + i + '">' + (d.enabled === false ? '启用' : '停用') + '</a></td>';
+      tb.appendChild(tr);
+    });
+    Object.keys(staff).forEach(function (nm, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">E' + (i + 1) + '</td><td>' + nm + '</td><td>职员</td><td>—</td><td><a class="link-del disabled">—</a></td>';
+      tb.appendChild(tr);
+    });
+    if (!depts.length && !Object.keys(staff).length) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty-hint">暂无部门职员</td></tr>';
+    }
+    tb.querySelectorAll('a.link-toggle[data-i]').forEach(function (a) {
+      a.addEventListener('click', async function () {
+        var i = +this.getAttribute('data-i');
+        var d = S.state.depts[i];
+        var disabling = !(d && d.enabled === false);
+        if (disabling) {
+          if (!(await H.confirmAsync('确定停用部门「' + (d ? d.name : '') + '」？\n停用后新增资产/工资等不能再选该部门，历史数据保留。', { title: '停用部门' }))) return;
+        }
+        d.enabled = disabling ? false : true;
+        S.persist(); renderDeptStaff();
+      });
+    });
+  }
+  $('btnAddDept').addEventListener('click', async function () {
+    var name = await H.promptAsync('部门名称：', '', { title: '新增部门' }); if (!name) return;
+    var code = await H.promptAsync('部门编码：', String((S.state.depts || []).length + 1).padStart(3, '0'), { title: '部门编码' }); if (!code) return;
+    S.state.depts = S.state.depts || [];
+    S.state.depts.push({ code: code.trim(), name: name.trim(), type: '部门', parent: '', enabled: true });
+    S.persist(); renderDeptStaff(); showToast('已新增部门');
+  });
+
+  /* ============================================================
+   * 工资凭证模板
+   * 表格列：模板名称 / 凭证类型 / 工资类别 / 凭证字 / 启用 / 模板说明 / 操作
+   * ============================================================ */
+  function refreshSalaryTpl() {
+    renderSalaryTplBody();
+  }
+  function renderSalaryTplBody() {
+    var tb = $('salaryTplBody');
+    if (!tb) return;
+    var list = S.salaryVchTpls();
+    var words = (S.state.voucherWords && S.state.voucherWords.length) ? S.state.voucherWords.filter(function (w) { return w.enabled !== false; }) : [{ name: '记' }];
+    var wordOpts = words.map(function (w) {
+      return '<option value="' + esc(w.name) + '">' + esc(w.name) + '</option>';
+    }).join('');
+    tb.innerHTML = '';
+    list.forEach(function (t, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input class="inp" data-id="' + t.id + '" data-f="name" value="' + esc(t.name) + '" style="width:150px"/></td>' +
+        '<td><select class="inp" data-id="' + t.id + '" data-f="vchType" style="width:110px">' +
+          '<option value="计提工资"' + (t.vchType === '计提工资' ? ' selected' : '') + '>计提工资</option>' +
+          '<option value="发放工资"' + (t.vchType === '发放工资' ? ' selected' : '') + '>发放工资</option>' +
+        '</select></td>' +
+        '<td><input class="inp" data-id="' + t.id + '" data-f="category" value="' + esc(t.category) + '" style="width:110px"/></td>' +
+        '<td><select class="inp" data-id="' + t.id + '" data-f="word" style="width:70px">' +
+          wordOpts.replace('value="' + esc(t.word) + '"', 'value="' + esc(t.word) + '" selected') +
+        '</select></td>' +
+        '<td class="center"><input type="checkbox" data-id="' + t.id + '" data-f="enabled"' + (t.enabled ? ' checked' : '') + '/></td>' +
+        '<td><input class="inp" data-id="' + t.id + '" data-f="memo" value="' + esc(t.memo || '') + '"/></td>' +
+        '<td class="center"><a class="link-del" data-id="' + t.id + '">删除</a></td>';
+      tb.appendChild(tr);
+    });
+    if (!list.length) tb.innerHTML = '<tr><td colspan="7" class="empty-hint">暂无凭证模板</td></tr>';
+    tb.querySelectorAll('input[data-id][data-f],select[data-id][data-f]').forEach(function (el) {
+      var ev = el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(ev, function () {
+        var id = this.getAttribute('data-id'), f = this.getAttribute('data-f');
+        var val = (f === 'enabled') ? this.checked : this.value;
+        S.updateSalaryVchTpl(id, (function () { var o = {}; o[f] = val; return o; })());
+      });
+    });
+    tb.querySelectorAll('a.link-del[data-id]').forEach(function (a) {
+      a.addEventListener('click', async function () {
+        if (!(await H.confirmAsync('确认删除该工资凭证模板？', { title: '删除模板' }))) return;
+        S.removeSalaryVchTpl(this.getAttribute('data-id'));
+        renderSalaryTplBody(); showToast('已删除');
+      });
+    });
+  }
+  $('btnAddSalaryTpl').addEventListener('click', async function () {
+    var name = await H.promptAsync('模板名称：', '计提工资', { title: '新增模板' }); if (name === null) return;
+    var type = await H.promptAsync('凭证类型（计提工资/发放工资）：', '计提工资', { title: '凭证类型' }); if (type === null) return;
+    S.addSalaryVchTpl({ name: name.trim(), vchType: type.trim(), category: '全部', word: '记', enabled: 1, memo: '' });
+    renderSalaryTplBody(); showToast('已新增模板');
+  });
+  $('btnResetSalaryTpl').addEventListener('click', async function () {
+    if (!(await H.confirmAsync('将清空当前模板并恢复金蝶默认 13 条，确认？', { title: '恢复默认' }))) return;
+    S.resetSalaryVchTpls(); renderSalaryTplBody(); showToast('已恢复默认');
+  });
+
+  /* ============================================================
+   * 工资基础资料弹窗（外观简化收敛：部门职员 / 凭证模板 并入工资页）
+   * ============================================================ */
+  (function () {
+    var openDept = $('btnOpenDeptStaff');
+    if (openDept) openDept.addEventListener('click', function () {
+      refreshDeptStaff();                 // 打开时重新渲染部门职员
+      var m = $('deptStaffModal'); if (m) m.classList.add('show');
+    });
+    var closeDept = $('btnCloseDeptStaff');
+    if (closeDept) closeDept.addEventListener('click', function () {
+      var m = $('deptStaffModal'); if (m) m.classList.remove('show');
+    });
+    var openTpl = $('btnOpenSalaryTpl');
+    if (openTpl) openTpl.addEventListener('click', function () {
+      renderSalaryTplBody();              // 打开时重新渲染凭证模板
+      var m = $('salaryTplModal'); if (m) m.classList.add('show');
+    });
+    var closeTpl = $('btnCloseSalaryTpl');
+    if (closeTpl) closeTpl.addEventListener('click', function () {
+      var m = $('salaryTplModal'); if (m) m.classList.remove('show');
+    });
+  })();
+
+export {
+  refreshSalary, refreshSalaryStats, refreshDeptStaff, refreshSalaryTpl
+};
+

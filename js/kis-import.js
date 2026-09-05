@@ -1,0 +1,648 @@
+/*
+ * 金蝶 KIS 账套 (.ais) 纯前端导入
+ * 金蝶 KIS 的 .ais 本质是 Jet/Access (MDB) 数据库，无需金蝶软件、无需解密，
+ * 也无需 Python / mdbtools。本模块在浏览器内用 mdb-reader 直接解析 .ais，
+ * 将科目/凭证/余额转换为本软件 ledger 结构（与 import_kis.py 逻辑等价）。
+ * 依赖：js/mdb-reader.js（已挂载 window.MDBReader）
+ * 使用：window.KisImport.parse(arrayBufferOrFile) -> Promise<{ledger, stats}>
+ */
+(function (global) {
+  'use strict';
+
+  // 导入科目类别权威表：项目内建准则（standards.js）的一级科目编码 → cls。
+  // 必须在标准模板上求 cls，而不是纯靠编码前缀/方向启发式——历史 bug 曾把
+  //   4001 生产成本 → equity、2401 递延收益 → asset、5301 营业外收入 → expense
+  // 分错，导致利润表「页面行合计 ≠ 数据层 netProfit」（I10 恒等式 FAIL，差额恰为
+  // 这些科目当月发生额）。凡命中本表一级编码的科目（含其 4-2-2 下级子科目），
+  // 一律采用模板权威类别，杜绝启发式误判；模板未覆盖的自定义编码才走启发式。
+  function standardClsOf(code) {
+    var c = (code || '').trim();
+    var std = global.STANDARDS;
+    if (!std) return null;
+    // 同时合并两套准则模板：旧准则 5xxx 与小企业 2013 的 6xxx 编码并存，均可命中
+    var list = [];
+    if (std.old && std.old.subjects) list = list.concat(std.old.subjects);
+    if (std.small2013 && std.small2013.subjects) list = list.concat(std.small2013.subjects);
+    var best = null;
+    list.forEach(function (s) {
+      if (!s || !s.code) return;
+      if (c === s.code || (c.length > s.code.length && c.indexOf(s.code) === 0)) {
+        if (!best || s.code.length > best.code.length) best = s;
+      }
+    });
+    return best ? best.cls : null;
+  }
+
+  function classify(code, dc) {
+    var c = (code || '').trim();
+    // 权威优先：命中标准准则一级科目（含子科目）直接采用模板类别
+    var tpl = standardClsOf(c);
+    if (tpl) return tpl;
+    var asset = ["1001","1002","1012","1101","1121","1122","1123","1131","1132","1221","1231","1321","1601","1602","1604","1701","1801","1901","100","101","102","110","112","113","122","123","132","160","170","180","190"];
+    var liab  = ["2001","2201","2202","2203","2211","2221","2231","2241","2401","2501","2701","2801","200","220","221","222","223","224","240","250","270","280"];
+    // 权益类。含「以前年度损益调整」金蝶/自定义变体（6901 企业会计制度、6000 自定义），
+    // 该科目属权益调整（不进当期损益、不是资产），若落入 asset 兜底会在资产负债表资产侧污染（H2 教训同源）。
+    var eq     = ["3001","3002","3101","3103","3104","4103","4104","6000","6901","300","310","410"];
+    var exp    = ["4001","4002","4101","5001","5051","5111","5201","5301","5401","5402","5403","5601","5602","5603","5701","5711","5801","400","500","505","511","520","530","540","560","570","580"];
+    function starts(arr){ for (var i=0;i<arr.length;i++){ if (c.indexOf(arr[i])===0) return true; } return false; }
+    if (starts(asset)) return 'asset';
+    if (starts(liab))  return 'liability';
+    if (starts(eq))    return 'equity';
+    if (starts(exp)) {
+      // 损益类：优先用金蝶 FDC 方向判断（C=贷方=收入类，D=借方=费用类）。
+      // 修复 H2：5301 营业外收入 FDC=C 应归 revenue，原硬编码归 expense 导致利润表漏取。
+      if (dc === 'C') return 'revenue';
+      if (dc === 'D') return 'expense';
+      // 无 dc 回退（外部调用兼容）：保留原编码前缀逻辑
+      if (c.indexOf("5001")===0 || c.indexOf("5051")===0 || c.indexOf("5111")===0 || c.indexOf("5301")===0 || c.indexOf("500")===0 || c.indexOf("505")===0 || c.indexOf("511")===0 || c.indexOf("530")===0) return 'revenue';
+      return 'expense';
+    }
+    return 'asset';
+  }
+
+  function parseDate(s) {
+    if (!s) return '';
+    function pad(n){ return (n<10?'0':'')+n; }
+    // 1) JS Date 对象：mdb-reader 对 DateTime 列（如 FDate）返回 Date。
+    // 其内部是 UTC 纪元毫秒，须用 UTC 取值，避免负时区环境下日期回退一天。
+    if (s instanceof Date || (s && typeof s.getTime === 'function')) {
+      if (isNaN(s.getTime())) return '';
+      return s.getUTCFullYear() + '-' + pad(s.getUTCMonth() + 1) + '-' + pad(s.getUTCDate());
+    }
+    var str = String(s).trim();
+    if (!str) return '';
+    // 2) 纯数字：OLE/Excel 日期序列号（自 1899-12-30 起的天数）
+    if (/^\d+(\.\d+)?$/.test(str)) {
+      var n = parseFloat(str);
+      if (n > 1) {
+        var d = new Date(Math.round((n - 25569) * 86400000));
+        if (!isNaN(d.getTime()) && d.getUTCFullYear() > 1900) {
+          return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+        }
+      }
+    }
+    // 3) 字符串：YYYY[-/.]M[-/.]D（四位数年份优先，避免二位数歧义）
+    var m = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (m) return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
+    // 4) 字符串：M/D/YY 或 M/D/YYYY（旧文本格式）
+    m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (m) {
+      var yy = parseInt(m[3],10);
+      var yyyy = yy < 100 ? (yy < 70 ? 2000 + yy : 1900 + yy) : yy;
+      return yyyy + '-' + pad(parseInt(m[1],10)) + '-' + pad(parseInt(m[2],10));
+    }
+    // 5) 中文日期：YYYY年M月D日
+    m = str.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if (m) return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
+    return '';
+  }
+
+  function getRows(reader, table) {
+    var names = reader.getTableNames();
+    if (names.indexOf(table) === -1) return [];
+    var tbl = reader.getTable(table);
+    return tbl.getData() || [];
+  }
+
+  // 兼容 buffer polyfill 以 {Buffer,...} 命名空间形式暴露的情况，取真正的构造器
+  function getBufferCtor() {
+    var B = global.Buffer;
+    if (!B) return null;
+    if (typeof B.alloc === 'function') return B;        // 已是构造器
+    if (B.Buffer && typeof B.Buffer.alloc === 'function') return B.Buffer; // 命名空间形态
+    return null;
+  }
+
+  // 统一把输入转为 mdb-reader 可用的 Buffer（浏览器用 buffer polyfill 的全局 Buffer）
+  function toBuffer(input) {
+    var B = getBufferCtor();
+    if (B && B.isBuffer && B.isBuffer(input)) return input;
+    if (B && B.from) {
+      if (input instanceof ArrayBuffer) return B.from(input);
+      if (input instanceof Uint8Array) return B.from(input);
+      if (input && input.buffer instanceof ArrayBuffer) return B.from(input.buffer, input.byteOffset, input.byteLength);
+    }
+    if (input instanceof ArrayBuffer) return new Uint8Array(input);
+    return input;
+  }
+
+  function convert(buffer, fileName) {
+    var M = global.MDBReader;
+    var MDBReader = (M && (M.default || M.MDBReader)) || M;
+    if (typeof MDBReader !== 'function') throw new Error('解析库未加载 (MDBReader)');
+    var reader = new MDBReader(toBuffer(buffer));
+
+    // 1. 科目
+    var acctRows = getRows(reader, 'GLAcct');
+    var subjects = [];
+    var acctName = {};
+    var seenCode = {};
+    var dupCodes = [];
+    acctRows.forEach(function (r) {
+      var code = (r.FAcctID || '').toString().trim();
+      var name = (r.FAcctName || '').toString().trim();
+      if (!code) return;
+      if (seenCode[code]) { if (dupCodes.indexOf(code)===-1) dupCodes.push(code); return; }
+      seenCode[code] = true;
+      acctName[code] = name;
+      var dc = (r.FDC || 'D').toString().trim().toUpperCase();
+      var normal = dc === 'D' ? 'dr' : 'cr';
+      subjects.push({
+        code: code,
+        name: name,
+        cls: classify(code, dc),
+        normal: normal,
+        level: parseInt(r.FLevel || 1, 10) || 1
+      });
+    });
+
+    // 2. 凭证：GLVch 每条分录按 期间/字/号 聚合，跳过已删除(FDeleted==1)
+    var vchRows = getRows(reader, 'GLVch');
+    var vchMap = {};
+    var vchOrder = [];
+    vchRows.forEach(function (r) {
+      if (parseInt(r.FDeleted || 0, 10) === 1) return;
+      var d = parseDate(r.FDate);
+      var rawPeriod = parseInt(r.FPeriod || 0, 10) || 0;
+      // 兼容两种期间格式：KIS 标准 1~12；老版/专业版 6 位期间号 YYYYMM（如 202201）
+      var period = rawPeriod > 999 ? rawPeriod % 100 : rawPeriod;
+      // 聚合 key 含日期+年份+原始期间：跨年账套中「同期间号+同字号+同号」的凭证不能合并；
+      // 加入日期后，源数据中同期间同字号重复出现的异常行也不会被误合并。
+      var key = d + ' ' + rawPeriod + ' ' + (r.FGroup || '记') + ' ' + (parseInt(r.FNum || 0, 10));
+      var v = vchMap[key];
+      if (!v) {
+        v = {
+          word: r.FGroup || '记',
+          no: parseInt(r.FNum || 0, 10),
+          period: period,
+          date: d,
+          attach: parseInt(r.FAttachment || 0, 10),
+          preparer: (r.FPreparer || '').toString(),
+          checker: (r.FChecker || '').toString(),
+          poster: (r.FPoster || '').toString(),
+          posted: (r.FPosted === true || r.FPosted === 1 || r.FPosted === 'true'),
+          checked: (r.FChecked === true || r.FChecked === 1 || r.FChecked === 'true'),
+          entries: []
+        };
+        vchMap[key] = v;
+        vchOrder.push(v);
+      }
+      var code = (r.FAcctID || '').toString().trim();
+      v.entries.push({
+        code: code,
+        name: acctName[code] || code,
+        summary: (r.FExp || '').toString().trim(),
+        dr: Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100,
+        cr: Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100
+      });
+    });
+    // 按日期为主排序（YYYY-MM-DD 字典序=时间序，跨年账套也正确），同日期按期间号/凭证号
+    vchOrder.sort(function (a, b) {
+      var c = a.date < b.date ? -1 : (a.date > b.date ? 1 : 0);
+      return c || (a.period - b.period) || (a.no - b.no);
+    });
+    var vouchers = vchOrder;
+
+    // 3. 期初余额：见下方（需先由凭证推导出起始年份，跨年账套才能正确取最早期间）
+
+    var base = (fileName || '账套').replace(/\.[^.]+$/, '');
+    var startYear = new Date().getFullYear();
+    if (vouchers.length) {
+      // 按日期排序后第一条即为最早凭证；跳过空日期脏数据，取第一条有效日期年份
+      for (var i = 0; i < vouchers.length; i++) {
+        var y = parseInt((vouchers[i].date || '').slice(0, 4), 10);
+        if (y && y >= 1900 && y <= 2200) { startYear = y; break; }
+      }
+    } else {
+      var m = base.match(/(\d{4})\s*年/);
+      if (m) startYear = parseInt(m[1], 10);
+    }
+    var pad = function(n){ return (n<10?'0':'')+n; };
+
+    // 3. 期初余额：取最早期间、最外层汇总行(*/*)，仅抽末级 code（排除父级避免上卷翻倍）。
+    // 关键：跨年账套中 FPeriod 若为标准版 1~12，必须先用 startYear 补全年份再比较，
+    // 否则不同年份的同月行会互相覆盖，期初余额会取成「最后一个年份的 1 月」而非最早年份。
+    var balRows = getRows(reader, 'GLBal');
+    function periodOf(r) { var p = parseInt(r.FPeriod || 0, 10) || 0; return p > 999 ? p % 100 : p; }
+    // 完整期间号：6 位期间号（YYYYMM）直接返回；标准版 1~12 用 startYear 补全年份
+    function periodKeyOf(r) {
+      var p = parseInt(r.FPeriod || 0, 10) || 0;
+      return p > 999 ? p : startYear * 100 + p;
+    }
+    var minPeriodKey = 0;
+    balRows.forEach(function (r) {
+      var k = periodKeyOf(r);
+      if (k && (!minPeriodKey || k < minPeriodKey)) minPeriodKey = k;
+    });
+    var minPeriod = minPeriodKey ? minPeriodKey % 100 : 0;
+    // 币种回退：优先综合币 '*' 行（标准版 GLBal 汇总行 FCyID='*'）；
+    // 若账套完全没有综合币行（外币/多币种账套），回退到出现次数最多的币种行，
+    // 避免期初余额整体丢失。FObjID 统一取 '*'（不含核算项目明细行）。
+    var cyMap = {}, cyPick = null;
+    balRows.forEach(function (r) {
+      if (periodKeyOf(r) !== minPeriodKey) return;
+      var cy = (r.FCyID || '').toString().trim();
+      var obj = (r.FObjID || '').toString().trim();
+      if (!cy || !obj) return;
+      cyMap[cy] = (cyMap[cy] || 0) + 1;
+      if (cy === '*' && obj === '*') cyPick = { cy: '*', obj: '*' };
+    });
+    if (!cyPick) {
+      var best = '', bestN = 0;
+      for (var ck in cyMap) { if (cyMap[ck] > bestN) { bestN = cyMap[ck]; best = ck; } }
+      cyPick = { cy: best, obj: '*' };
+    }
+    var allCodes = {};
+    balRows.forEach(function (r) {
+      if (periodKeyOf(r) !== minPeriodKey) return;
+      if ((r.FCyID || '').toString().trim() !== cyPick.cy || (r.FObjID || '').toString().trim() !== cyPick.obj) return;
+      var code = (r.FAcctID || '').toString().trim();
+      if (!code || code === '*') return;
+      allCodes[code] = true;
+    });
+    var hasChild = {};
+    var codes = Object.keys(allCodes);
+    codes.forEach(function (c) {
+      codes.forEach(function (d) {
+        if (d !== c && d.indexOf(c) === 0) { hasChild[c] = true; }
+      });
+    });
+    var opening = {};
+    balRows.forEach(function (r) {
+      if (periodKeyOf(r) !== minPeriodKey) return;
+      if ((r.FCyID || '').toString().trim() !== cyPick.cy || (r.FObjID || '').toString().trim() !== cyPick.obj) return;
+      var code = (r.FAcctID || '').toString().trim();
+      if (!code || code === '*' || hasChild[code]) return;
+      // 只保留第一条匹配：标准版账套 GLBal 期间为 1~12 且不含年份，
+      // 同月跨年行只取最早出现的，避免被后续年份覆盖
+      if (opening[code]) return;
+      var beg = Math.round((parseFloat(r.FBegBal || 0) || 0) * 100) / 100;
+      if (beg === 0) return;
+      var normal = beg >= 0 ? 'dr' : 'cr';
+      opening[code] = {
+        dr: normal === 'dr' ? Math.abs(beg) : 0,
+        cr: normal === 'cr' ? Math.abs(beg) : 0
+      };
+    });
+    if (!minPeriod) minPeriod = 1;
+    var startMonth = startYear + '-' + pad(minPeriod);
+
+    // 推导结账进度（closedPeriods）：标准规范下，凭证最大期间之前的各月均已结账，
+    // 当前期间 = 最后凭证年份的最大期间（"当期未结账期"）。
+    // 跨年账套必须按年份分别推导：2022 年凭证到 12 月 → 2022-01~11 结账；
+    // 2023 年凭证到 3 月 → 2023-01~02 结账；currentPeriod = 2023-03。
+    var yearMax = {};
+    vouchers.forEach(function (v) {
+      var y = (v.date || '').slice(0, 4);
+      if (!y) return;
+      if (!yearMax[y] || v.period > yearMax[y]) yearMax[y] = v.period;
+    });
+    var closedPeriods = [];
+    Object.keys(yearMax).sort().forEach(function (y) {
+      for (var cp = 1; cp < yearMax[y]; cp++) closedPeriods.push(y + '-' + pad(cp));
+    });
+    var lastYear = Object.keys(yearMax).sort().pop() || (startYear + '');
+    var maxPeriod = yearMax[lastYear] || 0;
+    var currentPeriod = maxPeriod >= 1 ? lastYear + '-' + pad(maxPeriod) : startMonth;
+
+    // 借贷平衡校验：逐张凭证核对借=贷，源数据异常时统计并在导入结果中提示用户
+    var unbalancedVouchers = 0;
+    vchOrder.forEach(function (v) {
+      var dr = 0, cr = 0;
+      v.entries.forEach(function (e) { dr += e.dr; cr += e.cr; });
+      if (Math.abs(dr - cr) > 0.01) unbalancedVouchers++;
+    });
+
+    // 上游空值保护：base 解析不出名字时 fallback 到文件名（去掉后缀），再兜底到「新账套」
+    var companyName = (base || '').trim();
+    if (!companyName) {
+      var fn = (fileName || '').replace(/\.(ais|json)$/i, '').trim();
+      companyName = fn || '新账套';
+    }
+    var ledger = {
+      company: { name: companyName, startMonth: startMonth,  currency: 'RMB' },
+      param: { fxRate: 1 },
+      subjects: subjects,
+      openingBalances: opening,
+      vouchers: vouchers,
+      closedPeriods: closedPeriods,
+      fixedAssets: [],
+      salary: [],
+      meta: {
+        source: fileName || '',
+        importedAt: new Date().toISOString().slice(0,19),
+        period: minPeriod
+      }
+    };
+
+    var stats = {
+      subjects: subjects.length,
+      acctRows: acctRows.length,
+      vouchers: vouchers.length,
+      vchRows: vchRows.length,
+      opening: Object.keys(opening).length,
+      balRows: balRows.length,
+      unbalancedVouchers: unbalancedVouchers,
+      period: minPeriod,
+      company: base,
+      closedPeriods: closedPeriods,
+      currentPeriod: currentPeriod,
+      currencyFallback: (cyPick && cyPick.cy !== '*') ? cyPick.cy : '',
+      dupSubjects: dupCodes.length ? dupCodes.slice().sort() : []
+    };
+
+    // === 只读探针（诊断用）：把 .ais 关键字段分布落盘，便于核对导入结果；失败不影响导入 ===
+    try {
+      var probe = {
+        fileName: fileName || '',
+        GLVch_FPosted_dist: (function(){
+          var t = getRows(reader,'GLVch'); var d = {};
+          t.forEach(function(r){ var k = String(r.FPosted); d[k] = (d[k]||0)+1; }); return d;
+        })(),
+        GLVch_FChecked_dist: (function(){
+          var t = getRows(reader,'GLVch'); var d = {};
+          t.forEach(function(r){ var k = String(r.FChecked); d[k] = (d[k]||0)+1; }); return d;
+        })(),
+        GLVch_FPeriod_dist: (function(){
+          var t = getRows(reader,'GLVch'); var d = {};
+          t.forEach(function(r){ var k = String(r.FPeriod); d[k] = (d[k]||0)+1; }); return d;
+        })(),
+        GLVch_FPreparer_sample: (function(){
+          var t = getRows(reader,'GLVch'); var s = {};
+          t.forEach(function(r){ var k = String(r.FPreparer||''); if(k && !s[k]){ s[k]=true; } });
+          return Object.keys(s).slice(0,20);
+          })(),
+        GLBal_FCyID_dist: (function(){
+          var t = getRows(reader,'GLBal'); var d = {};
+          t.forEach(function(r){ var k = String((r.FCyID||'').toString().trim()||'(空)') + '|' + String((r.FObjID||'').toString().trim()||'(空)'); d[k] = (d[k]||0)+1; }); return d;
+        })(),
+        GLBal_FPeriod_dist: (function(){
+          var t = getRows(reader,'GLBal'); var d = {};
+          t.forEach(function(r){ var k = String(r.FPeriod); d[k] = (d[k]||0)+1; }); return d;
+        })(),
+        unbalancedVouchers: unbalancedVouchers,
+        derived_closedPeriods: closedPeriods,
+        derived_currentPeriod: currentPeriod,
+        startMonth: startMonth
+      };
+      // 探测结果挂全局供手动查看（桌面版无服务端，仅本地诊断）
+      global.__AIS_PROBE__ = probe;
+      if (typeof console !== 'undefined') console.log('[AIS_PROBE]', JSON.stringify(probe).slice(0, 2000));
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[AIS_PROBE] failed', e);
+    }
+
+    return { ledger: ledger, stats: stats };
+  }
+
+  function parse(input) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var name = '';
+        if (input && input.name) name = input.name;
+        if (input && typeof input.arrayBuffer === 'function') {
+          // 浏览器 File / Blob
+          input.arrayBuffer().then(function (buf) { resolve(convert(buf, name)); }).catch(reject);
+          return;
+        }
+        if (input instanceof ArrayBuffer ||
+            (typeof Uint8Array !== 'undefined' && input instanceof Uint8Array) ||
+            (global.Buffer && global.Buffer.isBuffer && global.Buffer.isBuffer(input)) ||
+            (input && input.buffer instanceof ArrayBuffer)) {
+          resolve(convert(input, name));
+          return;
+        }
+        if (input && input.byteLength != null && input.slice) {
+          // 跨 realm 的 ArrayBuffer / TypedArray 兜底
+          resolve(convert(input, name));
+          return;
+        }
+        reject(new Error('不支持的输入类型'));
+      } catch (e) { reject(e); }
+    });
+  }
+
+  global.KisImport = { parse: parse, convert: convert, classify: classify, parseMulti: parseMulti };
+
+  /* ============================================================
+   * 多年账套合并导入（金蝶按年导出 .ais，本接口合并同店多年为连续账套）
+   *
+   * 设计：
+   *   - 按文件名年份排序，以最早年为"基础年"完整导入
+   *   - 后续年只取凭证 + 科目（去重合并），丢弃期初余额（保留基础年的"开业期初"）
+   *   - 凭证号跨年重排为连续号（记-1..N），避免跨年冲突
+   *   - 跨年一致性校验：基础年+后续年凭证累积推导期末 vs 下一年.ais 实际期初
+   *
+   * 使用：
+   *   KisImport.parseMulti(
+   *     [file2024, file2025, file2026],
+   *     { baseName: '绅蓝之星', voucherNoStrategy: 'renumber' }
+   *   ) -> Promise<{ ledger, stats, warnings }>
+   *
+   * voucherNoStrategy:
+   *   'renumber'（默认）跨年连续重排：记-1..N
+   *   'prefix'   年份前缀：no 不变，但 voucher.id 改为 年-字-号
+   *   'keep'      原样保留（跨年重复，不推荐）
+   * ============================================================ */
+  function parseMulti(files, options) {
+    options = options || {};
+    if (!Array.isArray(files) || files.length === 0)
+      return Promise.reject(new Error('未传入文件'));
+    if (files.length === 1) {
+      // 单文件走原 parse 路径
+      return parse(files[0]).then(function (r) {
+        return { ledger: r.ledger, stats: r.stats, warnings: [] };
+      });
+    }
+
+    // 1. 按文件名年份排序（升序）
+    function yearOf(f) {
+      var n = (f && f.name) || '';
+      var m = n.match(/(\d{4})\s*年/);
+      return m ? parseInt(m[1], 10) : 0;
+    }
+    var sorted = files.slice().sort(function (a, b) {
+      return yearOf(a) - yearOf(b);
+    });
+
+    // 2. 逐个解析（用 convert 直接处理 Buffer）
+    return Promise.all(sorted.map(function (f) {
+      return parse(f).then(function (r) {
+        return { file: f, ledger: r.ledger, stats: r.stats, year: yearOf(f) };
+      });
+    })).then(function (results) {
+      // 3. 基础年（最早）的 ledger 作为合并基底
+      var base = results[0];
+      var merged = JSON.parse(JSON.stringify(base.ledger));  // 深拷贝避免污染
+      var baseYear = base.year || parseInt((base.ledger.company.startMonth || '').slice(0, 4), 10);
+
+      // 4. 合并后续年的凭证 + 科目 + 已结账期间
+      var subjectsMap = {};
+      merged.subjects.forEach(function (s) { subjectsMap[s.code] = s; });
+
+      var allVouchers = merged.vouchers.slice();
+      var yearBoundaries = [];   // 跨年校验结果
+      // 工具：从凭证+期初推导每年末余额（按科目）
+      function deriveYearEnd(opening, vouchers, year) {
+        var bal = {};
+        // 期初
+        Object.keys(opening || {}).forEach(function (code) {
+          var e = opening[code];
+          bal[code] = (bal[code] || 0) + (e.dr || 0) - (e.cr || 0);
+        });
+        // 凭证借贷影响
+        vouchers.forEach(function (v) {
+          var vy = (v.date || '').slice(0, 4);
+          if (vy !== String(year)) return;
+          (v.entries || []).forEach(function (e) {
+            bal[e.code] = (bal[e.code] || 0) + (e.dr || 0) - (e.cr || 0);
+          });
+        });
+        return bal;
+      }
+
+      // 4.0 先计算基础年期末，作为跨年校验的初始 prevYearEndBalances
+      // 这样首次循环（results[1]）即可对比 基础年期末 vs 第二年期初
+      var prevYearEndBalances = deriveYearEnd(merged.openingBalances, allVouchers, baseYear);
+
+      results.slice(1).forEach(function (r) {
+        var y = r.year;
+        if (!y) y = parseInt((r.ledger.company.startMonth || '').slice(0, 4), 10);
+
+        // 4a. 跨年校验：上一年期末 vs 本年期初
+        if (prevYearEndBalances && r.ledger.openingBalances) {
+          var actualOpening = r.ledger.openingBalances;
+          var diffs = [];
+          var compared = 0; // 参与核对（上年期末与本年期初均有）的科目数
+          Object.keys(prevYearEndBalances).forEach(function (code) {
+            if (actualOpening[code]) {
+              compared++;
+              var prev = prevYearEndBalances[code];
+              var cur = (actualOpening[code].dr || 0) - (actualOpening[code].cr || 0);
+              var d = Math.round((prev - cur) * 100) / 100;
+              if (Math.abs(d) > 0.01) {
+                diffs.push({ code: code, prevEnd: prev, curOpen: cur, diff: d });
+              }
+            }
+          });
+          yearBoundaries.push({
+            fromYear: y - 1, toYear: y,
+            checked: diffs.length,     // 有差异的科目数
+            total: compared,           // 参与核对科目数（文案用，避免「0 个科目全部一致」歧义）
+            maxDiff: diffs.length ? diffs.reduce(function (m, x) { return Math.abs(x.diff) > Math.abs(m) ? x.diff : m; }, 0) : 0,
+            samples: diffs.slice(0, 10),  // 摘要：前 10 个供 toast 预览
+            allDiffs: diffs  // 完整：所有差异科目供 modal 详情查看
+          });
+        }
+
+        // 4b. 推导本年期末，供下一年校验
+        prevYearEndBalances = deriveYearEnd(merged.openingBalances, allVouchers.concat(r.ledger.vouchers), y);
+
+        // 4c. 合并凭证（暂保留原 no，最后统一重排）
+        r.ledger.vouchers.forEach(function (v) { allVouchers.push(v); });
+
+        // 4d. 合并科目（按 code 去重，后续年新科目加入）
+        r.ledger.subjects.forEach(function (s) {
+          if (!subjectsMap[s.code]) {
+            subjectsMap[s.code] = s;
+            merged.subjects.push(s);
+          }
+        });
+
+        // 4e. 合并 closedPeriods
+        (r.ledger.closedPeriods || []).forEach(function (p) {
+          if (merged.closedPeriods.indexOf(p) < 0) merged.closedPeriods.push(p);
+        });
+      });
+      merged.closedPeriods.sort();
+
+      // 5. 凭证号重排策略
+      var strategy = options.voucherNoStrategy || 'renumber';
+      var warnings = [];
+
+      // 全局按 date+原序排序
+      allVouchers.sort(function (a, b) {
+        var c = (a.date || '') < (b.date || '') ? -1 : ((a.date || '') > (b.date || '') ? 1 : 0);
+        if (c) return c;
+        return (a.period || 0) - (b.period || 0) || (a.no || 0) - (b.no || 0);
+      });
+
+      if (strategy === 'renumber') {
+        // 跨年连续重排：按凭证字分组，每组从 1 开始连续编号
+        var noCounter = {};
+        allVouchers.forEach(function (v) {
+          var w = v.word || '记';
+          noCounter[w] = (noCounter[w] || 0) + 1;
+          v.no = noCounter[w];
+          v.id = w + '-' + v.no + '-' + (v.date || '');  // id 含日期保证唯一
+        });
+      } else if (strategy === 'prefix') {
+        // 年份前缀：no 不变，id 加年份
+        allVouchers.forEach(function (v) {
+          var y = (v.date || '').slice(0, 4);
+          v.id = y + '-' + (v.word || '记') + '-' + v.no;
+        });
+      }
+      // 'keep' 不处理
+
+      merged.vouchers = allVouchers;
+
+      // 6. 推导合并后的 closedPeriods（重排 closedPeriods 也基于凭证最大期间）
+      var yearMax = {};
+      allVouchers.forEach(function (v) {
+        var y = (v.date || '').slice(0, 4);
+        if (!y) return;
+        if (!yearMax[y] || v.period > yearMax[y]) yearMax[y] = v.period;
+      });
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      var closedPeriods = [];
+      Object.keys(yearMax).sort().forEach(function (y) {
+        for (var cp = 1; cp < yearMax[y]; cp++) closedPeriods.push(y + '-' + pad(cp));
+      });
+      merged.closedPeriods = closedPeriods;
+
+      // 7. 元数据合并
+      merged.meta = merged.meta || {};
+      merged.meta.source = (options.baseName || base.ledger.company.name) + '（多年合并）';
+      merged.meta.years = results.map(function (r) { return r.year; }).filter(Boolean);
+      merged.meta.importedAt = new Date().toISOString().slice(0, 19);
+      merged.meta.mergedFrom = results.map(function (r) { return r.file.name; });
+      // 跨年校验报告完整存档（供 UI 事后查看，不丢失明细）
+      merged.meta.yearBoundaries = yearBoundaries;
+
+      // 8. 公司名：用 baseName 或去掉年份的文件名
+      var compName = options.baseName;
+      if (!compName) {
+        // 从基础文件名提取店名（去掉 _YYYY年_金蝶KIS格式.ais）
+        compName = (base.file.name || '').replace(/[_\s]*\d{4}\s*年.*$/, '').trim() || base.ledger.company.name;
+      }
+      merged.company.name = compName;
+      // startMonth 用基础年的（开业期初月份）
+      // currentPeriod 用最新年的最大凭证期间
+      var lastYear = Object.keys(yearMax).sort().pop();
+      merged.company.currentPeriod = lastYear ? lastYear + '-' + pad(yearMax[lastYear]) : merged.company.startMonth;
+
+      // 9. 校验告警
+      yearBoundaries.forEach(function (b) {
+        if (b.checked > 0) {
+          warnings.push('跨年差异 [' + b.fromYear + '→' + b.toYear + ']：' + b.checked + ' 个科目期初与上年期末不一致，最大差异 ' + Math.abs(b.maxDiff).toFixed(2) + '（金蝶年结未达账/折旧未生成/手动调整等常见原因）');
+        }
+      });
+
+      var stats = {
+        years: results.map(function (r) { return r.year; }).filter(Boolean),
+        subjects: merged.subjects.length,
+        vouchers: merged.vouchers.length,
+        opening: Object.keys(merged.openingBalances).length,
+        closedPeriods: merged.closedPeriods,
+        yearBoundaries: yearBoundaries,
+        perYear: results.map(function (r) {
+          return { year: r.year, vouchers: r.ledger.vouchers.length, subjects: r.ledger.subjects.length };
+        })
+      };
+
+      return { ledger: merged, stats: stats, warnings: warnings };
+    });
+  }
+
+})(typeof window !== 'undefined' ? window : this);
