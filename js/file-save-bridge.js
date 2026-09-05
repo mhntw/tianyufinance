@@ -3,7 +3,7 @@
  * 为什么需要：浏览器里 XLSX.writeFile / Blob+a.click() 走的是浏览器下载机制，
  * 在 Tauri webview 下路径不可控、常常静默失败（文件下到未知位置或根本不出现）。
  * 本桥接在 Tauri 下改用 invoke('save_export_file', {name, base64}) 由 Rust 写入
- *   <应用数据目录>/心中有数/exports/
+ *   <应用数据目录>/添钰财务/exports/
  * 浏览器（无 __TAURI__）下回退到原生下载，保证 dev 兼容。
  *
  * 依赖（全局已加载）：XLSX（SheetJS）。showToast 由调用方自行处理提示。

@@ -15,7 +15,7 @@ global.Storage = { saveBook: () => Promise.resolve({ ok: true }), saveBackup: ()
 const S = require('/Users/chen/财务软件/ty/js/store.js').store;
 S.persist = () => {}; S.addLog = () => {}; S.backupNow = () => Promise.resolve(true);
 
-const BOOKS_DIR = '/Users/chen/Library/Application Support/心中有数/books';
+const BOOKS_DIR = '/Users/chen/Library/Application Support/添钰财务/books';
 const TARGETS = process.argv.slice(2);
 
 // 改造前各判定点使用的摘要正则（旧口径）

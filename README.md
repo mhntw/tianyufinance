@@ -37,13 +37,13 @@
 
 | 平台 | 路径 |
 |---|---|
-| macOS | `~/Library/Application Support/心中有数/` |
-| Windows | `%APPDATA%\心中有数\`（即 `C:\Users\<用户>\AppData\Roaming\心中有数\`） |
-| Linux | `~/.local/share/心中有数/` |
+| macOS | `~/Library/Application Support/添钰财务/` |
+| Windows | `%APPDATA%\添钰财务\`（即 `C:\Users\<用户>\AppData\Roaming\添钰财务\`） |
+| Linux | `~/.local/share/添钰财务/` |
 
 目录内：`books/`（账套主文件）、`backups/`（自动备份 + 恢复前快照）、`trash/`（回收站，7 天清理）、`exports/`（手动导出的可携带 JSON）、`attachments/`（凭证附件）、`changelog.json`、`meta.json`。
 
-> ⚠️ **目录名「心中有数」是历史固定名，与界面品牌名无关，切勿改名**——它是硬编码的稳定定位锚点，改名会让已安装用户的账套全部"找不到"（后端有专门单测守护这条契约）。软件内「设置 → 打开数据目录」可直接打开该位置。
+> 目录名「添钰财务」是**固定定位锚点**，软件刻意不随界面品牌/程序标识变化——改一次会让已装用户的账套全部"找不到"（后端有守门单测）。软件内「设置 → 打开数据目录」可直接打开该位置。
 
 **备份与迁移**：把上面整个目录拷走即完成全部数据迁移；日常可在软件内导出账套 JSON 留 U 盘/网盘副本。切勿把数据目录放进 OneDrive/网盘等自动同步目录，多设备同时读写会产生冲突副本。
 

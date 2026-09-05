@@ -12,7 +12,7 @@ const f = path.join(os.homedir(), 'Downloads', '20260830170910_科目.xlsx');
 if (!fs.existsSync(f)) { console.log('✗ 未找到金蝶科目文件，跳过'); process.exit(0); }
 
 // —— 科目表（从真实账套初始化，模拟 S.state.subjects）——
-let bookFile = path.join(os.homedir(), 'Library', 'Application Support', '心中有数', 'books', 'default.json');
+let bookFile = path.join(os.homedir(), 'Library', 'Application Support', '添钰财务', 'books', 'default.json');
 let subjects = fs.existsSync(bookFile)
   ? JSON.parse(fs.readFileSync(bookFile, 'utf8')).subjects
   : [];

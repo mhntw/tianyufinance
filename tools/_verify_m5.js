@@ -40,7 +40,7 @@ r = S.updateSubject('1001', '库存现金-改名', 'asset');                    
 ck(r.ok && S.subject('1001').name === '库存现金-改名', '已用科目仍可改名');
 
 // —— 真实账套抽查：改动类别均被拦、改名不拦 ——
-const dir = '/Users/chen/Library/Application Support/心中有数/books';
+const dir = '/Users/chen/Library/Application Support/添钰财务/books';
 fs.readdirSync(dir).filter(f => /\.json$/.test(f)).forEach(f => {
   const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
   if (((data.vouchers || []).length) < 10) return;

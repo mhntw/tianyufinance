@@ -17,17 +17,16 @@
 
   | 系统 | 路径 |
   |---|---|
-  | macOS | `~/Library/Application Support/心中有数/` |
-  | Windows | `%APPDATA%\心中有数\`（`C:\Users\<用户>\AppData\Roaming\心中有数\`） |
-  | Linux | `~/.local/share/心中有数/` |
+  | macOS | `~/Library/Application Support/添钰财务/` |
+  | Windows | `%APPDATA%\添钰财务\`（`C:\Users\<用户>\AppData\Roaming\添钰财务\`） |
+  | Linux | `~/.local/share/添钰财务/` |
 
   目录结构：`books/`（账套）、`backups/`（自动备份 + 恢复前快照）、`trash/`（删除账套，保留 7 天）、
   `exports/`（手动导出）、`attachments/`（凭证附件）、`changelog.json`、`meta.json`。
 
-  > ⚠️ **目录名「心中有数」是历史固定名，与品牌名无关，切勿改动**——后端 `data_root()`
-  > 硬编码该目录名且刻意不随 identifier/productName 变化，改名会让已有账套"全部消失"
-  > （有单测 `data_root_ignores_identifier` 守护）。也绝不使用「文档」目录（云同步会制造冲突副本）。
-  > 实现集中在 `src-tauri/src/lib.rs`。
+  > ⚠️ 目录名「添钰财务」是**固定定位锚点**：后端 `data_root()` 硬编码它，刻意不随
+  > identifier/productName 变化，改名会让已有账套"全部消失"（有守门单测）。
+  > 也绝不使用「文档」目录（云同步会制造冲突副本）。实现集中在 `src-tauri/src/lib.rs`。
 
 ## 如何打包（macOS 本机）
 

@@ -31,7 +31,7 @@ S.persist = function () { return true; };
 S.backupNow = function () { return Promise.resolve(true); };
 S.addLog = function () {};
 
-const BOOK_DIR = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
+const BOOK_DIR = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
 const TARGET = process.argv[2] || '添钰来客_合并_20260905_1788605413724.json';
 
 function load() {

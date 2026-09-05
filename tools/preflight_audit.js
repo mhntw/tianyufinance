@@ -20,7 +20,7 @@ require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S;
 
 const DIRS = [
-  path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books'),
+  path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books'),
   path.resolve(__dirname, '../data/books')
 ];
 const EPS = 0.005;

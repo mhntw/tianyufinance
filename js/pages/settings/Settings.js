@@ -811,7 +811,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
       });
   }
 
-  // 将导入的账套注入并立即落真实文件（桌面版账套真相源为 <应用数据目录>/心中有数/books/）。
+  // 将导入的账套注入并立即落真实文件（桌面版账套真相源为 <应用数据目录>/添钰财务/books/）。
   // 不再写 kis_books localStorage 缓存（账套以磁盘为准），仅记录当前账套指针到 meta。
   function loadServerBookIntoLocal(id, book) {
     S.bookId = id; S.state = book;
@@ -820,7 +820,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
     // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
     if (typeof S.normalizeState === 'function') { try { S.normalizeState(); } catch (e) { console.warn('normalizeState 失败：' + e); } }
     S.ensureCashFlowMap();
-    // 立即落真实文件（<应用数据目录>/心中有数/books/<id>.json），不依赖防抖，防止刷新后丢失
+    // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json），不依赖防抖，防止刷新后丢失
     if (typeof window.Storage !== 'undefined') {
       window.Storage.saveBook(id, JSON.stringify(S.state)).catch(function (e) {
         showToast('导入账套落盘失败：' + (e && e.message || e), 'error');

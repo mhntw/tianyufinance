@@ -7,7 +7,7 @@ global.Storage = { saveBook: () => Promise.resolve({ ok: true }), saveBackup: ()
 const S = require('/Users/chen/财务软件/ty/js/store.js').store;
 S.persist = () => {}; S.addLog = () => {}; S.backupNow = () => Promise.resolve(true);
 
-const f = process.argv[2] || '/Users/chen/Library/Application Support/心中有数/books/添钰来客_合并_20260905_1788605413724.json';
+const f = process.argv[2] || '/Users/chen/Library/Application Support/添钰财务/books/添钰来客_合并_20260905_1788605413724.json';
 S.state = JSON.parse(JSON.stringify(JSON.parse(fs.readFileSync(f, 'utf8'))));
 S.bookId = 'fixverify';
 

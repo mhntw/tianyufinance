@@ -12,7 +12,7 @@ require(path.resolve(__dirname, '../js/storage.js'));
 require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S, Storage = global.Storage;
 
-const booksDir = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
+const booksDir = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
 fs.mkdirSync(booksDir, { recursive: true });
 const diskBooks = {};
 let metaStore = { last_book: null, disabled: {} };
@@ -24,7 +24,7 @@ Storage.deleteBook = (id) => { delete diskBooks[id]; try { fs.unlinkSync(path.jo
 Storage.listBooks = () => Promise.resolve(fs.readdirSync(booksDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, '')));
 Storage.readMeta = () => Promise.resolve(JSON.parse(JSON.stringify(metaStore)));
 Storage.writeMeta = (m) => { metaStore = (typeof m === 'string') ? JSON.parse(m) : m; return Promise.resolve({ ok: true }); };
-Storage.getDataDir = () => Promise.resolve(path.resolve(process.env.HOME, 'Library/Application Support/心中有数'));
+Storage.getDataDir = () => Promise.resolve(path.resolve(process.env.HOME, 'Library/Application Support/添钰财务'));
 Storage.exportBook = (id, json) => Promise.resolve({ ok: true, filename: id + '.json' });
 Storage.saveBackup = () => Promise.resolve({ ok: true });
 Storage.listBackups = () => Promise.resolve([]);

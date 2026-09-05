@@ -13,8 +13,8 @@ require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S, Storage = global.Storage;
 
 // 注入"模拟真实文件 + meta" Storage：用真实 fs 写 booksDir，验证 store.js 真相源逻辑
-const booksDir = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
-const exportsDir = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/exports');
+const booksDir = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
+const exportsDir = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/exports');
 fs.mkdirSync(booksDir, { recursive: true });
 fs.mkdirSync(exportsDir, { recursive: true });
 const diskBooks = {};
@@ -32,7 +32,7 @@ Storage.deleteBook = (id) => { delete diskBooks[id]; try { fs.unlinkSync(path.jo
 Storage.listBooks = () => Promise.resolve(fs.readdirSync(booksDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, '')));
 Storage.readMeta = () => Promise.resolve(JSON.parse(JSON.stringify(metaStore)));
 Storage.writeMeta = (m) => { metaStore = (typeof m === 'string') ? JSON.parse(m) : m; return Promise.resolve({ ok: true }); };
-Storage.getDataDir = () => Promise.resolve(path.resolve(process.env.HOME, 'Library/Application Support/心中有数'));
+Storage.getDataDir = () => Promise.resolve(path.resolve(process.env.HOME, 'Library/Application Support/添钰财务'));
 Storage.exportBook = (id, json) => {
   const fname = (diskBooks[id] ? (JSON.parse(diskBooks[id]).company.name || id) : id) + '_' + '20260826' + '.json';
   fs.writeFileSync(path.join(exportsDir, fname), json);

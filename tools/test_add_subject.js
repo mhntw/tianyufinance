@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const booksDir = path.join(os.homedir(), 'Library', 'Application Support', '心中有数', 'books');
+const booksDir = path.join(os.homedir(), 'Library', 'Application Support', '添钰财务', 'books');
 const bookFile = path.join(booksDir, 'default.json');
 if (!fs.existsSync(bookFile)) { console.log('✗ 未找到账套，跳过'); process.exit(0); }
 

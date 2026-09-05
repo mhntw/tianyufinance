@@ -39,7 +39,7 @@ function assert(cond, msg) {
   assert(Storage.isFileMode() === true, 'Storage.isFileMode() 恒为 true（桌面版）');
 
   console.log('\n=== 2. 载入真实账套 default.json 到存储引擎 ===');
-  const bookPath = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books/default.json');
+  const bookPath = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books/default.json');
   const raw = fs.readFileSync(bookPath, 'utf8');
   const parsed = JSON.parse(raw);
   const saveRes = await Storage.saveBook('default', raw);

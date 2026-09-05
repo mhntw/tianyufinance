@@ -23,7 +23,7 @@ S.persist = function () { /* no-op */ };
 S.addLog = function () { /* no-op */ };
 S.backupNow = function () { return Promise.resolve(true); };
 
-const BOOKS_DIR = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
+const BOOKS_DIR = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
 const EPS = 0.005;
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 

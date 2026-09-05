@@ -31,7 +31,7 @@ function round2(n) { return Math.round(Number(n) * 100) / 100; }
 
 function findBook(arg) {
   if (arg && fs.existsSync(arg)) return arg;
-  const dir = path.join(process.env.HOME, 'Library', 'Application Support', '心中有数', 'books');
+  const dir = path.join(process.env.HOME, 'Library', 'Application Support', '添钰财务', 'books');
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => ({
     name: f, path: path.join(dir, f), mtime: fs.statSync(path.join(dir, f)).mtimeMs
   })).sort((a, b) => b.mtime - a.mtime);

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // 验证科目范围解析器与凭证查询的端到端正确性（对齐金蝶「科目范围输入框」方案）
-// 依赖真实账套：需先把账套复制到 ~/Library/Application Support/心中有数/books/default.json
+// 依赖真实账套：需先把账套复制到 ~/Library/Application Support/添钰财务/books/default.json
 
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const booksDir = path.join(os.homedir(), 'Library', 'Application Support', '心中有数', 'books');
+const booksDir = path.join(os.homedir(), 'Library', 'Application Support', '添钰财务', 'books');
 const bookFile = path.join(booksDir, 'default.json');
 if (!fs.existsSync(bookFile)) { console.log('✗ 未找到账套，跳过'); process.exit(0); }
 const d = JSON.parse(fs.readFileSync(bookFile, 'utf8'));

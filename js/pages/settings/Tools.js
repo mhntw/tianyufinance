@@ -74,7 +74,7 @@ function guardBeforeRestore(tip) {
  * 基础功能：账套列表（刷新入口：app.js 委托桩 -> globalThis.__renderTools）
  * ============================================================ */
 function refreshTools() {
-  // 先异步用磁盘真实账套刷新索引（桌面版索引真相源为 <应用数据目录>/心中有数/books/），
+  // 先异步用磁盘真实账套刷新索引（桌面版索引真相源为 <应用数据目录>/添钰财务/books/），
   // fire-and-forget：当前渲染仍用已同步的缓存，删除/新建/导入操作后缓存已即时更新。
   if (typeof S.refreshBookIndex === 'function') { try { S.refreshBookIndex(); } catch (e) {} }
   // 账套列表
@@ -201,7 +201,7 @@ function listBackups() {
   var bid = S.currentBookId();
   box.style.display = 'block';
   box.innerHTML = '<p class="muted">正在读取备份…</p>';
-  // 备份均落 Rust 备份目录（<应用数据目录>/心中有数/backups）
+  // 备份均落 Rust 备份目录（<应用数据目录>/添钰财务/backups）
   Promise.all([
     storageListBackups(bid),
     (typeof window.Storage !== 'undefined' && window.Storage.backupStats)
@@ -332,7 +332,7 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
     if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
   }
 });
-// 手动备份：立即落 Rust 备份目录（<应用数据目录>/心中有数/backups）。
+// 手动备份：立即落 Rust 备份目录（<应用数据目录>/添钰财务/backups）。
 $('btnBkNow').addEventListener('click', function () {
   var r = S.backupNow();
   Promise.resolve(r).then(function (ok) {
@@ -390,7 +390,7 @@ function openExportsFolder() {
   });
 }
 
-// 导出全部账套为独立 .json（逐账套导出到 <应用数据目录>/心中有数/exports/，用户可在该目录取用）。
+// 导出全部账套为独立 .json（逐账套导出到 <应用数据目录>/添钰财务/exports/，用户可在该目录取用）。
 // 数据来源：优先从存储引擎拉取磁盘权威完整 state，保证导出的是真实落盘数据。
 // 导出完成后明确展示完整绝对路径，并提供「打开文件夹」按钮（用系统文件管理器打开）。
 $('btnBkAll').addEventListener('click', function () {

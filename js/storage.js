@@ -3,8 +3,8 @@
  * 替代原浏览器的 File System Access API / IndexedDB 方案。
  *
  * 数据根目录（由 Rust 后端管理，自动创建）：
- *   macOS:   ~/Library/Application Support/心中有数/
- *   Windows: %APPDATA%\心中有数\
+ *   macOS:   ~/Library/Application Support/添钰财务/
+ *   Windows: %APPDATA%\添钰财务\
  * 注意：必须用应用数据目录而非「文档」，否则会被 iCloud / OneDrive 静默同步（详见 lib.rs）
  *   books/<id>.json        账套（真相源，原子写）
  *   backups/<bookId>_<ts>.json  滚动备份

@@ -16,7 +16,7 @@ S.persist = () => {}; S.addLog = () => {}; S.backupNow = () => Promise.resolve(t
 
 let bad = 0;
 const ck = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) bad++; };
-const dir = '/Users/chen/Library/Application Support/心中有数/books';
+const dir = '/Users/chen/Library/Application Support/添钰财务/books';
 const files = fs.readdirSync(dir).filter(f => /\.json$/.test(f));
 
 files.forEach(f => {

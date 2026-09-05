@@ -9,7 +9,7 @@
  *
  * 依赖：无。所有计算纯函数，挂在全局 S。
  * 持久化：磁盘为唯一真相源——persist() 经 Storage 引擎（Rust）写
- *         <应用数据目录>/心中有数/books/<id>.json；localStorage 仅存当前账套指针。
+ *         <应用数据目录>/添钰财务/books/<id>.json；localStorage 仅存当前账套指针。
  * 产品来源说明见 README「关于产品来源」。
  * ============================================================ */
 (function (global) {
@@ -36,7 +36,7 @@
 
   /* ============================================================
    * 备份策略（Tauri 桌面版）：
-   *   主账本与自动备份均落真实文件（<应用数据目录>/心中有数/books、/backups），
+   *   主账本与自动备份均落真实文件（<应用数据目录>/添钰财务/books、/backups），
    *   由 Rust 端 Storage 引擎负责，无需浏览器 IndexedDB 兜底。
    * ============================================================ */
 
@@ -348,7 +348,7 @@
           return self._loadCurrentBook();
         })
         .then(function () {
-          // Tauri 桌面版：Storage 恒为真实文件模式（数据落在应用数据目录/心中有数/），
+          // Tauri 桌面版：Storage 恒为真实文件模式（数据落在应用数据目录/添钰财务/），
           // 不再需要浏览器端「探测授权 / 选择目录」流程，直接标记为已就绪。
           self._setServerStatus(true);
         })
@@ -457,7 +457,7 @@
       if (this._bkTimer) { clearTimeout(this._bkTimer); this._bkTimer = null; this._bkWindow = false; this._bkDirty = false; }
       if (!needBook && !needBk) return;
       var payload = JSON.stringify(this.state);
-      // 兜底落真实文件（Storage 引擎：Rust 写 <应用数据目录>/心中有数/）
+      // 兜底落真实文件（Storage 引擎：Rust 写 <应用数据目录>/添钰财务/）
       if (typeof window.Storage !== 'undefined') {
         if (needBook) window.Storage.saveBook(bid, payload).catch(function () {});
         if (needBk) window.Storage.saveBackup(bid, this.state).catch(function () {});
@@ -491,7 +491,7 @@
         });
       }
     },
-    // 从磁盘真实文件（<应用数据目录>/心中有数/books/<id>.json，由 Rust Storage 引擎管理）拉取权威账本。
+    // 从磁盘真实文件（<应用数据目录>/添钰财务/books/<id>.json，由 Rust Storage 引擎管理）拉取权威账本。
     // 复用 _loadCurrentBook（已含 normalize / 币种对齐 / ensureVoucherIds / ensureCashFlowFields）。
     // 版本冲突仍交由 __onSchemaMismatch 钩子决策，避免静默丢数据。
     loadCurrentBookFromDisk: function () {
@@ -582,7 +582,7 @@
         this._onSaveFail('账套序列化失败：' + (e && e.message || e));
         return;
       }
-      // 真实文件落盘（Storage.js → Rust 写 <应用数据目录>/心中有数/books/<id>.json）
+      // 真实文件落盘（Storage.js → Rust 写 <应用数据目录>/添钰财务/books/<id>.json）
       if (typeof window.Storage !== 'undefined') {
         window.Storage.saveBook(bid, payload).then(function (r) {
           // Storage.saveBook 内部已 catch，恒为 resolved：必须判 r.ok，
@@ -599,7 +599,7 @@
           self._onSaveFail(e && e.message || e);
         });
       }
-      // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/心中有数/backups，环形保留）。
+      // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/添钰财务/backups，环形保留）。
       // 桌面版数据即文件，无需浏览器缓存兜底。
       try {
         var doAutoBk = function (st) {
@@ -723,7 +723,7 @@
       this.bookId = id;
       setCurBookId(id);
       var self = this;
-      // 立即写入真实文件（<应用数据目录>/心中有数/books/<id>.json），不依赖防抖，
+      // 立即写入真实文件（<应用数据目录>/添钰财务/books/<id>.json），不依赖防抖，
       // 防止快速切换时账套只存在于内存、刷新后丢失。
       this.ensureCashFlowMap();
       this.addLog('新建账套', '新建账套「' + (st.company.name || name || '') + '」', '账套');
@@ -839,7 +839,7 @@
       this.ensureVoucherIds();
       this._writeLocalBookSafe();
       this.addLog('恢复备份', '从备份恢复账套状态', '账套');
-      // 立即落真实文件（<应用数据目录>/心中有数/books/<id>.json）
+      // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json）
       if (typeof window.Storage !== 'undefined') {
         window.Storage.saveBook(this.bookId, JSON.stringify(this.state)).catch(function (e) {
           console.warn('[restoreBookState] 账套落盘失败：' + (e && e.message || e));
@@ -1499,7 +1499,7 @@
     // ============ 关键节点强制备份（结账/结转损益等不可逆操作后调用） ============
     // 与 persist() 内自动备份的区别：立即落盘、不依赖 3 秒防抖窗口，
     // 确保结账等高风险操作后马上有一份磁盘快照可回滚。
-    // 手动立即备份：落 Rust 备份目录（<应用数据目录>/心中有数/backups）。
+    // 手动立即备份：落 Rust 备份目录（<应用数据目录>/添钰财务/backups）。
     backupNow: function () {
       var bid = this.currentBookId();
       // 兜底：当前指针为空但有账套时，回退到 default / 第一个（避免空指针导致备份直接失败）

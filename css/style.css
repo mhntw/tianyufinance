@@ -164,7 +164,7 @@ img, svg { display: block; max-width: 100%; }
 .topbar-center { justify-content: flex-start; }
 .topbar-right  { justify-content: flex-end; }
 
-/* 顶栏左区品牌（方案 C：完整标题「🏠心中有数财务记账系统」） */
+/* 顶栏左区品牌（方案 C：完整标题「🏠添钰财务管理系统」） */
 .topbar-brand {
   display: inline-flex;
   align-items: center;
@@ -3698,7 +3698,7 @@ body.kd-privacy .revenue-cost-card .chart-line::after {
 /* ============================================================
  * 顶部栏：账套/期间下拉（JinBooks 顶栏复刻方案）
  * 参考：jinbooks-ui Navbar.vue + Logo.vue（sidebar-title 20px/bolder/letter-spacing）
- *   左区：[logo图标] + 软件名「心中有数财务记账系统」（放大+深黑+字距，复刻 Logo.sidebar-title）
+ *   左区：[logo图标] + 软件名「添钰财务管理系统」（放大+深黑+字距，复刻 Logo.sidebar-title）
  *   右区（合并 center + right）：
  *     当前账期：2026年第X期  |  账套：[账套名▾下拉 250px]  |  [🔍搜索框]  |  会计∨
  *   保留搜索框（用户明确要求）

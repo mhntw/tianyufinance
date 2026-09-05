@@ -95,7 +95,7 @@ ck(nv.no === 6, '新增凭证号为 6（继续往后编，不复用已删的 3�
 ck(S.state.vouchers.filter((v) => v.deleted !== 'y' && v.no === 3).length === 0, '已删的 3 号未被复用（软删后不在用）');
 
 console.log('\n=== 5. 真实账套：重载后 id 稳定（无重号污染）===');
-const BOOKS = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
+const BOOKS = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
 if (fs.existsSync(BOOKS)) {
   fs.readdirSync(BOOKS).filter((f) => /\.json$/.test(f)).forEach((f) => {
     S.state = JSON.parse(fs.readFileSync(path.join(BOOKS, f), 'utf8'));

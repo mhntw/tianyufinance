@@ -47,7 +47,7 @@ function round2(n) { return Math.round(Number(n) * 100) / 100; }
 function findBook(arg) {
   if (arg && fs.existsSync(arg)) return arg;
   // 默认取最新账套
-  const dir = path.join(process.env.HOME, 'Library', 'Application Support', '心中有数', 'books');
+  const dir = path.join(process.env.HOME, 'Library', 'Application Support', '添钰财务', 'books');
   if (!fs.existsSync(dir)) {
     console.error('账套目录不存在：' + dir);
     process.exit(1);

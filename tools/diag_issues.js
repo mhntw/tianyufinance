@@ -12,7 +12,7 @@ require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S;
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
-const BOOK_DIR = path.resolve(process.env.HOME, 'Library/Application Support/心中有数/books');
+const BOOK_DIR = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
 const target = process.argv[2] || '添钰来客_合并_20260903_1788445713063.json';
 S.state = JSON.parse(fs.readFileSync(path.join(BOOK_DIR, target), 'utf8'));
 S.bookId = target;

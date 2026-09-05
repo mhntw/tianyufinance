@@ -1,5 +1,5 @@
 // 财务软件 Tauri 后端：本地文件存储层
-// 数据根目录：<用户文档>/财务软件/
+// 数据根目录：系统应用数据目录下的固定名目录（见 APP_DATA_DIR_NAME）
 //   books/<id>.json        账套
 //   backups/<bookId>_<ts>.json  备份
 //   changelog.json         操作日志
@@ -13,10 +13,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::Manager;
 
+// 数据目录固定锚点名。这是「用户数据」的定位锚点，必须固定、不随品牌/产品名变化：
+// 历史教训——早期曾用品牌词（心中有数）作目录名，品牌一更名目录就对不上用户预期。
+// 本锚点自 1.0.0 起定下，后续任何界面改名都不再改它。
+const APP_DATA_DIR_NAME: &str = "添钰财务";
+
 // 数据根目录（不存在则创建）：
-//   macOS:   ~/Library/Application Support/心中有数/
-//   Windows: %APPDATA%\心中有数\   （即 C:\Users\<用户>\AppData\Roaming\心中有数\）
-//   Linux:   ~/.local/share/心中有数/
+//   macOS:   ~/Library/Application Support/添钰财务/
+//   Windows: %APPDATA%\添钰财务\   （即 C:\Users\<用户>\AppData\Roaming\添钰财务\）
+//   Linux:   ~/.local/share/添钰财务/
 //
 // 为什么必须用「应用数据目录」而不是「文档」：
 // macOS 的「桌面与文档文件夹」同步、Windows OneDrive 的「已知文件夹移动」，
@@ -35,41 +40,9 @@ use tauri::Manager;
 // 对财务软件来说这是最严重的事故之一。见测试 data_root_ignores_identifier。
 fn data_root() -> Result<PathBuf, String> {
     let base = dirs::data_dir().ok_or_else(|| "无法定位应用数据目录".to_string())?;
-    let root = base.join("心中有数");
+    let root = base.join(APP_DATA_DIR_NAME);
     fs::create_dir_all(&root).map_err(|e| format!("创建数据目录失败: {e}"))?;
     Ok(root)
-}
-
-// 数据目录已迁离「文档/财务软件」。若旧位置仍有数据，放一个说明文件指路——
-// 用户打开软件发现"账套没了"是最难解释的事故，几行字就能避免。
-// 只写一次（已存在则跳过）；任何失败都静默忽略，绝不影响启动。
-fn note_legacy_dir() {
-    let old = match dirs::document_dir() {
-        Some(d) => d.join("财务软件"),
-        None => return,
-    };
-    if !old.is_dir() {
-        return;
-    }
-    let marker = old.join("本目录已不再使用-请看新数据位置.txt");
-    if marker.exists() {
-        return;
-    }
-    let new = data_root()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "（未能定位，请从软件「设置 → 打开数据目录」查看）".to_string());
-    // \r\n 是为了 Windows 记事本能正常换行
-    let txt = format!(
-        "本目录已不再是「心中有数」的数据目录。\r\n\
-         \r\n\
-         为避免账套被 iCloud / OneDrive 静默同步到云端（以及多设备同时读写\r\n\
-         造成账目冲突），数据目录已改为：\r\n\
-         \r\n    {new}\r\n\
-         \r\n\
-         如果这里还有你需要的账套数据，请先复制 books/ 等文件夹到上面的新位置。\r\n\
-         确认不再需要后，本文件夹可以整个删除。\r\n"
-    );
-    let _ = fs::write(&marker, txt);
 }
 
 fn books_dir() -> Result<PathBuf, String> {
@@ -786,8 +759,6 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 启动时留一次旧目录指引（内部已做幂等与容错，不影响启动速度）
-    note_legacy_dir();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -829,8 +800,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        backup_kind_of, backup_ts, data_root, decode_base64_lenient, is_plain_filename,
-        note_legacy_dir, now_ts, parse_trash_name, unique_path, BackupKind,
+        backup_kind_of, backup_ts, data_root, decode_base64_lenient, is_plain_filename, now_ts,
+        parse_trash_name, unique_path, APP_DATA_DIR_NAME, BackupKind,
     };
     use base64::Engine as _;
     use std::fs;
@@ -888,33 +859,13 @@ mod tests {
         }
     }
 
-    // 需要真实读写 ~/Documents，故 #[ignore] 不进常规测试。手工验证：
-    //   cargo test --lib -- --ignored --nocapture
-    #[test]
-    #[ignore]
-    fn note_legacy_dir_writes_pointer() {
-        note_legacy_dir();
-        let old = match dirs::document_dir() {
-            Some(d) => d.join("财务软件"),
-            None => return,
-        };
-        if !old.is_dir() {
-            println!("旧目录不存在，无需留指引（正常情况）");
-            return;
-        }
-        let marker = old.join("本目录已不再使用-请看新数据位置.txt");
-        assert!(marker.exists(), "旧目录存在时应留下说明文件");
-        println!("说明文件已生成：{}", marker.display());
-        println!("内容：\n{}", fs::read_to_string(&marker).unwrap_or_default());
-    }
-
     // 本测试是「数据目录迁出云同步区」这一改动的守门员：
     // 一旦有人把 data_root 改回文档目录，这里会立即失败。
     #[test]
     fn data_root_is_outside_document_dir() {
         let root = data_root().unwrap();
         let s = root.to_string_lossy().to_string();
-        assert!(s.ends_with("心中有数"), "应以应用名结尾，实际: {s}");
+        assert!(s.ends_with(APP_DATA_DIR_NAME), "应以固定锚点名结尾，实际: {s}");
         // 核心断言：绝不能落在文档目录下——Documents 是各家云盘的默认同步目标
         if let Some(doc) = dirs::document_dir() {
             let d = doc.to_string_lossy().to_string();

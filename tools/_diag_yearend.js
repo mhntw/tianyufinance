@@ -11,7 +11,7 @@ global.Storage = { saveBook: () => Promise.resolve({ ok: true }), saveBackup: ()
 const S = require('/Users/chen/财务软件/ty/js/store.js').store;
 S.persist = () => {}; S.addLog = () => {}; S.backupNow = () => Promise.resolve(true);
 
-const BOOKS_DIR = '/Users/chen/Library/Application Support/心中有数/books';
+const BOOKS_DIR = '/Users/chen/Library/Application Support/添钰财务/books';
 const files = fs.readdirSync(BOOKS_DIR).filter(function (f) { return /\.json$/.test(f); });
 
 files.forEach(function (f) {
