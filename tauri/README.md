@@ -1,20 +1,19 @@
-# 心中有数 —— Tauri 桌面打包壳
+# 添钰财务管理系统 —— Tauri 桌面打包壳
 
-本目录是 Tauri 桌面版打包壳，把 `rj/`（纯静态前端）打包成可安装的桌面应用。
+本目录是桌面版打包壳（Tauri 2），把仓库根的前端（`index.html` + `css/` + `js/`）打包成可安装的桌面应用。
 
-> 📘 **要在 Windows 上打包？** 请直接看 **[`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)**（准备清单、打包命令、报错处理一页通）。
+> **日常 Windows 打包请直接用 GitHub Actions**（推 `v*` 标签自动出 NSIS 包，见仓库根 `README.md`）。
+> 需要在 Windows 本机手动打包时，参考 **[`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)**。
 
 ## 打包机制
 
-- **前端真源**：`rj/` 根目录（`index.html` + `css/` + `js/`），日常开发只改这里。
-- **打包源 `dist/`**：每次 `tauri build` 前，由 `scripts/build-dist.mjs` 自动把最新的
-  `index.html` + `css/style.css` + `js/`（排除 `.codebuddy` / `.workbuddy` / `.DS_Store`
-  等残留）同步到 `dist/`。该脚本用 Node.js 实现，**跨平台通用**（Windows / macOS / Linux
-  均直接可用，不依赖 `sh`/Git Bash）。
-  Tauri 的 `frontendDist` 指向 `../dist`，因此安装包只包含干净的运行时文件，
-  不会混入 `tools/`、`backups_*`、`src-tauri/target` 等开发/备份内容。
-- **数据目录**：账套数据运行时落在**系统应用数据目录**（不是「文档」），不随安装包分发，
-  安装后为全新空账套（新建账套会自动预置标准会计科目）：
+- **前端真源**：仓库根目录的 `index.html` / `css/` / `js/`，日常开发只改这里。
+- **打包源 `dist/`**：每次 `tauri build` 前，由 `scripts/build-dist.mjs` 自动把最新
+  `index.html` + `css/` + `js/`（排除 `.codebuddy` / `.workbuddy` / `.DS_Store` 等残留）
+  同步到 `dist/`。脚本用 Node.js 实现，**跨平台通用**，不依赖 `sh`。
+  Tauri 的 `frontendDist` 指向 `../dist`，安装包只包含干净的运行时文件。
+- **数据目录**：账套运行时落在**系统应用数据目录**，不随安装包分发，安装后为全新空账套
+  （新建账套自动预置标准会计科目）：
 
   | 系统 | 路径 |
   |---|---|
@@ -22,15 +21,15 @@
   | Windows | `%APPDATA%\心中有数\`（`C:\Users\<用户>\AppData\Roaming\心中有数\`） |
   | Linux | `~/.local/share/心中有数/` |
 
-  目录结构：`books/`（账套）、`backups/`（自动备份 + 恢复前快照）、`trash/`（删除的账套，保留 7 天）、
+  目录结构：`books/`（账套）、`backups/`（自动备份 + 恢复前快照）、`trash/`（删除账套，保留 7 天）、
   `exports/`（手动导出）、`attachments/`（凭证附件）、`changelog.json`、`meta.json`。
 
-  > **为什么不用「文档」目录**：macOS「桌面与文档文件夹」同步、Windows OneDrive「已知文件夹移动」
-  > 都会把整个 Documents 搬到云端，且从软件界面看不出来。除隐私外，更严重的是多设备同时读写
-  > 会产生冲突副本——看到的账可能来自未知版本。改动集中在 `src/lib.rs` 的 `data_root()`，
-  > 已有单测 `data_root_is_outside_document_dir` 守住这条线。
+  > ⚠️ **目录名「心中有数」是历史固定名，与品牌名无关，切勿改动**——后端 `data_root()`
+  > 硬编码该目录名且刻意不随 identifier/productName 变化，改名会让已有账套"全部消失"
+  > （有单测 `data_root_ignores_identifier` 守护）。也绝不使用「文档」目录（云同步会制造冲突副本）。
+  > 实现集中在 `src-tauri/src/lib.rs`。
 
-## 如何打包
+## 如何打包（macOS 本机）
 
 ```bash
 cd tauri
@@ -38,12 +37,11 @@ npm install        # 首次：安装 @tauri-apps/cli
 npm run tauri build
 ```
 
-产物在 `src-tauri/target/release/bundle/`（macOS：`.app` + `.dmg`；Windows：`.exe`/`.msi` 等）。
+产物在 `src-tauri/target/release/bundle/`（macOS：`.app` + `.dmg`）。
 
 ## 注意事项
 
-- **不要手动改 `dist/`**——它由脚本每次重建，手动改会在下次打包时被覆盖。
-- 开发期验证可直接用 `npm run tauri dev`（会起本地静态服务 + 打开调试窗口）。
-- 打包 Windows 安装包需在 Windows 环境（或用 CI 交叉编译）执行 `tauri build`，详见
-  [`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)。
-
+- **不要手动改 `dist/`**——它每次由脚本重建，手动改会被覆盖。
+- 开发期验证：`npm run tauri dev`（起本地服务 + 打开调试窗口）。
+- Windows 安装包：日常由 GitHub Actions 自动构建（仓库根 `.github/workflows/windows-build.yml`，
+  手动触发或推 `v*` 标签）；无需本机 Windows 环境。
