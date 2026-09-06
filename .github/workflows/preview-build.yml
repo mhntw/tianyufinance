@@ -1,0 +1,53 @@
+# ============================================================
+# 构建预览包（手动触发）：仅用于本地/测试拿安装包，产物在本次运行的 Artifacts，
+# 不创建、不更新 Release。正式发布请推 v* 标签（走「自动发布」工作流）。
+# ============================================================
+name: 构建预览包（手动）
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.label }}（预览）
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            runner: windows-latest
+            args: --bundles nsis
+          - label: macOS Apple Silicon
+            runner: macos-latest
+            args: --bundles app,dmg
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v5
+
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tauri/package-lock.json
+
+      - name: 安装前端依赖（Tauri CLI）
+        working-directory: tauri
+        run: npm ci
+
+      - name: 安装 Rust（stable）
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust 增量缓存（第二次构建起显著提速）
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri -> target
+
+      - name: 构建并上传预览包（Artifacts）
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: tauri
+          args: ${{ matrix.args }}
