@@ -246,26 +246,39 @@ function renderTrash() {
   box.style.display = 'block';
   box.innerHTML = '<p class="muted">正在读取回收站…</p>';
   window.Storage.listTrash().then(function (items) {
-    items = items || [];
-    var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a>'
-      + '<span class="muted" style="font-size:12px">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
-      + (items.length ? '<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>' : '')
-      + '</div>';
-    if (!items.length) {
-      html += '<p class="muted">回收站为空</p>';
-    } else {
-      items.forEach(function (it) {
-        var left = 7 - (daysAgo(it.ts) || 0);
-        var expire = left <= 0 ? '即将清理' : ('还剩 ' + left + ' 天');
-        html += '<div class="backup-item"><span>' + esc(it.name) + '（删除于 ' + fmtTs(it.ts) + '，' + expire + '）</span>'
-          + '<button class="btn btn-xs" data-trash-restore="' + esc(it.file) + '">还原</button>'
-          + '<button class="btn btn-danger-xs" data-trash-del="' + esc(it.file) + '">彻底删除</button></div>';
-      });
-    }
-    box.innerHTML = html;
+    box._trashItems = items || [];
+    box._trashAll = false;
+    renderTrashRows();
   }).catch(function (e) {
     box.innerHTML = '<p class="muted">读取回收站失败：' + ((e && e.message) || e) + '</p>';
   });
+}
+
+// 回收站渲染：默认只显示前 5 项，避免一大片；点「显示全部」再展开
+function renderTrashRows() {
+  var box = $('trashPanel'); if (!box) return;
+  var items = box._trashItems || [];
+  var show = box._trashAll ? items : items.slice(0, 5);
+  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a>'
+    + '<span class="muted" style="font-size:12px">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
+    + (items.length ? '<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>' : '')
+    + '</div>';
+  if (!items.length) {
+    html += '<p class="muted">回收站为空</p>';
+  } else {
+    show.forEach(function (it) {
+      var left = 7 - (daysAgo(it.ts) || 0);
+      var expire = left <= 0 ? '即将清理' : ('还剩 ' + left + ' 天');
+      html += '<div class="backup-item"><span>' + esc(it.name) + '（删除于 ' + fmtTs(it.ts) + '，' + expire + '）</span>'
+        + '<button class="btn btn-xs" data-trash-restore="' + esc(it.file) + '">还原</button>'
+        + '<button class="btn btn-danger-xs" data-trash-del="' + esc(it.file) + '">彻底删除</button></div>';
+    });
+    if (items.length > 5) {
+      html += '<div style="margin:6px 16px"><a class="tool-link" id="btnTrashToggle">' +
+        (box._trashAll ? '收起' : '还有 ' + (items.length - 5) + ' 项 · 显示全部') + '</a></div>';
+    }
+  }
+  box.innerHTML = html;
 }
 // 回收站里的账套名取自 JSON 内容，属于用户可控数据，插入 HTML 前必须转义
 function esc(s) {
@@ -299,6 +312,11 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
   var restoreFile = t.getAttribute('data-trash-restore');
   var delFile = t.getAttribute('data-trash-del');
   if (t.id === 'btnRefreshTrash') { renderTrash(); return; }
+  if (t.id === 'btnTrashToggle') {
+    var tb = $('trashPanel');
+    if (tb) { tb._trashAll = !tb._trashAll; renderTrashRows(); }
+    return;
+  }
   if (t.id === 'btnEmptyTrash') {
     // 高危操作保护：整账套永久删除，先验证操作密码（默认 admin，可在系统设置修改）
     if (!(await H.askOpPassword('清空账套回收站'))) return;
