@@ -303,6 +303,124 @@ fn rotate_backups(bid: &str, kind: BackupKind, keep: usize) {
     }
 }
 
+// —— 孤儿备份收敛（解决 backups/ 无限堆积的最后一环）——
+// save_book 的 .bak1~5、save_backup 的 Auto、save_restore_snapshot 的 PreRestore
+// 各自只对「仍在写」的账套限了额；但账套一旦被删除（移入回收站）或改名/换 id，
+// 它的历史备份就再也没有机制清理，长期使用后会堆出大量无主副本。
+// 本函数做全局收敛，规则：
+//   - 现役账套（books/ 存在）：已有 20 / 5 / 5 各自限额，不动；
+//   - 孤儿账套（books/ 已无此 id）：普通自动备份只留最新 1 份兜底，
+//     恢复前快照与 .bak1~5 滚动备份整组删除。
+// 全程容错：任何删除失败都忽略，绝不影响记账主流程。
+const ORPHAN_AUTO_KEEP: usize = 1;
+
+// 备份文件的三类来源（用于孤儿收敛时的分组）
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum BackupFileKind {
+    Auto,       // <id>_<ts>.json
+    PreRestore, // <id>_pre_restore_<ts>.json
+    Rolling,    // <id>.bak1 .. .bak5（save_book 写前滚动）
+}
+
+// 解析备份文件名归属的账套 id 与来源类型。
+// 非本软件命名规则的文件一律返回 None（跳过不删，避免误伤）。
+fn parse_backup_owner(name: &str) -> Option<(String, BackupFileKind)> {
+    // 滚动备份：<id>.bakN（无 .json 扩展名）
+    if let Some(pos) = name.find(".bak") {
+        let id = &name[..pos];
+        if id.is_empty() {
+            return None;
+        }
+        let num = &name[pos + ".bak".len()..];
+        if num.is_empty() || num.chars().any(|c| !c.is_ascii_digit()) {
+            return None;
+        }
+        return Some((id.to_string(), BackupFileKind::Rolling));
+    }
+    if !name.ends_with(".json") {
+        return None;
+    }
+    let stem = &name[..name.len() - ".json".len()];
+    if let Some(sep) = stem.find("_pre_restore_") {
+        let id = &stem[..sep];
+        let ts = &stem[sep + "_pre_restore_".len()..];
+        if id.is_empty() || ts.parse::<u128>().is_err() {
+            return None;
+        }
+        return Some((id.to_string(), BackupFileKind::PreRestore));
+    }
+    let (head, ts) = stem.rsplit_once('_')?;
+    if head.is_empty() || ts.parse::<u128>().is_err() {
+        return None;
+    }
+    Some((head.to_string(), BackupFileKind::Auto))
+}
+
+// 在 base（数据根，含 books/ 与 backups/ 两个子目录）内执行孤儿收敛。
+// 返回删除的文件数；任何失败均忽略。抽成「接收目录」的纯函数便于临时目录单测。
+fn prune_backups_in(base: &Path) -> usize {
+    use std::collections::{HashMap, HashSet};
+    // 1. 现役账套集合
+    let mut active: HashSet<String> = HashSet::new();
+    if let Ok(rd) = fs::read_dir(base.join("books")) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if let Some(id) = n.strip_suffix(".json") {
+                active.insert(id.to_string());
+            }
+        }
+    }
+    // 2. 备份目录条目
+    let bdir = base.join("backups");
+    let entries: Vec<String> = match fs::read_dir(&bdir) {
+        Ok(rd) => rd
+            .flatten()
+            .filter_map(|e| Some(e.file_name().to_string_lossy().to_string()))
+            .collect(),
+        Err(_) => return 0,
+    };
+    // 3. 只对孤儿账套收敛：Auto 保留最新 1 份，其余（含 .bak、恢复快照）删除
+    let mut orphan_auto: HashMap<String, Vec<(u128, String)>> = HashMap::new();
+    let mut orphan_drop: Vec<String> = Vec::new();
+    for name in &entries {
+        let Some((id, kind)) = parse_backup_owner(name) else { continue };
+        if active.contains(&id) {
+            continue; // 现役账套：交给各自的 save 后轮换，不在这里动
+        }
+        match kind {
+            BackupFileKind::Auto => {
+                let ts = backup_ts(name).unwrap_or(0);
+                orphan_auto.entry(id).or_default().push((ts, name.clone()));
+            }
+            BackupFileKind::PreRestore | BackupFileKind::Rolling => orphan_drop.push(name.clone()),
+        }
+    }
+    // 4. 执行删除
+    let mut removed = 0usize;
+    for (_, mut list) in orphan_auto {
+        list.sort(); // 旧 → 新
+        let drop_n = list.len().saturating_sub(ORPHAN_AUTO_KEEP);
+        for (_, name) in list.drain(..drop_n) {
+            if fs::remove_file(bdir.join(&name)).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    for name in orphan_drop {
+        if fs::remove_file(bdir.join(&name)).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+fn prune_backups_global() {
+    if let Some(base) = dirs::data_dir() {
+        let root = base.join(APP_DATA_DIR_NAME);
+        let _ = prune_backups_in(&root);
+    }
+}
+
 #[tauri::command]
 fn save_backup(book_id: String, json: String) -> Result<String, String> {
     if book_id.trim().is_empty() {
@@ -413,6 +531,8 @@ fn trash_book(id: String) -> Result<String, String> {
     // 移动的原子性在本机同分区 rename 上足够，失败即保留原文件，不会两头空
     fs::rename(&src, &dst).map_err(|e| format!("移入回收站失败: {e}"))?;
     purge_expired_trash();
+    // 账套已不在现役，立即收敛它的历史孤儿备份，避免 backups/ 无限堆积
+    prune_backups_global();
     Ok(fname)
 }
 
@@ -759,6 +879,8 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动时对历史孤儿备份做一次全局收敛（幂等/容错），保持 backups/ 有界
+    prune_backups_global();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -801,7 +923,8 @@ pub fn run() {
 mod tests {
     use super::{
         backup_kind_of, backup_ts, data_root, decode_base64_lenient, is_plain_filename, now_ts,
-        parse_trash_name, unique_path, APP_DATA_DIR_NAME, BackupKind,
+        parse_backup_owner, parse_trash_name, prune_backups_in, unique_path, APP_DATA_DIR_NAME,
+        BackupFileKind, BackupKind,
     };
     use base64::Engine as _;
     use std::fs;
@@ -907,6 +1030,113 @@ mod tests {
         // 非 json / 空名一律不归类，避免误删无关文件
         assert_eq!(backup_kind_of("B1_1724000000000.txt", "B1"), None);
         assert_eq!(backup_kind_of("", "B1"), None);
+    }
+
+    // —— 孤儿备份收敛：文件名归属解析 ——
+    #[test]
+    fn parse_backup_owner_covers_three_kinds() {
+        assert_eq!(
+            parse_backup_owner("B1_1700000000000.json"),
+            Some(("B1".to_string(), BackupFileKind::Auto))
+        );
+        // 账套 id 本身含下划线也正确归属（只剥最后一段数字时间戳）
+        assert_eq!(
+            parse_backup_owner("添钰来客_合并_1700000000000_1700000000001.json"),
+            Some(("添钰来客_合并_1700000000000".to_string(), BackupFileKind::Auto))
+        );
+        assert_eq!(
+            parse_backup_owner("B1_pre_restore_1700000000001.json"),
+            Some(("B1".to_string(), BackupFileKind::PreRestore))
+        );
+        assert_eq!(
+            parse_backup_owner("B1.bak3"),
+            Some(("B1".to_string(), BackupFileKind::Rolling))
+        );
+        // 非本软件产物一律不认领，避免误删
+        assert_eq!(parse_backup_owner("README.md"), None);
+        assert_eq!(parse_backup_owner(".DS_Store"), None);
+        assert_eq!(parse_backup_owner("a.bakx"), None);
+        assert_eq!(parse_backup_owner("B1.json"), None); // 无时间戳的裸账套名不视作备份
+        assert_eq!(parse_backup_owner(""), None);
+    }
+
+    // 现役账套的备份一律不动（限额交给各自 save 后轮换）
+    #[test]
+    fn prune_keeps_active_book_backups() {
+        let tmp = std::env::temp_dir().join(format!("xzys_prune_active_{}", now_ts()));
+        fs::create_dir_all(tmp.join("books")).unwrap();
+        fs::create_dir_all(tmp.join("backups")).unwrap();
+        fs::write(tmp.join("books/live.json"), "{}").unwrap();
+        for name in ["live_1000.json", "live_2000.json", "live_pre_restore_3000.json", "live.bak1"] {
+            fs::write(tmp.join("backups").join(name), "x").unwrap();
+        }
+        assert_eq!(prune_backups_in(&tmp), 0, "现役账套备份不应被收敛");
+        assert_eq!(fs::read_dir(tmp.join("backups")).unwrap().count(), 4);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // 孤儿账套：Auto 留最新 1 份，pre_restore / .bak 整组删；非产物文件不碰
+    #[test]
+    fn prune_converges_orphan_book_backups() {
+        let tmp = std::env::temp_dir().join(format!("xzys_prune_orphan_{}", now_ts()));
+        fs::create_dir_all(tmp.join("books")).unwrap();
+        fs::create_dir_all(tmp.join("backups")).unwrap();
+        fs::write(tmp.join("books/live.json"), "{}").unwrap();
+        let b = tmp.join("backups");
+        // 活账套：不受影响
+        fs::write(b.join("live_1000.json"), "x").unwrap();
+        // 孤儿账套 B1：3 份 auto + 2 份 pre_restore + 2 份 .bak
+        for t in [1000u128, 2000, 3000] {
+            fs::write(b.join(format!("B1_{t}.json")), "x").unwrap();
+        }
+        fs::write(b.join("B1_pre_restore_9000.json"), "x").unwrap();
+        fs::write(b.join("B1_pre_restore_9500.json"), "x").unwrap();
+        fs::write(b.join("B1.bak1"), "x").unwrap();
+        fs::write(b.join("B1.bak2"), "x").unwrap();
+        // 无关文件：不认领不删
+        fs::write(b.join("说明.txt"), "x").unwrap();
+
+        let removed = prune_backups_in(&tmp);
+        // 孤儿 B1：auto 3 份留 1 → 删 2；pre_restore 2 份全删；.bak1/.bak2 全删 → 共 6
+        assert_eq!(removed, 6, "孤儿应删 2 auto + 2 pre_restore + 2 .bak");
+        let remain: Vec<String> = fs::read_dir(&b)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(remain.contains(&"live_1000.json".to_string()));
+        assert!(remain.contains(&"B1_3000.json".to_string()), "孤儿 auto 应留最新 1 份");
+        assert!(remain.contains(&"说明.txt".to_string()), "非产物文件应保留");
+        assert!(
+            !remain.iter().any(|n| n.starts_with("B1_pre_restore") || n.contains(".bak")),
+            "孤儿 pre_restore 与 .bak 应全部删除，实际: {remain:?}"
+        );
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // 无孤儿时无事发生
+    #[test]
+    fn prune_noop_when_clean() {
+        let tmp = std::env::temp_dir().join(format!("xzys_prune_noop_{}", now_ts()));
+        fs::create_dir_all(tmp.join("books")).unwrap();
+        fs::create_dir_all(tmp.join("backups")).unwrap();
+        assert_eq!(prune_backups_in(&tmp), 0);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // 真实机器存量收敛（手工执行）：cargo test --lib -- --ignored real_prune
+    // 会真删 backups/ 里孤儿账套的历史副本（已在用账套的备份不受影响）。
+    #[test]
+    #[ignore]
+    fn real_prune_converges_backups() {
+        let base = dirs::data_dir().unwrap().join(APP_DATA_DIR_NAME);
+        let removed = prune_backups_in(&base);
+        println!("孤儿收敛删除 {removed} 份，backups/ 剩余：");
+        let b = base.join("backups");
+        if let Ok(rd) = fs::read_dir(&b) {
+            for e in rd.flatten() {
+                println!("  {}", e.file_name().to_string_lossy());
+            }
+        }
     }
 
     // 回收站靠文件名还原 id；解析错了会导致还原出错误账套或当作垃圾跳过
