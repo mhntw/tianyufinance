@@ -174,7 +174,7 @@ fn save_book(id: String, json: String) -> Result<(), String> {
     }
     let path = books_dir()?.join(format!("{id}.json"));
     // 原子写（.tmp → rename）已保证真源不被写坏；
-    // 撤销/回滚走「每日快照 / 关键节点快照 / 自动备份」，不再做写前 .bak 滚动（高 I/O 且价值低）。
+    // 撤销/回滚走「自动存档 / 覆盖前存档」，不再做写前 .bak 滚动（高 I/O 且价值低）。
     atomic_write(&path, &json)
 }
 
@@ -221,22 +221,18 @@ fn delete_book(id: String) -> Result<(), String> {
 // 自动备份由前端 persist() 以 3 秒防抖窗口触发，一天正常录账会堆出上百份全量 JSON，
 // 而备份目录此前从不清理，只增不减最终吃满磁盘。这里按账套保留最近 N 份，超出从旧到新删除。
 // 另注：save_book 里的 bak1~bak5 是「写前滚动备份」，与本处的自动备份是两套，互不干扰。
-// 自动备份（高频中间点）配额：只留最近 10 份。定位是「刚改乱几笔立刻撤回」，
-// 高频点再多也只是几分钟内的瞬时拷贝，不承担找历史职责。
+// 自动存档：账套每次落盘自动留 1 份（最近 10 份滚动）。
+// 用途只有一类——「软件故障 / 文件损坏或丢失」时救援当前账本。
+// 录错账不靠它（走红冲/反结账），错删账套走回收站，两者都不需要历史快照。
 const MAX_AUTO_BACKUPS: usize = 10;
-// 关键节点快照（文件名沿用 _pre_restore_ 前缀，兼容既有数据）：结账/反结账/结转损益/
-// 年结/结转成本/计提折旧/恢复前/导入前都会留，独立配额 10，
-// 不与高频自动备份混池——避免「结账点被随后几笔录账挤掉」。
-const MAX_MILESTONE_SNAPSHOTS: usize = 10;
-// 每日快照：每账套每天 1 份，保留最近 31 份（≈31 天）。
-// 高频 Auto 覆盖不到「昨天/上周」，跨天回滚只有每日快照能承担。
-const MAX_DAILY_KEEP: usize = 31;
+// 覆盖前存档：仅在「导入 / 恢复备份」这类整本覆盖动作前，自动把当前账本留一份，
+// 防这两个操作把账弄砸后无法退回。保留 3 份足矣。
+const MAX_PRE_RESTORE_SNAPSHOTS: usize = 3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum BackupKind {
-    Auto,       // 普通自动备份：<bookId>_<ts>.json
-    PreRestore, // 关键节点快照（结账/结转/恢复前/导入前）：<bookId>_pre_restore_<ts>.json
-    Daily,      // 每日快照：<bookId>_daily_<YYYYMMDD>.json（每账套每天至多 1 份）
+    Auto,       // 自动存档：<bookId>_<ts>.json（最近 10 份滚动）
+    PreRestore, // 覆盖前存档：<bookId>_pre_restore_<ts>.json（导入/恢复前，保留 3 份）
 }
 
 // 从备份文件名取时间戳：<任意前缀>_<ts>.json → ts（取最后一段下划线后的数字）
@@ -252,12 +248,9 @@ fn backup_kind_of(name: &str, bid: &str) -> Option<BackupKind> {
     if !name.ends_with(".json") {
         return None;
     }
-    // 先判 pre / daily 再判 auto：三者前缀都有 <bid>_，顺序反了会被误归为自动备份
+    // 先判 pre 再判 auto：pre 名同样以 <bid>_ 开头，顺序反了会被误归为自动备份
     if name.starts_with(&format!("{bid}_pre_restore_")) {
         return Some(BackupKind::PreRestore);
-    }
-    if name.starts_with(&format!("{bid}_daily_")) {
-        return Some(BackupKind::Daily);
     }
     if name.starts_with(&format!("{bid}_")) {
         return Some(BackupKind::Auto);
@@ -310,16 +303,15 @@ fn rotate_backups(bid: &str, kind: BackupKind, keep: usize) {
 // 本函数做全局收敛，规则：
 //   - 现役账套（books/ 存在）：已有 20 / 5 / 5 各自限额，不动；
 //   - 孤儿账套（books/ 已无此 id）：普通自动备份只留最新 1 份兜底，
-//     恢复前快照与 .bak1~5 滚动备份整组删除。
+//     覆盖前存档与 .bak1~5 滚动备份整组删除。
 // 全程容错：任何删除失败都忽略，绝不影响记账主流程。
 const ORPHAN_AUTO_KEEP: usize = 1;
 
-// 备份文件的三类来源（用于孤儿收敛时的分组）
+// 备份文件来源（用于孤儿收敛时的分组）
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum BackupFileKind {
     Auto,       // <id>_<ts>.json
     PreRestore, // <id>_pre_restore_<ts>.json
-    Daily,      // <id>_daily_<YYYYMMDD>.json
     Rolling,    // <id>.bak1 .. .bak5（旧写前滚动，机制已废弃，收敛时一律清除）
 }
 
@@ -349,14 +341,6 @@ fn parse_backup_owner(name: &str) -> Option<(String, BackupFileKind)> {
             return None;
         }
         return Some((id.to_string(), BackupFileKind::PreRestore));
-    }
-    if let Some(sep) = stem.find("_daily_") {
-        let id = &stem[..sep];
-        let date = &stem[sep + "_daily_".len()..];
-        if id.is_empty() || date.len() != 8 || date.chars().any(|c| !c.is_ascii_digit()) {
-            return None;
-        }
-        return Some((id.to_string(), BackupFileKind::Daily));
     }
     let (head, ts) = stem.rsplit_once('_')?;
     if head.is_empty() || ts.parse::<u128>().is_err() {
@@ -390,7 +374,7 @@ fn prune_backups_in(base: &Path) -> usize {
     };
     // 3. 分组：
     //    - Rolling（旧写前 .bak 滚动，机制已废弃）：现役/孤儿一律清除
-    //    - 孤儿账套：Auto 只留最新 1 份兜底；PreRestore / Daily 删除
+    //    - 孤儿账套：Auto 只留最新 1 份兜底；PreRestore 删除
     //    - 现役账套：交给各自 save 后的轮换，不在这里动
     let mut orphan_auto: HashMap<String, Vec<(u128, String)>> = HashMap::new();
     let mut drop_list: Vec<String> = Vec::new();
@@ -405,7 +389,7 @@ fn prune_backups_in(base: &Path) -> usize {
                 let ts = backup_ts(name).unwrap_or(0);
                 orphan_auto.entry(id).or_default().push((ts, name.clone()));
             }
-            BackupFileKind::PreRestore | BackupFileKind::Daily => {
+            BackupFileKind::PreRestore => {
                 if !active.contains(&id) {
                     drop_list.push(name.clone());
                 }
@@ -438,31 +422,8 @@ fn prune_backups_global() {
     }
 }
 
-// 每日快照：day 形如 YYYYMMDD（前端按本地日期提供；缺省回退 UTC 日期）。
-// 当天已有则跳过（每账套每天至多 1 份），写入后按 31 份环形收敛。
-// 任何失败都静默忽略——每日快照不应阻断正常记账。
-fn ensure_daily(book_id: &str, json: &str, day: &str) {
-    if day.len() != 8 || !day.chars().all(|c| c.is_ascii_digit()) {
-        return;
-    }
-    let fname = format!("{book_id}_daily_{day}.json");
-    let dir = match backups_dir() {
-        Ok(d) => d,
-        Err(_) => return,
-    };
-    if dir.join(&fname).exists() {
-        return; // 今天已有每日快照
-    }
-    let _ = atomic_write(&dir.join(&fname), json);
-    rotate_backups(book_id, BackupKind::Daily, MAX_DAILY_KEEP);
-}
-
 #[tauri::command]
-fn save_backup(
-    book_id: String,
-    json: String,
-    day: Option<String>,
-) -> Result<String, String> {
+fn save_backup(book_id: String, json: String) -> Result<String, String> {
     if book_id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
     }
@@ -470,10 +431,8 @@ fn save_backup(
     let fname = format!("{book_id}_{ts}.json");
     let path = backups_dir()?.join(&fname);
     atomic_write(&path, &json)?;
-    // 自动备份（高频点）按账套环形收敛；随后补今日每日快照
+    // 自动存档按账套环形保留最近 10 份
     rotate_backups(&book_id, BackupKind::Auto, MAX_AUTO_BACKUPS);
-    let day = day.unwrap_or_else(chrono_date_string);
-    ensure_daily(&book_id, &json, &day);
     Ok(fname)
 }
 
@@ -639,7 +598,7 @@ fn empty_trash() -> Result<usize, String> {
 #[derive(Serialize)]
 struct BackupStats {
     count: usize,         // 自动备份份数
-    snapshot_count: usize,// 恢复前快照份数
+    snapshot_count: usize, // 覆盖前存档份数
     total_bytes: u64,     // 自动备份占用
     last_ts: u128,        // 最新一次自动备份时间
     last_export_ts: u128, // exports/ 目录最新文件时间（0 = 从未导出过）
@@ -691,24 +650,18 @@ fn backup_stats(book_id: String) -> Result<BackupStats, String> {
 }
 
 // 恢复/导入前的强制快照：<bookId>_pre_restore_<ts>.json。
-// 与 save_backup 分开设命令，是为了让快照在备份列表里可识别（UI 标注为「恢复前快照」），
-// 用户覆盖错了能一眼找到回滚点，而不是在一堆同名备份里猜。
+// 与 save_backup 分开设命令：它只在「导入 / 恢复备份」等整本覆盖动作前被调用，
+// 生成带 pre_restore 标记的「覆盖前存档」，用户恢复错了能一眼找到回滚点。
 #[tauri::command]
-fn save_restore_snapshot(
-    book_id: String,
-    json: String,
-    day: Option<String>,
-) -> Result<String, String> {
+fn save_restore_snapshot(book_id: String, json: String) -> Result<String, String> {
     if book_id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
     }
     let fname = format!("{book_id}_pre_restore_{}.json", now_ts());
     let path = backups_dir()?.join(&fname);
     atomic_write(&path, &json)?;
-    // 关键节点快照独立配额，不被高频自动备份挤掉
-    rotate_backups(&book_id, BackupKind::PreRestore, MAX_MILESTONE_SNAPSHOTS);
-    let day = day.unwrap_or_else(chrono_date_string);
-    ensure_daily(&book_id, &json, &day);
+    // 覆盖前存档独立配额（3 份），不受高频自动存档滚动影响
+    rotate_backups(&book_id, BackupKind::PreRestore, MAX_PRE_RESTORE_SNAPSHOTS);
     Ok(fname)
 }
 
@@ -1098,10 +1051,6 @@ mod tests {
             Some(("B1".to_string(), BackupFileKind::PreRestore))
         );
         assert_eq!(
-            parse_backup_owner("B1_daily_20260906.json"),
-            Some(("B1".to_string(), BackupFileKind::Daily))
-        );
-        assert_eq!(
             parse_backup_owner("B1.bak3"),
             Some(("B1".to_string(), BackupFileKind::Rolling))
         );
@@ -1113,7 +1062,7 @@ mod tests {
         assert_eq!(parse_backup_owner(""), None);
     }
 
-    // 现役账套的 Auto/PreRestore/Daily 一律不动（限额交给各自 save 后轮换）；
+    // 现役账套的 Auto/PreRestore 一律不动（限额交给各自 save 后轮换）；
     // 已废弃的 .bak 滚动即使是现役账套也清除
     #[test]
     fn prune_keeps_active_book_backups() {
@@ -1125,13 +1074,12 @@ mod tests {
             "live_1000.json",
             "live_2000.json",
             "live_pre_restore_3000.json",
-            "live_daily_20260905.json",
         ] {
             fs::write(tmp.join("backups").join(name), "x").unwrap();
         }
         fs::write(tmp.join("backups").join("live.bak1"), "x").unwrap();
         assert_eq!(prune_backups_in(&tmp), 1, "现役账套只应清除已废弃的 .bak1");
-        assert_eq!(fs::read_dir(tmp.join("backups")).unwrap().count(), 4);
+        assert_eq!(fs::read_dir(tmp.join("backups")).unwrap().count(), 3);
         let _ = fs::remove_dir_all(&tmp);
     }
 
@@ -1151,16 +1099,14 @@ mod tests {
         }
         fs::write(b.join("B1_pre_restore_9000.json"), "x").unwrap();
         fs::write(b.join("B1_pre_restore_9500.json"), "x").unwrap();
-        fs::write(b.join("B1_daily_20260901.json"), "x").unwrap();
-        fs::write(b.join("B1_daily_20260902.json"), "x").unwrap();
         fs::write(b.join("B1.bak1"), "x").unwrap();
         fs::write(b.join("B1.bak2"), "x").unwrap();
         // 无关文件：不认领不删
         fs::write(b.join("说明.txt"), "x").unwrap();
 
         let removed = prune_backups_in(&tmp);
-        // 孤儿 B1：auto 3 留 1 → 删 2；pre_restore 2、daily 2、.bak 2 全删 → 共 8
-        assert_eq!(removed, 8, "孤儿应删 2 auto + 2 pre_restore + 2 daily + 2 .bak");
+        // 孤儿 B1：auto 3 留 1 → 删 2；pre_restore 2、.bak 2 全删 → 共 6
+        assert_eq!(removed, 6, "孤儿应删 2 auto + 2 pre_restore + 2 .bak");
         let remain: Vec<String> = fs::read_dir(&b)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())

@@ -17,36 +17,25 @@ function storageListBackups(bid) {
   return window.Storage.listBackups(bid).then(function (list) {
     var out = [];
     (list || []).forEach(function (it) {
-      var file, label, ts = 0;
+      var file, ts;
       if (typeof it === 'string') {
-        // Rust 返回文件名，三类：<id>_<ts>.json / <id>_pre_restore_<ts>.json / <id>_daily_<YYYYMMDD>.json
         file = it;
-        var pre = it.indexOf('_pre_restore_') >= 0;
-        var dm = /_daily_(\d{4})(\d{2})(\d{2})\.json$/.exec(it);
-        if (dm) {
-          ts = Date.parse(dm[1] + '-' + dm[2] + '-' + dm[3] + 'T00:00:00') || 0;
-          label = '每日快照（' + dm[1] + '-' + dm[2] + '-' + dm[3] + '，自动留档）';
-        } else {
-          var m = /(\d+)\.json$/.exec(it);
-          ts = m ? Number(m[1]) : 0;
-          if (!ts) return;
-          label = (pre ? '关键节点快照（结账/结转/恢复前）' : '自动备份') + ' · ' + fmtTs(ts);
-        }
+        var m = /(\d+)\.json$/.exec(it);
+        ts = m ? Number(m[1]) : 0;
+        if (!ts) return;
       } else {
-        // 浏览器兜底返回对象：{ ts, bookId }
         ts = it && it.ts;
         if (!ts) return;
         file = (bid ? bid + '_' : '') + ts + '.json';
-        label = ((it && it.pre) ? '关键节点快照（结账/结转/恢复前）' : '自动备份') + ' · ' + fmtTs(ts);
       }
-      out.push({ file: file, ts: ts, label: label });
+      // 不区分类型，一律按时间显示，财务人员只需知道"哪个时刻的备份"
+      out.push({ file: file, ts: ts, label: '备份 · ' + fmtTs(ts) });
     });
-    // 按时间倒序（每日快照/关键节点/自动备份按各自时间点混排）
     out.sort(function (a, b) { return b.ts - a.ts; });
     return out;
   }).catch(function () { return []; });
 }
-// 恢复一律按「完整文件名」取回（自动/关键节点/每日快照均适用）
+// 恢复一律按「完整文件名」取回（自动存档 / 覆盖前存档均适用）
 function storageLoadBackup(bid, file) {
   if (typeof window.Storage === 'undefined') return Promise.resolve(null);
   return window.Storage.loadBackup(bid, file)
@@ -54,7 +43,7 @@ function storageLoadBackup(bid, file) {
     .catch(function () { return null; });
 }
 
-// 覆盖当前账本前先留一份「恢复前快照」，保证误恢复/误导入可一键撤回。
+// 覆盖当前账本前先留一份「覆盖前存档」，保证误恢复/误导入可一键撤回。
 // 返回 true=已留快照，false=留快照失败，null=当前环境不支持（浏览器兜底等，静默跳过不打扰用户）。
 function snapshotBeforeRestore() {
   if (typeof window.Storage === 'undefined') return Promise.resolve(null);
@@ -71,7 +60,7 @@ function guardBeforeRestore(tip) {
   return snapshotBeforeRestore().then(function (snap) {
     if (snap === true) return true;                       // 已留快照，放心覆盖
     if (snap === null) return true;                       // 环境不支持，静默放行
-    return H.confirmAsync(tip, { title: '未能创建恢复前快照' });
+    return H.confirmAsync(tip, { title: '未能创建覆盖前存档' });
   });
 }
 
@@ -184,10 +173,8 @@ function daysAgo(ts) {
 function renderBackupHealth(st) {
   if (!st) return '';
   var html = '<div class="backup-health">';
-  var bits = [st.count + ' 份自动备份'];
-  if (st.snapshot_count) bits.push(st.snapshot_count + ' 份恢复前快照');
-  bits.push('占用 ' + fmtSize(st.total_bytes));
-  if (st.last_ts) bits.push('最近备份 ' + fmtTs(st.last_ts));
+  var bits = [(st.count + (st.snapshot_count || 0)) + ' 份备份', '占用 ' + fmtSize(st.total_bytes)];
+  if (st.last_ts) bits.push('最近 ' + fmtTs(st.last_ts));
   html += '<div class="muted" style="font-size:12px">' + bits.join('　·　') + '</div>';
 
   // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本
@@ -218,7 +205,7 @@ function listBackups() {
       (disk ? disk.length : 0) + ' 份备份</span></div>';
     html += renderBackupHealth(stats);
     if (disk !== null && disk.length) {
-      html += '<p class="backup-sec-title">账套备份（最安全，落真实文件）</p>';
+      html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
       disk.forEach(function (b) {
         html += '<div class="backup-item"><span>' + esc(b.label || '') + '</span>' +
           '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
@@ -350,17 +337,17 @@ $('btnListBackup').addEventListener('click', listBackups);
 $('backupList').addEventListener('click', async function (e) {
   if (e.target.id === 'btnRefreshBk') { listBackups(); return; }
   if (e.target.tagName !== 'BUTTON') return;
-  const ok = await H.confirmAsync('确定用该备份覆盖当前账本？\n（覆盖前会自动留一份「恢复前快照」，可随时再恢复回来）', { title: '恢复备份' });
+  const ok = await H.confirmAsync('用该备份恢复当前账本？\n（备份仅用于软件故障 / 文件损坏等意外找回；\n账务差错请用「红字冲销 / 反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
   if (!ok) return;
   // 覆盖前强制留快照：一旦恢复到的备份不对，可从快照回滚，不再是不可逆操作
-  const goon = await guardBeforeRestore('未能创建「恢复前快照」，继续恢复将无法撤回。是否仍要继续？');
+  const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续恢复将无法撤回。是否仍要继续？');
   if (!goon) return;
   var file = e.target.getAttribute('data-file');
   var bid = S.currentBookId();
   var done = function (st) {
     if (!st) return showToast('备份数据为空', 'error');
     S.restoreBookState(st);
-    showToast('已恢复备份（如需撤销，可恢复列表中的关键节点/每日快照）');
+    showToast('已恢复备份（如需撤销，可恢复「覆盖前存档」）');
     refreshAll(); listBackups(); refreshTools();
   };
   if (file) {
@@ -461,10 +448,10 @@ $('bkFile').addEventListener('change', function (e) {
       var st = JSON.parse(ev.target.result);
       if (!st || !st.company) { showToast('文件不是有效的账套备份', 'error'); input.value = ''; return; }
       // 外部文件导入同样是整体覆盖当前账本，先留快照以便撤回
-      const goon = await guardBeforeRestore('未能创建「恢复前快照」，继续导入将无法撤回。是否仍要继续？');
+      const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
       if (!goon) { input.value = ''; return; }
       S.restoreBookState(st);
-      showToast('已从备份文件恢复（如需撤销，可恢复列表中「恢复前快照」）');
+      showToast('已从备份文件恢复（如需撤销，可恢复列表中「覆盖前存档」）');
       refreshAll(); listBackups(); refreshTools();
     } catch (err) { showToast('解析失败：' + err.message, 'error'); }
     input.value = '';

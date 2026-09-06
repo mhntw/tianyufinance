@@ -1496,11 +1496,10 @@
       }).sort(function (a, b) { return (voucherMonth(a) + a.word + a.no) < (voucherMonth(b) + b.word + b.no) ? -1 : 1; });
     },
 
-    // ============ 关键节点强制备份（结账/结转损益/年结/计提折旧等调用） ============
-    // 走「关键节点快照」通道（Rust save_restore_snapshot，独立配额 10 份）：
-    // 立即落盘、不依赖 3 秒防抖窗口，且不与高频自动备份混池——
-    // 否则结账点会被随后几笔普通录入挤掉，想回滚到"结账前"就找不到了。
-    // 手动「立即备份」按钮同样走此通道（用户显式留档，值得被保留）。
+    // ============ 立即存档（手动按钮与结账/结转等触发点共用） ============
+    // 立即落一份「自动存档」（最近 10 份滚动），不依赖 3 秒防抖窗口。
+    // 说明：录错账不靠备份（走红冲/反结账更正），错删账套走回收站还原；
+    // 「导入 / 恢复备份」等整本覆盖动作前的回退，由「覆盖前存档」saveRestoreSnapshot 单独承担。
     backupNow: function () {
       var bid = this.currentBookId();
       // 兜底：当前指针为空但有账套时，回退到 default / 第一个（避免空指针导致备份直接失败）
@@ -1515,13 +1514,13 @@
       if (this._bkTimer) { clearTimeout(this._bkTimer); this._bkTimer = null; this._bkWindow = false; this._bkDirty = false; }
       try {
         if (typeof window.Storage !== 'undefined') {
-          return window.Storage.saveRestoreSnapshot(bid, st).then(function (r) {
+          return window.Storage.saveBackup(bid, st).then(function (r) {
             if (!(r && r.ok)) {
-              console.warn('[backupNow] 关键节点备份失败：' + ((r && r.error) || '未知原因'));
+              console.warn('[backupNow] 自动存档失败：' + ((r && r.error) || '未知原因'));
             }
             return !!(r && r.ok);
           }).catch(function (e) {
-            console.warn('[backupNow] 关键节点备份失败：' + (e && e.message || e));
+            console.warn('[backupNow] 自动存档失败：' + (e && e.message || e));
             return false;
           });
         }

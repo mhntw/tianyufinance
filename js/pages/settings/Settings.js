@@ -485,7 +485,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
           // 导入是整体覆盖当前账本，先留快照以便撤回（复用 Tools.js 的同一套保护）
           var guard = globalThis.__guardBeforeRestore;
           if (guard) {
-            const goon = await guard('未能创建「恢复前快照」，继续导入将无法撤回。是否仍要继续？');
+            const goon = await guard('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
             if (!goon) { bmFile.value = ''; return; }
           }
           var r = S.restoreFromData(data);
