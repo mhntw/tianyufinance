@@ -199,23 +199,35 @@ function listBackups() {
     (typeof window.Storage !== 'undefined' && window.Storage.backupStats)
       ? window.Storage.backupStats(bid) : Promise.resolve(null)
   ]).then(function (res) {
-    var disk = res[0], stats = res[1];
-    box.innerHTML = '';
-    var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:12px">共 ' +
-      (disk ? disk.length : 0) + ' 份备份</span></div>';
-    html += renderBackupHealth(stats);
-    if (disk !== null && disk.length) {
-      html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
-      disk.forEach(function (b) {
-        html += '<div class="backup-item"><span>' + esc(b.label || '') + '</span>' +
-          '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
-      });
-    }
-    if (!disk || !disk.length) {
-      html += '<p class="muted">暂无备份（点击「立即备份」创建）</p>';
-    }
-    box.innerHTML = html;
+    box._bDisk = res[0] || [];
+    box._bStats = res[1];
+    box._bAll = false;
+    renderBackupRows();
   }).catch(function (e) { showToast('读取备份失败：' + (e && e.message || e), 'error'); });
+}
+
+// 备份列表渲染：默认只显示最近 1 份，避免整片刷屏；点「显示全部」再展开
+function renderBackupRows() {
+  var box = $('backupList'); if (!box) return;
+  var disk = box._bDisk || [], stats = box._bStats;
+  var show = box._bAll ? disk : disk.slice(0, 1);
+  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:12px">共 ' +
+    disk.length + ' 份备份</span></div>';
+  html += renderBackupHealth(stats);
+  if (disk.length) {
+    html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
+    show.forEach(function (b) {
+      html += '<div class="backup-item"><span>' + esc(b.label || '') + '</span>' +
+        '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
+    });
+    if (disk.length > 1) {
+      html += '<div style="margin:6px 16px"><a class="tool-link" id="btnBkToggle">' +
+        (box._bAll ? '收起' : '还有 ' + (disk.length - 1) + ' 份 · 显示全部') + '</a></div>';
+    }
+  } else {
+    html += '<p class="muted">暂无备份（点击「立即备份」创建）</p>';
+  }
+  box.innerHTML = html;
 }
 
 /* ============================================================
@@ -336,6 +348,11 @@ $('btnBkNow').addEventListener('click', function () {
 $('btnListBackup').addEventListener('click', listBackups);
 $('backupList').addEventListener('click', async function (e) {
   if (e.target.id === 'btnRefreshBk') { listBackups(); return; }
+  if (e.target.id === 'btnBkToggle') {
+    var bb = $('backupList');
+    if (bb) { bb._bAll = !bb._bAll; renderBackupRows(); }
+    return;
+  }
   if (e.target.tagName !== 'BUTTON') return;
   const ok = await H.confirmAsync('用该备份恢复当前账本？\n（备份仅用于软件故障 / 文件损坏等意外找回；\n账务差错请用「红字冲销 / 反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
   if (!ok) return;
