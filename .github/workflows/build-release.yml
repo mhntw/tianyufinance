@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     outputs:
-      release_id: ${{ steps.create.outputs.id }}
+      release_id: ${{ steps.create.outputs.release_id }}
     steps:
       - name: 拉取代码
         uses: actions/checkout@v5
