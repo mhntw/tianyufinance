@@ -17,34 +17,39 @@ function storageListBackups(bid) {
   return window.Storage.listBackups(bid).then(function (list) {
     var out = [];
     (list || []).forEach(function (it) {
-      var ts, file, isPre = false;
+      var file, label, ts = 0;
       if (typeof it === 'string') {
-        // Rust 返回文件名：<bookId>_<ts>.json 或 <bookId>_pre_restore_<ts>.json
+        // Rust 返回文件名，三类：<id>_<ts>.json / <id>_pre_restore_<ts>.json / <id>_daily_<YYYYMMDD>.json
         file = it;
-        var m = /(\d+)\.json$/.exec(it);
-        ts = m ? Number(m[1]) : 0;
-        isPre = it.indexOf('_pre_restore_') >= 0;
+        var pre = it.indexOf('_pre_restore_') >= 0;
+        var dm = /_daily_(\d{4})(\d{2})(\d{2})\.json$/.exec(it);
+        if (dm) {
+          ts = Date.parse(dm[1] + '-' + dm[2] + '-' + dm[3] + 'T00:00:00') || 0;
+          label = '每日快照（' + dm[1] + '-' + dm[2] + '-' + dm[3] + '，自动留档）';
+        } else {
+          var m = /(\d+)\.json$/.exec(it);
+          ts = m ? Number(m[1]) : 0;
+          if (!ts) return;
+          label = (pre ? '关键节点快照（结账/结转/恢复前）' : '自动备份') + ' · ' + fmtTs(ts);
+        }
       } else {
         // 浏览器兜底返回对象：{ ts, bookId }
         ts = it && it.ts;
-        isPre = !!(it && it.pre);
+        if (!ts) return;
         file = (bid ? bid + '_' : '') + ts + '.json';
+        label = ((it && it.pre) ? '关键节点快照（结账/结转/恢复前）' : '自动备份') + ' · ' + fmtTs(ts);
       }
-      if (!ts) return;
-      // 恢复前快照单独命名：覆盖错了用户能一眼找到回滚点
-      out.push({
-        ts: ts, file: file, mtime: ts / 1000, pre: isPre,
-        name: isPre ? '恢复前快照（可撤回本次恢复）' : '账套备份'
-      });
+      out.push({ file: file, ts: ts, label: label });
     });
-    // 最新在前，便于一眼看到最近一次备份
+    // 按时间倒序（每日快照/关键节点/自动备份按各自时间点混排）
     out.sort(function (a, b) { return b.ts - a.ts; });
     return out;
   }).catch(function () { return []; });
 }
-function storageLoadBackup(bid, ts) {
+// 恢复一律按「完整文件名」取回（自动/关键节点/每日快照均适用）
+function storageLoadBackup(bid, file) {
   if (typeof window.Storage === 'undefined') return Promise.resolve(null);
-  return window.Storage.loadBackup(bid, ts)
+  return window.Storage.loadBackup(bid, file)
     .then(function (txt) { try { return txt ? JSON.parse(txt) : null; } catch (e) { return null; } })
     .catch(function () { return null; });
 }
@@ -215,8 +220,8 @@ function listBackups() {
     if (disk !== null && disk.length) {
       html += '<p class="backup-sec-title">账套备份（最安全，落真实文件）</p>';
       disk.forEach(function (b) {
-        html += '<div class="backup-item"><span>' + (b.name || '') + '（' + fmtTs(b.mtime * 1000) + '）</span>' +
-          '<button class="btn btn-xs" data-disk="1" data-ts="' + b.ts + '">恢复</button></div>';
+        html += '<div class="backup-item"><span>' + esc(b.label || '') + '</span>' +
+          '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
       });
     }
     if (!disk || !disk.length) {
@@ -350,17 +355,16 @@ $('backupList').addEventListener('click', async function (e) {
   // 覆盖前强制留快照：一旦恢复到的备份不对，可从快照回滚，不再是不可逆操作
   const goon = await guardBeforeRestore('未能创建「恢复前快照」，继续恢复将无法撤回。是否仍要继续？');
   if (!goon) return;
-  var disk = e.target.getAttribute('data-disk');
+  var file = e.target.getAttribute('data-file');
   var bid = S.currentBookId();
   var done = function (st) {
     if (!st) return showToast('备份数据为空', 'error');
     S.restoreBookState(st);
-    showToast('已恢复备份（如需撤销，可恢复列表中「恢复前快照」）');
+    showToast('已恢复备份（如需撤销，可恢复列表中的关键节点/每日快照）');
     refreshAll(); listBackups(); refreshTools();
   };
-  if (disk) {
-    var ts = e.target.getAttribute('data-ts');
-    storageLoadBackup(bid, Number(ts))
+  if (file) {
+    storageLoadBackup(bid, file)
       .then(function (st) {
         if (!st) throw new Error('读取备份失败');
         done(st);

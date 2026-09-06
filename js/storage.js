@@ -69,6 +69,12 @@
     }
   }
 
+  // 本地日期 YYYYMMDD（每日快照按本地日分天，避免用 UTC 日期差一天）
+  function localYmd() {
+    var d = new Date();
+    return '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  }
+
   var Storage = {
     // Tauri 桌面版恒为文件模式
     isFileMode: function () { return true; },
@@ -109,11 +115,11 @@
       return invoke('delete_book', { id: id }).then(function () { return { ok: true, mode: 'file' }; });
     },
 
-    // 写备份 backups/<bookId>_<ts>.json
+    // 写备份 backups/<bookId>_<ts>.json；附本地日期供后端补「每日快照」（每天 1 份，保留 31 天）
     saveBackup: function (bookId, state) {
       var payload = (typeof state === 'string') ? state : JSON.stringify(state);
       // Tauri 2 默认把 Rust snake_case 参数转 camelCase：book_id → bookId
-      return invoke('save_backup', { bookId: bookId, json: payload })
+      return invoke('save_backup', { bookId: bookId, json: payload, day: localYmd() })
         .then(function (fname) {
           var ts = (fname && /\d+/.test(fname)) ? Number(fname.match(/\d+/)[0]) : Date.now();
           return { ok: true, ts: ts };
@@ -125,7 +131,7 @@
     // 与 saveBackup 不同，失败不 reject，而是返回 {ok:false}，交由调用方决定是否继续覆盖。
     saveRestoreSnapshot: function (bookId, state) {
       var payload = (typeof state === 'string') ? state : JSON.stringify(state);
-      return invoke('save_restore_snapshot', { bookId: bookId, json: payload })
+      return invoke('save_restore_snapshot', { bookId: bookId, json: payload, day: localYmd() })
         .then(function (fname) {
           var m = /(\d+)\.json$/.exec(fname || '');
           return { ok: true, ts: m ? Number(m[1]) : Date.now(), filename: fname };
