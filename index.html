@@ -2207,14 +2207,6 @@
 
           <div class="card-filter">
             <div class="filter-row">
-              <div class="kd-period-range" data-start-id="logStart" data-end-id="logEnd" data-on-change="__renderLogs">
-                <div class="kd-period-trigger" id="logPeriodTrigger">
-                  <span class="kd-period-trigger-label">时间</span>
-                  <span class="kd-period-trigger-text" id="logPeriodText">请选择期间</span>
-                </div>
-                <input type="hidden" id="logStart" />
-                <input type="hidden" id="logEnd" />
-              </div>
               <span class="filter-item"><label>操作人</label><select id="logUser"><option value="">全部</option></select></span>
               <span class="filter-item"><label>操作类型</label>
                 <select id="logType">
@@ -2223,11 +2215,6 @@
                   <option value="结账">结账</option>
                   <option value="账套">账套</option>
                   <option value="设置">设置</option>
-                </select>
-              </span>
-              <span class="filter-item"><label>动作</label>
-                <select id="logActionType">
-                  <option value="">全部</option>
                 </select>
               </span>
               <button class="btn btn-primary" id="btnLogQuery">查询</button>

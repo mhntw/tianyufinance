@@ -301,45 +301,25 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
   var logInitDone = false;
 
   function logFilter() {
-    var start = $('logStart').value || '';
-    var end = $('logEnd').value || '';
     var user = ($('logUser').value || '').trim();
     var type = $('logType').value || '';
-    var actType = ($('logActionType').value || '').trim();  // 结构化操作类型过滤
     var all = S.getLogs();
     return all.filter(function (l) {
-      var d = (l.time || '').slice(0, 7);
-      if (start && d < start) return false;
-      if (end && d > end) return false;
       if (user && (l.user || '') !== user) return false;
       if (type && (l.module || '') !== type) return false;
-      if (actType && (l.action_type || '') !== actType) return false;
       return true;
     });
   }
 
   function refreshLogs() {
     var tb = $('logBody'); tb.innerHTML = '';
-    // 首次进入：期间过滤默认置空（显示全部期间的操作日志），避免系统级操作（如导入账套）
-    // 因账套历史期间与当前月不一致而被"本期"过滤掉、看不到。
+    // 首次进入：操作人下拉从日志数据去重生成一次
     if (!logInitDone) {
-      var H = globalThis.__KINGDEE_HELPERS__ || {};
-      $('logStart').value = ''; $('logEnd').value = '';
-      if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('logStart', 'logEnd');
-      // 操作人下拉：从日志数据中去重生成选项
       var users = {};
       (S.getLogs() || []).forEach(function (l) { users[l.user || '会计'] = 1; });
       var optUser = Object.keys(users).sort();
       $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {
         return '<option value="' + u + '">' + u + '</option>';
-      }).join('');
-      // 结构化操作类型下拉：从日志数据中去重，仅展示已有 meta.action_type 的条目
-      // 老日志无 action_type，不在选项中出现（默认"全部"展示所有）
-      var actTypes = {};
-      (S.getLogs() || []).forEach(function (l) { if (l.action_type) actTypes[l.action_type] = ACTION_TYPE_LABELS[l.action_type] || l.action_type; });
-      var optAct = Object.keys(actTypes).sort();
-      $('logActionType').innerHTML = '<option value="">全部</option>' + optAct.map(function (a) {
-        return '<option value="' + a + '">' + esc(actTypes[a]) + '</option>';
       }).join('');
       logInitDone = true;
     }
@@ -402,8 +382,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
 
   $('btnLogQuery').addEventListener('click', function () { logPageState.page = 1; refreshLogs(); });
   $('btnLogReset').addEventListener('click', function () {
-    $('logStart').value = ''; $('logEnd').value = ''; $('logUser').value = ''; $('logType').value = '';
-    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('logStart', 'logEnd');
+    $('logUser').value = ''; $('logType').value = '';
     logPageState.page = 1; refreshLogs();
   });
   $('logPrev').addEventListener('click', function () { if (logPageState.page > 1) { logPageState.page--; refreshLogs(); } });
