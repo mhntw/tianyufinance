@@ -90,3 +90,10 @@ jobs:
           args: ${{ matrix.args }}
           releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
+          # 兜底：若 create job 未建成 Release（如 gh 失败），build 能自行创建并上传
+          releaseName: 添钰财务管理系统 ${{ github.ref_name }}
+          releaseBody: |
+            桌面安装包：macOS（Apple Silicon）`*.dmg`、Windows 64 位 `*-setup.exe`（NSIS）。
+            macOS 包未签名，若被系统拦截请右键点击 →「打开」。
+          releaseDraft: false
+          prerelease: false
