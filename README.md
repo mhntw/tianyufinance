@@ -34,7 +34,7 @@
 
 | 触发方式 | 操作 | 产物去哪 |
 |---|---|---|
-| 手动预览 | Actions →「自动打包发布」→ **Run workflow** | 仅该次运行记录的 **Artifacts**（Windows / macOS 各一份，不生成 Release） |
+| 手动预览 | Actions →「**构建预览包（手动）**」→ **Run workflow** | 仅该次运行记录的 **Artifacts**（Windows / macOS 各一份，不生成 Release） |
 | 正式发布 | 推送 `v` 开头的 tag | **自动发布为正式 Release**，Windows / macOS 安装包自动上传（无需手动 Publish） |
 
 正式发布一条命令（**tag 必须与 `tauri/src-tauri/tauri.conf.json` 的 `version` 一致**）：
