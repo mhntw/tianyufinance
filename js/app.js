@@ -893,6 +893,7 @@
       { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init',       color: '#0D9488' },
       { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project',    color: '#059669' },
       { key: 'system-settings',     name: '系统设置',         page: 'system-settings',     color: '#475569' },
+      { key: 'operation-logs',      name: '操作日志',         page: 'operation-logs',      color: '#7C3AED' },
     ]},
   ];
 
@@ -1612,7 +1613,7 @@
     'asset-card': '固定资产卡片', 'asset-depr': '折旧',
     'auxiliary-accounting': '辅助核算',
     'cashflow-init': '现金流量初始余额', 'cashflow-project': '科目现金流量项目',
-    'backup-restore': '数据与安全', 'system-settings': '系统设置',
+    'backup-restore': '数据与安全', 'system-settings': '系统设置', 'operation-logs': '操作日志',
     'salary-statistics': '工资统计',
     'salary': '工资', 'settle': '结账', 'subject': '科目', 'opening': '期初余额',
     'param': '账套参数',
@@ -1842,12 +1843,16 @@
     });
   };
 
-  // 系统设置（数据与安全已并入）：进入合并页时参数区与账套/备份/日志区都要刷新。
-  // 复用各自既有刷新函数，避免重复实现：参数区 __renderSystemSettings（参数+凭证字），
-  // 数据区 __renderBackup（账套表+备份列表+操作日志，内部再走 __renderTools）。
+  // 系统设置（数据与安全已并入）：参数区 __renderSystemSettings + 数据/账套区 __renderBackup
   function refreshSettingsAll() {
     if (globalThis.__renderSystemSettings) { try { globalThis.__renderSystemSettings(); } catch (e) { console.warn('[设置页刷新]', e); } }
     if (globalThis.__renderBackup) { try { globalThis.__renderBackup(); } catch (e) { console.warn('[数据区刷新]', e); } }
+  }
+
+  // 独立「操作日志」页：当前账套日志（含审计明细）+ 跨账套操作日志
+  function refreshOperationLogsPage() {
+    if (globalThis.__renderLogs) { try { globalThis.__renderLogs(); } catch (e) { console.warn('[日志页刷新]', e); } }
+    if (globalThis.__renderSysEvents) { try { globalThis.__renderSysEvents(); } catch (e) { console.warn('[日志页刷新]', e); } }
   }
 
   // 页面 -> 刷新函数映射（goPage 与 __refreshAll 共用，避免两处分叉）
@@ -1873,7 +1878,9 @@
     'voucher-pattern': renderVia('Pattern'),
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
-    'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll
+    'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
+    // 操作日志独立页：当前账套日志 + 跨账套操作日志
+    'operation-logs': refreshOperationLogsPage
   };
 
   // 暴露页面刷新字典给 ESM 模块（main.js 兜底 hash 直达时遍历使用）

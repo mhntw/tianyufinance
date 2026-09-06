@@ -264,12 +264,8 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
    * 设置：备份与恢复
    * ============================================================ */
   function refreshBackup() {
-    // 并入多账套管理：刷新账套列表（refreshTools 在 Tools.js，经 main.js 挂 globalThis.__renderTools）
+    // 账套管理列表刷新（操作日志已独立成页，进入 operation-logs 页时单独刷新）
     if (globalThis.__renderTools) globalThis.__renderTools();
-    // 并入操作日志：切页刷新日志列表（refreshLogs 同模块直接调用，id 迁至本页）
-    refreshLogs();
-    // 账套与系统事件（跨账套 changelog）与账套管理同区，一并刷新
-    if (typeof refreshSysEvents === 'function') { try { refreshSysEvents(); } catch (e) {} }
   }
 
   /* ============================================================
