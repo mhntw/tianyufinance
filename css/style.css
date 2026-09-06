@@ -5222,10 +5222,17 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 .card + .card { margin-top: 16px; }
 /* 卡片区之后的操作区（如系统参数底部「保存」按钮）间距统一 */
 .card + .page-actions { margin-top: 16px; }
+/* 设置页保存按钮夹在卡片之间时，下方卡片同样留 16px（对称呼吸感） */
+#page-system-settings .page-actions + .card { margin-top: 16px; }
 /* 卡片内表单行/复选行与卡片标题栏左缘对齐（.form-row 全局带 14px 缩进用于弹窗） */
 .card .form-row { padding-left: 0; }
-/* 复选行：与 form-row label 右缘对齐（96px label + 14px 左内距 = 110px），checkbox 与控件列成线 */
-.card .chk-row { padding-left: 110px; }
+/* 表单行内容区：整体自「标签列右缘 + 间隙」同一竖线起排；行内按钮紧挨控件，不顶到卡片右缘 */
+.card .form-ctrl-row { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 基本信息只读值（在 .form-ctrl-row 内，不参与撑开行宽） */
+.card .info-value { line-height: 32px; color: var(--kd-text); }
+/* 复选/单选行：起点与 form-row 控件列一致（label 96px + gap 10px = 106px），checkbox 与输入框同列成线 */
+.card .chk-row,
+.card .radio-row { padding-left: 106px; }
 /* 卡片标题栏（含右侧操作按钮）：字号统一 14px（整数，与 sys-tab 同级） */
 .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--kd-border-2); font-weight: 400; color: var(--kd-text); font-size: 14px; }
 /* 卡片内子分组标题（合并大卡片时用，区分凭证字/凭证/账簿/结账等子板块，避免卡片过碎） */

@@ -715,10 +715,14 @@
 
 
     // 新建账套（可建多个核算主体）。standardKey: 'old'|'small2013'，默认 'old'
-    newBook: function (name, standardKey) {
+    // startMonth: 启用期间（'YYYY-MM'），建账时定稿；缺省/非法时回落 emptyState 的建账当月
+    newBook: function (name, standardKey, startMonth) {
       var id = 'B' + Date.now();
       var st = emptyState(standardKey || 'old');
       st.company.name = name && name.trim() ? name.trim() : '新建账套';
+      if (typeof startMonth === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
+        st.company.startMonth = startMonth;
+      }
       this.state = st;
       this.bookId = id;
       setCurBookId(id);

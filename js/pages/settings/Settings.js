@@ -810,9 +810,11 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
 
 // —— 系统设置聚合页（系统参数 + 凭证模板 + 操作日志 三 Tab 合一）——
 function refreshParam() {
-  var p = S.state.param, c = S.state.company;
-  $('pCompany').value = c.name || '';
-  $('pStart').value = c.startMonth || '';
+  var p = S.state.param;
+  var c = S.state.company || {};
+  // 基本信息只读展示：公司名称（改名走「账套管理」）、启用期间（点「修改」弹窗调整）
+  var nmEl = $('sysNameVal'); if (nmEl) nmEl.textContent = c.name || '';
+  var stEl = $('sysStartVal'); if (stEl) stEl.textContent = c.startMonth || '';
   // 会计制度：只读展示当前准则（由 state.standard 驱动）；变更走受操作密码保护的弹窗
   var curStdKey = S.state.standard || 'old';
   var curLabel = (globalThis.STANDARDS && globalThis.STANDARDS[curStdKey] && globalThis.STANDARDS[curStdKey].label) || curStdKey;
@@ -825,14 +827,11 @@ function refreshParam() {
   $('pBookHideZero').checked = !!p.bookHideZero;
   $('pBookExpand').checked = !!p.bookExpandAll;
   $('pChkSettle').checked = !!p.checkBeforeSettle;
-  $('topCompany').textContent = c.name;
   // 事件绑定（一次性）
   if (!globalThis.__paramBound) {
     $('btnSaveParam').addEventListener('click', function () {
-      var p = S.state.param, c2 = S.state.company;
-      c2.name = $('pCompany').value;
-      c2.startMonth = $('pStart').value;
-      // 准则不在此保存：变更走「变更准则…」受保护弹窗（操作密码+确认）→ S.setStandard
+      var p = S.state.param;
+      // 仅保存凭证/账簿/结账行为选项；公司名称/启用期间/会计制度均不在此保存
       p.voucherChecks = {
         deficitCheck: $('pChkDeficit').checked,
         makerNotAuditor: $('pChkMaker').checked,
@@ -843,9 +842,49 @@ function refreshParam() {
       p.bookExpandAll = $('pBookExpand').checked;
       p.checkBeforeSettle = $('pChkSettle').checked;
       S.persist();
-      $('topCompany').textContent = c2.name;
       showToast('参数已保存');
     });
+    // 启用期间：只读展示 + 受控「修改」弹窗。空账套直接改；已有凭证/期初/结账时保存前确认提示
+    var bEditStart = $('btnEditStart');
+    if (bEditStart) bEditStart.addEventListener('click', function () {
+      var inp = $('epStart');
+      if (inp) inp.value = (S.state.company && S.state.company.startMonth) || '';
+      if (H.openModal) H.openModal('editPeriodModal');
+    });
+    var bSaveEditStart = $('btnSaveEditStart');
+    if (bSaveEditStart) bSaveEditStart.addEventListener('click', async function () {
+      var inp = $('epStart'); if (!inp) return;
+      var v = (inp.value || '').trim();
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) return showToast('请选择有效的月份', 'warn');
+      var c = S.state.company || {};
+      var old = c.startMonth || '';
+      if (v === old) { if (H.closeModal) H.closeModal('editPeriodModal'); return; }
+      // 有业务数据时：启用期间仅作「期间起点/标签」，凭证与报表均按实际日期计算，不受影响
+      var hasData = (S.state.vouchers && S.state.vouchers.length) ||
+                    (S.state.openingBalances && Object.keys(S.state.openingBalances).length) ||
+                    (S.state.closedPeriods && S.state.closedPeriods.length);
+      if (hasData) {
+        var ok = await H.confirmAsync('账套已有凭证 / 期初 / 结账数据。\n\n修改启用期间只影响期间下拉的起点与「启用期间」显示，\n不影响任何凭证与报表数据。\n\n确认将启用期间由「' + (old || '') + '」改为「' + v + '」？', { title: '修改启用期间' });
+        if (!ok) return;
+      }
+      c.startMonth = v;
+      try { S.addLog('修改启用期间', '账套启用期间由「' + (old || '') + '」改为「' + v + '」', '账套'); } catch (e) {}
+      if (H.closeModal) H.closeModal('editPeriodModal');
+      refreshParam();
+      refreshAll();
+      // 落盘是异步的：以磁盘为准重建索引后刷新下方账套列表的「启用期间」列；系统事件稍候刷新
+      setTimeout(function () {
+        if (globalThis.__renderTools) {
+          if (typeof S.refreshBookIndex === 'function') {
+            S.refreshBookIndex().then(globalThis.__renderTools).catch(globalThis.__renderTools);
+          } else globalThis.__renderTools();
+        }
+      }, 250);
+      if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
+      showToast('启用期间已改为 ' + v, 'success');
+    });
+    var bCancelEditStart = $('btnCancelEditStart');
+    if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
     // 会计制度变更（高危不可逆）：入口收敛为「变更准则…」按钮 → 选择目标准则 → 操作密码 → 二次确认
     var bStdOpen = $('btnChangeStandard');
     if (bStdOpen) bStdOpen.addEventListener('click', function () {

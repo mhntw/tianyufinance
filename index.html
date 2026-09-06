@@ -2083,19 +2083,24 @@
 
       <!-- 设置：数据与安全（账套备份与恢复 / 账套管理 / 操作日志） -->
       <section class="page" id="page-system-settings">
-        <div class="card" id="cardSysBase">
+        <div class="card" id="cardSysInfo">
           <div class="card-head"><span>基本信息</span></div>
           <div class="form-row">
-            <label>公司名称</label><input id="pCompany" class="inp">
+            <label>公司名称</label>
+            <div class="form-ctrl-row"><span class="info-value" id="sysNameVal"></span></div>
           </div>
           <div class="form-row">
-            <label>启用期间</label><input id="pStart" class="inp" type="month">
+            <label>启用期间</label>
+            <div class="form-ctrl-row">
+              <span class="info-value" id="sysStartVal"></span>
+              <button class="btn btn-sm" id="btnEditStart" title="修改记账起点期间">修改</button>
+            </div>
           </div>
           <div class="form-row">
-            <label>会计制度</label>
-            <div style="display:flex;align-items:center;gap:8px;flex:1">
+            <label>当前会计准则</label>
+            <div class="form-ctrl-row">
               <span class="muted" id="sysStdLabel" style="line-height:32px"></span>
-              <button class="btn btn-sm" id="btnChangeStandard" title="切换会计制度将迁移损益类科目编码并重灌报表规则（不可逆，需操作密码）">切换</button>
+              <button class="btn btn-sm" id="btnChangeStandard" title="切换会计准则将迁移损益类科目编码（5xxx↔6xxx）并重灌报表规则，不可逆，需验证操作密码">切换</button>
             </div>
           </div>
         </div>
@@ -2125,6 +2130,8 @@
           <label class="chk-row"><input type="checkbox" id="pChkSettle"> 凭证审核后才允许结账</label>
         </div>
 
+        <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
+
         <div class="card" id="cardSysPw">
           <div class="card-head"><span>操作保护</span></div>
           <div class="form-row">
@@ -2137,8 +2144,6 @@
           </div>
           <div class="page-actions"><button class="btn" id="btnSaveOpPw">保存操作密码</button></div>
         </div>
-
-        <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
 
         <!-- ========== 账套与数据（原「数据与安全」页并入） ========== -->
         <div class="card" id="cardSysBooks">
@@ -2287,16 +2292,47 @@
         <label>账套名称</label><input id="nbName" class="inp" placeholder="如：XX公司">
       </div>
       <div class="form-row">
+        <label>启用期间</label><input id="nbStart" class="inp" type="month">
+      </div>
+      <div class="form-row">
         <label>会计准则</label>
         <select id="nbStandard" class="inp">
-          <option value="old">旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</option>
-          <option value="small2013" selected>小企业会计准则（2013，收入/费用 6xxx）</option>
+          <option value="old" selected>旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</option>
+          <option value="small2013">小企业会计准则（2013，收入/费用 6xxx）</option>
         </select>
       </div>
-      <p class="set-hint" style="margin-top:6px">创建后将自动带入对应准则的常用科目表；启用期间默认为本月，可在「基本信息」修改。建议接着到「期初余额」录入期初数据。</p>
+      <p class="set-hint" style="margin-top:6px">启用期间 = 账套第一笔账所在月份，默认为本月；如账务从更早月份开始，请先在此选好起始月（建账后仍可在「系统设置 → 基本信息」调整）。创建后将自动带入对应准则的常用科目表；建议接着到「期初余额」录入期初数据。</p>
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnCreateBook">创建账套</button>
         <button class="btn" id="btnCancelNewBook">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="renameBookModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">重命名账套</div>
+      <div class="form-row">
+        <label>新名称</label><input id="rbName" class="inp" placeholder="如：XX公司">
+      </div>
+      <p class="set-hint" style="margin-top:6px">仅更改账套的显示名称（顶部栏与报表表头），不影响「启用期间」与任何账务数据。</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnRenameBookOk">保存</button>
+        <button class="btn" id="btnCancelRenameBook">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="editPeriodModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">修改启用期间</div>
+      <div class="form-row">
+        <label>启用期间</label><input id="epStart" class="inp" type="month">
+      </div>
+      <p class="set-hint" style="margin-top:6px">启用期间 = 账套记账起点。账套已有凭证/期初/结账数据时修改，仅影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnSaveEditStart">保存</button>
+        <button class="btn" id="btnCancelEditStart">取消</button>
       </div>
     </div>
   </div>

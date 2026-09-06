@@ -8,6 +8,14 @@ const S = H.S || window.S;
 const showToast = H.showToast;
 const refreshAll = H.refreshAll;
 
+// 「重命名账套」弹窗目标 id（打开弹窗时暂存，确定后执行）
+var pendingRenameId = '';
+// 当前月份 'YYYY-MM'（新建账套「启用期间」默认值 = 建账当月）
+function curMonthStr() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+}
+
 // 本地存储引擎封装（替代 serve.py 的 /api/* 备份读写）
 // 注意数据契约：Rust 的 list_backups 返回「文件名数组」（如 "default_1724xxx.json"），
 // 浏览器兜底返回「{ts,bookId} 对象数组」。这里统一解析为 { ts, file, name, mtime }，
@@ -82,6 +90,7 @@ function refreshTools() {
     tr.innerHTML = '<td>' + b.name + '</td><td class="mono">' + b.period + '</td><td>' + b.vouchers + '</td>'
       + '<td>' + (isCur ? '<span class="tag tag-current">当前</span>' : (enabled ? '<span class="tag">启用</span>' : '<span class="tag tag-stop">停用</span>')) + '</td>'
       + '<td class="book-ops">'
+      + '<button class="btn btn-xs" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
       + (isCur ? '<span class="muted">已在使用</span>'
           : '<button class="btn btn-xs" data-switch="' + b.id + '">切换</button>'
           + '<button class="btn btn-xs" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>'
@@ -96,6 +105,14 @@ $('bookBody').addEventListener('click', async function (e) {
   var sw = e.target.getAttribute('data-switch');
   var dl = e.target.getAttribute('data-del');
   var en = e.target.getAttribute('data-enable');
+  var rn = e.target.getAttribute('data-rename');
+  if (rn) {
+    var nm = (S.listBooks().filter(function (b) { return b.id === rn; })[0] || {}).name || '';
+    pendingRenameId = rn;
+    var inp = $('rbName'); if (inp) inp.value = nm;
+    if (H.openModal) H.openModal('renameBookModal');
+    return;
+  }
   if (sw) {
     var r = S.switchBook(sw);
     if (!r.ok) return showToast(r.msg, 'error');
@@ -123,9 +140,11 @@ $('bookBody').addEventListener('click', async function (e) {
   }
 });
 // 新建账套（可建多个独立核算主体；纯新增+切换，不覆盖现有账套，无需高危密码）
-// 简化为单表单弹窗：账套名称 + 会计准则 一次填写（不再两步系统弹窗）
+// 单表单弹窗：账套名称 + 启用期间（默认当月）+ 会计准则 一次填写；
+// 名称/启用期间为账套开账元数据，创建后启用期间不可再改，名称改名走「重命名」
 $('btnNewBook').addEventListener('click', function () {
   var nameEl = $('nbName'); if (nameEl) nameEl.value = '';
+  var startEl = $('nbStart'); if (startEl) startEl.value = curMonthStr(); // 默认建账当月，可改为更早的起始月
   if (H.openModal) H.openModal('newBookModal');
 });
 var nbCreate = $('btnCreateBook');
@@ -133,17 +152,69 @@ if (nbCreate) nbCreate.addEventListener('click', function () {
   var name = ($('nbName') && $('nbName').value || '').trim();
   if (!name) return showToast('请输入账套名称', 'warn');
   var key = ($('nbStandard') && $('nbStandard').value) || 'old';
+  var start = ($('nbStart') && $('nbStart').value) || curMonthStr();
   var STD = (typeof globalThis !== 'undefined' && globalThis.STANDARDS) || {};
   var standardLabel = (STD[key] && STD[key].label) || key;
-  S.newBook(name, key);
+  S.newBook(name, key, start);
   if (H.closeModal) H.closeModal('newBookModal');
-  showToast('已新建账套「' + S.state.company.name + '」（' + standardLabel + '）并切换至此');
+  showToast('已新建账套「' + S.state.company.name + '」（' + standardLabel + '，启用 ' + start + '）并切换至此');
   // 落盘是异步的：等一小段时间待真实文件写完后刷新列表，确保新建账套立即出现
   setTimeout(refreshTools, 250);
   refreshAll();
 });
 var nbCancel = $('btnCancelNewBook');
 if (nbCancel) nbCancel.addEventListener('click', function () { if (H.closeModal) H.closeModal('newBookModal'); });
+
+/* ---- 重命名账套：仅改显示名（顶部/报表表头），不触碰账务数据 ---- */
+var rbOk = $('btnRenameBookOk');
+if (rbOk) rbOk.addEventListener('click', function () {
+  var nn = ($('rbName') && $('rbName').value || '').trim();
+  if (!nn) return showToast('请输入新的账套名称', 'warn');
+  var id = pendingRenameId;
+  if (!id) return;
+  var oldName = (S.listBooks().filter(function (b) { return b.id === id; })[0] || {}).name || '';
+  var isCur = id === S.currentBookId();
+  var finish = function () {
+    if (H.closeModal) H.closeModal('renameBookModal');
+    pendingRenameId = '';
+    showToast('账套已重命名为「' + nn + '」', 'success');
+    // 索引名来自磁盘文件，改名落盘是异步的，稍候以磁盘为准重建列表
+    setTimeout(function () {
+      if (typeof S.refreshBookIndex === 'function') {
+        S.refreshBookIndex().then(refreshTools).catch(function () { refreshTools(); });
+      } else refreshTools();
+    }, 250);
+  };
+  if (isCur) {
+    // 当前账套：改内存态名称并持久化（addLog 内部已落盘），全页顶栏/表头即时生效
+    S.state.company.name = nn;
+    try { S.addLog('重命名账套', '账套名称由「' + (oldName || '') + '」改为「' + nn + '」', '账套'); }
+    catch (e) { try { S.persist(); } catch (e2) {} }
+    refreshAll();
+    finish();
+  } else {
+    // 非当前账套：以磁盘为权威读取该账套 → 仅改名称 → 写回 → 重建索引
+    if (typeof window.Storage === 'undefined' || typeof window.Storage.loadBook !== 'function') {
+      return showToast('当前环境不支持改其他账套的名称', 'error');
+    }
+    window.Storage.loadBook(id).then(function (txt) {
+      var st = txt ? JSON.parse(txt) : null;
+      if (!st || !st.company) throw new Error('读取账套内容失败');
+      st.company.name = nn;
+      return window.Storage.saveBook(id, JSON.stringify(st)).then(function (r) {
+        if (r && r.ok === false) throw new Error((r && r.error) || '写盘失败');
+        // 写盘成功后再留痕，避免"记了日志但实际未改"的假记录
+        if (oldName) logSysEvent('重命名账套', '账套名称由「' + oldName + '」改为「' + nn + '」', id);
+      });
+    }).then(function () { finish(); })
+      .catch(function (err) { showToast('重命名失败：' + ((err && err.message) || err), 'error'); });
+  }
+});
+var rbCancel = $('btnCancelRenameBook');
+if (rbCancel) rbCancel.addEventListener('click', function () {
+  pendingRenameId = '';
+  if (H.closeModal) H.closeModal('renameBookModal');
+});
 
 /* ============================================================
  * 账套备份 / 恢复（Rust 备份目录，环形保留最近 5 份 / 账套）
