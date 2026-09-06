@@ -2251,12 +2251,12 @@
         <!-- 账套与系统事件：跨账套生命周期操作（删除/还原账套等）全局留痕，读取 changelog.json。
              与上方「操作日志」互补：后者是本账套内业务操作（随账套走），本卡是账套级事件（跨账套可追溯）。 -->
         <div class="card" id="cardSysEvents">
-          <div class="card-head"><span>账套与系统事件</span></div>
+          <div class="card-head"><span>操作流水（跨账套）</span></div>
           <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 0">
             <button class="btn btn-sm" id="btnSysEventsRefresh">刷新</button>
             <span class="muted" style="font-size:12px" id="sysEventsCount"></span>
           </div>
-          <p class="muted" style="font-size:12px;margin:6px 18px 0">跨账套生命周期操作（新建/删除/导入/还原账套、清空回收站等）在此留痕，读取全局 changelog.json。与上方「操作日志」互补：后者是本账套内业务操作（随账套文件走、含审计明细），删除的账套其业务日志已随文件进回收站，只能在这里看到删除记录。</p>
+          <p class="muted" style="font-size:12px;margin:6px 18px 0">记录全部账套的操作流水与生命周期事件（新建/删除/导入/还原账套等），读取全局 changelog.json、保留最近 1000 条。即使某账套被覆盖恢复或删除，本卡流水也不受影响，可作历史对账；审计明细（改前/改后、反结账原因）请在对应账套上方的「操作日志」查看。</p>
           <div class="grid-wrap">
             <table class="grid std-table" id="sysEventsTable">
               <thead><tr>

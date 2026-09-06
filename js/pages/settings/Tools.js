@@ -347,6 +347,9 @@ $('backupList').addEventListener('click', async function (e) {
   var done = function (st) {
     if (!st) return showToast('备份数据为空', 'error');
     S.restoreBookState(st);
+    // 恢复是整本覆盖：账内日志会回到快照时刻，必须补一条「本次恢复」的续写日志，
+    // 让账内审计在恢复点后无缝衔接（全局操作流水同步留痕，不受覆盖影响）
+    try { S.addLog('恢复备份', '从备份列表恢复当前账本（' + (file || '') + '）', '账套'); } catch (e) {}
     showToast('已恢复备份（如需撤销，可恢复「覆盖前存档」）');
     refreshAll(); listBackups(); refreshTools();
   };
@@ -451,6 +454,7 @@ $('bkFile').addEventListener('change', function (e) {
       const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
       if (!goon) { input.value = ''; return; }
       S.restoreBookState(st);
+      try { S.addLog('恢复备份', '从备份文件恢复当前账本（' + (f.name || '文件') + '）', '账套'); } catch (e) {}
       showToast('已从备份文件恢复（如需撤销，可恢复列表中「覆盖前存档」）');
       refreshAll(); listBackups(); refreshTools();
     } catch (err) { showToast('解析失败：' + err.message, 'error'); }
