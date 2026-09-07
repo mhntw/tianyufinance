@@ -223,6 +223,47 @@
       return invoke('debug_status').then(function (r) {
         return { mode: 'file', fileMode: true, dir: r.dir, books: r.books };
       });
+    },
+
+    /* ===== 云同步（WebDAV，手动触发；软件永不在后台联网） ===== */
+    // 读取配置（后端不返回真实密码，仅用于判断是否已配置）
+    syncGetConfig: function () {
+      return invoke('sync_get_config').then(function (c) { return c || {}; })
+        .catch(function () { return {}; });
+    },
+    // 保存配置；pass 留空表示沿用已保存的应用密码
+    syncSetConfig: function (url, user, pass, dir) {
+      return invoke('sync_set_config', { url: url, user: user, pass: pass, dir: dir })
+        .then(function () { return { ok: true }; })
+        .catch(function (e) { return { ok: false, error: String(e) }; });
+    },
+    // 清空设置（清除本机保存的云端配置，不影响云端数据）
+    syncClearConfig: function () {
+      return invoke('sync_clear_config').then(function () { return { ok: true }; })
+        .catch(function (e) { return { ok: false, error: String(e) }; });
+    },
+    // 测试连接（用弹窗里当前填写的值，不依赖已保存配置）
+    syncTest: function (url, user, pass, dir) {
+      return invoke('sync_test', { url: url, user: user, pass: pass, dir: dir })
+        .then(function (msg) { return { ok: true, msg: msg }; })
+        .catch(function (e) { return { ok: false, error: String(e) }; });
+    },
+    // 云备份（本机 → 云端）；force=false 时若云端有更新的账套，只返回 conflicts 不执行
+    syncPush: function (force) {
+      return invoke('sync_push', { force: !!force })
+        .then(function (r) { return r || {}; })
+        .catch(function (e) { return { error: String(e) }; });
+    },
+    // 云同步（云端 → 本机）；覆盖前后端已自动给本机被覆盖账套留备份
+    syncPull: function (force) {
+      return invoke('sync_pull', { force: !!force })
+        .then(function (r) { return r || {}; })
+        .catch(function (e) { return { error: String(e) }; });
+    },
+    // 首页本地提醒查询：距上次云备份 ≥7 天且期间有改动 → pending=true（纯本地，不联网）
+    syncPending: function () {
+      return invoke('sync_pending').then(function (r) { return r || { pending: false, count: 0 }; })
+        .catch(function () { return { pending: false, count: 0 }; });
     }
   };
 

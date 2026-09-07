@@ -241,19 +241,22 @@ function daysAgo(ts) {
 // —— 备份健康度 ——
 // 自动备份只说明"数据在滚"，不说明"数据丢不了"：备份和账套在同一块硬盘上，
 // 硬盘一坏两者一起没。所以这里额外盯住「最后一次导出到本机之外」的时间。
-function renderBackupHealth(st) {
+function renderBackupHealth(st, hasCloud) {
   if (!st) return '';
   var html = '<div class="backup-health">';
   var bits = [(st.count + (st.snapshot_count || 0)) + ' 份备份', '占用 ' + fmtSize(st.total_bytes)];
   if (st.last_ts) bits.push('最近 ' + fmtTs(st.last_ts));
   html += '<div class="muted" style="font-size:12px">' + bits.join('　·　') + '</div>';
 
-  // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本
-  var d = daysAgo(st.last_export_ts);
-  if (st.last_export_ts === 0) {
-    html += '<div class="health-warn">尚未导出过账套副本。建议点「导出账套」存一份到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>';
-  } else if (d !== null && d > 7) {
-    html += '<div class="health-warn">已 ' + d + ' 天未导出账套副本（上次导出：' + fmtTs(st.last_export_ts) + '）。建议点「导出账套」存一份到 U 盘或网盘。</div>';
+  // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本。
+  // 已配置云备份时不再催（云端副本已满足"本机外"），本地备份仅作近时救援。
+  if (!hasCloud) {
+    var d = daysAgo(st.last_export_ts);
+    if (st.last_export_ts === 0) {
+      html += '<div class="health-warn">尚未导出过账套副本。建议点「导出账套」存一份到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>';
+    } else if (d !== null && d > 7) {
+      html += '<div class="health-warn">已 ' + d + ' 天未导出账套副本（上次导出：' + fmtTs(st.last_export_ts) + '）。建议点「导出账套」存一份到 U 盘或网盘。</div>';
+    }
   }
   html += '</div>';
   return html;
@@ -268,10 +271,15 @@ function listBackups() {
   Promise.all([
     storageListBackups(bid),
     (typeof window.Storage !== 'undefined' && window.Storage.backupStats)
-      ? window.Storage.backupStats(bid) : Promise.resolve(null)
+      ? window.Storage.backupStats(bid) : Promise.resolve(null),
+    // 是否已有云端副本：必须「已配置 且 真的备份过一次」才算。
+    // 只配置没备份 = 云端什么都没有，此时仍要催导出本机外副本。
+    (typeof window.Storage !== 'undefined' && window.Storage.syncGetConfig)
+      ? window.Storage.syncGetConfig() : Promise.resolve({})
   ]).then(function (res) {
     box._bDisk = res[0] || [];
     box._bStats = res[1];
+    box._bCloud = !!(res[2] && res[2].url && res[2].lastPush);
     box._bAll = false;
     renderBackupRows();
   }).catch(function (e) { showToast('读取备份失败：' + (e && e.message || e), 'error'); });
@@ -284,7 +292,7 @@ function renderBackupRows() {
   var show = box._bAll ? disk : disk.slice(0, 1);
   var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:12px">共 ' +
     disk.length + ' 份备份</span></div>';
-  html += renderBackupHealth(stats);
+  html += renderBackupHealth(stats, box._bCloud);
   if (disk.length) {
     html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
     show.forEach(function (b) {

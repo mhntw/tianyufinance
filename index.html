@@ -96,6 +96,13 @@
 
         <div class="contentL--1JUu7">
 
+        <!-- 云备份提醒：距上次备份≥7天且期间有改动才显示；可忽略（×当天静默） -->
+        <div id="homeBackupTip" class="home-backup-tip" style="display:none">
+          <span id="homeBackupTipTxt"></span>
+          <a id="btnBackupTipGo">去备份</a>
+          <a id="btnBackupTipClose">×</a>
+        </div>
+
         <div class="contentItemWrapper--1cQtp wrapper--2ZSon">
           <!-- 常用功能：整行标题栏已删除，设置图标下移到网格右上角（.home-quick-edit 绝对定位） -->
           <div class="content--2vKQI home-content">
@@ -2128,9 +2135,10 @@
           <label class="chk-row"><input type="checkbox" id="pBookExpand"> 展开所有级次</label>
           <div class="card-sub">结账选项</div>
           <label class="chk-row"><input type="checkbox" id="pChkSettle"> 凭证审核后才允许结账</label>
+          <!-- 本按钮只保存凭证/账簿/结账选项（见 Settings.js），故归属本卡底部，
+               不再悬在两张卡之间造成归属不明 -->
+          <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
         </div>
-
-        <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
 
         <div class="card" id="cardSysPw">
           <div class="card-head"><span>操作保护</span></div>
@@ -2149,7 +2157,7 @@
         <div class="card" id="cardSysBooks">
           <div class="card-head"><span>账套管理</span></div>
           <div class="card-tools-wrap">
-            <div class="form-row" style="flex-wrap:wrap">
+            <div class="form-row">
               <span class="set-ctrl book-toolbar">
                 <a class="tool-link" id="btnNewBook">新建账套</a>
                 <a class="tool-link" id="btnBmImport" title="导入一个独立的新账套（支持本软件 .json 备份 / 金蝶 KIS .ais）">导入账套</a>
@@ -2163,10 +2171,9 @@
                 <a class="tool-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</a>
                 <input type="file" id="bkFile" accept=".json,application/json" style="display:none">
                 <input type="file" id="multiAisFile" accept=".ais" multiple style="display:none">
-                <span class="muted" style="margin-left:14px;font-size:13px;vertical-align:middle">自动备份已开启（每次保存自动留存，可在「查看备份」中恢复）</span>
               </span>
-              <p class="muted" style="font-size:12px;margin:6px 2px 0">说明：「导入账套」会新增一个独立账套；「导入备份」用 .json 文件覆盖恢复当前账套。删除的账套进入「回收站」，保留 7 天可还原。</p>
             </div>
+
             <div id="backupList" class="backup-list" style="display:none"></div>
             <div id="trashPanel" class="backup-list" style="display:none"></div>
           </div>
@@ -2175,6 +2182,33 @@
               <thead><tr><th style="min-width:120px">账套名称</th><th style="min-width:90px">启用期间</th><th style="min-width:70px">凭证数</th><th style="min-width:80px">状态</th><th style="min-width:200px">操作</th></tr></thead>
               <tbody id="bookBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- 云同步（WebDAV 手动同步）：只做补齐与覆盖，永不删除；后台不联网 -->
+        <div class="card" id="cardCloudSync">
+          <div class="card-head"><span>云同步</span></div>
+          <div id="csUnset">
+            <p class="set-hint" style="margin-top:10px">用 WebDAV（坚果云等）在两台电脑间手动同步账套：一台点「云备份」，另一台点「云同步」。软件不在后台联网，也不会自动同步。</p>
+            <div class="page-actions"><button class="btn" id="btnCsConfig">配置</button></div>
+          </div>
+          <div id="csSet" style="display:none">
+            <div class="form-row">
+              <label>云端</label>
+              <div class="form-ctrl-row">
+                <span class="info-value" id="csCloud"></span>
+                <button class="btn-link" id="btnCsReconfig">设置</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>上次操作</label>
+              <div class="form-ctrl-row"><span class="info-value" id="csLast"></span></div>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-primary" id="btnCsPush">云备份</button>
+              <button class="btn" id="btnCsPull">云同步</button>
+            </div>
+            <p class="set-hint cs-footnote">云备份：本机 → 云端；云同步：云端 → 本机（覆盖前自动留本机备份，可在「查看备份」中回滚）。换机前请先在旧电脑点「云备份」。</p>
           </div>
         </div>
 
@@ -2333,6 +2367,29 @@
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnSaveEditStart">保存</button>
         <button class="btn" id="btnCancelEditStart">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="cloudSyncModal">
+    <div class="modal-box modal-compact">
+      <div class="modal-title">云同步设置</div>
+      <div class="form-row">
+        <label>服务器地址</label><input id="csUrl" class="inp" placeholder="https://dav.jianguoyun.com/dav/">
+      </div>
+      <div class="form-row">
+        <label>账号</label><input id="csUser" class="inp" placeholder="完整登录邮箱">
+      </div>
+      <div class="form-row">
+        <label>应用密码</label><input id="csPass" class="inp" type="password" placeholder="坚果云「第三方应用」生成的应用密码">
+      </div>
+      <p class="set-hint" id="csPassHint" style="display:none;margin:4px 0 0">应用密码已保存在本机（上面显示为星号），升级软件不会丢失；要更换请清空后输入新密码。</p>
+      <p class="set-hint" style="margin-top:6px">在坚果云网页端：账户信息 → 安全选项 → 第三方应用管理 → 添加应用密码。</p>
+      <div class="modal-actions">
+        <button class="btn" id="btnCsClear">清空设置</button>
+        <button class="btn" id="btnCsTest">测试连接</button>
+        <button class="btn btn-primary" id="btnCsSave">保存</button>
+        <button class="btn" id="btnCsCancel">取消</button>
       </div>
     </div>
   </div>

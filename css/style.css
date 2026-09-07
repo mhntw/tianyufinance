@@ -5228,11 +5228,58 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 .card .form-row { padding-left: 0; }
 /* 表单行内容区：整体自「标签列右缘 + 间隙」同一竖线起排；行内按钮紧挨控件，不顶到卡片右缘 */
 .card .form-ctrl-row { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 云同步卡：「云备份/云同步」按钮与上方「云端/上次操作」的值同一起点（106px），
+   与卡内其它内容成一条竖线，也与同页「账套管理」板块的操作入口起点一致。
+   未配置态（#csUnset）上方只有说明段落、无标签列，按钮仍与段落同起点，不缩进。 */
+/* 系统设置页：所有操作按钮区统一自「内容竖线」起排（label 96px + gap 10px = 106px），
+   与卡内表单值、复选项、工具链接同一条左竖线。
+   此前同一页里有的按钮贴卡片左缘、有的缩进，是整页看着乱的主因。
+   作用域限定本页，其它页面的 .page-actions 不受影响。 */
+#page-system-settings .page-actions { padding-left: 106px; }
+/* 例外：未配置态上方只有一段说明文字（无标签列），按钮应与说明同起点，
+   缩进反而会让它孤零零落在右边 */
+#csUnset .page-actions { padding-left: 0; }
+/* 云同步卡底部说明同样对齐内容竖线（按钮区已由上一条统一；
+   .set-hint 自带下外距，此处只要上间距，故覆盖 margin 而不写内联样式） */
+#csSet .cs-footnote { padding-left: 106px; margin: 6px 0 0; }
+/* 文字型按钮（蓝色链接外观）：用于卡片行内的次要操作，与「账套管理」的操作链接同风格
+   ——「设置」是打开弹窗，不是执行动作，不该占一个带边框的按钮 */
+.btn-link {
+  padding: 0;
+  background: none;
+  border: none;
+  /* button 不继承页面字体（浏览器默认回退 Arial），必须显式继承，否则蓝字与周围文字不同字体 */
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--kd-blue);
+  cursor: pointer;
+}
+.btn-link:hover { color: var(--kd-blue-dark); text-decoration: underline; }
+/* 云同步设置弹窗：「清空设置」是破坏性操作，靠左与保存类按钮分开；
+   .modal-actions .btn:first-child 会强制加深色主按钮底色，这里必须压回次要样式 */
+#cloudSyncModal .modal-actions { flex-wrap: wrap; }
+#cloudSyncModal #btnCsClear {
+  margin-right: auto;
+  color: var(--kd-text-2);
+  background: #fff;
+  border-color: var(--kd-border-2);
+}
+#cloudSyncModal #btnCsClear:hover { color: var(--kd-text); border-color: var(--kd-text-3); }
 /* 基本信息只读值（在 .form-ctrl-row 内，不参与撑开行宽） */
 .card .info-value { line-height: 32px; color: var(--kd-text); }
 /* 复选/单选行：起点与 form-row 控件列一致（label 96px + gap 10px = 106px），checkbox 与输入框同列成线 */
 .card .chk-row,
 .card .radio-row { padding-left: 106px; }
+/* 首页「云备份」提醒条：7 天节流、可忽略；平时不显示 */
+.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: #FFF7E0; border: 1px solid #F1DCA0; border-radius: 6px; font-size: 13px; color: #7A5B00; line-height: 1.5; }
+.home-backup-tip a { cursor: pointer; white-space: nowrap; }
+.home-backup-tip #btnBackupTipGo { color: #B07E00; font-weight: 600; text-decoration: underline; }
+.home-backup-tip #btnBackupTipGo:hover { color: #7A5B00; }
+.home-backup-tip #btnBackupTipClose { margin-left: auto; font-size: 16px; color: #C9A24B; line-height: 1; }
+.home-backup-tip #btnBackupTipClose:hover { color: #7A5B00; }
+/* 从首页提醒跳转而来时，「云备份」按钮短暂高亮 */
+.btn-hl { outline: 2px solid #F0B429; outline-offset: 1px; }
 /* 卡片标题栏（含右侧操作按钮）：字号统一 14px（整数，与 sys-tab 同级） */
 .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--kd-border-2); font-weight: 400; color: var(--kd-text); font-size: 14px; }
 /* 卡片内子分组标题（合并大卡片时用，区分凭证字/凭证/账簿/结账等子板块，避免卡片过碎） */

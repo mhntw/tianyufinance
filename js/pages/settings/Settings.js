@@ -961,6 +961,8 @@ function refreshSystemSettings() {
   if (globalThis.__renderParam) globalThis.__renderParam();
   else refreshParam();
   refreshVoucherWord();
+  // 云同步卡（WebDAV）：与设置页一并刷新配置与上次同步信息
+  if (globalThis.__renderCloudSync) globalThis.__renderCloudSync();
 }
 
 export {

@@ -28,4 +28,6 @@ serde_json = "1"
 dirs = "5"
 open = "5"
 base64 = "0.22"
+# 云同步（WebDAV 手动同步）所需：仅启用 rustls，避免跨平台引入 OpenSSL 依赖
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 

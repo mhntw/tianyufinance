@@ -24,6 +24,91 @@ function refreshHome() {
 
   // 财务指标数据（默认使用最新期间）
   fillMetrics(month);
+  // 云备份提醒（本地判定，≥7 天未备份且期间有改动才显示，可忽略）
+  checkBackupTip();
+}
+
+/* ---------------- 首页「云备份」提醒（被动一条，两级静默） ---------------- */
+// 静默力度按「用户做了什么」区分，避免"点了去配置但没配成"反而安静 7 天：
+//   × 忽略        → 7 天（用户明确不想看）
+//   去配置/去备份 → 到明天 0 点（响应了但没办成，第二天再来；办成了后端状态自会变，横幅自动消失）
+var TIP_MUTE_MS = 7 * 24 * 60 * 60 * 1000;
+var TIP_MUTE_KEY = 'hbTipMute';
+
+function msUntilTomorrow() {
+  var d = new Date();
+  d.setHours(24, 0, 0, 0);
+  return d.getTime() - Date.now();
+}
+// hbTipMute 存「静默截止时间戳」；过期或解析失败一律视为不静默（宁可多提醒，不可漏提醒）
+function tipMuted() {
+  try {
+    var v = localStorage.getItem(TIP_MUTE_KEY);
+    if (!v) return false;
+    var t = Number(v);
+    if (!isFinite(t) || t <= 0) {
+      // 兼容旧值：时间戳字符串或 toDateString()，均为过去时刻 → 自然到期，不静默
+      t = Date.parse(v);
+      if (!isFinite(t)) return false;
+    }
+    return Date.now() < t;
+  } catch (e) { return false; }
+}
+function muteTip(ms) {
+  try { localStorage.setItem(TIP_MUTE_KEY, String(Date.now() + (ms || 0))); } catch (e) {}
+}
+
+function checkBackupTip() {
+  var tip = $('homeBackupTip');
+  if (!tip || typeof window.Storage === 'undefined' || !window.Storage.syncPending) return;
+  window.Storage.syncPending().then(function (r) {
+    if (!r) { tip.style.display = 'none'; return; }
+    // 处于静默期（× 7 天 / 点过按钮到明天）→ 不打扰
+    if (tipMuted()) { tip.style.display = 'none'; return; }
+    var txt = $('homeBackupTipTxt');
+    var go = $('btnBackupTipGo');
+    if (r.unconfigured) {
+      tip.dataset.go = 'config';
+      if (txt) txt.textContent = '尚未配置云备份，建议配置云备份。';
+      if (go) go.textContent = '去配置';
+    } else if (r.neverPushed) {
+      // 已配置但一次都没备份：自动备份要以「上次备份时间」为基准，不备份一次永远不会启动
+      tip.dataset.go = 'push';
+      if (txt) txt.textContent = '云备份已配置，但尚未备份过，建议立即备份一次。';
+      if (go) go.textContent = '去备份';
+    } else if (r.pending) {
+      tip.dataset.go = 'push';
+      if (txt) txt.textContent = '距离上次云备份已经超过 7 天，建议做一次云备份。';
+      if (go) go.textContent = '去备份';
+    } else {
+      tip.style.display = 'none';
+      return;
+    }
+    tip.style.display = '';
+  }).catch(function () { tip.style.display = 'none'; });
+}
+function bindBackupTip() {
+  var go = $('btnBackupTipGo'), close = $('btnBackupTipClose');
+  if (go) go.addEventListener('click', function () {
+    var tipEl = $('homeBackupTip');
+    var isCfg = tipEl && tipEl.dataset.go === 'config';
+    if (globalThis.goPage) globalThis.goPage('system-settings');
+    // 跳过去后滚动到「云同步」卡；未配置 → 高亮「配置」并直接弹出配置，否则高亮「云备份」
+    setTimeout(function () {
+      var card = document.getElementById('cardCloudSync');
+      if (card) card.scrollIntoView({ block: 'center' });
+      var b = document.getElementById(isCfg ? 'btnCsConfig' : 'btnCsPush');
+      if (b) { b.classList.add('btn-hl'); setTimeout(function () { b.classList.remove('btn-hl'); }, 1600); }
+      if (isCfg && globalThis.__CS_OPEN_CONFIG__) globalThis.__CS_OPEN_CONFIG__();
+    }, 150);
+    // 只静默到明天：没配成 / 没备份成，第二天继续提醒
+    muteTip(msUntilTomorrow());
+  });
+  if (close) close.addEventListener('click', function () {
+    var tip = $('homeBackupTip');
+    if (tip) tip.style.display = 'none';
+    muteTip(TIP_MUTE_MS);
+  });
 }
 
 /** 填充财务指标卡片数据 */
@@ -214,6 +299,7 @@ function bindArapTabs() {
 // ============================================================
 function setupHome() {
   bindArapTabs();
+  bindBackupTip();
 }
 function resizeAllCharts() { /* 已无图表，保留空壳以满足 app.js 调用约定 */ }
 

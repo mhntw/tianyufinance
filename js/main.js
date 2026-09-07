@@ -26,8 +26,9 @@ import {
 import './pages/settle/Settle.js?v=2026090506';
 import './pages/settings/Opening.js?v=2026083115';
 import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090209';
-import { refreshHome, resizeAllCharts, setupHome } from './pages/home/Home.js?v=2026090301';
-import { refreshTools } from './pages/settings/Tools.js?v=2026090501';
+import { refreshHome, resizeAllCharts, setupHome } from './pages/home/Home.js?v=2026090801';
+import { refreshTools } from './pages/settings/Tools.js?v=2026090801';
+import { refreshCloudSync } from './pages/settings/CloudSync.js?v=2026090801';
 import { initPeriodRangePicker, updatePeriodRangeTrigger } from './components/PeriodRangePicker.js?v=2026082730';
 
 // —— 通用起止期间选择器（总账/明细账/项目利润表/费用明细表等） ——
@@ -100,6 +101,9 @@ setupHome();
 
 // —— 基础功能页域：账套管理 / 数据恢复 / 导入导出 ——
 globalThis.__renderTools = refreshTools;
+
+// —— 云同步（WebDAV，手动触发）：随系统设置页一并渲染 ——
+globalThis.__renderCloudSync = refreshCloudSync;
 
 // 启动后若当前页正好是已迁移页，立即渲染一次（兼容刷新后直达/缓存页恢复）。
 document.addEventListener('DOMContentLoaded', function () {

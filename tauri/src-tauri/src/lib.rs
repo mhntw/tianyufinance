@@ -13,6 +13,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::Manager;
 
+// 云同步（WebDAV 手动同步）：见 sync.rs 顶部设计边界说明
+mod sync;
+
 // 数据目录固定锚点名。这是「用户数据」的定位锚点，必须固定、不随品牌/产品名变化：
 // 历史教训——早期曾用品牌词（心中有数）作目录名，品牌一更名目录就对不上用户预期。
 // 本锚点自 1.0.0 起定下，后续任何界面改名都不再改它。
@@ -39,6 +42,16 @@ const APP_DATA_DIR_NAME: &str = "添钰财务";
 // 按它派生的路径也会跟着变 —— 现有账套会全部"消失"（文件还在，但软件找不到了）。
 // 对财务软件来说这是最严重的事故之一。见测试 data_root_ignores_identifier。
 fn data_root() -> Result<PathBuf, String> {
+    // 仅 debug 构建支持用 TY_DATA_DIR 把数据目录指到别处——只服务于云同步等功能的隔离联调测试，
+    // 免得拿真实账套做验证。release 构建不存在此分支，行为与原先完全一致（守门员测试仍有效）。
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("TY_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            let root = PathBuf::from(dir.trim());
+            fs::create_dir_all(&root).map_err(|e| format!("创建数据目录失败: {e}"))?;
+            return Ok(root);
+        }
+    }
     let base = dirs::data_dir().ok_or_else(|| "无法定位应用数据目录".to_string())?;
     let root = base.join(APP_DATA_DIR_NAME);
     fs::create_dir_all(&root).map_err(|e| format!("创建数据目录失败: {e}"))?;
@@ -915,8 +928,24 @@ pub fn run() {
             debug_status,
             open_in_explorer,
             save_export_file,
-            save_attachment
+            save_attachment,
+            // 云同步（WebDAV，手动触发）
+            sync::sync_get_config,
+            sync::sync_set_config,
+            sync::sync_clear_config,
+            sync::sync_test,
+            sync::sync_push,
+            sync::sync_pull,
+            sync::sync_pending
         ])
+        // 启动后自动云备份：距上次 ≥1 天且期间有改动 → 静默 push。
+        // 只在本机条件满足时才会联网；无配置/无改动/云端较新/失败均静默，绝不阻塞启动。
+        .setup(|_app| {
+            tauri::async_runtime::spawn(async {
+                let _ = sync::run_auto_backup().await;
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -1060,6 +1089,157 @@ mod tests {
         assert_eq!(parse_backup_owner("a.bakx"), None);
         assert_eq!(parse_backup_owner("B1.json"), None); // 无时间戳的裸账套名不视作备份
         assert_eq!(parse_backup_owner(""), None);
+    }
+
+    /* ---------------- 云同步联调：A/B 两机往返（需本地 WebDAV） ----------------
+     * 用 TY_DATA_DIR 把数据目录切到 /tmp，同一进程内先后扮演 A 机与 B 机，全程不碰真实账套。
+     * 没有 WebDAV 服务器时自动跳过——环境缺失不该报测试失败。
+     * 起服务器（WsgiDAV）：
+     *   mkdir -p /tmp/tydav/我的坚果云
+     *   wsgidav --host=127.0.0.1 --port=8080 --root=/tmp/tydav --auth=anonymous
+     * 注：云端根下必须先有一个文件夹——坚果云根目录不允许建文件夹，代码正是按此约束挑落点。
+     */
+    fn dav_ready() -> bool {
+        std::net::TcpStream::connect("127.0.0.1:8080").is_ok()
+    }
+    fn fresh_dir(p: &str) -> std::path::PathBuf {
+        let _ = fs::remove_dir_all(p);
+        fs::create_dir_all(p).unwrap();
+        std::env::set_var("TY_DATA_DIR", p);
+        std::path::PathBuf::from(p)
+    }
+    fn switch_dir(p: &str) -> std::path::PathBuf {
+        std::env::set_var("TY_DATA_DIR", p);
+        std::path::PathBuf::from(p)
+    }
+    fn write_book(root: &str, id: &str, note: &str) {
+        let d = std::path::PathBuf::from(root).join("books");
+        fs::create_dir_all(&d).unwrap();
+        let v = serde_json::json!({
+            "company": { "name": "联调测试账套", "startMonth": "2026-01" },
+            "note": note
+        });
+        fs::write(d.join(format!("{id}.json")), v.to_string()).unwrap();
+    }
+    fn mtime_ms(p: &std::path::Path) -> u128 {
+        fs::metadata(p)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    }
+    fn backdate(p: &std::path::Path, ms: u128) {
+        fs::OpenOptions::new()
+            .write(true)
+            .open(p)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms as u64))
+            .unwrap();
+    }
+
+    #[test]
+    fn sync_roundtrip_a_and_b() {
+        if !dav_ready() {
+            eprintln!("[skip] 本地 WebDAV 未启动（127.0.0.1:8080），跳过云同步联调");
+            return;
+        }
+        // 把云端重置为确定状态：根下只留一个空文件夹（模拟坚果云"根下有一个同步文件夹"）。
+        // 不清会出两件事：① 上一轮残留的时间戳让 A 机一上来就撞"云端更新"冲突，测试不可重复；
+        // ② 落点由"根下第一个文件夹"决定，残留目录会让落点漂到别处。
+        for e in fs::read_dir("/tmp/tydav").unwrap().filter_map(|e| e.ok()) {
+            let p = e.path();
+            let _ = fs::remove_dir_all(&p);
+            let _ = fs::remove_file(&p);
+        }
+        fs::create_dir_all("/tmp/tydav/我的坚果云").unwrap();
+        let base = "http://127.0.0.1:8080/".to_string();
+        let push = |f: bool| tauri::async_runtime::block_on(crate::sync::sync_push(f));
+        let pull = |f: bool| tauri::async_runtime::block_on(crate::sync::sync_pull(f));
+
+        // —— A 机：建账并云备份 ——
+        let a = fresh_dir("/tmp/ty_sync_A");
+        crate::sync::sync_set_config(base.clone(), "u".into(), "p".into(), "".into()).unwrap();
+        write_book("/tmp/ty_sync_A", "bk1", "v1-from-A");
+        // 把内容时间拨回 1 小时前：只有差值大于 60s 容差，才暴露"取回后 mtime 被刷成当前时刻"的问题
+        backdate(&a.join("books/bk1.json"), now_ts() - 3_600_000);
+        assert_eq!(push(false).unwrap().pushed, 1, "A 机应备份 1 本");
+
+        // —— B 机：空机取回 ——
+        let b = fresh_dir("/tmp/ty_sync_B");
+        crate::sync::sync_set_config(base.clone(), "u".into(), "p".into(), "".into()).unwrap();
+        let r = pull(false).unwrap();
+        assert_eq!((r.pulled, r.added), (1, 1), "B 机应取回并新增 1 本");
+        assert!(
+            fs::read_to_string(b.join("books/bk1.json"))
+                .unwrap()
+                .contains("v1-from-A"),
+            "B 机应拿到 A 的内容"
+        );
+        // 核心断言：取回后本机 mtime 必须还原为云端记录的内容时间，
+        // 否则此后每次取回都误报"本机比云端新"（这正是本次修复的问题）
+        assert_eq!(
+            mtime_ms(&b.join("books/bk1.json")),
+            mtime_ms(&a.join("books/bk1.json")),
+            "B 机取回后 mtime 应等于内容时间（A 机 mtime）"
+        );
+        // 用户可观察的等价表现：紧接着再取回一次，不应弹出冲突确认
+        assert!(
+            pull(false).unwrap().conflicts.is_empty(),
+            "连续取回不应报冲突"
+        );
+
+        // —— B 机改账并备份，A 机取回 ——
+        write_book("/tmp/ty_sync_B", "bk1", "v2-from-B");
+        assert_eq!(push(false).unwrap().pushed, 1, "B 机应备份改动");
+        switch_dir("/tmp/ty_sync_A");
+        assert_eq!(pull(false).unwrap().pulled, 1, "A 机应取回 1 本");
+        assert!(
+            fs::read_to_string(a.join("books/bk1.json"))
+                .unwrap()
+                .contains("v2-from-B"),
+            "A 机应拿到 B 的改动"
+        );
+        // 覆盖前必须留安全垫，否则"取回"就变成单向毁账
+        let has_pad = fs::read_dir(a.join("backups"))
+            .map(|it| {
+                it.filter_map(|e| e.ok())
+                    .any(|e| e.file_name().to_string_lossy().contains("pre_sync"))
+            })
+            .unwrap_or(false);
+        assert!(has_pad, "覆盖本机账套前应留 pre_sync 备份");
+
+        std::env::remove_var("TY_DATA_DIR");
+    }
+
+    // 真机冒烟：用本机已保存的云端配置探一次真实服务（默认 ignore，需 --ignored 显式执行）。
+    // 只做「探测 + 建目录 + 读索引」，不上传也不下载任何账套，因此不会改动本机数据；
+    // 用途是确认凭据、地址、云端落点在真实 WebDAV 服务上确实可用（本地 WsgiDAV 不能替代）。
+    #[test]
+    #[ignore]
+    fn sync_probe_real_server() {
+        let p = data_root().unwrap().join("sync.json");
+        let Ok(txt) = fs::read_to_string(&p) else {
+            eprintln!("[skip] 本机尚未配置云端");
+            return;
+        };
+        let v: serde_json::Value = serde_json::from_str(&txt).unwrap();
+        let pick = |k: &str| v[k].as_str().unwrap_or("").to_string();
+        if pick("url").is_empty() {
+            eprintln!("[skip] 本机尚未配置云端");
+            return;
+        }
+        let r = tauri::async_runtime::block_on(crate::sync::sync_test(
+            pick("url"),
+            pick("user"),
+            pick("pass"),
+            pick("dir"),
+        ));
+        match r {
+            Ok(msg) => println!("真机探测成功：{msg}"),
+            Err(e) => panic!("真机探测失败：{e}"),
+        }
     }
 
     // 现役账套的 Auto/PreRestore 一律不动（限额交给各自 save 后轮换）；
