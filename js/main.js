@@ -1,15 +1,15 @@
 // ESM 入口：把各页面模块的渲染函数挂载到全局 globalThis.__renderXxx。
 // app.js 持有路由字典 PAGE_REFRESHERS，统一经 renderVia(name) 转发到这些全局引用；
 // 链路：goPage → PAGE_REFRESHERS → renderVia(name) → __renderXxx。单一桥接点，无双重逻辑。
-import { renderTrialBalance } from './pages/ledger/TrialBalance.js?v=2026082933';
+import { renderTrialBalance } from './pages/ledger/TrialBalance.js?v=2026090821';
 import { refreshBs, refreshPl, refreshCf, refreshTx } from './pages/report/Report.js?v=2026082730';
 import {
   refreshGl, refreshDl, refreshMl, refreshQg, refreshQd, refreshAx, refreshAb, refreshAc
-} from './pages/ledger/Ledger.js?v=2026083108';
+} from './pages/ledger/Ledger.js?v=2026090822';
 import { refreshSubjects } from './pages/subject/Subject.js?v=2026083124';
 import { renderProjectProfit } from './pages/report/ProjectProfit.js?v=2026082730';
-import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=2026083114';
-import { renderOriginal } from './pages/report/Original.js?v=2026090203';
+import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=2026090823';
+import { renderOriginal } from './pages/report/Original.js?v=2026090824';
 import { renderReportCenter } from './pages/report/ReportCenter.js?v=2026083111';
 import {
   refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher,
@@ -25,7 +25,7 @@ import {
 } from './pages/salary/Salary.js?v=2026083118';
 import './pages/settle/Settle.js?v=2026090506';
 import './pages/settings/Opening.js?v=2026083115';
-import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090209';
+import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090825';
 import { refreshHome, resizeAllCharts, setupHome } from './pages/home/Home.js?v=2026090801';
 import { refreshTools } from './pages/settings/Tools.js?v=2026090801';
 import { refreshCloudSync } from './pages/settings/CloudSync.js?v=2026090801';

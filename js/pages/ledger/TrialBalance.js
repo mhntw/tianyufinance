@@ -77,7 +77,7 @@ function renderTb(month) {
     }
     const tr = document.createElement('tr');
     // title 承载完整科目名：列宽有限时单元格以省略号截断，悬停仍可看到全名
-    tr.innerHTML = '<td class="mono">' + r.code + '</td><td class="tb-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) +
+    tr.innerHTML = '<td class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td class="tb-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) +
       '</td><td class="ta-r mono">' + U.money(obD) + '</td><td class="ta-r mono">' + U.money(obC) +
       '</td><td class="ta-r mono">' + U.money(r.periodDr) + '</td><td class="ta-r mono">' + U.money(r.periodCr) +
       '</td><td class="ta-r mono">' + U.money(r.ytdDr) + '</td><td class="ta-r mono">' + U.money(r.ytdCr) +

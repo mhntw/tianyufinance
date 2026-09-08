@@ -21,6 +21,7 @@ const escHtml = H.esc;
 const escAttr = escHtml;
 
 import { bindSubjectRange, closeSubjectPop } from '../../components/SubjectRangePicker.js';
+import { createSubjectTree } from '../../components/SubjectTree.js?v=2026090803';
 
 /* ===================== 通用：安全填充（带守卫，避免查询时重置用户选择） ===================== */
 // 期间下拉守卫统一走桥接层 H.safeFillPeriod（app.js 内定义，含 bookKey 记忆）
@@ -59,7 +60,7 @@ function renderGl(month) {
     if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
     var tr = document.createElement('tr');
     tr.className = 'gl-subject';
-    tr.innerHTML = '<td rowspan="3" class="mono">' + r.code + '</td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) + '</td>' +
+    tr.innerHTML = '<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) + '</td>' +
       '<td class="gl-seg">期初余额</td>' +
       '<td class="ta-r mono">' + money(r.obDr) + '</td><td class="ta-r mono">' + money(r.obCr) + '</td>' +
       '<td class="ta-r mono gl-empty"></td><td class="ta-r mono gl-empty"></td>' +
@@ -83,25 +84,129 @@ function renderGl(month) {
 }
 
 /* ===================== 明细账 ===================== */
-// 科目筛选：金蝶式「输入框 + 科目树」。留空 = 全部科目（按科目分组依次列出），
-// 不再默认选中第一个科目。只绑定一次，避免重复 refresh 冲掉用户已输入的条件。
-var dlSubjPicker = null;
+// 科目选择由右侧「科目快速切换」树驱动（表头已无科目输入框）：
+// dlCurCode = 当前科目 code；null 表示全部科目（按科目分组列出）。
+var dlCurCode = null;
+var dlTree = null;        // 明细账右侧「科目快速切换」树
+var dlTreeSig = '';       // 科目表签名：账套切换后科目变化则重建树
 function dlSubjectCodes() {
-  if (!dlSubjPicker) {
-    dlSubjPicker = bindSubjectRange({
-      inputId: 'dlCode', btnId: 'dlCodeBtn', onChange: function () { refreshDl(); }
+  return { codes: dlCurCode ? new Set([String(dlCurCode)]) : null, err: '' };
+}
+// 树只显示「有发生记录的科目」及其祖先：账套 420 个科目全列出来没有切换的意义，
+// 会计实际用到的通常几十到一百来个（金蝶的快速切换也是只显示发生科目）。
+// 口径：出现过在任意凭证分录中的科目；为保留层级，其父科目一并带上。
+function dlTreeSubjects() {
+  var subs = S.subjects() || [];
+  var used = new Set();
+  (S.state.vouchers || []).forEach(function (v) {
+    (v.entries || []).forEach(function (e) {
+      if (e.code != null) used.add(String(e.code));
     });
+  });
+  if (!used.size) return subs;
+  return subs.filter(function (s) {
+    var code = String(s.code);
+    if (used.has(code)) return true;
+    // 有下级发生了，则本父科目也需要出现（否则层级断裂、点不到）
+    for (var i = 0; i < subs.length; i++) {
+      var t = String(subs[i].code);
+      if (used.has(t) && t.length > code.length && t.indexOf(code) === 0) return true;
+    }
+    return false;
+  });
+}
+// 挂载明细账右侧「科目快速切换」树（惰性一次）
+function dlTreePanel() {
+  var panel = document.getElementById('dlSubjectTreePanel');
+  if (!panel) return null;
+  if (!dlTree) {
+    dlTree = createSubjectTree({
+      container: panel,
+      getSubjects: dlTreeSubjects,
+      onPick: function (code) {
+        dlCurCode = String(code);
+        refreshDl();
+      },
+      storageKey: 'dlSubjTree'
+    });
+    if (dlTree) dlTree.refresh();
   }
-  if (!dlSubjPicker) return { codes: null, err: '' };
-  var r = dlSubjPicker.resolve();
-  return { codes: r.ok ? r.codes : null, err: r.ok ? '' : r.msg };
+  return dlTree;
+}
+// 科目表变了（换账套）则重建树；单一科目查询时让树高亮当前行
+function dlTreeSyncCurrent(sc) {
+  var t = dlTreePanel();
+  if (!t) return;
+  var sig = dlTreeSubjects().length;   // 换账套后发生科目集合变化 → 触发重建
+  if (sig !== dlTreeSig) { dlTreeSig = sig; if (dlTree) dlTree.refresh(); }
+  var single = null;
+  if (sc && sc.codes && sc.codes.size === 1) sc.codes.forEach(function (c) { single = c; });
+  t.setCurrent(single);
+}
+// 首次进入明细账默认定位第一个有发生的科目（金蝶行为）——右侧树自动展开父链并高亮，
+// 主表直接显示该科目明细，而不是一进来铺全部科目。只做一次，之后由树的点选决定。
+var dlAutoFirstDone = false;
+function dlFirstUsedCode() {
+  var inSubs = {};
+  (S.subjects() || []).forEach(function (s) { inSubs[String(s.code)] = 1; });
+  var min = null;
+  (S.state.vouchers || []).forEach(function (v) {
+    (v.entries || []).forEach(function (e) {
+      if (e.code == null) return;
+      var c = String(e.code);
+      if (!inSubs[c]) return;
+      if (min === null || c < min) min = c;
+    });
+  });
+  return min;
 }
 function refreshDl() {
   var month = periodRangeValue('dlPeriod', currentPeriod());
+  if (!dlAutoFirstDone) {
+    dlAutoFirstDone = true;
+    if (dlCurCode == null) {
+      var first = dlFirstUsedCode();
+      if (first) { dlCurCode = first; renderDl(month); return; }
+    }
+  }
   renderDl(month);
 }
+// 跨页跳转：总账等页点「科目编码」→ 切到明细账并定位该科目（明细账单科目模式）
+globalThis.__dlJumpTo = function (code) {
+  if (code == null) return;
+  dlCurCode = String(code);
+  if (globalThis.goPage) globalThis.goPage('detail-ledger');
+};
+// 账簿中 .link-gl-subject（科目编码链接）点击 → 跳明细账（只绑一次）
+if (!globalThis.__glSubjectBound) {
+  globalThis.__glSubjectBound = true;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('.link-gl-subject');
+    if (!a) return;
+    e.preventDefault();
+    if (globalThis.__dlJumpTo) globalThis.__dlJumpTo(a.getAttribute('data-code'));
+  });
+}
 // 渲染一个科目的明细账段（期初 / 逐笔 / 本期合计 / 本年累计）
-function renderDlSegment(tb, code, month) {
+// vmap：date|word-no → voucher.id，用于把凭证字号渲染成可点链接
+// 全部凭证一次性建立（按日期+字号精确匹配，天然规避跨月同字号串号）
+function voucherVmap() {
+  var vm = {};
+  (S.state.vouchers || []).forEach(function (v) {
+    var vk = (v.date || '') + '|' + (v.word || '') + '-' + v.no;
+    if (!vm[vk]) vm[vk] = v.id;
+  });
+  return vm;
+}
+// 凭证字号单元格：命中映射出可点链接 → 打开该凭证；未命中（如已删除）退化为纯文本
+function voucherLinkCell(r, vm) {
+  var vk = (r.date || '') + '|' + (r.word || '') + '-' + r.no;
+  var vId = (vm && vm[vk]) || '';
+  return vId
+    ? '<a href="#" class="link-voucher" data-id="' + escAttr(vId) + '">' + escHtml(r.word) + '-' + escHtml(r.no) + '</a>'
+    : escHtml(r.word) + '-' + escHtml(r.no);
+}
+function renderDlSegment(tb, code, month, vmap) {
   var d = S.detailLedger(code, month);
   if (!d) return false;
   var s = d.subject;
@@ -119,8 +224,10 @@ function renderDlSegment(tb, code, month) {
   tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono">' + money(obD) + '</td><td class="ta-r mono">' + money(obC) + '</td><td class="ta-r mono">' + money(obBal) + '</td><td>' + obDir + '</td>';
   tb.appendChild(tro);
   d.rows.forEach(function (r) {
+    // 凭证字号可点 → 跳转到该凭证（可编辑，store 保证仅未结账期间可保存）
+    var vchTd = voucherLinkCell(r, vmap);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + r.word + '-' + r.no + '</td>' +
+    tr.innerHTML = '<td>' + r.date + '</td><td>' + vchTd + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
       '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td><td class="ta-r mono">' + money(r.bal) + '</td><td>' + r.dir + '</td>';
     tb.appendChild(tr);
@@ -150,13 +257,17 @@ function renderDl(month) {
   var codes = sc.codes
     ? S.subjects().filter(function (s) { return sc.codes.has(String(s.code)); }).map(function (s) { return s.code; })
     : S.subjects().map(function (s) { return s.code; });
+  // date|word-no → voucher.id，供明细行凭证字号跳转
+  var vmap = voucherVmap();
   var shown = 0;
   codes.forEach(function (c) {
-    if (renderDlSegment(tb, c, month)) shown++;
+    if (renderDlSegment(tb, c, month, vmap)) shown++;
   });
   if (!shown) {
     tb.innerHTML = '<tr><td colspan="7" class="empty-hint">本期无明细记录</td></tr>';
   }
+  // 右侧科目快速切换树：账套变化重建 + 单一科目查询时高亮当前行
+  dlTreeSyncCurrent(sc);
 }
 
 /* ===================== 多栏账（按明细科目分栏） ===================== */
@@ -257,9 +368,10 @@ function renderMl(code, month, err) {
   var runBal = obBal, runDir = obDir;
   var colDr = {}, colCr = {};
   cols.forEach(function (c) { colDr[c.code] = 0; colCr[c.code] = 0; });
+  var vm = voucherVmap();
   d.rows.forEach(function (r) {
     var tr = document.createElement('tr');
-    var rowCells = '<td>' + r.date + '</td><td>' + r.word + '-' + r.no + '</td>' +
+    var rowCells = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
       '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td>';
     if (runDir === '借') { runBal += num(r.dr) - num(r.cr); }
@@ -380,10 +492,11 @@ function renderQd(code, month, err) {
   var d = S.detailLedger(code, month);
   if (!d || !d.rows.length) { emptyRow(tb, 13, '本期无发生额'); return; }
   var qbal = 0;
+  var vm = voucherVmap();
   d.rows.forEach(function (r) {
     qbal += num(r.qtyDr) - num(r.qtyCr);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + r.word + '-' + r.no + '</td>' +
+    tr.innerHTML = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
       qtyCells(r.qtyDr, r.dr) + qtyCells(r.qtyCr, r.cr) +
       '<td>' + r.dir + '</td>' + qtyCells(qbal, r.bal);
@@ -429,12 +542,14 @@ function renderAx() {
   var month = periodRangeValue('axPeriod', currentPeriod());
   var rows = S.auxLedger ? S.auxLedger($('axType').value, $('axItem').value, month) : [];
   if (!rows.length) { emptyRow(tb, 8, '当前账套未启用核算项目，或本期无相关发生额'); return; }
+  var vm = voucherVmap();
   rows.forEach(function (r) {
     var tr = document.createElement('tr');
     var axSubj = r.code + ' ' + r.name;
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + r.word + '-' + r.no + '</td>' +
+    var axSubjHtml = (r.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a> ' : '') + escHtml(r.name || '');
+    tr.innerHTML = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(axSubj) + '">' + escHtml(axSubj) + '</td>' +
+      '<td class="cell-ellipsis" title="' + escAttr(axSubj) + '">' + axSubjHtml + '</td>' +
       '<td class="ta-r mono">' + money(r.dr) +
       '</td><td class="ta-r mono">' + money(r.cr) + '</td><td>' + r.dir + '</td><td class="ta-r mono">' + money(r.bal) + '</td>';
     tb.appendChild(tr);
@@ -453,8 +568,9 @@ function renderAb() {
   rows.forEach(function (r) {
     var tr = document.createElement('tr');
     var abSubj = r.code + ' ' + r.name;
+    var abSubjHtml = (r.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a> ' : '') + escHtml(r.name || '');
     tr.innerHTML = '<td class="cell-ellipsis" title="' + escAttr(r.itemName) + '">' + escHtml(r.itemName) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(abSubj) + '">' + escHtml(abSubj) + '</td>' +
+      '<td class="cell-ellipsis" title="' + escAttr(abSubj) + '">' + abSubjHtml + '</td>' +
       '<td class="ta-r mono">' + money(r.obDr) + '</td><td class="ta-r mono">' + money(r.obCr) +
       '</td><td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) +
       '</td><td class="ta-r mono">' + money(r.endDr) + '</td><td class="ta-r mono">' + money(r.endCr) + '</td>';

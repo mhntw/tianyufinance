@@ -515,6 +515,8 @@ function setupVoucher() {
     var res = saveVoucher();
     if (res && res.ok) showToast('已暂存凭证');
   });
+  var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
+  var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
   var bPref = $('btnVoucherPref'); if (bPref) bPref.addEventListener('click', function () {
     var st = S.settings.voucher || {};
     var pt = $('prefThousand'); if (pt) pt.checked = st.thousand !== false;
@@ -533,12 +535,6 @@ function setupVoucher() {
     syncAll();
   });
 
-  // 凭证功能卡 / 入口
-  var vNew = $('vFuncNew'); if (vNew) vNew.addEventListener('click', showVoucherEdit);
-  var vQuery = $('vFuncQuery'); if (vQuery) vQuery.addEventListener('click', function () { goPage('voucher-query'); });
-  var vSum = $('vFuncSum'); if (vSum) vSum.addEventListener('click', function () { goPage('voucher-sum'); });
-  var vOrig = $('vFuncOriginal'); if (vOrig) vOrig.addEventListener('click', function () { goPage('original'); });
-  var vArch = $('vEntryArchive'); if (vArch) vArch.addEventListener('click', function () { goPage('original'); });
   var vWord = $('vWord'); if (vWord) vWord.addEventListener('change', function () {
     var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, currentPeriod());
   });
@@ -566,6 +562,155 @@ function buildVoucher() {
   };
 }
 
+/* ===================== 单张凭证打印 =====================
+ * 不复用 kdPrint 的「克隆数据表格」路径（只带一张 grid，会丢凭证表头/页脚，
+ * Tauri 桌面尤其明显）。这里把当前凭证渲染成独立记账凭证纸（自包含 HTML）：
+ *   Tauri   → save_export_file + open_in_explorer（与报表打印同一通道）
+ *   浏览器 → 新窗口内打印
+ * 数据直接取自当前已填充的编辑表单——未保存的临时凭证也能打。
+ */
+function voucherSheetMoney(n) {
+  var v = Math.round((U.num(n) * 100)) / 100;
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function voucherSheetDate(dateStr) {
+  if (!dateStr) return '';
+  var p = String(dateStr).split('-');
+  return p[0] + '年' + (parseInt(p[1], 10) || 0) + '月' + (parseInt(p[2], 10) || 0) + '日';
+}
+function voucherSheetEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function renderVoucherSheetHtml() {
+  var word = ($('vWord') && $('vWord').value) || '记';
+  var no = ($('vNo') && $('vNo').value) || '';
+  var date = ($('vDate') && $('vDate').value) || '';
+  var attach = U.num(($('vAttach') && $('vAttach').value) || 0);
+  var company = (S.state && S.state.company) || {};
+  var maker = ($('vMakerName') && $('vMakerName').textContent.trim()) || company.bookkeeper || '';
+  var period = ($('vPeriodText') && $('vPeriodText').textContent.trim()) || '';
+  var rows = (vRows || []).filter(function (r) { return r.code || r.summary || U.num(r.dr) || U.num(r.cr); });
+  var drT = 0, crT = 0;
+  rows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
+
+  var trs = rows.map(function (r) {
+    return '<tr><td class="c-sum">' + voucherSheetEsc(r.summary) + '</td>'
+      + '<td class="c-sub"><span class="sub-code">' + voucherSheetEsc(r.code) + '</span>' + voucherSheetEsc(r.name) + '</td>'
+      + '<td class="c-amt">' + (U.num(r.dr) ? voucherSheetMoney(r.dr) : '') + '</td>'
+      + '<td class="c-amt">' + (U.num(r.cr) ? voucherSheetMoney(r.cr) : '') + '</td></tr>';
+  }).join('');
+
+  var metaLeft = '凭证字号：' + voucherSheetEsc(word) + '-' + voucherSheetEsc(no)
+    + '<span style="margin-left:22px">日期：' + voucherSheetDate(date) + '</span>'
+    + (period ? '<span style="margin-left:22px">' + voucherSheetEsc(period) + '</span>' : '');
+  var metaRight = '附件 ' + attach + ' 张';
+
+  return '<div class="wrap">'
+    + '<div class="c-name">记 账 凭 证</div>'
+    + '<div class="meta"><span class="l">' + metaLeft + '</span><span>' + metaRight + '</span></div>'
+    + '<table>'
+    + '<thead><tr><th>摘要</th><th>科目</th><th>借方金额</th><th>贷方金额</th></tr></thead>'
+    + '<tbody>' + trs + '</tbody>'
+    + '<tfoot class="sum"><tr><td colspan="2" style="text-align:right">合计：</td>'
+    + '<td class="c-amt">' + voucherSheetMoney(drT) + '</td><td class="c-amt">' + voucherSheetMoney(crT) + '</td></tr></tfoot>'
+    + '</table>'
+    + '<div class="foot"><span>制单人：' + voucherSheetEsc(maker) + '</span><span>审核人：</span><span></span></div>'
+    + '</div>';
+}
+/* 凭证纸面通用样式（实凭证/空白凭证共用，随打印文件内联，不进主 CSS） */
+var VOUCHER_SHEET_CSS = 'body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111;margin:0;padding:22px 26px;}'
+  + '.wrap{width:192mm;margin:0 auto;}'
+  + '.c-name{text-align:center;font-size:17px;font-weight:700;margin:2px 0 10px;letter-spacing:4px;}'
+  + '.meta{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:4px;}'
+  + 'table{width:100%;border-collapse:collapse;font-size:12.5px;}'
+  + 'th,td{border:1px solid #333;padding:6px 7px;vertical-align:top;}'
+  + 'th{font-weight:600;text-align:center;}'
+  + '.c-sum{width:30%;}'
+  + '.c-sub{width:42%;}'
+  + '.sub-code{display:inline-block;min-width:70px;color:#555;font-variant-numeric:tabular-nums;margin-right:8px;}'
+  + '.c-amt{width:14%;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}'
+  + '.sum td{font-weight:700;}'
+  + '.foot{display:flex;justify-content:space-between;margin-top:34px;font-size:12.5px;}'
+  + '.foot2{margin-top:30px;font-size:12.5px;}'
+  + '.foot2 span{display:inline-block;white-space:nowrap;}'
+  + '.foot2 span:nth-child(1){margin-left:15%;}'
+  + '.foot2 span:nth-child(2){margin-left:36%;}'
+  + '.u{display:inline-block;}'
+  + '.bl-meta{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;font-size:13px;margin:2px 0 14px;}'
+  + '.bl-meta span{white-space:nowrap;justify-self:start;}'
+  + '.bl-meta span:nth-child(2){justify-self:center;}'
+  + '.bl-meta span:nth-child(3){justify-self:end;}'
+  + '.vblank td{height:14px;padding-top:7px;padding-bottom:7px;}'
+  + '.print-hint{margin-top:18px;font-size:12px;color:#1565c0;background:#e3f2fd;padding:8px 12px;border-radius:4px;}'
+  + '@media print{body{padding:0;}.print-hint{display:none!important;}}';
+
+function voucherSheetDoc(innerHtml, docTitle) {
+  return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>'
+    + voucherSheetEsc(docTitle) + '</title><style>' + VOUCHER_SHEET_CSS + '</style></head><body>'
+    + innerHtml
+    + '<p class="print-hint">这是打印预览页：请按键盘 <b>Ctrl+P</b>（Mac 为 <b>Cmd+P</b>）调出打印对话框，选择打印机或「另存为 PDF」即可完成打印。</p>'
+    + '</body></html>';
+}
+
+/* 统一出口：桌面写导出文件并打开（与报表打印同通道）；浏览器新窗口打印 */
+function openVoucherPrintDoc(innerHtml, baseName) {
+  var company = (S.state && S.state.company) || {};
+  var stamp = (($('vDate') && $('vDate').value) || '').replace(/[\\/:*?"<>|]/g, '_');
+  var fname = ((company.name || '凭证') + '_' + baseName + (stamp ? '_' + stamp : '')).replace(/[\\/:*?"<>|]/g, '_') + '.html';
+  var html = voucherSheetDoc(innerHtml, ((company.name || '记账凭证') + '_' + baseName).replace(/[\\/:*?"<>|]/g, '_'));
+  var tauri = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core : null;
+  if (tauri && tauri.invoke) {
+    try {
+      var u8 = new TextEncoder().encode(html);
+      var b64 = '';
+      for (var i = 0; i < u8.length; i += 0x8000) {
+        b64 += btoa(String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)));
+      }
+      tauri.invoke('save_export_file', { name: fname, base64: b64 })
+        .then(function (path) { return tauri.invoke('open_in_explorer', { path: path }); })
+        .catch(function (e) { showToast('打印文件已生成，请到导出目录打开：' + (e && e.message || e), 'info', 5000); });
+    } catch (e) { showToast('打印失败：' + (e && e.message || e), 'error'); }
+  } else {
+    var w = window.open('', '_blank');
+    if (!w) { showToast('浏览器拦截了弹窗，请允许后重试', 'warn'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
+}
+function printCurrentVoucher() {
+  if (!vRows || !vRows.length) { showToast('暂无凭证内容可打印', 'warn'); return; }
+  var word = ($('vWord') && $('vWord').value) || '记';
+  var no = ($('vNo') && $('vNo').value) || '';
+  openVoucherPrintDoc(renderVoucherSheetHtml(), word + '-' + no + '_凭证');
+}
+/* 空白记账凭证纸：字号/日期/分录/金额全留空，供财务手填或作凭证纸 */
+function renderBlankVoucherHtml() {
+  var trs = '';
+  for (var i = 0; i < 7; i++) {
+    trs += '<tr class="vblank"><td></td><td></td><td class="c-amt"></td><td class="c-amt"></td></tr>';
+  }
+  var u = function (w) { return '<span class="u" style="width:' + w + 'px"></span>'; };
+  var sign = function (label) { return '<span>' + label + '：' + u(58) + '</span>'; };
+  return '<div class="wrap">'
+    + '<div class="c-name">记 账 凭 证</div>'
+    + '<div class="bl-meta">'
+    + '<span>凭证字号：' + u(42) + '字第' + u(28) + '号</span>'
+    + '<span>日期：' + u(40) + '年' + u(32) + '月' + u(32) + '日</span>'
+    + '<span>附件：' + u(22) + '张</span>'
+    + '</div>'
+    + '<table>'
+    + '<thead><tr><th>摘要</th><th>科目</th><th>借方金额</th><th>贷方金额</th></tr></thead>'
+    + '<tbody>' + trs + '</tbody>'
+    + '<tfoot class="sum"><tr><td colspan="2" style="text-align:right">合计：</td><td class="c-amt"></td><td class="c-amt"></td></tr></tfoot>'
+    + '</table>'
+    + '<div class="foot2">' + sign('记账') + sign('审核') + '</div>'
+    + '</div>';
+}
+function printBlankVoucher() {
+  openVoucherPrintDoc(renderBlankVoucherHtml(), '空白凭证');
+}
 function saveVoucher() {
   if (savingVoucher) return { ok: false }; // 防止连续点击/网络重发造成重复生成凭证
   var v = buildVoucher();
@@ -625,12 +770,10 @@ function saveVoucher() {
 }
 
 function showVoucherEdit() {
-  var ev = $('vEntryView'); if (ev) ev.style.display = 'none';
   var ed = $('vEditView'); if (ed) ed.style.display = '';
   resetVoucherEdit();
 }
 function openVoucherPage() {
-  var ev = $('vEntryView'); if (ev) ev.style.display = 'none';
   var ed = $('vEditView'); if (ed) ed.style.display = '';
   goPage('voucher-noedit');
 }
@@ -668,10 +811,7 @@ function loadVoucherToEdit(id) {
   renderVoucherRows();
   openVoucherPage();
 }
-function showVoucherEntry() {
-  var ev = $('vEntryView'); if (ev) ev.style.display = '';
-  var ed = $('vEditView'); if (ed) ed.style.display = 'none';
-}
+
 
 /* ============================================================
  * 凭证汇总表
@@ -718,7 +858,7 @@ function renderSum(start, end) {
     var m = map[s.code];
     if (!m || (m.dr === 0 && m.cr === 0)) return;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + s.code + '</td><td>' + s.name + '</td><td class="ta-r mono">' + money(m.dr) + '</td><td class="ta-r mono">' + money(m.cr) + '</td>';
+    tr.innerHTML = '<td><a href="#" class="link-gl-subject" data-code="' + escAttr(s.code) + '">' + escHtml(s.code) + '</a></td><td>' + s.name + '</td><td class="ta-r mono">' + money(m.dr) + '</td><td class="ta-r mono">' + money(m.cr) + '</td>';
     tb.appendChild(tr);
   });
 }
@@ -942,7 +1082,7 @@ function renderQuery(start, end) {
         '<td>' + noCell + '</td>' +
         // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
         '<td class="cell-ellipsis" title="' + escAttr(e.summary || v.summary || '') + '">' + escHtml(e.summary || v.summary || '') + '</td>' +
-        '<td class="cell-ellipsis" title="' + escAttr(e.code + ' ' + (e.name || '')) + '">' + escHtml(e.code + ' ' + (e.name || '')) + '</td>' +
+        '<td class="cell-ellipsis" title="' + escAttr(e.code + ' ' + (e.name || '')) + '">' + (e.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(e.code) + '">' + escHtml(e.code) + '</a> ' : '') + escHtml(e.name || '') + '</td>' +
         '<td class="ta-r mono">' + (U.num(e.dr) ? money(e.dr) : '') + '</td>' +
         '<td class="ta-r mono">' + (U.num(e.cr) ? money(e.cr) : '') + '</td>' +
         '<td>' + (first ? (v.attach || '') : '') + '</td>' +
@@ -1028,7 +1168,6 @@ export { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin };
 globalThis.__VOUCHER__ = {
   showVoucherEdit: showVoucherEdit,
   loadVoucherToEdit: loadVoucherToEdit,
-  showVoucherEntry: showVoucherEntry,
   openVoucherPage: openVoucherPage,
   prefillVoucher: prefillVoucher,
   refreshRecycleBin: refreshRecycleBin

@@ -1547,7 +1547,7 @@
     // 切到凭证页时恢复入口视图（仅当走入口页时）
     else if (page === 'voucher') { showVoucherEdit(); }
     // 加载已有凭证后切换：仅激活页面，不重置表单
-    else if (page === 'voucher-noedit') { $('vEntryView').style.display = 'none'; $('vEditView').style.display = ''; page = 'voucher'; }
+    else if (page === 'voucher-noedit') { $('vEditView').style.display = ''; page = 'voucher'; }
     // 数据与安全已并入系统设置页（含历史 book-manage 时代），旧 hash/标签兜底映射到合并页
     else if (page === 'book-manage' || page === 'backup-restore') { page = 'system-settings'; }
     // 导入金蝶账套：触发文件选择，不切换页面

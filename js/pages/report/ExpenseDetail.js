@@ -493,7 +493,7 @@ function renderEDGrid(months, roots, totals, opts) {
         ratioCells = `<td class="col-amt">${mom}</td><td class="col-amt">${yoy}</td>`;
       }
       rows.push(`<tr class="ed-tree-row" data-level="${n.level}">
-        <td class="col-code">${n.code}</td>
+        <td class="col-code">${n.code ? `<a href="#" class="link-gl-subject" data-code="${n.code}">${n.code}</a>` : ''}</td>
         <td class="col-name"><span class="ed-tree-indent" style="width:${12 + indent}px"></span>${arrow}<span class="ed-tree-text">${name}</span></td>
         ${amountCells}${yearCell}${ratioCells}
       </tr>`);

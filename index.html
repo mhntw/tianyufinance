@@ -279,27 +279,14 @@
 
       <section class="page" id="page-voucher">
 
-        <div id="vEntryView">
-          <div class="voucher-entry-cards">
-            <a class="v-entry-card" href="#" id="vEntryArchive" onclick="return false;">
-              <span class="v-entry-ico">📄</span>
-              <span class="v-entry-text">电子档案</span>
-            </a>
-          </div>
-          <div class="voucher-func-list">
-            <a class="v-func-item" href="#" id="vFuncNew" data-tip="录凭证" onclick="return false;">录凭证</a>
-            <a class="v-func-item" href="#" id="vFuncOriginal" data-tip="原始凭证" onclick="return false;">原始凭证</a>
-            <a class="v-func-item" href="#" id="vFuncQuery" data-tip="查凭证" onclick="return false;">查凭证</a>
-            <a class="v-func-item" href="#" id="vFuncSum" data-tip="凭证汇总表" onclick="return false;">凭证汇总表</a>
-          </div>
-        </div>
-
         <div id="vEditView" data-unsaved-scope="voucher" style="display:none;">
 
           <div class="voucher-toolbar">
             <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
             <button class="btn" id="btnSaveVoucher">保存</button>
             <button class="btn" id="btnDraftVoucher" title="保存为未审核凭证">暂存</button>
+            <button class="btn" id="btnVoucherPrint" title="打印当前凭证">打印</button>
+            <button class="btn" id="btnBlankVoucher" title="打印空白凭证纸（手填用）">空白凭证</button>
             <button class="btn" id="btnVoucherPref">偏好设置</button>
           </div>
 
@@ -582,15 +569,6 @@
       <section class="page" id="page-detail-ledger">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
-              <div class="ykj-filter-item-box-content">
-                <div class="kd-subject-range" id="dlCodeWrap">
-                  <input type="text" id="dlCode" placeholder="科目编码，可填范围" title="留空=全部科目；支持 1001 或 1001,1009 或 2121-2131">
-                  <button type="button" class="kd-subject-trigger" id="dlCodeBtn" title="从科目表选择" tabindex="-1"></button>
-                </div>
-              </div>
-            </div>
             <div class="kd-period-range" data-start-id="dlPeriodStart" data-end-id="dlPeriodEnd" data-on-change="__renderDl">
               <div class="kd-period-trigger" id="dlPeriodTrigger">
                 <span class="kd-period-trigger-label">期间</span>
@@ -602,16 +580,22 @@
             <button class="btn" data-print>打印</button>
           </div>
         </div>
-        <table class="grid" id="dlGrid">
-          <colgroup>
-            <col style="width:100px"><col style="width:104px">
-            <col>
-            <col style="width:124px"><col style="width:124px"><col style="width:124px">
-            <col style="width:60px">
-          </colgroup>
-          <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>借方</th><th>贷方</th><th>余额</th><th>方向</th></tr></thead>
-          <tbody id="dlBody"></tbody>
-        </table>
+        <div class="dl-layout">
+          <div class="dl-main">
+            <table class="grid" id="dlGrid">
+              <colgroup>
+                <col style="width:100px"><col style="width:104px">
+                <col>
+                <col style="width:124px"><col style="width:124px"><col style="width:124px">
+                <col style="width:60px">
+              </colgroup>
+              <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>借方</th><th>贷方</th><th>余额</th><th>方向</th></tr></thead>
+              <tbody id="dlBody"></tbody>
+            </table>
+          </div>
+          <!-- 科目快速切换（金蝶明细账式右栏树），由 SubjectTree.js 挂载 -->
+          <div class="dl-side" id="dlSubjectTreePanel"></div>
+        </div>
       </section>
 
       <section class="page" id="page-multi-ledger">
@@ -2580,7 +2564,8 @@
        <应用数据目录>/添钰财务/books/ 真实文件，彻底去除 Python 服务端依赖。 -->
   <script src="js/storage.js?v=2026083002"></script>
   <script src="js/standards.js?v=2026090207"></script>
-  <script src="js/store.js?v=2026090505"></script>
+  <script src="js/store.js?v=2026090804"></script>
+  <script src="js/pinyin-abbr.js?v=2026090801"></script>
   <script src="js/xlsx.full.min.js?v=2026082131"></script>
   <script src="js/kindee.js?v=2026082131"></script>
   <script src="js/kd-menu-icons.js?v=2026082131"></script>
@@ -2590,7 +2575,7 @@
   <script src="js/dialog-bridge.js?v=2026082727"></script>
   <script src="js/file-save-bridge.js?v=2026082931"></script>
   <script src="js/app.js?v=2026090501"></script>
-  <script type="module" src="js/main.js?v=2026090501"></script>
+  <script type="module" src="js/main.js?v=2026090819"></script>
 
   <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
     <div class="quick-settings-modal" id="quickSettingsModal">

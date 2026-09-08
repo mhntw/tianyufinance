@@ -71,7 +71,9 @@ export function renderOriginal() {
       '<td class="col-op">' + ((o.vouchered === '1' || o.voucherId || o.voucherNo) ? '<span class="muted" title="已关联凭证，不可删除">已关联</span>' : '<a class="link-del" data-id="' + o.id + '" data-name="' + esc(o.name) + '">删除</a>') + '</td>' +
       '<td>' + esc(o.name) + '</td>' +
       '<td>' + esc(o.fileSize || '') + '</td>' +
-      '<td>' + esc(o.voucherNo || '') + '</td>' +
+      '<td>' + ((o.voucherId || o.voucherNo)
+        ? '<a href="#" class="link-voucher" data-id="' + esc(o.voucherId || o.voucherNo) + '">' + esc(o.voucherNo || o.voucherId || '') + '</a>'
+        : '') + '</td>' +
       '<td>' + esc(o.period) + '</td>' +
       '<td>' + esc(o.uploadTime) + '</td>';
     tb.appendChild(tr);

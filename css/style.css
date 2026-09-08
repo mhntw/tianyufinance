@@ -1506,94 +1506,6 @@ select:not([class]),
  * 凭证中心（金蝶式卡片入口）
  * ============================================================ */
 
-/* 上方两个大入口卡片 */
-.voucher-entry-cards {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-.v-entry-card {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 26px 28px;
-  background: #fff;
-  border: 1px solid var(--kd-border);
-  border-radius: 10px;
-  text-decoration: none;
-  color: var(--kd-text-1);
-  transition: all .15s ease;
-}
-.v-entry-card:hover {
-  border-color: var(--kd-blue);
-  box-shadow: 0 3px 14px rgba(59,130,246,.12);
-}
-.v-entry-ico {
-  font-size: 36px;
-  width: 60px; height: 60px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #EBF5FF, #D6EAFF);
-  border-radius: 14px;
-  flex-shrink: 0;
-}
-.v-entry-text {
-  font-size: 19px;
-  font-weight: 400;
-  color: var(--kd-text-1);
-}
-
-/* 下方功能列表（两列，金蝶式） */
-.voucher-func-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: var(--kd-border);
-  border: 1px solid var(--kd-border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.v-func-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  color: var(--kd-text-1);
-  text-decoration: none;
-  font-size: 15px;
-  font-weight: 400;
-  transition: background .15s;
-  cursor: pointer;
-}
-/* 右列左边框分隔 */
-.v-func-item:nth-child(odd) { border-right: 1px solid #f0f0f0; }
-/* 下排上边框分隔 */
-.v-func-item:nth-child(n+3) { border-top: 1px solid #f0f0f0; }
-.v-func-item:hover {
-  background: #F7FAFF;
-  color: var(--kd-blue);
-}
-/* hover tooltip（金蝶风格小浮窗） */
-.v-func-item::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 50%;
-  top: -36px;
-  transform: translateX(-50%);
-  padding: 4px 10px;
-  font-size: 11.5px;
-  color: #fff;
-  background: rgba(30,37,56,.9);
-  border-radius: 4px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .15s;
-}
-.v-func-item:hover::after {
-  opacity: 1;
-}
-
 /* 凭证录入（金蝶式布局） */
 
 /* 凭证录入视图：固定宽度靠左（金蝶式，不居中、不铺满、右侧留白） */
@@ -5079,9 +4991,11 @@ body.kd-privacy .revenue-cost-card .chart-line::after {
   color: #8a919b;
 }
 .kd-sort-icon.on { color: var(--kd-blue); }
-/* 凭证字号链接 */
-.link-voucher { color: var(--kd-blue); text-decoration: none; cursor: pointer; }
-.link-voucher:hover { text-decoration: underline; }
+/* 凭证字号链接 / 账簿科目编码跳转链接 */
+.link-voucher,
+.link-gl-subject { color: var(--kd-blue); text-decoration: none; cursor: pointer; }
+.link-voucher:hover,
+.link-gl-subject:hover { text-decoration: underline; }
 
 /* ============================================================
  * 账簿（总账 / 明细账 / 科目余额表）
@@ -5707,4 +5621,96 @@ html.is-mobile .modal-box { max-width: 92vw; }
   color: #8A5A14;
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* ============================================================
+ * 明细账「科目快速切换」右栏树（对齐金蝶明细账右侧栏交互）
+ * ============================================================ */
+.dl-layout { display: flex; align-items: flex-start; min-height: 0; }
+.dl-main { flex: 1; min-width: 0; overflow-x: auto; }
+.dl-main .grid { width: 100%; }
+
+/* 右侧面板：吸顶固定（不随主表上下滚动），独立滚动；
+   top:38px 让出吸顶表头的高度，避免滚动时压住表头右端 */
+.dl-side { position: relative; flex: 0 0 auto; }
+.dl-panel {
+  position: sticky; top: 38px; align-self: flex-start;
+  width: 232px; min-width: 232px;
+  height: calc(100vh - 168px); min-height: 280px;
+  margin-left: 12px;
+  border: 1px solid var(--kd-border);
+  border-radius: 4px;
+  background: #fff;
+  display: flex; flex-direction: column;
+  font-size: 13px; color: var(--kd-text);
+  overflow: hidden;
+  transition: min-width .15s ease, width .15s ease;
+}
+.dl-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid var(--kd-border-2);
+  font-weight: 600; font-size: 13px; color: var(--kd-text);
+  user-select: none;
+}
+.dl-panel-min {
+  width: 20px; height: 20px; border: none; background: none;
+  cursor: pointer; color: var(--kd-text-2); font-size: 14px; line-height: 1;
+}
+.dl-panel-min:hover { color: var(--kd-blue); }
+.dl-panel-search {
+  margin: 8px 8px 6px; padding: 4px 8px;
+  border: 1px solid var(--kd-border); border-radius: 4px;
+  outline: none; font-size: 12px;
+}
+.dl-panel-search:focus { border-color: var(--kd-blue); }
+.dl-body { flex: 1; overflow-y: auto; padding: 2px 4px 8px; }
+.dl-tn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 6px;
+  cursor: pointer; white-space: nowrap;
+  color: var(--kd-text);
+  padding-left: calc(4px + (var(--lv, 1) - 1) * 14px);
+}
+.dl-tn:hover { background: var(--kd-blue-2, #EDF4FF); }
+.dl-tn-parent { font-weight: 500; }
+.dl-arrow {
+  flex: 0 0 12px; width: 12px; text-align: center;
+  color: var(--kd-text-2); font-size: 10px; cursor: pointer;
+}
+.dl-code {
+  flex: 0 0 auto; color: var(--kd-text-3);
+  font-variant-numeric: tabular-nums; font-size: 12px;
+}
+.dl-name { overflow: hidden; text-overflow: ellipsis; }
+/* 当前科目：金蝶金色选中 */
+.dl-cur { background: #FFF3C4; color: #7A5B00; }
+.dl-cur .dl-code { color: #A47600; }
+.dl-cur:hover { background: #FFE9A8; }
+/* 搜索命中：浅蓝背景 + 左竖线 */
+.dl-hit { background: #F0F6FF; box-shadow: inset 2px 0 0 var(--kd-blue); }
+.dl-hit:hover { background: #E2EEFF; }
+.dl-hide { display: none; }
+
+/* 收起态：仅保留一条窄把，中间是「向左展开」图标 */
+.dl-panel-restore {
+  display: none;
+  position: absolute; inset: 0;
+  border: none; background: #fff;
+  color: var(--kd-blue); cursor: pointer;
+  font-size: 18px; line-height: 1;
+  text-align: center;
+}
+.dl-panel-restore:hover { background: #EDF4FF; }
+.dl-panel-closed { width: 30px; min-width: 30px; }
+.dl-panel-closed .dl-panel-head,
+.dl-panel-closed .dl-panel-search,
+.dl-panel-closed .dl-body { display: none; }
+.dl-panel-closed .dl-panel-restore { display: flex; align-items: center; justify-content: center; }
+
+/* 打印时隐藏快速切换栏，只出主表 */
+@media print {
+  .dl-side { display: none !important; }
+  .dl-layout { display: block; }
+  .dl-main { overflow: visible; }
 }

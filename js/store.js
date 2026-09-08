@@ -2070,31 +2070,49 @@
       var dirAnomalies = [];
       gl.forEach(function (row) {
         if (!row.balance || row.balance < directionThreshold) return;
+        // 父级科目是子科目的汇总，父子同时报警等于同一件事说两遍——
+        // 如「利润分配 283.6 万」就是「应付利润 101.2 万」+「未分配利润 182.4 万」。
+        // 只看末级科目，信息不丢、清单不重复（本账套 9 项 → 6 项）。
+        if ((self.childCodesOf(row.code) || []).length) return;
         var isDrNormal = (row.normal === 'dr');
         var isCrNormal = (row.normal === 'cr');
         // 资产/费用类（dr 正常方向）出现贷方余额，或负债/权益/收入类（cr 正常方向）出现借方余额
         if ((isDrNormal && row.dir === '贷') || (isCrNormal && row.dir === '借')) {
+          // 权益类出现借方余额 = 累计亏损/已分配超额，是经营结果不是记账错误，
+          // 与"科目用错"混为一谈会吓到人，也可能让人忽视真正要查的（如应付利润挂账）。
+          var equityLoss = (row.cls === 'equity' && row.dir === '借');
           dirAnomalies.push({
             code: row.code, name: row.name, cls: row.cls,
             normal: row.normal, dir: row.dir, balance: row.balance,
-            issue: (isDrNormal ? '资产/费用类科目出现贷方余额' : '负债/权益/收入类科目出现借方余额')
-              + '（正常方向：' + (isDrNormal ? '借' : '贷') + '，实际：' + row.dir + '）'
+            issue: equityLoss
+              ? '权益类为借方余额 ¥' + row.balance.toFixed(2) + '，通常表示累计亏损或已分配超额，属经营结果；如与实际经营情况不符再核查'
+              : (isDrNormal ? '资产/费用类科目出现贷方余额' : '负债/权益/收入类科目出现借方余额')
+                + '（正常方向：' + (isDrNormal ? '借' : '贷') + '，实际：' + row.dir
+                + '），可能源于预收/预付/结算在途，也可能科目用错，请穿透明细确认'
           });
         }
       });
       if (dirAnomalies.length) {
+        // 按金额分档：本账套里既有未分配利润 182 万这种必须看的，也有 POS 机 1475 元这种
+        // 结算时差造成的零头，一律挂 high 会让真正的重灾项被淹没。
+        var maxDirAbs = dirAnomalies.reduce(function (m, x) { return Math.max(m, Math.abs(x.balance)); }, 0);
         checks.push({
-          type: 'direction_anomaly', severity: 'high', title: '科目方向异常',
-          desc: '科目余额方向与正常方向相反，常是调账/科目分类错误/结转异常的信号',
+          type: 'direction_anomaly',
+          severity: maxDirAbs >= 100000 ? 'high' : 'medium',
+          title: '科目余额方向异常',
+          desc: '余额方向与科目正常方向相反。可能是正常业务（预收、预付、多还备用金、结算在途），也可能是科目用错或结转不到位——请穿透明细逐笔确认，方向相反本身不构成结论',
           items: dirAnomalies
         });
       }
 
       // === 检测 2：关键科目大额异常 ===
+      // 文案原则：只陈述「金额 + 需核实什么」，不做定性指控。
+      // 这类科目大额本身是业务常态（酒店装修费进长期待摊、股东投入进实收资本），
+      // 写成"虚假出资/资金挪用"属于危言耸听，反而淹没真正的问题。
       var keySubjects = [
-        { codes: ['3001', '3002', '3001001', '3001002', '3001003', '3001004', '3001005'], name: '实收资本及资本公积', risk: '股东出资真实性，无银行流水支撑即为虚假出资' },
-        { codes: ['1801', '1801001', '1801002', '1801003', '1801004'], name: '长期待摊费用', risk: '已支付待摊销费用，无合同/付款凭证可能掩盖资金挪用' },
-        { codes: ['1221', '1221001', '1221002', '1221015', '1221020', '1221022'], name: '其他应收款', risk: '资金挪用常见通道，长期挂账涉及税务风险' }
+        { codes: ['3001', '3002', '3001001', '3001002', '3001003', '3001004', '3001005'], name: '实收资本及资本公积', risk: '建议核实出资流水与验资凭证是否齐全' },
+        { codes: ['1801', '1801001', '1801002', '1801003', '1801004'], name: '长期待摊费用', risk: '建议核实合同、付款凭证与摊销进度是否匹配' },
+        { codes: ['1221', '1221001', '1221002', '1221015', '1221020', '1221022'], name: '其他应收款', risk: '建议核实往来对象、用途与账龄，长期挂账留意税务处理' }
       ];
       var keyAnomalies = [];
       keySubjects.forEach(function (ks) {
@@ -2102,22 +2120,39 @@
         gl.forEach(function (row) {
           if (ks.codes.indexOf(row.code) >= 0) total += row.balance;
         });
-        if (total >= keySubjectThreshold) {
+        // 用绝对值：权益/往来类常以贷方余额（负数）呈现，只看正数会漏报——
+        // 绅蓝之星实收资本 762 万就因是负数而从未被提示过。
+        if (Math.abs(total) >= keySubjectThreshold) {
           keyAnomalies.push({
             codes: ks.codes.join('/'), name: ks.name, balance: total,
-            issue: '余额 ¥' + total.toFixed(2) + ' 超 ¥' + keySubjectThreshold + ' 阈值；' + ks.risk
+            issue: '余额 ¥' + total.toFixed(2) + '（超 ¥' + keySubjectThreshold + ' 关注线）；' + ks.risk
           });
         }
       });
       if (keyAnomalies.length) {
         checks.push({
-          type: 'key_subject_large', severity: 'high', title: '关键科目大额异常',
-          desc: '实收资本/长期待摊/其他应收款这三类科目余额超过阈值，涉及资金真实性，需核实凭证',
+          type: 'key_subject_large', severity: 'medium', title: '大额科目待核实',
+          desc: '以下三类科目金额较大，属需人工核实的重点（大额本身不等于有问题），请核对凭证支撑',
           items: keyAnomalies
         });
       }
 
-      // === 检测 3：大额凭证清单 ===
+      // === 检测 3：金额最大的若干笔凭证（阈值随账套规模自适应）===
+      // 固定 5 万阈值在本账套会命中 355 笔（房租/装修/采购普遍超 5 万，而中位数仅 3534 元），
+      // 清单长到无法人工复核，等于没提示。改为取本账套金额最大的 TOPN 笔：
+      // 大酒店看到的是它真正的超大额，小账套看到的是它的相对大额，两头都可用。
+      // 需要固定口径时可传 options.largeVoucher。
+      var TOPN = 30;
+      var vAmts = [];
+      (this.state.vouchers || []).forEach(function (v) {
+        var amt = 0;
+        (v.entries || []).forEach(function (e) { amt += Math.abs(num(e.dr) || num(e.cr) || 0); });
+        vAmts.push(amt / 2);
+      });
+      vAmts.sort(function (a, b) { return b - a; });
+      var effThreshold = options.largeVoucher
+        ? largeVoucherThreshold
+        : (vAmts.length ? vAmts[Math.min(TOPN, vAmts.length) - 1] : largeVoucherThreshold);
       var largeVouchers = [];
       (this.state.vouchers || []).forEach(function (v) {
         var amt = 0;
@@ -2125,7 +2160,7 @@
           amt += Math.abs(num(e.dr) || num(e.cr) || 0);
         });
         amt = amt / 2;  // 借贷相等，取一半作为凭证金额
-        if (amt >= largeVoucherThreshold) {
+        if (amt >= effThreshold) {
           largeVouchers.push({
             id: v.id, date: v.date, word: v.word, no: v.no,
             summary: v.summary, amount: amt, maker: v.maker,
@@ -2134,23 +2169,31 @@
         }
       });
       largeVouchers.sort(function (a, b) { return b.amount - a.amount; });
-      if (largeVouchers.length > 50) largeVouchers = largeVouchers.slice(0, 50);
+      if (largeVouchers.length > TOPN) largeVouchers = largeVouchers.slice(0, TOPN);
       if (largeVouchers.length) {
         checks.push({
-          type: 'large_voucher', severity: 'medium', title: '大额凭证清单（单笔 ≥ ¥' + largeVoucherThreshold + '）',
-          desc: '单笔金额超阈值的凭证，按金额降序排列，重点审查大额资金进出',
+          type: 'large_voucher', severity: 'medium',
+          title: '金额最大的 ' + largeVouchers.length + ' 笔凭证（≥ ¥' + Math.round(effThreshold).toLocaleString() + '）',
+          desc: '按本账套金额分布取最大的若干笔供复核——大额不等于异常，仅提示重点关注',
           items: largeVouchers
         });
       }
 
-      // === 检测 4：期末损益未结转 ===
+      // === 检测 4：期末损益未结转（只看「已结账期间」）===
+      // 关键：当期（currentPeriod）尚未结账，损益科目本来就有余额，检查它必然全量误报——
+      // 绅蓝之星 2026-08 未结账时这里会一次报出 16 条，而同期已结账的 2026-07 实为 0 条。
+      // 只有「已结账期间」损益仍有余额，才说明结账真的没做完整。
+      var closedList = (this.state.closedPeriods || []).slice().sort();
+      var plMonth = closedList.length ? closedList[closedList.length - 1] : '';
+      var glClosed = plMonth ? this.generalLedger(plMonth) : [];
       var unclosedPL = [];
-      gl.forEach(function (row) {
+      glClosed.forEach(function (row) {
         if ((row.cls === 'revenue' || row.cls === 'expense') && row.balance >= directionThreshold) {
           unclosedPL.push({
             code: row.code, name: row.name, cls: row.cls,
             balance: row.balance, dir: row.dir,
-            issue: '期末有余额 ¥' + row.balance.toFixed(2) + '，损益应于期末结转至本年利润，残留余额影响利润表准确性'
+            issue: '已结账期间 ' + plMonth + ' 期末仍有余额 ¥' + row.balance.toFixed(2) +
+              '，损益应结转至本年利润，残留余额会影响利润表准确性'
           });
         }
       });
