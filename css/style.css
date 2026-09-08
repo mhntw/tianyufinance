@@ -5626,18 +5626,30 @@ html.is-mobile .modal-box { max-width: 92vw; }
 /* ============================================================
  * 明细账「科目快速切换」右栏树（对齐金蝶明细账右侧栏交互）
  * ============================================================ */
-.dl-layout { display: flex; align-items: flex-start; min-height: 0; }
-.dl-main { flex: 1; min-width: 0; overflow-x: auto; }
-.dl-main .grid { width: 100%; }
+/* 明细账双栏：与资产卡片/原单一致——页面为列向 flex，主表与右栏树
+   各自成为工作区内滚动容器（此前主表挂在页面级滚动、树又吸顶自滚，
+   形成「一长一短两条滚动条且互相干涉」，改造后不再发生）。 */
+#page-detail-ledger { display: none; flex-direction: column; }
+#page-detail-ledger.active { display: flex; }
+.dl-layout { flex: 1; min-height: 0; display: flex; align-items: stretch; overflow: hidden; }
+.dl-main { flex: 1; min-width: 0; display: block; overflow: auto; }
+.dl-main .grid { width: 100%; min-width: 100%; }
+.dl-main table thead th { position: sticky; top: 0; z-index: 2; }
 
-/* 右侧面板：吸顶固定（不随主表上下滚动），独立滚动；
-   top:38px 让出吸顶表头的高度，避免滚动时压住表头右端 */
-.dl-side { position: relative; flex: 0 0 auto; }
-.dl-panel {
-  position: sticky; top: 38px; align-self: flex-start;
-  width: 232px; min-width: 232px;
-  height: calc(100vh - 168px); min-height: 280px;
+/* 右侧面板：宽度随科目名最长行自适应（fit-content），超长封顶 300px；
+   与主表工作区同高（flex 撑满），内部 .dl-body 单独滚动 */
+.dl-side {
+  position: relative; flex: 0 0 auto; min-height: 0;
+  /* min-width 不设下限：收起态（.dl-panel-closed 30px）须能收窄；
+     打开态最小宽度由 .dl-panel 的 min-width 保证（内容驱动时会自然撑大） */
+  width: fit-content; min-width: 0; max-width: 300px;
+  display: flex; flex-direction: column;
   margin-left: 12px;
+}
+.dl-panel {
+  position: relative;
+  flex: 1; min-height: 0;
+  width: 100%;
   border: 1px solid var(--kd-border);
   border-radius: 4px;
   background: #fff;
@@ -5682,7 +5694,7 @@ html.is-mobile .modal-box { max-width: 92vw; }
   flex: 0 0 auto; color: var(--kd-text-3);
   font-variant-numeric: tabular-nums; font-size: 12px;
 }
-.dl-name { overflow: hidden; text-overflow: ellipsis; }
+.dl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 当前科目：金蝶金色选中 */
 .dl-cur { background: #FFF3C4; color: #7A5B00; }
 .dl-cur .dl-code { color: #A47600; }
@@ -5702,14 +5714,26 @@ html.is-mobile .modal-box { max-width: 92vw; }
   text-align: center;
 }
 .dl-panel-restore:hover { background: #EDF4FF; }
-.dl-panel-closed { width: 30px; min-width: 30px; }
+.dl-panel-closed { width: 30px !important; min-width: 30px !important; max-width: 30px; }
 .dl-panel-closed .dl-panel-head,
 .dl-panel-closed .dl-panel-search,
 .dl-panel-closed .dl-body { display: none; }
 .dl-panel-closed .dl-panel-restore { display: flex; align-items: center; justify-content: center; }
 
+/* 明细账两个工作区滚动条细化（细条、低饱和，与侧栏/列表细条风格一致） */
+.dl-main::-webkit-scrollbar,
+.dl-body::-webkit-scrollbar { width: 8px; height: 8px; }
+.dl-main::-webkit-scrollbar-track,
+.dl-body::-webkit-scrollbar-track { background: transparent; }
+.dl-main::-webkit-scrollbar-thumb,
+.dl-body::-webkit-scrollbar-thumb { background: #cfd6e0; border-radius: 4px; }
+.dl-main::-webkit-scrollbar-thumb:hover,
+.dl-body::-webkit-scrollbar-thumb:hover { background: #aeb9c6; }
+.dl-main, .dl-body { scrollbar-width: thin; scrollbar-color: #cfd6e0 transparent; }
+
 /* 打印时隐藏快速切换栏，只出主表 */
 @media print {
+  #page-detail-ledger { display: block !important; }
   .dl-side { display: none !important; }
   .dl-layout { display: block; }
   .dl-main { overflow: visible; }

@@ -504,16 +504,16 @@ function setupVoucher() {
     if (inp) inp.focus();
   });
   var bSaveNew = $('btnSaveNewVoucher'); if (bSaveNew) bSaveNew.addEventListener('click', function () {
-    saveVoucher();
-    resetVoucherEdit();
+    var res = saveVoucher();
+    if (res && res.ok && !res.unchanged) resetVoucherEdit(); // 无改动时保持当前凭证不误开新表
   });
   var bSave = $('btnSaveVoucher'); if (bSave) bSave.addEventListener('click', function () {
     var res = saveVoucher();
-    if (res && res.ok) showToast(res.unaudited ? '已保存（原凭证已审核，保存后已自动撤销审核状态）' : '已保存凭证');
+    if (res && res.ok && !res.unchanged) showToast(res.unaudited ? '已保存（原凭证已审核，保存后已自动撤销审核状态）' : '已保存凭证');
   });
   var bDraft = $('btnDraftVoucher'); if (bDraft) bDraft.addEventListener('click', function () {
     var res = saveVoucher();
-    if (res && res.ok) showToast('已暂存凭证');
+    if (res && res.ok && !res.unchanged) showToast('已暂存凭证');
   });
   var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
   var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
@@ -711,10 +711,46 @@ function renderBlankVoucherHtml() {
 function printBlankVoucher() {
   openVoucherPrintDoc(renderBlankVoucherHtml(), '空白凭证');
 }
+// 「无改动不落库」比对：编辑表单内容与数据库中该凭证是否完全一致。
+// 只比较用户可改字段（字/号/日期/附件/分录摘要科目借贷数量/附件清单），
+// name 为科目冗余展示、aux 核算项在加载态口径易失真，均不比——宁可判定「有改动」
+// 维持原保存逻辑，也不允许把真实改动当无改动吞掉。
+function voucherUnchanged(cur, v) {
+  if (!cur || !v) return false;
+  if ((cur.word || '记') !== (v.word || '记')) return false;
+  if (String(cur.no == null ? '' : cur.no) !== String(v.no == null ? '' : v.no)) return false;
+  if ((cur.date || '') !== (v.date || '')) return false;
+  if (num(cur.attach) !== num(v.attach)) return false;
+  var a = cur.entries || [], b = v.entries || [];
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if ((a[i].code || '') !== (b[i].code || '')) return false;
+    if ((a[i].summary || '') !== (b[i].summary || '')) return false;
+    if (Math.abs(num(a[i].dr) - num(b[i].dr)) > 0.005) return false;
+    if (Math.abs(num(a[i].cr) - num(b[i].cr)) > 0.005) return false;
+    if (Math.abs(num(a[i].qtyDr) - num(b[i].qtyDr)) > 0.005) return false;
+    if (Math.abs(num(a[i].qtyCr) - num(b[i].qtyCr)) > 0.005) return false;
+    if ((a[i].cashActivity || '') !== (b[i].cashActivity || '')) return false;
+  }
+  var fa = cur.attachments || [], fb = v.attachments || [];
+  if (fa.length !== fb.length) return false;
+  for (var j = 0; j < fa.length; j++) {
+    if ((fa[j].name || '') !== (fb[j].name || '')) return false;
+    if ((fa[j].path || '') !== (fb[j].path || '')) return false;
+    if (num(fa[j].size) !== num(fb[j].size)) return false;
+  }
+  return true;
+}
 function saveVoucher() {
   if (savingVoucher) return { ok: false }; // 防止连续点击/网络重发造成重复生成凭证
   var v = buildVoucher();
   if (!v) return { ok: false };
+  // 查看跳转打开既存凭证后手滑保存：内容未做任何修改时直接跳过落库，
+  // 不写日志、不触发「已审核→撤销审核」的状态变化
+  if (vEditId && voucherUnchanged(S.getVoucher(vEditId), v)) {
+    showToast('凭证未做修改', 'info');
+    return { ok: true, unchanged: true };
+  }
   var drT = v.entries.reduce(function (s, e) { return s + e.dr; }, 0);
   var crT = v.entries.reduce(function (s, e) { return s + e.cr; }, 0);
   if (Math.abs(drT - crT) >= 0.005) { showToast('借贷不平衡，无法保存', 'warn'); return { ok: false }; }

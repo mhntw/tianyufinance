@@ -25,7 +25,7 @@ import {
 } from './pages/salary/Salary.js?v=2026083118';
 import './pages/settle/Settle.js?v=2026090506';
 import './pages/settings/Opening.js?v=2026083115';
-import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090825';
+import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090826';
 import { refreshHome, resizeAllCharts, setupHome } from './pages/home/Home.js?v=2026090801';
 import { refreshTools } from './pages/settings/Tools.js?v=2026090801';
 import { refreshCloudSync } from './pages/settings/CloudSync.js?v=2026090801';
