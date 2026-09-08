@@ -482,18 +482,23 @@
 
       var allVouchers = merged.vouchers.slice();
       var yearBoundaries = [];   // 跨年校验结果
-      // 工具：从凭证+期初推导每年末余额（按科目）
+      // 工具：从期初 + 凭证推导「截至该年末」的余额（按科目）
+      // 关键：必须是**累计到 year 为止的全部年份**凭证，而不是只要 year 当年。
+      // 历史 bug：这里曾写成只取当年（vy !== year 就跳过），导致推导 2025 期末时漏掉
+      // 2024 年全年发生额——绅蓝之星 1001 因此把真实的 788.00 算成 -829.00，
+      // 与 2026 期初对不上，误报出 46 个科目差异。账套数据本身并不受影响。
       function deriveYearEnd(opening, vouchers, year) {
         var bal = {};
+        var yEnd = Number(year) || 0;
         // 期初
         Object.keys(opening || {}).forEach(function (code) {
           var e = opening[code];
           bal[code] = (bal[code] || 0) + (e.dr || 0) - (e.cr || 0);
         });
-        // 凭证借贷影响
+        // 凭证借贷影响：累计 year 及之前各年
         vouchers.forEach(function (v) {
-          var vy = (v.date || '').slice(0, 4);
-          if (vy !== String(year)) return;
+          var vy = parseInt((v.date || '').slice(0, 4), 10);
+          if (!vy || vy > yEnd) return;
           (v.entries || []).forEach(function (e) {
             bal[e.code] = (bal[e.code] || 0) + (e.dr || 0) - (e.cr || 0);
           });
