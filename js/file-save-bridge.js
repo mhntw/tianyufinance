@@ -122,10 +122,15 @@
         var dir = exportsPath.replace(/\/?[^\/]*$/, ''); // 去掉末尾文件名
         var tauri = global.__TAURI__ && global.__TAURI__.core;
         if (tauri && tauri.invoke) {
+          // 防空兜底：极端路径切不出父目录时不再调 open（避免「路径为空」死提示），改直接展示文件位置
+          if (!dir) {
+            if (typeof showToast === 'function') showToast('文件位置：' + exportsPath, 'success', 4000);
+            return;
+          }
           tauri.invoke('open_in_explorer', { path: dir })
             .catch(function (e) { if (typeof showToast === 'function') showToast('打开文件夹失败：' + (e && e.message || e), 'error'); });
         } else if (typeof showToast === 'function') {
-          showToast('文件位置：' + dir, 'success');
+          showToast('文件位置：' + (dir || exportsPath), 'success');
         }
       };
     } catch (e) {

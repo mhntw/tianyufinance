@@ -1468,8 +1468,9 @@
     var month = v ? U.monthOf(v.date) : '';
     if (qS && month) qS.value = month;
     if (qE && month) qE.value = month;
-    // renderQuery(start, end, code) 是三参签名，缺参会查不到该凭证
-    renderQuery(qS ? qS.value : '', qE ? qE.value : '', '');
+    // 刷新查凭证列表：renderQuery 是 Voucher.js 模块私有函数，不可直接调用；
+    // 经全局桥 __renderQuery（refreshQuery）读取刚设好的期间输入后渲染，天然含当前科目筛选。
+    if (globalThis.__renderQuery) globalThis.__renderQuery();
     setTimeout(function () {
       var row = document.querySelector('#qBody tr[data-vid="' + id + '"]');
       if (row) { row.classList.add('row-hl'); row.scrollIntoView({ block: 'center' }); }
