@@ -8,7 +8,7 @@ monthsBetween 在 store.js / _shared.js / app.js 各有一份）。因此删除�
 「文件 + 完整函数文本」精确匹配，绝不能按函数名全局替换。
 
 每项删除前均已人工核对：grep 全项目引用数 == 1（仅定义处），且未挂到
-globalThis / __KINGDEE_HELPERS__ / 路由表。
+globalThis / __TY_HELPERS__ / 路由表。
 
 安全：默认 dry-run，加 --apply 写入。
 """

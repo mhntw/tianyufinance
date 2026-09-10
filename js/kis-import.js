@@ -1,6 +1,6 @@
 /*
- * 金蝶 KIS 账套 (.ais) 纯前端导入
- * 金蝶 KIS 的 .ais 本质是 Jet/Access (MDB) 数据库，无需金蝶软件、无需解密，
+ *   账套 (.ais) 纯前端导入
+ *   的 .ais 本质是 Jet/Access (MDB) 数据库，无需软件、无需解密，
  * 也无需 Python / mdbtools。本模块在浏览器内用 mdb-reader 直接解析 .ais，
  * 将科目/凭证/余额转换为本软件 ledger 结构（与 import_kis.py 逻辑等价）。
  * 依赖：js/mdb-reader.js（已挂载 window.MDBReader）
@@ -11,7 +11,7 @@
 
   // 导入科目类别权威表：项目内建准则（standards.js）的一级科目编码 → cls。
   // 必须在标准模板上求 cls，而不是纯靠编码前缀/方向启发式——历史 bug 曾把
-  //   4001 生产成本 → equity、2401 递延收益 → asset、5301 营业外收入 → expense
+  // 4001 生产成本 → equity、2401 递延收益 → asset、5301 营业外收入 → expense
   // 分错，导致利润表「页面行合计 ≠ 数据层 netProfit」（I10 恒等式 FAIL，差额恰为
   // 这些科目当月发生额）。凡命中本表一级编码的科目（含其 4-2-2 下级子科目），
   // 一律采用模板权威类别，杜绝启发式误判；模板未覆盖的自定义编码才走启发式。
@@ -33,12 +33,12 @@
     return best ? best.cls : null;
   }
 
-  // 金蝶科目表 GLAcct.FGroup 的权威分类（账套实测规律）：
-  //   101/102 资产（流动/非流动）、201/202 负债（流动/长期）、301 权益、
-  //   400/401 成本、501/502 收入、503~507 费用。
+  // 科目表 GLAcct.FGroup 的权威分类（账套实测规律）：
+  // 101/102 资产（流动/非流动）、201/202 负债（流动/长期）、301 权益、
+  // 400/401 成本、501/502 收入、503~507 费用。
   // 用途：写入科目 grpCls，仅作「展示分类」（科目页分类 Tab / 科目类别列），
-  // 保证与金蝶界面一致；取数口径仍用 cls（结转损益、报表等按 cls 白名单/规则取数）。
-  function kdGroupCls(group) {
+  // 保证与界面一致；取数口径仍用 cls（结转损益、报表等按 cls 白名单/规则取数）。
+  function tyGroupCls(group) {
     var g = parseInt(group, 10);
     if (!g) return null;
     if (g >= 101 && g <= 102) return 'asset';
@@ -60,7 +60,7 @@
     if (/^(4001|4002|4101|4301|4401|4403)/.test(c)) return 'cost';
     var asset = ["1001","1002","1012","1101","1121","1122","1123","1131","1132","1221","1231","1321","1601","1602","1604","1701","1801","1901","100","101","102","110","112","113","122","123","132","160","170","180","190"];
     var liab  = ["2001","2201","2202","2203","2211","2221","2231","2241","2401","2501","2701","2801","200","220","221","222","223","224","240","250","270","280"];
-    // 权益类。含「以前年度损益调整」金蝶/自定义变体（6901 企业会计制度、6000 自定义），
+    // 权益类。含「以前年度损益调整」/自定义变体（6901 企业会计制度、6000 自定义），
     // 该科目属权益调整（不进当期损益、不是资产），若落入 asset 兜底会在资产负债表资产侧污染（H2 教训同源）。
     var eq     = ["3001","3002","3101","3103","3104","4103","4104","6000","6901","300","310","410"];
     var exp    = ["4001","4002","4101","5001","5051","5111","5201","5301","5401","5402","5403","5601","5602","5603","5701","5711","5801","400","500","505","511","520","530","540","560","570","580"];
@@ -69,7 +69,7 @@
     if (starts(liab))  return 'liability';
     if (starts(eq))    return 'equity';
     if (starts(exp)) {
-      // 损益类：优先用金蝶 FDC 方向判断（C=贷方=收入类，D=借方=费用类）。
+      // 损益类：优先用 FDC 方向判断（C=贷方=收入类，D=借方=费用类）。
       // 修复 H2：5301 营业外收入 FDC=C 应归 revenue，原硬编码归 expense 导致利润表漏取。
       if (dc === 'C') return 'revenue';
       if (dc === 'D') return 'expense';
@@ -171,9 +171,9 @@
         code: code,
         name: name,
         cls: classify(code, dc),
-        // grpCls：金蝶 FGroup 归类（仅展示用，科目页分类 Tab 与科目类别列取它），
-        // 与金蝶界面保持一致；grp 保留原始编码便于追溯。
-        grpCls: kdGroupCls(r.FGroup) || null,
+        // grpCls： FGroup 归类（仅展示用，科目页分类 Tab 与科目类别列取它），
+        // 与界面保持一致；grp 保留原始编码便于追溯。
+        grpCls: tyGroupCls(r.FGroup) || null,
         grp: parseInt(r.FGroup, 10) || null,
         normal: normal,
         level: parseInt(r.FLevel || 1, 10) || 1
@@ -188,7 +188,7 @@
       if (parseInt(r.FDeleted || 0, 10) === 1) return;
       var d = parseDate(r.FDate);
       var rawPeriod = parseInt(r.FPeriod || 0, 10) || 0;
-      // 兼容两种期间格式：KIS 标准 1~12；老版/专业版 6 位期间号 YYYYMM（如 202201）
+      // 兼容两种期间格式： 标准 1~12；老版/专业版 6 位期间号 YYYYMM（如 202201）
       var period = rawPeriod > 999 ? rawPeriod % 100 : rawPeriod;
       // 聚合 key 含日期+年份+原始期间：跨年账套中「同期间号+同字号+同号」的凭证不能合并；
       // 加入日期后，源数据中同期间同字号重复出现的异常行也不会被误合并。
@@ -345,7 +345,7 @@
     }
 
     // ===== 常用凭证模板（用户自定义） =====
-    // 金蝶 .ais：GLVchTemplateEx=模板头（FID/FName/FVchGroup），GLVchTemplateExInfo=分录（FGroupID→FID,
+    // s*.?ais：GLVchTemplateEx=模板头（FID/FName/FVchGroup），GLVchTemplateExInfo=分录（FGroupID→FID,
     // FExp 摘要 / FAcctID 科目 / FDR 借贷方向）。金额不存 → 结构模板，与软件「模板只存结构」口径一致。
     // GLVchTemplate*（多准则系统预置模板）不导入，避免与本账套准则/科目冲突。
     var vchTemplates = [];
@@ -393,7 +393,7 @@
       openingBalances: opening,
       vouchers: vouchers,
       closedPeriods: closedPeriods,
-      vchTemplates: vchTemplates,   // 金蝶用户自定义常用凭证模板（仅结构，金额留空）
+      vchTemplates: vchTemplates,   // 用户自定义常用凭证模板（仅结构，金额留空）
       fixedAssets: [],
       salary: [],
       meta: {
@@ -493,12 +493,12 @@
   global.KisImport = { parse: parse, convert: convert, classify: classify, parseMulti: parseMulti };
 
   /* ============================================================
-   * 多年账套合并导入（金蝶按年导出 .ais，本接口合并同店多年为连续账套）
+   * 多年账套合并导入（按年导出 .ais，本接口合并同店多年为连续账套）
    *
    * 设计：
    *   - 按文件名年份排序，以最早年为"基础年"完整导入
    *   - 后续年只取凭证 + 科目（去重合并），丢弃期初余额（保留基础年的"开业期初"）
-   *   - 凭证号按「字 + 期间」从 1 编号（默认，与金蝶字号口径一致：
+   *   - 凭证号按「字 + 期间」从 1 编号（默认，与字号口径一致：
    *     每期从 1 重新计，跨年/跨月允许同号，号码不会随账期无限滚大）
    *   - 跨年一致性校验：基础年+后续年凭证累积推导期末 vs 下一年.ais 实际期初
    *
@@ -509,7 +509,7 @@
    *   ) -> Promise<{ ledger, stats, warnings }>
    *
    * voucherNoStrategy:
-   *   'monthly'（默认）按月（字+期间）从 1 编号：记字第1号每月重置，同金蝶
+   *   'monthly'（默认）按月（字+期间）从 1 编号：记字第1号每月重置，同
    *   'renumber' 跨年连续重排：记-1..N（全局连续，号会逐年滚大，一般不再使用）
    *   'prefix'   年份前缀：no 不变，但 voucher.id 改为 年-字-号
    *   'keep'      原样保留（跨年重复，不推荐）
@@ -643,7 +643,7 @@
       });
 
       if (strategy === 'monthly') {
-        // 按月（字+期间）从 1 编号：与金蝶字号口径一致，每期从 1 重新计，
+        // 按月（字+期间）从 1 编号：与字号口径一致，每期从 1 重新计，
         // 跨年/跨月允许同号，id 含日期保持唯一；号码不会随账期无限滚大。
         var monthCounter = {};
         allVouchers.forEach(function (v) {
@@ -705,7 +705,7 @@
       // 8. 公司名：用 baseName 或去掉年份的文件名
       var compName = options.baseName;
       if (!compName) {
-        // 从基础文件名提取店名（去掉 _YYYY年_金蝶KIS格式.ais）
+        // 从基础文件名提取店名（去掉 _YYYY年_ 格式.ais）
         compName = (base.file.name || '').replace(/[_\s]*\d{4}\s*年.*$/, '').trim() || base.ledger.company.name;
       }
       merged.company.name = compName;

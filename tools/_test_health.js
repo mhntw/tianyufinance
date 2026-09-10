@@ -32,9 +32,9 @@ var stdSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'standards.js'), '
 vm.runInContext(stdSrc, sandbox2);
 // 加载 store 到 sandbox2
 try { vm.runInContext(storeSrc, sandbox2); } catch (e) { console.error('store load err:', e.message); }
-console.log('sandbox2.__KINGDEE_EXPORT__ type:', typeof sandbox2.__KINGDEE_EXPORT__);
+console.log('sandbox2.__TY_EXPORT__ type:', typeof sandbox2.__TY_EXPORT__);
 
-var Store = sandbox2.__KINGDEE_EXPORT__ && sandbox2.__KINGDEE_EXPORT__.store;
+var Store = sandbox2.__TY_EXPORT__ && sandbox2.__TY_EXPORT__.store;
 if (!Store) { console.error('Store 未加载'); process.exit(1); }
 
 (async function () {

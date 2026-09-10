@@ -1,19 +1,19 @@
-// 科目范围选择器（对齐金蝶精斗云·云会计的科目筛选交互）
+// 科目范围选择器（对齐参考产品·云会计的科目筛选交互）
 //
 // 为什么不用下拉：下拉天然必须有一个选中项，于是"默认选第一个科目"就成了默认值，
-// 而财务打开查凭证/明细账想看的其实是全部科目。金蝶的做法是「输入框 + 科目树按钮」，
+// 而财务打开查凭证/明细账想看的其实是全部科目。的做法是「输入框 + 科目树按钮」，
 // 输入框为空即代表全部，同时支持编码范围语法，比下拉表达力更强：
-//     1001            单个科目
-//     1001,1009       多个科目（逗号分隔）
-//     2121-2131       科目范围（含两端及其所有下级科目）
-// 见 金蝶源码/jdy_pages_distilled/format/凭证_查凭证.html:2063
+// 1001            单个科目
+// 1001,1009       多个科目（逗号分隔）
+// 2121-2131       科目范围（含两端及其所有下级科目）
+// 见 源码/jdy_pages_distilled/format/凭证_查凭证.html:2063
 //
-// 依赖：全局 $、S（Store 单例）、__KINGDEE_HELPERS__
+// 依赖：全局 $、S（Store 单例）、__TY_HELPERS__
 
 import { subjectFullName } from '../common/subject-name.js';
 
 const $ = globalThis.$ || function (id) { return document.getElementById(id); };
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 
 // 中文逗号/顿号/空格都当作分隔符：财务手工输入时不会去切输入法
@@ -88,75 +88,160 @@ document.addEventListener('mousedown', function (e) {
   closeSubjectPop();
 });
 
-function buildSubjectPop(anchor, subs, onPick, onlyParent) {
+function buildSubjectPop(anchor, subs, onPick, opts) {
+  opts = opts || {};
+  const onlyParent = !!opts.onlyParent;
+  const bareInput = !!opts.bareInput;   // 无内置搜索框，搜索由外部输入框驱动
+  const filterInput = opts.filterInput || null; // 外部输入框（bareInput=true 时用）
   closeSubjectPop();
   const pop = document.createElement('div');
   pop.className = 'subj-range-pop';
   Object.assign(pop.style, {
-    position: 'absolute', zIndex: '9999', background: '#fff',
-    border: '1px solid var(--kd-border)', borderRadius: '4px',
+    position: 'fixed', zIndex: '9999', background: '#fff',
+    border: '1px solid var(--ty-border)', borderRadius: '4px',
     boxShadow: '0 6px 20px rgba(0,0,0,.14)', width: '300px',
-    fontSize: '13px', color: 'var(--kd-text)', overflow: 'hidden'
+    fontSize: '13px', color: 'var(--ty-text)', overflow: 'hidden'
   });
 
-  const search = document.createElement('input');
-  search.placeholder = '搜索编码或名称';
-  Object.assign(search.style, {
-    width: '100%', boxSizing: 'border-box', border: 'none',
-    borderBottom: '1px solid var(--kd-border)', outline: 'none',
-    padding: '8px 10px', fontSize: '13px'
-  });
+  const search = bareInput ? null : (function () {
+    const s = document.createElement('input');
+    s.placeholder = '搜索编码或名称';
+    Object.assign(s.style, {
+      width: '100%', boxSizing: 'border-box', border: 'none',
+      borderBottom: '1px solid var(--ty-border)', outline: 'none',
+      padding: '8px 10px', fontSize: '13px'
+    });
+    return s;
+  })();
 
   const list = document.createElement('div');
   Object.assign(list.style, { maxHeight: '280px', overflowY: 'auto' });
 
+  let rows = [];     // 当前可见科目（与渲染行一一对应）
+  let active = -1;   // 键盘高亮行索引（-1 表示无）
+
+  function applyHighlight() {
+    const items = list.querySelectorAll('.subj-range-row');
+    Array.prototype.forEach.call(items, function (el, i) {
+      el.style.background = (i === active) ? '#E6F0FB' : '';
+    });
+    const cur = items[active];
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+  }
+
+  function setActive(i) {
+    const n = rows.length;
+    if (!n) { active = -1; return; }
+    if (i < 0) i = n - 1;              // 上越界循环到末行
+    if (i >= n) i = 0;                // 下越界循环到首行
+    active = i;
+    applyHighlight();
+  }
+
   function render(kw) {
     const k = String(kw || '').trim().toLowerCase();
-    const rows = subs.filter(function (s) {
+    rows = subs.filter(function (s) {
       if (!k) return true;
-      // 与 SubjectCombo 同口径：编码 / 末级名 / 全路径名 均可命中
-      //（确定性字符串包含匹配，非模糊搜索）
       return String(s.code).indexOf(k) >= 0
         || String(s.name).toLowerCase().indexOf(k) >= 0
         || String(subjectFullName(s.code, s.name)).toLowerCase().indexOf(k) >= 0;
     });
     if (!rows.length) {
-      list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--kd-text-3)">'
+      list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--ty-text-3)">'
         + (onlyParent ? '暂无非明细科目（需先维护下级科目）' : '无匹配科目') + '</div>';
+      active = -1;
       return;
     }
     list.innerHTML = rows.map(function (s) {
       return '<div class="subj-range-row" data-code="' + esc(s.code) + '" style="padding:6px 10px;cursor:pointer;'
         + 'display:flex;gap:8px;line-height:1.6">'
-        + '<span style="color:var(--kd-text-3);font-variant-numeric:tabular-nums">' + esc(s.code) + '</span>'
+        + '<span style="color:var(--ty-text-3);font-variant-numeric:tabular-nums">' + esc(s.code) + '</span>'
         + '<span>' + esc(subjectFullName(s.code, s.name)) + '</span></div>';
     }).join('');
-    Array.prototype.forEach.call(list.querySelectorAll('.subj-range-row'), function (row) {
-      row.addEventListener('mouseenter', function () { row.style.background = '#F2F7FD'; });
-      row.addEventListener('mouseleave', function () { row.style.background = ''; });
+    active = 0;
+    Array.prototype.forEach.call(list.querySelectorAll('.subj-range-row'), function (row, idx) {
+      row.addEventListener('mousedown', function (e) { e.preventDefault(); }); // 保焦点
+      row.addEventListener('mouseenter', function () { setActive(idx); });
       row.addEventListener('click', function () {
         onPick(row.getAttribute('data-code'));
         closeSubjectPop();
       });
     });
+    applyHighlight();
   }
 
-  render('');
-  search.addEventListener('input', function () { render(search.value); });
-  pop.appendChild(search);
+  render(bareInput && filterInput ? filterInput.value : '');
+  if (search) search.addEventListener('input', function () { render(search.value); });
+  if (filterInput) {
+    // 外部输入框驱动过滤 + 键盘导航：↑↓ 移动高亮、Enter 选中、Esc 关闭
+    filterInput._subjPopRender = render;
+    filterInput.addEventListener('keydown', function (e) {
+      if (openPop !== pop) return;       // 仅当本弹层打开时接管，关闭后让网格导航生效
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+      else if (e.key === 'Enter') {
+        if (active >= 0 && rows[active]) {
+          e.preventDefault();
+          e.stopPropagation();           // 阻止 vRows 的 Enter 跳转抢走焦点
+          onPick(rows[active].code);
+          closeSubjectPop();
+        }
+      } else if (e.key === 'Escape') { closeSubjectPop(); }
+    });
+  }
+  if (search) pop.appendChild(search);
   pop.appendChild(list);
 
-  // 定位：贴近输入框下沿，超出视口则上翻
+  // 定位：贴近触发元素下沿，超出视口则上翻
   document.body.appendChild(pop);
   const r = anchor.getBoundingClientRect();
   const top = r.bottom + 4;
-  const flip = (top + pop.offsetHeight > window.innerHeight) && (r.top - pop.offsetHeight - 4 > 0);
-  pop.style.left = (window.scrollX + r.left) + 'px';
-  pop.style.top = (window.scrollY + (flip ? r.top - pop.offsetHeight - 4 : top)) + 'px';
+  const popH = 280 + (search ? 36 : 0) + 4;
+  const flip = (top + popH > window.innerHeight) && (r.top - popH - 4 > 0);
+  pop.style.left = r.left + 'px';
+  pop.style.top = (flip ? r.top - popH - 4 : top) + 'px';
   pop.style.minWidth = Math.max(r.width, 220) + 'px';
   openPop = pop;
-  search.focus();
+  if (search) search.focus();
   return pop;
+}
+
+/**
+ * 给输入框绑定「弹层选科目」交互（录凭证专用，扁平列表 + 外部输入驱动搜索）。
+ * @param {HTMLInputElement} input 科目编码输入框
+ * @param {object} opts { getSubjects, onPick }
+ *   getSubjects: () => Subject[]   取科目列表
+ *   onPick: (code) => void         选中回调（写回输入框/触发更新）
+ */
+export function bindSubjectPicker(input, opts) {
+  if (!input) return;
+  const getSubjects = opts.getSubjects || (() => []);
+  const onPick = opts.onPick || function () {};
+  let isOpen = false;
+
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    buildSubjectPop(input, getSubjects(), function (code) {
+      isOpen = false;
+      onPick(code);
+      setTimeout(function () { input.focus(); }, 0);
+    }, { bareInput: true, filterInput: input });
+  }
+
+  input.addEventListener('focus', open);
+  input.addEventListener('click', open);
+  input.addEventListener('input', function () {
+    if (input._subjPopRender) input._subjPopRender(input.value);
+  });
+  input.addEventListener('blur', function () {
+    // 延迟关闭：点选行时 mousedown 已 preventDefault 保焦点，不会触发 blur；
+    // 真正离开（Tab/点外部）再关，避免选完残留弹层。
+    setTimeout(function () { isOpen = false; closeSubjectPop(); }, 150);
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeSubjectPop(); isOpen = false; }
+  });
 }
 
 /**
@@ -172,7 +257,7 @@ export function bindSubjectRange(o) {
   const inp = $(o.inputId);
   if (!inp) return null;
 
-  // 输入框保留用户写的表达式本身（金蝶行为），查询时再解析成科目集合
+  // 输入框保留用户写的表达式本身（行为），查询时再解析成科目集合
   let lastErr = '';
 
   function subjects() {
@@ -208,7 +293,7 @@ export function bindSubjectRange(o) {
         inp.value = code;
         lastErr = '';
         if (typeof o.onChange === 'function') o.onChange(inp.value, '');
-      }, o.onlyParent);
+      }, { onlyParent: o.onlyParent });
     });
   }
 

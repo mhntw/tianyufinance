@@ -1,6 +1,6 @@
 /* 共享基座（自 Settings.js 抽出）：桥接常量 + 通用 Excel 导出；只挚窝零改写 */
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const esc = H.esc;

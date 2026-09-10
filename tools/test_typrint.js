@@ -1,5 +1,5 @@
-/* kdPrint 打印 HTML 生成逻辑测试（纯函数部分）
- * 运行：node tools/test_kdprint.js
+/* tyPrint 打印 HTML 生成逻辑测试（纯函数部分）
+ * 运行：node tools/test_typrint.js
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -29,7 +29,7 @@ let passed = 0, failed = 0;
 async function step(name, fn) { try { await fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failed++; console.error('  ✗ ' + name + '\n    ' + e.message); } }
 
 (async function () {
-  console.log('kdPrint 生成逻辑测试：');
+  console.log('tyPrint 生成逻辑测试：');
   const buildPrintHtml = eval('(' + extract('buildPrintHtml').replace('function buildPrintHtml', 'function') + ')');
   const escapeHtml = eval('(' + extract('escapeHtml').replace('function escapeHtml', 'function') + ')');
 
@@ -50,7 +50,7 @@ async function step(name, fn) { try { await fn(); passed++; console.log('  ✓ '
     assert.ok(h.includes('&lt;script&gt;'), '应转义为实体');
   });
 
-  await step('kdPrint 在 Tauri 下走 save_export_file + open_in_explorer', async function () {
+  await step('tyPrint 在 Tauri 下走 save_export_file + open_in_explorer', async function () {
     // 模拟 window.__TAURI__ 与 invoke，验证调用链
     const calls = [];
     const invoke = (cmd, args) => { calls.push({ cmd, args }); return Promise.resolve(cmd === 'save_export_file' ? '/fake/exports/x.html' : undefined); };
@@ -63,17 +63,17 @@ async function step(name, fn) { try { await fn(); passed++; console.log('  ✓ '
     };
     global.document = global.window.document;
     global.TextEncoder = global.TextEncoder;
-    // kdPrint 直接使用裸全局标识符 location / PAGE_NAMES（浏览器里天然存在），
+    // tyPrint 直接使用裸全局标识符 location / PAGE_NAMES（浏览器里天然存在），
     // Node 环境需补齐，否则抛 ReferenceError
     global.location = { hash: '' };
     global.PAGE_NAMES = global.PAGE_NAMES || {};
-    // 重新加载 kdPrint 相关函数到含 window 的环境。
-    // kdPrint 依赖同作用域的 toBase64（app.js 内），需一并提取后同作用域 eval，
-    // 否则 kdPrint 内调用 toBase64 会解析到全局而报 is not defined。
-    const kdPrintSrc = extract('kdPrint');
+    // 重新加载 tyPrint 相关函数到含 window 的环境。
+    // tyPrint 依赖同作用域的 toBase64（app.js 内），需一并提取后同作用域 eval，
+    // 否则 tyPrint 内调用 toBase64 会解析到全局而报 is not defined。
+    const tyPrintSrc = extract('tyPrint');
     const toBase64Src = extract('toBase64');
     const fn = eval(
-      toBase64Src + '\n(' + kdPrintSrc.replace('function kdPrint', 'function') + ')'
+      toBase64Src + '\n(' + tyPrintSrc.replace('function tyPrint', 'function') + ')'
     );
     fn({ closest: () => null });
     await new Promise(r => setTimeout(r, 50));

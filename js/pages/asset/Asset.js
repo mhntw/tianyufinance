@@ -1,10 +1,10 @@
 // 页面模块（B 方案解耦，由 tools/migrate_domain.py 生成骨架）
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
-// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const esc = H.esc;
@@ -31,7 +31,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var c = assetCats().filter(function (x) { return x.code === code; })[0];
     return c ? c.name : (code || '');
   }
-  // 左侧栏：金蝶 table-left-box(资产类别树) + bottom-box(部门树)，各含「全部」根节点
+  // 左侧栏： table-left-box(资产类别树) + bottom-box(部门树)，各含「全部」根节点
   function _buildAssetTree(ulId, selCode, onPick) {
     var ul = $(ulId); if (!ul) return;
     ul.innerHTML = '';
@@ -201,7 +201,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   $('btnAssetFilterQuery').addEventListener('click', function () { _assetPage = 1; renderAssets(); });
   $('btnAssetExport').addEventListener('click', function () {
     if (!_assetFiltered.length) return showToast('当前无可导出的卡片', 'error');
-    var wb = KinDee.buildAssetWorkbook(_assetFiltered);
+    var wb = TyIo.buildAssetWorkbook(_assetFiltered);
     __safeExportExcel(wb, '固定资产卡片_' + currentPeriod())
       .then(function (path) { window.__fileSaveBridge.toastExported(path); })
       .catch(function (e) { showToast('导出失败：' + (e && e.message || e), 'error'); });
@@ -215,7 +215,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       reader.onload = function (e) {
         try {
           var wb = XLSX.read(e.target.result, { type: 'array' });
-          var list = KinDee.parseAssetWorkbook(wb);
+          var list = TyIo.parseAssetWorkbook(wb);
           if (!list.length) return showToast('未解析到有效卡片（需含编码/名称/原值）', 'error');
           list.forEach(function (fa) { S.addFixedAsset(fa); });
           renderAssets(); syncAll();
@@ -462,7 +462,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var el = $(id);
     if (el) el.addEventListener('change', function () { renderDas(dasMonth()); });
   });
-  // btnDasPrint 已加 data-print，由全局委托统一走 kdPrint()。
+  // btnDasPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnDasExport').addEventListener('click', function () {
     var month = dasMonth();
     var rows = _assetDeprRows(month, { showCleaned: $('dasShowCleaned').checked });
@@ -592,7 +592,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var el = $(id);
     if (el) el.addEventListener('change', function () { renderDad(dadMonth()); });
   });
-  // btnDadPrint 已加 data-print，由全局委托统一走 kdPrint()。
+  // btnDadPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnDadExport').addEventListener('click', function () {
     var month = dadMonth();
     var rows = _assetDeprRows(month, { showCleaned: $('dadShowCleaned').checked });
@@ -769,7 +769,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var el = $(id);
     if (el) el.addEventListener('change', function () { renderAssetChangeLog(aclMonth()); });
   });
-  // btnAclPrint 已加 data-print，由全局委托统一走 kdPrint()。
+  // btnAclPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnAclExport').addEventListener('click', function () {
     var month = aclMonth();
     var rows = buildAssetChangeLog(month);
@@ -802,7 +802,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   /* 折旧凭证：显示已生成的计提折旧凭证，支持一键计提 */
   // 本期已生成的「计提折旧」凭证。按 v.kind 结构识别（与 store 结账检查同口径），
   // 覆盖资产页生成的「计提折旧」与期末模板生成的「计提xxxx期固定资产折旧」。
-  // 原实现按摘要正则匹配，对金蝶导入凭证（无 v.summary）恒不命中。
+  // 原实现按摘要正则匹配，对导入凭证（无 v.summary）恒不命中。
   function deprVchOf(month) {
     if (!S.periodVouchersOfKind) return [];
     return S.periodVouchersOfKind(month, S.VOUCHER_KINDS.DEPR);
@@ -895,7 +895,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   // 折旧凭证页「导出」：复用卡片 31 列导出（折旧凭证页工具条含导出）
   $('btnDvExport').addEventListener('click', function () {
     if (!S.state.fixedAssets.length) return showToast('当前无可导出的资产', 'error');
-    var wb = KinDee.buildAssetWorkbook(S.state.fixedAssets);
+    var wb = TyIo.buildAssetWorkbook(S.state.fixedAssets);
     __safeExportExcel(wb, '折旧凭证_' + currentPeriod())
       .then(function (path) { window.__fileSaveBridge.toastExported(path); })
       .catch(function (e) { showToast('导出失败：' + (e && e.message || e), 'error'); });

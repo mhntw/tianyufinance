@@ -1,7 +1,7 @@
 /* 期末结账业务模块
- * 依赖桥接层 globalThis.__KINGDEE_HELPERS__
+ * 依赖桥接层 globalThis.__TY_HELPERS__
  */
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const $ = H.$ || function () { return null; };
 const S = H.S;
 const U = H.U;
@@ -41,8 +41,9 @@ function showYearPicker(targetEl) {
   var rect = targetEl.getBoundingClientRect();
   var parent = targetEl.closest('.settle-tab-pane,.settle-close-body,.settle-reopen-body');
   var prect = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 };
-  picker.style.left = (rect.left + rect.width / 2 - 120) + 'px'; // 居中（宽度约240px）
-  picker.style.top = (rect.bottom - prect.top + prect.top + window.scrollY + 4) + 'px';
+  picker.style.left = (rect.left + rect.width / 2) + 'px'; // 居中：用 transform 抵消自身宽度，不写死 120
+  picker.style.transform = 'translateX(-50%)';
+  picker.style.top = (rect.bottom + window.scrollY + 4) + 'px'; // 原 rect.bottom - prect.top + prect.top 抵消即 rect.bottom
   picker.style.display = '';
   renderYearPickerGrid();
 }
@@ -170,7 +171,7 @@ function bindSettleEvents() {
     var amt = U.num(tpl.costAmount) > 0 ? U.num(tpl.costAmount) : est.amount;
     if (amt < 0.005) return showToast('本期无销售成本可结转', 'error');
     // 查重：连点会重复生成同额成本凭证（虚增成本），与调汇/税费类按钮一致走拦截。
-    // 按 v.kind 识别（结构识别），不再依赖摘要正则（对金蝶导入凭证恒不命中）。
+    // 按 v.kind 识别（结构识别），不再依赖摘要正则（对导入凭证恒不命中）。
     var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
     if (costExisted.length) {
       return showToast('本期已生成 ' + costExisted.length + ' 张结转销售成本凭证，请勿重复生成；如需重做请先删除旧凭证', 'error');
@@ -227,7 +228,7 @@ function bindSettleEvents() {
   onBtn('btnReCarryForward', async function () {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
-    // 按 v.kind 定位旧结转凭证（结构识别）：此前用摘要正则，对金蝶导入账套恒找不到，
+    // 按 v.kind 定位旧结转凭证（结构识别）：此前用摘要正则，对导入账套恒找不到，
     // 导致「重新结转」在导入账套上完全不可用（删不掉旧凭证，重做必被幂等拦截）。
     var old = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_PL);
     // 确认文案按状态区分：未结转=首次结转，已结转=重做（删除旧凭证重新生成）
@@ -433,7 +434,7 @@ function refreshSettle() {
   var unaudited = vs.filter(function (v) { return !v.status || v.status === 'draft'; });
   var est = S.profitStatement(month);
   // 期末处理凭证识别：一律按 v.kind（结构识别），不再按摘要正则。
-  // 背景：金蝶 KIS / Excel 导入的凭证没有凭证级 summary 字段（摘要只落在分录级），
+  // 背景：  / Excel 导入的凭证没有凭证级 summary 字段（摘要只落在分录级），
   // 摘要正则对导入凭证恒不命中，导致页面恒显示「未生成 / 待结转」、生成查重形同虚设。
   var K = S.VOUCHER_KINDS;
   function kindVs(list, kind) {
@@ -740,7 +741,7 @@ function makeSimpleVoucher(month, summary, entries, kind) {
 // 此前 结转成本/转出增值税/计提附加税/计提所得税 四个按钮直接 makeSimpleVoucher，无查重，
 // 连点 N 次会生成 N 张同额凭证，虚增费用与负债。此处统一拦截：
 // 本期已存在同类凭证则拒绝，须先删除旧凭证再重做。
-// 查重按 v.kind（结构识别）而非摘要正则——金蝶导入凭证无 summary，摘要匹配恒不命中。
+// 查重按 v.kind（结构识别）而非摘要正则——导入凭证无 summary，摘要匹配恒不命中。
 // 返回 { ok, v } 或 { ok:false, msg }
 function genOnceVoucher(month, kind, summary, entries) {
   // 已结账期间禁止再生成凭证（否则会向已锁定期间写入，破坏账务一致性）。
@@ -999,7 +1000,7 @@ function selectSettleTemplate(id) {
 // 特殊模板字段填充（期末调汇 / 结转销售成本）
 // 结账模板科目选择：统一用共享组件 SubjectCombo（输入框+联想）。
 // 此前是硬编码 8 个损益科目的下拉，科目表改了就不同步；现改为从 S.subjects() 取全部科目，
-// 并支持联想输入（对齐金蝶）。首次绑定一次（dataset 守卫），之后只回填 value。
+// 并支持联想输入（对齐参考实现）。首次绑定一次（dataset 守卫），之后只回填 value。
 function fillCostSubjSelect(selId, selected) {
   var sel = $(selId);
   if (!sel) return;

@@ -1,8 +1,8 @@
-// Tools.js —— 基础功能页（账套管理 / 数据恢复 / 金蝶导入导出）
+// Tools.js —— 基础功能页（账套管理 / 数据恢复 / 导入导出）
 // 从 app.js 原块精确搬迁（L1369-1908），逻辑逐字一致，只挪窝不改写。
-// 依赖全部从全局桥接对象取；XLSX / KinDee 为 index.html 加载的全局。
+// 依赖全部从全局桥接对象取；XLSX / TyIo 为 index.html 加载的全局。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const $ = H.$;
 const S = H.S || window.S;
 const showToast = H.showToast;

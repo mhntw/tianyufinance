@@ -1,19 +1,19 @@
-// 科目联想输入（统一"选单个科目"的交互，对齐金蝶「输入框+下拉」）
+// 科目联想输入（统一"选单个科目"的交互，对齐「输入框+下拉」）
 //
 // 适用范围：
-//   - 录凭证分录科目
-//   - 固定资产/结账模板等「配置默认科目」的下拉
-//   统一后：输入编码前缀或名称即时联想，点选/回车写回，加子科目后自动适配。
+// - 录凭证分录科目
+// - 固定资产/结账模板等「配置默认科目」的下拉
+// 统一后：输入编码前缀或名称即时联想，点选/回车写回，加子科目后自动适配。
 //
 // 用法：bindSubjectCombo(inputEl, { onPick(code, subject), filter: fn })
-//   - filter 可限定科目范围（如固定资产只列 16 开头）
-//   - 返回 { setCode(code), close() }
+// - filter 可限定科目范围（如固定资产只列 16 开头）
+// - 返回 { setCode(code), close() }
 //
-// 依赖：全局 $、S（Store 单例）、__KINGDEE_HELPERS__（取 esc）、window、document
+// 依赖：全局 $、S（Store 单例）、__TY_HELPERS__（取 esc）、window、document
 
 import { subjectFullName } from '../common/subject-name.js';
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 
 function bindSubjectCombo(input, opts) {
@@ -55,9 +55,9 @@ function bindSubjectCombo(input, opts) {
     var r = input.getBoundingClientRect();
     pop = document.createElement('div');
     pop.className = 'subj-combo-pop';
-    pop.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid var(--kd-border);'
+    pop.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid var(--ty-border);'
       + 'border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.14);max-height:240px;overflow-y:auto;'
-      + 'min-width:' + Math.max(r.width, 200) + 'px;font-size:12.5px;color:var(--kd-text);';
+      + 'min-width:' + Math.max(r.width, 200) + 'px;font-size:12.5px;color:var(--ty-text);';
     pop.style.left = (window.scrollX + r.left) + 'px';
     pop.style.top = (window.scrollY + r.bottom + 2) + 'px';
     document.body.appendChild(pop);
@@ -68,13 +68,13 @@ function bindSubjectCombo(input, opts) {
     if (!pop) return;
     var rows = matchList(input.value);
     if (!rows.length) {
-      pop.innerHTML = '<div style="padding:10px 12px;color:var(--kd-text-3)">无匹配科目</div>';
+      pop.innerHTML = '<div style="padding:10px 12px;color:var(--ty-text-3)">无匹配科目</div>';
       activeRow = -1;
       return;
     }
     pop.innerHTML = rows.map(function (s, i) {
       return '<div class="subj-combo-row' + (i === activeRow ? ' active' : '') + '" data-code="' + esc(s.code) + '">'
-        + '<span class="m" style="color:var(--kd-text-3);font-variant-numeric:tabular-nums;margin-right:8px">' + esc(s.code) + '</span>'
+        + '<span class="m" style="color:var(--ty-text-3);font-variant-numeric:tabular-nums;margin-right:8px">' + esc(s.code) + '</span>'
         + '<span>' + esc(subjectFullName(s.code, s.name)) + '</span></div>';
     }).join('');
     Array.prototype.forEach.call(pop.querySelectorAll('.subj-combo-row'), function (row, i) {
@@ -98,6 +98,11 @@ function bindSubjectCombo(input, opts) {
     if (typeof opts.onPick === 'function') opts.onPick(code, s);
   }
 
+  // 点击/聚焦即展开：「点科目格弹出选择」，无需先打字（空输入显示前12个科目）。
+  // 用 ensureOpen 而非每次重新 open，避免选中后焦点仍在输入框时重复建浮层。
+  function ensureOpen() { if (!pop) open(); }
+  input.addEventListener('focus', ensureOpen);
+  input.addEventListener('click', ensureOpen);
   input.addEventListener('input', function () { lastQuery = input.value; open(); render(); });
   input.addEventListener('keydown', function (e) {
     if (!pop) return;

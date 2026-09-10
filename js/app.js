@@ -26,7 +26,7 @@
         hasXLSX: typeof window.XLSX !== 'undefined'
       };
       console.log('[self-check]', JSON.stringify(info));
-      window.__KINGDEE_SELFCHECK__ = info;
+      window.__TY_SELFCHECK__ = info;
       if (window.__TAURI__ && !window.__fileSaveBridge) {
         console.error('[self-check] 致命：__fileSaveBridge 未加载，导出/打印将失效！请检查 index.html 是否引入了 js/file-save-bridge.js');
         if (window.showToast) window.showToast('初始化异常：文件导出模块未加载，请联系开发者', 'error', 8000);
@@ -293,10 +293,10 @@
   /* 科目类别中文名（与 store ACCOUNT_CLASSES 对应） */
   var CLS_NAME = { asset: '资产', liability: '负债', equity: '权益', revenue: '损益(收入)', expense: '损益(费用)', common: '共同' };
   // 暴露给 ESM 页面模块（js/pages/settings/Settings.js 等引用）
-  globalThis.__KD_CLS_NAME__ = CLS_NAME;
+  globalThis.__TY_CLS_NAME__ = CLS_NAME;
 
   /* ---------- 全局：导航分组悬浮预览（「单例 popover」机制） ----------
-   * 金蝶源码（精斗云云会计_files/main.cf2e18af.chunk.js）每个主菜单包一个受控气泡组件
+   * 源码（云会计_files/main.cf2e18af.chunk.js）每个主菜单包一个受控气泡组件
    *   K.a({placement:"rightTop",mouseEnterDelay:.001,mouseLeaveDelay:.001,arrow:!1,trigger:"hover",tip:...})
    * 气泡显隐由组件库托管，物理上同一时刻只有一个浮层，hover 切换时旧浮层自动卸载，不会重叠。
    * 本项目纯 JS 无框架，取其本质：sidenav 下只挂「一个」浮层容器 #navPopover，
@@ -423,19 +423,31 @@
     });
   }
   function currentPeriod() {
-    var vs = (S.state && S.state.vouchers) || [];
-    // 口径：默认期间 = 最近一期【有数据】的期间（取最近一条有有效日期的凭证期间）。
-    // 凭证按记账顺序末尾为最近；若末条日期为空/脏数据（如部分导入账套），向前找最近一条有日期的。
-    if (vs.length) {
-      for (var i = vs.length - 1; i >= 0; i--) {
-        var m = String((U && U.monthOf) ? U.monthOf(vs[i].date) : '').trim();
-        if (/^\d{4}-\d{2}$/.test(m)) return m;
+    var closed = (S.state && S.state.closedPeriods) || [];
+    var natMonth = todayStr().slice(0, 7);
+    // 口径（旗舰版「当前账期」一致）：
+    // 1. 已结账存在 → 最近已结账月 + 1（工作期间）
+    // 2. 没结过账 → 最近有凭证的期间
+    // 3. 空账套 → 当前自然月
+    // 安全兜底：结果不能晚于当前自然月（未来月闸门）
+    var result;
+    if (closed.length) {
+      var last = closed[closed.length - 1];
+      var y = +last.slice(0, 4), m = +last.slice(5, 7);
+      m++; if (m > 12) { m = 1; y++; }
+      result = y + '-' + String(m).padStart(2, '0');
+    } else {
+      var vs = (S.state && S.state.vouchers) || [];
+      if (vs.length) {
+        for (var i = vs.length - 1; i >= 0; i--) {
+          var vm = String((U && U.monthOf) ? U.monthOf(vs[i].date) : '').trim();
+          if (/^\d{4}-\d{2}$/.test(vm)) { result = vm; break; }
+        }
       }
+      if (!result) result = natMonth;
     }
-    // 整账套都没有有效日期（或空账套）：不强行用开账月份（那会产生「1期」这类误导默认），
-    // 回退到当前自然月作为「最近一期」的可用兜底。
-    var now = new Date();
-    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    if (result > natMonth) result = natMonth;
+    return result;
   }
   // 本期 = 最近一个已结账期间（state.closedPeriods 为升序列表，末位即最近已结账）。
   // 本月 = 当前未结账期间（通常即最近有凭证的期间 currentPeriod）。
@@ -490,14 +502,14 @@
 
   /* ---------- 模块桥接层：把通用 helper 暴露给 ESM 页面模块（B 方案解耦） ----------
    * 设计：app.js 仍是传统 IIFE，内部 helper 是局部变量；ESM 页面模块（js/pages/*）
-   * 无法 import 这些局部符号。这里统一把它们挂到 globalThis.__KINGDEE_HELPERS__，
+   * 无法 import 这些局部符号。这里统一把它们挂到 globalThis.__TY_HELPERS__，
    * 模块从该全局对象取依赖，实现「只挪窝不改写逻辑」。
    * 注意：本块仅为新增引用，不改变任何既有逻辑；未迁移的页面继续走内部闭包，零影响。 */
   if (typeof globalThis !== 'undefined') {
     // 安全收集：只挂确实存在的局部 helper；缺失项不在此处抛错（模块侧用 || fallback 兜底），
     // 避免某次迁移误删私有 helper 导致整页 ReferenceError 崩溃。
     var pick = function (v) { return (typeof v !== 'undefined') ? v : undefined; };
-    globalThis.__KINGDEE_HELPERS__ = {
+    globalThis.__TY_HELPERS__ = {
       $: pick($), money: pick(money), fmt: pick(fmt), signed: pick(signed),
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
@@ -521,7 +533,7 @@
     };
   }
 
-  /* ---------- 二进制 → base64（唯一正确实现，供 kdPrint 等使用） ---------- */
+  /* ---------- 二进制 → base64（唯一正确实现，供 tyPrint 等使用） ---------- */
   // 优先复用 file-save-bridge 的实现（单点维护）；该文件缺失时本地兜底。
   // 关键点：先整段拼 binary string 再一次 btoa。分块 btoa 后拼接会引入中间
   // padding '='，导致 Rust 端 base64 STANDARD 解码失败（Invalid symbol 61）。
@@ -562,7 +574,7 @@
   // 其次页内月份输入框；都没有则回退到「最近有数据期间」。
   function pickPrintPeriod(scope) {
     if (scope) {
-      var el = scope.querySelector('.kd-period-trigger-text') || scope.querySelector('.rpt-period');
+      var el = scope.querySelector('.ty-period-trigger-text') || scope.querySelector('.rpt-period');
       if (el) { var t = (el.textContent || '').trim(); if (t) return t; }
       var mi = scope.querySelector('input[type="month"]');
       if (mi && mi.value) { var pv = String(mi.value).split('-'); if (pv.length === 2) return pv[0] + '年' + pv[1] + '期'; }
@@ -574,18 +586,18 @@
   /* ================== 打印契约（长期稳定基线，勿再打结构性补丁） ==================
    * 可打印数据页只需要满足一条、且唯一一条契约：
    *   「页面里恰有一张 class="grid" 的可见主数据表」
-   * kdPrint 只克隆这张表本身，绝不克隆外围容器 —— 期间选择条/筛选/按钮都在表格之外，
+   * tyPrint 只克隆这张表本身，绝不克隆外围容器 —— 期间选择条/筛选/按钮都在表格之外，
    * 因此从结构上就不可能混入打印件，与页面有无 .table-wrap、表格直挂 section 与否均无关。
    *
    * 维护守则（改页面/新增可打印页必须遵守，改完跑 __printSelfTest()）：
    *   1. 主数据表带 class="grid"；
-   *   2. 不要在数据表内部放 .page-actions / .kd-period-range / select / input 等 UI；
+   *   2. 不要在数据表内部放 .page-actions / .ty-period-range / select / input 等 UI；
    *   3. 保持每页恰一张可见数据表。
-   * 违反契约不会静默：collectPrintBody 会记录 violations，kdPrint 打印时 console.warn，
+   * 违反契约不会静默：collectPrintBody 会记录 violations，tyPrint 打印时 console.warn，
    * __printSelfTest() 全量扫描所有 [data-print] 入口并输出"通过/失败"清单。
    */
   // 克隆得到的数据表内部不允许出现的 UI（允许它存在 = 纸面必带残件，必须当场暴露）
-  var PRINT_TABLE_UI_BLOCK = '.page-actions, .page-head, .kd-period-range, .topbar, ' +
+  var PRINT_TABLE_UI_BLOCK = '.page-actions, .page-head, .ty-period-range, .topbar, ' +
     '.content-toolbar, .voucher-toolbar, select, textarea, input';
 
   // 打印主体收集：唯一且稳定的取数点（打印按钮、直印、自检三路共用）。
@@ -619,7 +631,7 @@
     return out;
   }
 
-  function kdPrint(btn) {
+  function tyPrint(btn) {
     var store = globalThis.S;
     var bookName = store && store.state && store.state.company && store.state.company.name ? store.state.company.name : '';
     var active = document.querySelector('.page.active');
@@ -700,7 +712,7 @@
 
   // 生成自包含打印 HTML（内联关键样式，含 @media print），保证浏览器打开即是一张可打印报表
   // 抬头来源：bodyHtml 恒为 collectPrintBody 克隆的「纯数据表格」，从不携带抬头，
-  // 故纸面抬头一律取调用方传入的 fallbackHead（kdPrint 统一传 stdHeadHtml，
+  // 故纸面抬头一律取调用方传入的 fallbackHead（tyPrint 统一传 stdHeadHtml，
   // 内容出自 rptHeadPartsHtml 单一格式源）；缺省时退回单标题，保证纸面至少有表名。
   function buildPrintHtml(title, bodyHtml, fallbackHead) {
     var leading = fallbackHead
@@ -723,7 +735,7 @@
       + '.rpt-title{font-size:18px;font-weight:700;}'
       + '.rpt-period{font-size:12px;color:#666;margin-top:4px;}'
       + 'input[type=checkbox]{display:none;}'
-      + '.btn,.kd-btn,button{display:none!important;}'
+      + '.btn,.ty-btn,button{display:none!important;}'
       + '@media print{body{padding:0;}a{display:none;}.print-hint{display:none!important;}}'
       + '</style></head><body>'
       + leading
@@ -739,8 +751,8 @@
     });
   }
 
-  globalThis.__KINGDEE_HELPERS__.kdPrint = kdPrint;
-  globalThis.kdPrint = kdPrint;
+  globalThis.__TY_HELPERS__.tyPrint = tyPrint;
+  globalThis.tyPrint = tyPrint;
 
   // 打印回归自检：扫描全部 [data-print] 打印入口，逐页走真实收集路径，
   // 断言"恰一张可见数据表、克隆体无 UI 残件、grid-title 已去重"。
@@ -750,7 +762,7 @@
     var btns = document.querySelectorAll('[data-print]');
     var rows = [], fails = 0;
     Array.prototype.forEach.call(btns, function (btn) {
-      // 与 kdPrint 一致：先收窄到按钮所在 .asset-sub 面板（折旧宿主），再回退到 .page
+      // 与 tyPrint 一致：先收窄到按钮所在 .asset-sub 面板（折旧宿主），再回退到 .page
       var pg = (btn.closest('.asset-sub') || btn.closest('.page'));
       var hostPage = btn.closest('.page');
       var name = hostPage && hostPage.id ? String(hostPage.id).replace(/^page-/, '') : '(未在任何 .page 内)';
@@ -777,7 +789,7 @@
   // 事件委托：新增数据页只需在 page-actions 放 <button class="btn" data-print>打印</button>，无需各自绑定 JS。
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-print]');
-    if (btn) { e.preventDefault(); kdPrint(btn); }
+    if (btn) { e.preventDefault(); tyPrint(btn); }
   });
 
   /* ---------- 导航：左侧菜单，点击主菜单也能展开子菜单（单例浮层） ---------- */
@@ -1042,8 +1054,8 @@
     // 菜单字形图标：普通/激活双态 SVG（.icon--Jt57- 普通 + .icon_active--3FvIC 激活，
     // hover/active 时 CSS 切换 display，激活字形带青蓝渐变 fill）
     function navIconHtml(groupName, idx) {
-      var pairs = (typeof KD_MENU_ICON_PAIRS !== 'undefined') ? KD_MENU_ICON_PAIRS : null;
-      var paths = (typeof KD_MENU_ICON_PATHS !== 'undefined') ? KD_MENU_ICON_PATHS : null;
+      var pairs = (typeof TY_MENU_ICON_PAIRS !== 'undefined') ? TY_MENU_ICON_PAIRS : null;
+      var paths = (typeof TY_MENU_ICON_PATHS !== 'undefined') ? TY_MENU_ICON_PATHS : null;
       if (!pairs || !paths || !pairs[groupName]) {
         return '<span class="nav-ico">' + groupName.charAt(0) + '</span>';
       }
@@ -1140,11 +1152,11 @@
         if (collapseIco) collapseIco.style.transform = '';
         if (collapseBtn) collapseBtn.title = '收起导航';
       }
-      try { localStorage.setItem('kdNavCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+      try { localStorage.setItem('tyNavCollapsed', collapsed ? '1' : '0'); } catch (e) {}
     }
     // 初始恢复上次状态
     var savedCollapsed = '0';
-    try { savedCollapsed = localStorage.getItem('kdNavCollapsed') || '0'; } catch (e) {}
+    try { savedCollapsed = localStorage.getItem('tyNavCollapsed') || '0'; } catch (e) {}
     applyNavCollapsed(savedCollapsed === '1');
     if (collapseBtn) {
       collapseBtn.addEventListener('click', function () {
@@ -1152,12 +1164,12 @@
       });
     }
 
-    // 删除暗色模式功能（曾由 kdThemeDark 切换 <html>.kd-theme-dark）：
+    // 删除暗色模式功能（曾由 kdThemeDark 切换 <html>.ty-theme-dark）：
     // 已移除主题按钮与 applyTheme 逻辑；此处清理历史可能残留的 localStorage 键，
     // 并确保 <html> 不残留暗色类（防止旧数据导致侧栏深色样式残留在新界面）。
     try {
       localStorage.removeItem('kdThemeDark');
-      document.documentElement.classList.remove('kd-theme-dark');
+      document.documentElement.classList.remove('ty-theme-dark');
     } catch (e) {}
   }
   function groupLeaveAll() {
@@ -1211,10 +1223,10 @@
 
 
   /* ---------- 顶部栏账套/期间（.accountName 纯展示标签） ----------
-     金蝶源码（原始抓取 HTML + main.d261698f.chunk.css）确认：
+     源码（原始抓取 HTML + main.d261698f.chunk.css）确认：
      账套名(.acctName)+账期(.acctDate) 是 .accountName 内两个纯文本 div，
      .wrapper--n7MvS 仅设 cursor:pointer（手图标），无 onClick、无下拉触发器。
-     实测金蝶点击无反应——此区域为纯展示，故不放任何点击交互。 */
+     实测点击无反应——此区域为纯展示，故不放任何点击交互。 */
   function closeSearchDropdown() { var d = $('searchDropdown'); if (d) d.hidden = true; }
   function closeAllTopPop() { closeSearchDropdown(); var o = $('topOverlay'); if (o) o.hidden = true; }
 
@@ -1436,7 +1448,7 @@
     // 等效全路径名匹配（子科目全名含父级名），搜「银行存款」能带出「青岛银行」等下级。
     // 科目 / 账簿 / 凭证明细三处共用下面这套映射。
     // 说明：这是确定性的「字符串包含匹配 + 父级连带」，不是模糊搜索——无相似度/评分/正则，
-    //       父链上溯有层数上限（防数据异常成环），同一关键词必得同一结果。
+    // 父链上溯有层数上限（防数据异常成环），同一关键词必得同一结果。
     var subjAll = S.subjects();
     var subjByCode = {};
     subjAll.forEach(function (s) { subjByCode[String(s.code)] = 1; });
@@ -1634,7 +1646,7 @@
     else if (page === 'voucher-noedit') { $('vEditView').style.display = ''; page = 'voucher'; }
     // 数据与安全已并入系统设置页（含历史 book-manage 时代），旧 hash/标签兜底映射到合并页
     else if (page === 'book-manage' || page === 'backup-restore') { page = 'system-settings'; }
-    // 导入金蝶账套：触发文件选择，不切换页面
+    // 导入账套：触发文件选择，不切换页面
     else if (page === 'import-ais') { goPage('system-settings'); return; }
     /* 折旧宿主收敛：旧独立页键（asset-depr-voucher/sum/detail、变动记录）→ 宿主 + 子面板 */
     var _assetDeprSubAlias = {
@@ -1760,7 +1772,7 @@
 
   // 金额位格 —— 严格 Pd 组件
   //
-  // 金蝶源码（main.cf2e18af.chunk.js 的 Pd 函数，逐行对应）：
+  // 源码（main.cf2e18af.chunk.js 的 Pd 函数，逐行对应）：
   // var t = value ? value.toString() : "";
   // t && parseFloat(t) && (t = parseFloat(t).toFixed(2));
   // t = t.replace("-", "");
@@ -1774,7 +1786,7 @@
   // </div>)
   // 负值：容器加 red 类（红字）。
   //
-  // 注意：金蝶表头的「亿千百十万千百十元角分」单位行，
+  // 注意：表头的「亿千百十万千百十元角分」单位行，
   // 也是同一个 Pd 组件渲染 value="亿千百十万千百十元角分"（isNumber=false），
   // 因此单位与数字位格天生对齐——本项目表头同样复用本函数。
 
@@ -1799,13 +1811,10 @@
     var cells = '';
     for (var k = 0; k < 11; k++) {
       var active = (activeIndex === k) ? ' amt-cell-active' : '';
-      cells += '<div class="amt-cell' + active + '">' + (isNumber ? ' ' : chars[k]) + '</div>';
+      // 数字直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
+      cells += '<div class="amt-cell' + active + '">' + chars[k] + '</div>';
     }
-    // 仅在有实际金额且未隐藏时显示数字层（编辑行隐藏，避免与 edit-input 重复）
-    var valLayer = (isNumber && t && !hideValueLayer)
-      ? '<div class="amt-value">' + t.replace('.', '') + '</div>'
-      : '';
-    return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + valLayer + '</div>';
+    return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + '</div>';
   }
 
   // 表头金额单位行（复用 Pd 组件渲染"亿千百十万千百十元角分"，非数字模式）

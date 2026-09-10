@@ -56,7 +56,7 @@
   function fmtDateTime(d) { return fmtDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
   function monthOf(dateStr) { return dateStr.slice(0, 7); } // YYYY-MM
   // 凭证归属期间（YYYY-MM）：优先用 date；账套缺失 date 时按 period 序号 + 启用月反推。
-  // 兼容两种 period：KIS 标准 1~12；6 位期间号 YYYYMM（如 202201 -> '2022-01'）。
+  // 兼容两种 period： 标准 1~12；6 位期间号 YYYYMM（如 202201 -> '2022-01'）。
   // 归期不再强依赖 date，无 date 的账套也能正确按月归集。
   function voucherMonth(v) {
     if (v.date) return monthOf(v.date);
@@ -206,12 +206,9 @@
       param: {
         standard: stdMeta.label,
         voucherWord: '记',
-        // 凭证开关（凭证分区 4 项，默认全部关闭）
+        // 凭证开关（单机版仅保留赤字检查；多人权限相关开关已移除）
         voucherChecks: {
-          deficitCheck: false,        // 现金、银行存款、其他货币资金科目赤字检查
-          makerNotAuditor: false,     // 不允许制单人与审核人为同一人
-          auditorSameAsUnauditor: false, // 审核人与反审核人必须为同一人
-          noEditOthers: false         // 不允许修改/删除别人录入的凭证
+          deficitCheck: false        // 现金、银行存款、其他货币资金科目赤字检查
         },
         // 账簿开关（仅保留已接真的两项；其余开关本项目无消费方，已移除）
         bookHideZero: false,           // 无发生额且余额为0不显示
@@ -252,7 +249,7 @@
   /* ---------- 准则自动判定 ----------
    * 按损益类科目编码前缀判定：5xxx 为主体 → 旧准则（企业会计制度，5xxx 编码）；
    * 6xxx 为主体 → 小企业会计准则（2013，6xxx 编码）。
-   * 用于导入金蝶账套 / 恢复老备份等无 standard 字段的账套，避免一律默认为旧准则标错。
+   * 用于导入账套 / 恢复老备份等无 standard 字段的账套，避免一律默认为旧准则标错。
    * 判定依据与 store 的切换迁移映射（CODE_MAP_OLD_TO_2013：5001↔6001…）同源。
    * 返回 'old' | 'small2013'；无法判定时返回 null（由调用方决定回退）。
    */
@@ -1013,7 +1010,7 @@
       return this.state.subjects.filter(function (s) { return s.code === code; })[0] || null;
     },
     // 科目编码 → 当前名称（显示层唯一入口）。
-    // 口径对齐金蝶：凭证/报表显示的是科目表「实时名称」，科目改名后历史单据显示同步更新；
+    // 口径对齐参考实现：凭证/报表显示的是科目表「实时名称」，科目改名后历史单据显示同步更新；
     // 分录里存的 name 仅作兜底（科目已不存在时使用）。
     subjectName: function (code) {
       var s = this.subject(code);
@@ -1072,7 +1069,7 @@
       return { ok: true };
     },
     // 科目是否已被使用（含全部子科目）：存在期初余额 或 任一凭证分录引用，即视为已使用。
-    // 用途：updateSubject 禁改已使用科目的类别/方向（金蝶同款限制，防呆 M5）。
+    // 用途：updateSubject 禁改已使用科目的类别/方向（同款限制，防呆 M5）。
     _subjectUsed: function (code) {
       var self = this;
       var prefix = String(code);
@@ -1089,7 +1086,7 @@
       if (!s) return { ok: false, msg: '科目不存在' };
       if (cls && cls !== s.cls && ACCOUNT_CLASSES[cls]) {
         // 防呆 M5：科目类别/方向是历史报表归类的依据，已使用后改动会使利润表归类、
-        // 余额正常方向整体漂移（曾审计发现的隐性错账模式）。金蝶同款限制：禁改。
+        // 余额正常方向整体漂移（曾审计发现的隐性错账模式）。同款限制：禁改。
         if (this._subjectUsed(code)) {
           return { ok: false, msg: '科目「' + s.code + ' ' + (s.name || '') + '」已有凭证或期初余额，不允许修改科目类别（类别决定报表归类与余额方向）；如需调整请新增科目后将凭证改挂新科目，或先清理该科目期初与凭证' };
         }
@@ -1182,8 +1179,28 @@
       if (!bal.balanced) {
         return { ok: false, msg: '借贷不平衡，无法保存（借 ' + round2(bal.dr) + ' / 贷 ' + bal.cr + '）' };
       }
+      // 期间三道闸门：已结账 / 启用月前 / 未来月
+      var _month = voucherMonth(v);
+      var _sm = (this.state.company && this.state.company.startMonth) || '';
+      var _cur = fmtDate(new Date()).slice(0, 7);
+      if (this.isPeriodClosed(_month))
+        return { ok: false, msg: '该凭证所在月份（' + _month + '）已结账，不可新增' };
+      if (_sm && _month < _sm)
+        return { ok: false, msg: '凭证日期（' + _month + '）早于账套启用期间（' + _sm + '），请改录期初余额' };
+      if (_month > _cur)
+        return { ok: false, msg: '凭证日期（' + _month + '）不能晚于当前月份（' + _cur + '）' };
+
       v.word = v.word || this.state.param.voucherWord || '记';
-      v.no = v.no || this.nextVoucherNo(v.word, voucherMonth(v));
+      v.no = v.no || this.nextVoucherNo(v.word, _month);
+      // 凭证字号唯一性校验：同月同凭证字下字号不可重复（规则）
+      // 已删除（软删）凭证不占号，允许新凭证使用被删凭证的字号
+      var _dup = (this.state.vouchers || []).filter(function (x) {
+        return x.deleted !== 'y' && (x.word || '记') === v.word
+          && String(x.no) === String(v.no) && voucherMonth(x) === _month;
+      });
+      if (_dup.length) {
+        return { ok: false, msg: '同月同凭证字下已存在字号 ' + v.word + '-' + v.no + ' 的凭证，请修改凭证号' };
+      }
       // 凭证 id 必须与 ensureVoucherIds() 的口径完全一致（word-no，重复则加 -N 后缀），
       // 否则「新增时用 V+时间戳、账套重新加载时被改成 word-no」会让 id 变化，
       // 导致原始凭证/固定资产等按 voucherId 记录的引用全部失效
@@ -1253,11 +1270,37 @@
       // 单人/免审核场景：审核是可选合规动作，不作为编辑锁。
       // 已审核凭证允许修改，保存后审核状态自动撤销（内容已变更，原审核失效，需重新审核）。
       var wasAudited = !!(this.state.vouchers[idx].status && this.state.vouchers[idx].status !== 'draft');
-      // 开关：不允许修改/删除别人录入的凭证
-      var vc = (this.state.param && this.state.param.voucherChecks) || {};
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
-      if (vc.noEditOthers && this.state.vouchers[idx].maker && this.state.vouchers[idx].maker !== curUser)
-        return { ok: false, msg: '不允许修改别人录入的凭证（系统参数已开启）' };
+      // 凭证字号唯一性校验（编辑场景）：仅当用户实际改变了字/号/月份时才校验，
+      // 避免历史遗留重复凭证编辑自身不改号时被误拦截。
+      var _old = this.state.vouchers[idx];
+      var _oWord = _old.word || '记';
+      var _oNo = _old.no;
+      var _oMonth = voucherMonth(_old);
+      var _tWord = v.word || _oWord;
+      var _tNo = v.no != null ? v.no : _oNo;
+      var _tMonth = voucherMonth({ date: v.date || _old.date });
+      // 编辑场景下目标月份也要过三道闸门：结账 / 启用月前 / 未来月
+      var _sm = (this.state.company && this.state.company.startMonth) || '';
+      var _cur = fmtDate(new Date()).slice(0, 7);
+      if (this.isPeriodClosed(_tMonth))
+        return { ok: false, msg: '凭证目标月份（' + _tMonth + '）已结账，不可修改' };
+      if (_sm && _tMonth < _sm)
+        return { ok: false, msg: '凭证日期（' + _tMonth + '）早于账套启用期间（' + _sm + '）' };
+      if (_tMonth > _cur)
+        return { ok: false, msg: '凭证日期（' + _tMonth + '）不能晚于当前月份（' + _cur + '）' };
+
+      var _selfId = _old.id;
+      var _changed = (_tWord !== _oWord) || (String(_tNo) !== String(_oNo)) || (_tMonth !== _oMonth);
+      if (_changed) {
+        var _dupEdit = (this.state.vouchers || []).filter(function (x) {
+          return x.id !== _selfId && x.deleted !== 'y'
+            && (x.word || '记') === _tWord && String(x.no) === String(_tNo)
+            && voucherMonth(x) === _tMonth;
+        });
+        if (_dupEdit.length) {
+          return { ok: false, msg: '同月同凭证字下已存在字号 ' + _tWord + '-' + _tNo + ' 的凭证，请修改凭证号' };
+        }
+      }
       // 审计留痕：先快照修改前值，再应用修改
       var before = this._voucherAuditSummary(this.state.vouchers[idx]);
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
@@ -1293,7 +1336,7 @@
       if (any(this.state.fixedAssets, function (f) { return f.cleanVoucher === vno || f.deprVoucher === vno; })) hits.push('固定资产');
       // 工资：工资模块按凭证类型（v.kind）+ 同期间识别凭证（工资记录无 voucherId 字段）。
       // 删掉工资凭证后工资数据仍在，会造成「工资已发但总账无凭证」的账实不符，故拦截提示先处理工资记录。
-      // 原实现按摘要正则匹配，对金蝶导入凭证（无 v.summary）恒不命中，该保护从未生效。
+      // 原实现按摘要正则匹配，对导入凭证（无 v.summary）恒不命中，该保护从未生效。
       if (v) {
         var K = this.VOUCHER_KINDS;
         var kv = this.voucherKind(v);
@@ -1309,14 +1352,10 @@
         return { ok: false, msg: '该凭证所在月份已结账，不可删除' };
       // 单人/免审核场景：审核不构成删除锁（删除仍有确认框 + 操作日志完整留痕）。
       var wasAudited = !!(v.status && v.status !== 'draft');
-      // 开关：不允许修改/删除别人录入的凭证
-      var vc = (this.state.param && this.state.param.voucherChecks) || {};
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
-      if (vc.noEditOthers && v.maker && v.maker !== curUser)
-        return { ok: false, msg: '不允许删除别人录入的凭证（系统参数已开启）' };
       // 财务严谨：校验凭证是否被业务单据引用（报销单/原始凭证/固定资产/工资等），有引用则禁删
       var ref = this._voucherRefs(id);
       if (ref && ref.length) return { ok: false, msg: '该凭证已被' + ref.join('、') + '引用，请先解除关联后再删除' };
+      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
       // 软删除：打 deleted='y' 标记，凭证留在账套可还原（参考 jinbooks jbx_voucher.deleted 设计）
       // 所有凭证查询入口（periodVouchers/getVoucher 等）已过滤 deleted，账簿/报表不再计入
       v.deleted = 'y';
@@ -1378,12 +1417,9 @@
         return { ok: false, msg: '该凭证所在月份已结账' };
       var bal = this.voucherBalance(v.entries);
       if (!bal.balanced) return { ok: false, msg: '借贷不平衡，不能审核' };
-      // 开关：不允许制单人与审核人为同一人
-      var vc = (this.state.param && this.state.param.voucherChecks) || {};
       var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
-      if (vc.makerNotAuditor && v.maker && v.maker === curUser)
-        return { ok: false, msg: '不允许制单人与审核人为同一人（系统参数已开启）' };
       // 开关：现金、银行存款、其他货币资金科目赤字检查
+      var vc = (this.state.param && this.state.param.voucherChecks) || {};
       if (vc.deficitCheck) {
         var cashAccts = this.cashAccounts ? this.cashAccounts() : [];
         var cashCodes = cashAccts.map(function (s) { return s.code; });
@@ -1417,11 +1453,6 @@
       if (v.deleted === 'y') return { ok: false, msg: '凭证已删除' };
       if (this.isPeriodClosed(voucherMonth(v)))
         return { ok: false, msg: '该凭证所在月份已结账，不可反审核（已结账期间凭证状态锁定）' };
-      // 开关：审核人与反审核人必须为同一人
-      var vc = (this.state.param && this.state.param.voucherChecks) || {};
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
-      if (vc.auditorSameAsUnauditor && v.auditor && v.auditor !== curUser)
-        return { ok: false, msg: '审核人与反审核人必须为同一人（系统参数已开启）' };
       v.status = 'draft';
       this.persist();
       return { ok: true };
@@ -1601,7 +1632,7 @@
     /* ===================== 期末业务凭证类型（v.kind） =====================
      * 背景（系统性缺陷，此处一次性根治；此后禁止再新增「摘要正则判定期末凭证」的写法）：
      *   此前全工程 14 处「某类期末凭证是否已存在」的判定，全部依赖凭证摘要正则
-     *   （/结转.*损益/、/年度本年利润/、/计提.*折旧/ …）。而金蝶 KIS / Excel 导入的凭证
+     *   （/结转.*损益/、/年度本年利润/、/计提.*折旧/ …）。而  / Excel 导入的凭证
      *   **没有凭证级 summary 字段**（摘要只落在分录级 entries[].summary，见 kis-import.js:192），
      *   故 re.test(v.summary || '') 对导入凭证恒为 false，导致：
      *     · 幂等失效 → 重复生成年结/税金凭证（错账）；
@@ -1628,7 +1659,7 @@
       PAYROLL_PAY: 'payrollPay'      // 发放工资
     },
 
-    // 按结构特征识别单张凭证的期末业务类型（不读摘要，兼容金蝶导入凭证）
+    // 按结构特征识别单张凭证的期末业务类型（不读摘要，兼容导入凭证）
     _detectVoucherKind: function (v) {
       var self = this;
       var es = (v && v.entries) || [];
@@ -1646,7 +1677,7 @@
       function hasRole(role) { var s = self.subjectRole(role); return !!(s && has(s.code)); }
       var K = this.VOUCHER_KINDS;
 
-      // 1) 结转损益：同时出现「损益类科目」与「本年利润」（本软件与金蝶结转凭证的共同结构）
+      // 1) 结转损益：同时出现「损益类科目」与「本年利润」（本软件与结转凭证的共同结构）
       if (hasPL && hasRole('PROFIT_YEAR')) return K.CARRY_PL;
       // 2) 年度结转：本年利润 + 利润分配，且不含损益类科目（含损益的归入结转损益）
       if (hasRole('PROFIT_YEAR') && hasRole('PROFIT_RESIDUAL') && !hasPL) return K.CARRY_YE;
@@ -1664,7 +1695,7 @@
       // 7) 计提附加税：税金及附加 6403 + 应交税费明细
       if (has('6403') && startsWith('2221')) return K.ACCRUE_SURTAX;
       // 8) 转出未交增值税：借贷双方全部落在应交税费 2221 系列
-      //    （实际缴税凭证必含银行/现金，不会误命中）
+      // （实际缴税凭证必含银行/现金，不会误命中）
       if (codeList.length >= 2 && codeList.every(function (c) { return c.indexOf('2221') === 0; })) {
         return K.CARRY_VAT;
       }
@@ -1718,7 +1749,7 @@
       });
       return { rev: rev, exp: exp };
     },
-    // 本期损益结转状态：以「是否存在结转损益凭证」为准（按 v.kind 识别，兼容金蝶导入凭证）。
+    // 本期损益结转状态：以「是否存在结转损益凭证」为准（按 v.kind 识别，兼容导入凭证）。
     // 返回 { done, vouchers }——调用方据此拦截，并可从 vouchers 取到凭证号用于提示/删除。
     carryForwardState: function (month) {
       var vs = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_PL);
@@ -1731,7 +1762,7 @@
     carryForwardProfit: function (month) {
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       // 幂等（财务规范：一个期间只能结转一次损益）：按 v.kind 定位结转凭证，
-      // 兼容金蝶导入账套（其凭证无 summary，摘要正则恒不命中，必须靠结构识别）。
+      // 兼容导入账套（其凭证无 summary，摘要正则恒不命中，必须靠结构识别）。
       var st = this.carryForwardState(month);
       if (st.done) {
         var nums = st.vouchers.map(function (v) { return (v.word || '转') + '-' + v.no; }).join('、');
@@ -1787,7 +1818,10 @@
         entries: entries
       };
       var saved = this.addVoucher(v);
-      if (saved && saved.ok !== false) this.backupNow(); // 结转损益为高风险操作，强制立即备份
+      if (!saved || saved.ok === false) {
+        return { ok: false, msg: (saved && saved.msg) || '结转损益失败' };
+      }
+      this.backupNow(); // 结转损益为高风险操作，强制立即备份
       return { ok: true, voucher: saved, totalRev: totalRev, totalExp: totalExp, net: net };
     },
 
@@ -1800,7 +1834,7 @@
         return { ok: false, msg: '仅 12 月需结转本年利润' };
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       // 幂等保护（财务大忌：重复生成同额凭证）：按 v.kind 定位年度结转凭证。
-      // 原实现仅用摘要正则 /年度本年利润/，金蝶导入凭证无 summary 时恒不命中，
+      // 原实现仅用摘要正则 /年度本年利润/，导入凭证无 summary 时恒不命中，
       // 会导致同一 12 月重复生成年结凭证（错账）。改用结构识别后对导入账套同样有效。
       var existedYE = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_YE);
       if (existedYE.length) {
@@ -1836,7 +1870,10 @@
         entries: entries
       };
       var saved = this.addVoucher(v);
-      if (saved) this.backupNow(); // 年末结转利润高风险，强制立即备份
+      if (!saved || saved.ok === false) {
+        return { ok: false, msg: (saved && saved.msg) || '年末结转失败' };
+      }
+      this.backupNow(); // 年末结转利润高风险，强制立即备份
       return { ok: true, voucher: saved, amount: Math.abs(bal) };
     },
 
@@ -1873,9 +1910,9 @@
       var est = this.profitStatement(month);
       var checks = [];
       function add(key, label, status, tip) { checks.push({ key: key, label: label, status: status, tip: tip }); }
-      // 期末处理凭证是否已生成：一律按 v.kind 判定（结构识别，兼容金蝶导入的无摘要凭证）。
+      // 期末处理凭证是否已生成：一律按 v.kind 判定（结构识别，兼容导入的无摘要凭证）。
       // 此前用摘要正则（/结转.*损益/、/计提.*折旧/ …），对导入凭证恒不命中，
-      // 导致这些项在金蝶账套上永远显示「未生成/建议生成」，且幂等保护形同虚设。
+      // 导致这些项在账套上永远显示「未生成/建议生成」，且幂等保护形同虚设。
       function kindCount(kind) { return self.periodVouchersOfKind(month, kind).length; }
 
       // 1. 凭证全部审核（硬性；开关"凭证审核后才允许结账"控制是否检查）
@@ -1912,7 +1949,7 @@
 
       // 2. 损益结转（硬性：本期损益净额非 0 则必须结转）
       // 关键：判定与 carryForwardProfit 共用同一个取数函数 periodProfitNet()，二者条件严格等价，
-      // 从根上消除「结账说未结转、点结转说无需结转」的死锁（曾出现于金蝶导入账套）。
+      // 从根上消除「结账说未结转、点结转说无需结转」的死锁（曾出现于导入账套）。
       // 文案另用利润表发生额口径区分「已结转」与「本期确无损益」，避免误导。
       var netPL = self.periodProfitNet(month);
       var needCarry = Math.abs(netPL.rev) >= EPS || Math.abs(netPL.exp) >= EPS;
@@ -1936,7 +1973,7 @@
           var pBal = glP
             ? (glP.normal === 'dr' ? (num(glP.endDr) - num(glP.endCr)) : (num(glP.endCr) - num(glP.endDr)))
             : 0;
-          // 按 v.kind 判定：原摘要正则对金蝶导入凭证恒不命中，
+          // 按 v.kind 判定：原摘要正则对导入凭证恒不命中，
           // 会让 12 月永远判「未结转本年利润」而卡死结账。
           var yeDone = kindCount(self.VOUCHER_KINDS.CARRY_YE) > 0;
           if (Math.abs(pBal) < EPS) {
@@ -2492,7 +2529,10 @@
         word: tpl.word || this.state.param.voucherWord || '转', date: lastDay(month), attach: 0,
         summary: summary, kind: this.VOUCHER_KINDS.CARRY_COST, entries: entries
       });
-      if (v) this.backupNow(); // 结转成本批量写凭证，强制立即备份
+      if (!v || v.ok === false) {
+        return { ok: false, msg: (v && v.msg) || '结转成本失败' };
+      }
+      this.backupNow(); // 结转成本批量写凭证，强制立即备份
       return { ok: true, voucher: v, amount: amt };
     },
     // 科目余额表（至某月末）
@@ -2882,11 +2922,11 @@
     },
     // 未结转损益净额（截至 month 月末，含当月）：收入净额 − 费用净额。
     // 背景：损益类科目在「结转损益」前仍保留余额，这部分已实现的净损益按会计准则
-    //   应并入资产负债表「未分配利润」列示。若忽略，则结转损益前恒等式表面不成立
-    //   （资产 = 负债 + 权益 + 净损益），用户每月查看当期报表都会看到"不平衡"告警
-    //   而误以为记账出错（实测两账套当期差额 59 万 / 48 万，全部来自此处）。
+    // 应并入资产负债表「未分配利润」列示。若忽略，则结转损益前恒等式表面不成立
+    // （资产 = 负债 + 权益 + 净损益），用户每月查看当期报表都会看到"不平衡"告警
+    // 而误以为记账出错（实测两账套当期差额 59 万 / 48 万，全部来自此处）。
     // 口径：只统计末级科目——generalLedger 每行已按「父 = 自身 + 子目」上卷，
-    //   若父行与子行同时累加会翻倍（与 profitStatement 总额口径一致）。
+    // 若父行与子行同时累加会翻倍（与 profitStatement 总额口径一致）。
     unclosedProfit: function (month) {
       var self = this;
       month = normMonth(month);
@@ -3176,7 +3216,7 @@
         var hasCash = (v.entries || []).some(function (e) { return isCashCode(e.code); });
         if (!hasCash) return;
         // H3 修复：凭证现金分录上若【已指定】现金流量大类（操作/投资/筹资），以指定为准，
-        // 不再按科目映射归类，避免「用户指定了却不生效」（金蝶 KIS 习惯：凭证上直接指定）。
+        // 不再按科目映射归类，避免「用户指定了却不生效」（习惯：凭证上直接指定）。
         // 指定只产生在现金分录（UI 仅在现金科目行提供下拉），对侧非现金分录跳过，防止双重计数。
         // 大类 -> 该大类下的「其他收支」兜底项目（与科目映射兜底项目一致）。
         var specified = (v.entries || []).filter(function (e) { return isCashCode(e.code) && e.cashActivity; });
@@ -3394,6 +3434,9 @@
         entries: entries
       };
       var saved = this.addVoucher(v);
+      if (!saved || saved.ok === false) {
+        return { ok: false, msg: (saved && saved.msg) || '生成清理凭证失败' };
+      }
       done.forEach(function (fa) { fa.cleanVoucher = saved.word + '-' + saved.no; });
       this.persist();
       return { ok: true, voucher: saved, total: total, count: done.length };
@@ -3454,8 +3497,11 @@
         entries: entries
       };
       var saved = this.addVoucher(v);
+      if (!saved || saved.ok === false) {
+        return { ok: false, msg: (saved && saved.msg) || '生成折旧凭证失败' };
+      }
       // 更新卡片已计提月份与累计折旧，并记录折旧凭证号（供删除凭证时引用校验）
-      var dvno = (saved && saved.voucher) ? ((saved.voucher.word || '转') + '-' + (saved.voucher.no != null ? saved.voucher.no : '')) : '';
+      var dvno = (saved.word || '转') + '-' + (saved.no != null ? saved.no : '');
       assetLines.forEach(function (al) {
         self.state.fixedAssets.forEach(function (fa) {
           if (fa.id === al.id) { fa.deprMonth = month; fa.accumDepr = num(fa.accumDepr) + al.amt; fa.deprVoucher = dvno; }
@@ -3506,9 +3552,9 @@
     },
     // 某期间是否已生成工资计提/发放凭证
     // 修复双重失效（此前该保护实际从未生效）：
-    //   ① 摘要正则对金蝶导入凭证恒不命中（其无 v.summary）；
-    //   ② v.period 归期判断错误——自生成凭证压根没有 period 字段，金蝶导入的 period 是数字 1~12，
-    //      与 'YYYY-MM' 比较恒为 false。改用 voucherMonth() 统一归期（与 periodVouchers 同口径）。
+    // ① 摘要正则对导入凭证恒不命中（其无 v.summary）；
+    // ② v.period 归期判断错误——自生成凭证压根没有 period 字段，导入的 period 是数字 1~12，
+    // 与 'YYYY-MM' 比较恒为 false。改用 voucherMonth() 统一归期（与 periodVouchers 同口径）。
     hasPayrollVoucher: function (month) {
       var self = this;
       var K = this.VOUCHER_KINDS;
@@ -3581,6 +3627,9 @@
         entries: entries
       };
       var saved = this.addVoucher(v);
+      if (!saved || saved.ok === false) {
+        return { ok: false, msg: (saved && saved.msg) || '生成工资凭证失败' };
+      }
       return { ok: true, voucher: saved, total: total, type: type };
     },
     // 工资凭证模板：计提工资 / 发放工资，按工资类别（全部/全部(旧)）配制证字与启用状态
@@ -3789,9 +3838,9 @@
       }
       // 单人/免审核迁移（一次性语义）：把「结账前必须凭证全部审核」由默认强制改为不强制。
       // - 旧账套中 checkBeforeSettle=true 均来自已失效的旧默认（旧版结账处并不读该开关），
-      //   统一转为不强制；原本就为 false 的账套保持原值；
+      // 统一转为不强制；原本就为 false 的账套保持原值；
       // - _settleAuditMig 记录本账套已执行过该迁移：首见即标记，此后无论 true/false
-      //   都完全交给系统设置，绝不在 normalize 中覆盖（防止用户手动开启后又被吞掉）。
+      // 都完全交给系统设置，绝不在 normalize 中覆盖（防止用户手动开启后又被吞掉）。
       // 本处只改内存，随下一次正常写盘一起落库，不主动 persist（保持加载/审计流程只读）。
       if (!this.state.param._settleAuditMig) {
         if (this.state.param.checkBeforeSettle === true) this.state.param.checkBeforeSettle = false;
@@ -3834,7 +3883,7 @@
           if (v.status === 'reviewed') v.status = 'audited';
         });
         // 期末业务凭证类型回填（一次性）：存量/导入凭证按结构识别补 v.kind。
-        // 挂在 normalizeState 是因为它是所有账套入口（本地加载 / 服务端加载 / 金蝶导入 / 备份恢复）
+        // 挂在 normalizeState 是因为它是所有账套入口（本地加载 / 服务端加载 / 导入 / 备份恢复）
         // 的公共钩子，在此接入即可一处覆盖全部路径。只改内存，随下一次正常写盘落库，不主动 persist。
         this.ensureVoucherKinds();
       }
@@ -3930,6 +3979,6 @@
   };
   // 支持 <script type="module"> 的 import；旧 <script src> 走上面的 global。
   if (typeof module !== 'undefined' && module.exports) module.exports = exported;
-  if (typeof globalThis !== 'undefined') globalThis.__KINGDEE_EXPORT__ = exported;
+  if (typeof globalThis !== 'undefined') globalThis.__TY_EXPORT__ = exported;
 
 })(window);

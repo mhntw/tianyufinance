@@ -26,7 +26,7 @@ const H={$:global.$,S:S,money:x=>'¥'+Number(x||0).toFixed(2),fmt:(x)=>Number(x|
 // currentPeriod：取最近凭证月
 const months=[...new Set((st.vouchers||[]).map(v=>(v.date||'').slice(0,7)).filter(x=>x.length===7))].sort(); H.currentPeriod=()=>months[months.length-1]||'2026-07';
 
-globalThis.__KINGDEE_HELPERS__=H;
+globalThis.__TY_HELPERS__=H;
 // 动态导入 Home.js 并调用 refreshHome
 (async()=>{
   const Home=await import('file://'+path.join(__dirname,'..','js','pages','home','Home.js')+'?v='+Date.now());

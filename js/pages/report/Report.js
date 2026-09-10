@@ -3,17 +3,17 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 //
 // 设计要点：
-// - globalThis.__KINGDEE_HELPERS__ 由 app.js 注册（$, money, moneyRed, currentPeriod, fillPeriodSelect, S, U ...）
-// - globalThis.__KINGDEE_EXPORT__ 由 store.js 注册（store, util ...）
+// - globalThis.__TY_HELPERS__ 由 app.js 注册（$, money, moneyRed, currentPeriod, fillPeriodSelect, S, U ...）
+// - globalThis.__TY_EXPORT__ 由 store.js 注册（store, util ...）
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const moneyRed = H.moneyRed || function (n) {
   var s = money(Math.abs(n));
-  return n < 0 ? '<span class="kd-red">' + s + '</span>' : s;
+  return n < 0 ? '<span class="ty-red">' + s + '</span>' : s;
 };
 const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
@@ -55,8 +55,8 @@ globalThis.setRptHead = function (rowId, title, cols, month, periodText) {
   head.innerHTML = parts;
 };
 
-// 金蝶报表行尾「编辑公式」悬浮入口（严谨：仅展示，点击提示公式管理在设置）
-// 金额单元格：跟金蝶原版，金额列用普通无衬线字体（与正文同字体），右对齐，不做等宽
+// 报表行尾「编辑公式」悬浮入口（严谨：仅展示，点击提示公式管理在设置）
+// 金额单元格：按标准，金额列用普通无衬线字体（与正文同字体），右对齐，不做等宽
 function amtCell(v, extra) {
   var cls = 'ta-r' + (extra ? ' ' + extra : '');
   return '<td class="' + cls + '">' + moneyRed(v) + '</td>';
@@ -71,7 +71,7 @@ function refreshBs() {
     eInp.value = eInp.value || def;
     if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('bsPeriodStart', 'bsPeriodEnd');
   }
-  // 口径保持单期间（用结束期间），仅 UI 对齐金蝶 range picker
+  // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
   renderBs(eInp ? eInp.value : def);
 }
 function renderBs(month) {
@@ -141,7 +141,7 @@ function renderBs(month) {
   if (Math.abs(diff) >= 0.005) {
     var absv = Math.abs(diff);
     // 数据驱动诊断：差额是否≈「利润表净利润 − 已转入本年利润的净额」
-    // （即金蝶账套结转损益未完整执行，损益科目尚有余额残留）。
+    // （即账套结转损益未完整执行，损益科目尚有余额残留）。
     var period = currentPeriod();
     var pl = S.profitStatement(period);
     var glRow = (S.generalLedger(period) || []).filter(function (x) { return x.code === '3103'; })[0];
@@ -215,7 +215,7 @@ function refreshPl() {
     eInp.value = eInp.value || def;
     if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('plPeriodStart', 'plPeriodEnd');
   }
-  // 口径保持单期间（用结束期间），仅 UI 对齐金蝶 range picker
+  // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
   renderPl(eInp ? eInp.value : def);
 }
 // 利润表行计算（配置化）：读 state.reportRules.incomeStatement 规则，
@@ -323,8 +323,8 @@ function renderCf(month) {
   function row(cls, name, num, amt, y, bold) {
     var tr = document.createElement('tr');
     tr.className = cls || '';
-    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'kd-red' : 'kd-green');
-    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'kd-red' : 'kd-green');
+    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'ty-red' : 'ty-green');
+    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'ty-red' : 'ty-green');
     tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + name + '</td>' +
       '<td class="ta-c">' + (num === '' ? '' : num) + '</td>' +
       '<td class="' + amtCls + '">' + money(amt) + '</td>' +
@@ -433,8 +433,8 @@ function renderTx(month) {
     var tr = document.createElement('tr');
     if (r.level === 0) tr.className = 'grp-row';
     var nameCls = r.level === 2 ? 'cf-sub' : (r.level === 1 ? 'cf-sub2' : '');
-    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'kd-red' : 'kd-green');
-    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'kd-red' : 'kd-green');
+    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'ty-red' : 'ty-green');
+    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'ty-red' : 'ty-green');
     tr.innerHTML = '<td class="' + nameCls + '">' + r.name + '</td>' +
       '<td class="ta-c">' + (r.level === 2 ? r.rowNum : '') + '</td>' +
       '<td class="' + amtCls + '">' + money(r.cur) + '</td>' +

@@ -1,10 +1,10 @@
 // 页面模块（B 方案解耦）：设置-期初余额
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
-// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 import { exportTable } from './_shared.js'; // 修复：此前 H.exportTable 未挂全局，期初导出是 undefined 会抛错

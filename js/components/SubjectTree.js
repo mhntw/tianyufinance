@@ -1,10 +1,10 @@
-// SubjectTree.js —— 明细账「科目快速切换」右栏树（对齐金蝶明细账交互）
+// SubjectTree.js —— 明细账「科目快速切换」右栏树（对齐参考实现明细账交互）
 //
 // 交互：
-//   - 树形层级：code 最长真前缀为父；可折叠/展开（箭头），末级无箭头
-//   - 搜索：数字按「编码开头」，汉字按「名称包含」，字母按「名称首字母缩写前缀」命中高亮（整树保留）
-//   - 点击任意行 → onPick(code)；当前科目行高亮，设置时自动展开父链并滚动到可见
-//   - 面板可整体收起为右侧窄条，状态持久化
+// - 树形层级：code 最长真前缀为父；可折叠/展开（箭头），末级无箭头
+// - 搜索：数字按「编码开头」，汉字按「名称包含」，字母按「名称首字母缩写前缀」命中高亮（整树保留）
+// - 点击任意行 → onPick(code)；当前科目行高亮，设置时自动展开父链并滚动到可见
+// - 面板可整体收起为右侧窄条，状态持久化
 //
 // 依赖：globalThis.$、js/pinyin-abbr.js（挂 __PINYIN_ABBR__）
 // 保持简单：DOM 一次性全量渲染（420 个科目以内无压力），显隐用 class 控制。
@@ -38,13 +38,16 @@ export function createSubjectTree(opts) {
   const box = typeof opts.container === 'string' ? $(opts.container) : opts.container;
   if (!box) return null;
   const storageKey = opts.storageKey || 'dlSubjectTree';
+  // 弹层模式：bare=不渲染标题栏/收起按钮（仅树本体）；hideSearch=搜索由外部输入框驱动（setKeyword）
+  const bare = !!opts.bare;
+  const hideSearch = !!opts.hideSearch;
   const st = globalThis.localStorage || { getItem: function () { return null; }, setItem: function () {} };
 
-  // 折叠状态不持久化：每次进入都重置为「只露父级科目」（金蝶行为）。
-  // 不记忆展开状态，既避免旧存储残留，也和金蝶一致（它每次打开快速切换都是父级视图）。
+  // 折叠状态不持久化：每次进入都重置为「只露父级科目」（行为）。
+  // 不记忆展开状态，既避免旧存储残留，也和一致（它每次打开快速切换都是父级视图）。
   let collapsed = new Set();
   // 面板整体收起/展开才持久化
-  let panelClosed = (function () { try { return st.getItem(storageKey + '.closed') === '1'; } catch (e) { return false; } })();
+  let panelClosed = bare ? false : (function () { try { return st.getItem(storageKey + '.closed') === '1'; } catch (e) { return false; } })();
   const saveClosed = function () { try { st.setItem(storageKey + '.closed', panelClosed ? '1' : '0'); } catch (e) {} };
 
   const byCode = {};      // code -> node
@@ -152,14 +155,6 @@ export function createSubjectTree(opts) {
   box.classList.add('dl-panel');
   if (panelClosed) box.classList.add('dl-panel-closed');
 
-  const head = document.createElement('div');
-  head.className = 'dl-panel-head';
-  const t = document.createElement('span'); t.textContent = '快速切换';
-  const minBtn = document.createElement('button');
-  minBtn.type = 'button'; minBtn.className = 'dl-panel-min'; minBtn.title = '收起';
-  minBtn.textContent = '»';
-  head.appendChild(t); head.appendChild(minBtn);
-
   const search = document.createElement('input');
   search.className = 'dl-panel-search';
   search.placeholder = '搜编码 / 名称 / 拼音';
@@ -168,19 +163,36 @@ export function createSubjectTree(opts) {
   const body = document.createElement('div');
   body.className = 'dl-body';
 
-  const restoreBtn = document.createElement('button');
-  restoreBtn.type = 'button'; restoreBtn.className = 'dl-panel-restore'; restoreBtn.title = '展开科目快速切换';
-  restoreBtn.textContent = '«';
-
-  box.appendChild(head); box.appendChild(search); box.appendChild(body); box.appendChild(restoreBtn);
-
   function setPanelClosed(v) {
     panelClosed = v; saveClosed();
     box.classList.toggle('dl-panel-closed', v);
     if (!v && curCode && byCode[curCode]) byCode[curCode].line.scrollIntoView({ block: 'center' });
   }
-  minBtn.addEventListener('click', function () { setPanelClosed(true); });
-  restoreBtn.addEventListener('click', function () { setPanelClosed(false); });
+
+  if (!bare) {
+    const head = document.createElement('div');
+    head.className = 'dl-panel-head';
+    const t = document.createElement('span'); t.textContent = '快速切换';
+    const minBtn = document.createElement('button');
+    minBtn.type = 'button'; minBtn.className = 'dl-panel-min'; minBtn.title = '收起';
+    minBtn.textContent = '»';
+    head.appendChild(t); head.appendChild(minBtn);
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button'; restoreBtn.className = 'dl-panel-restore'; restoreBtn.title = '展开科目快速切换';
+    restoreBtn.textContent = '«';
+
+    box.appendChild(head);
+    if (!hideSearch) box.appendChild(search);
+    box.appendChild(body);
+    box.appendChild(restoreBtn);
+
+    minBtn.addEventListener('click', function () { setPanelClosed(true); });
+    restoreBtn.addEventListener('click', function () { setPanelClosed(false); });
+  } else {
+    if (!hideSearch) box.appendChild(search);
+    box.appendChild(body);
+  }
 
   /* ---------- 对外 ---------- */
   return {
@@ -197,6 +209,12 @@ export function createSubjectTree(opts) {
         refreshVisible();
         byCode[curCode].line.scrollIntoView({ block: 'center' });
       }
+    },
+    // 由外部输入框驱动过滤（弹层模式 hideSearch 时，搜索框不显示，过滤走这里）
+    setKeyword: function (k) {
+      kw = String(k == null ? '' : k).trim();
+      if (search) search.value = kw;
+      applySearch();
     },
     refresh: function () { build(); renderAll(); refreshVisible(); }
   };

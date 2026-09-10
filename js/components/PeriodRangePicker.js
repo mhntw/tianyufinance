@@ -1,9 +1,9 @@
 // 起止期间选择器（用于总账/明细账等筛选栏）
 // 依赖全局：$（DOM 查询）、currentPeriod、lastClosedPeriod、periodRangeOptions（可外部注入）
-// 用法：index.html 中 .kd-period-range 容器配置 data-start-id / data-end-id / data-on-change
+// 用法：index.html 中 .ty-period-range 容器配置 data-start-id / data-end-id / data-on-change
 
 const $ = globalThis.$ || function (id) { return document.getElementById(id); };
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const currentPeriod = H.currentPeriod || (() => '2023-01');
 const lastClosedPeriod = H.lastClosedPeriod || currentPeriod;
 const periodRangeOptions = H.periodRangeOptions || (typeof window !== 'undefined' ? window.__EXTRA_PERIOD_RANGE_OPTIONS__ : undefined);
@@ -66,7 +66,7 @@ function maxAvailablePeriod() {
 
 // 当前打开的面板状态
 const state = {
-  wrap: null,          // 当前触发器所在的 .kd-period-range
+  wrap: null,          // 当前触发器所在的 .ty-period-range
   start: '',
   end: '',
   startYear: 2023,
@@ -80,7 +80,7 @@ function getEndInput() { return state.wrap ? $(state.wrap.dataset.endId) : null;
 
 function updateTriggerText(wrap) {
   if (!wrap) return;
-  const textEl = wrap.querySelector('.kd-period-trigger-text');
+  const textEl = wrap.querySelector('.ty-period-trigger-text');
   if (!textEl) return;
   const sInp = $(wrap.dataset.startId);
   const eInp = $(wrap.dataset.endId);
@@ -90,7 +90,7 @@ function updateTriggerText(wrap) {
 }
 
 export function updatePeriodRangeTrigger(startId, endId) {
-  document.querySelectorAll('.kd-period-range').forEach(wrap => {
+  document.querySelectorAll('.ty-period-range').forEach(wrap => {
     if (wrap.dataset.startId === startId && wrap.dataset.endId === endId) updateTriggerText(wrap);
   });
 }
@@ -126,8 +126,8 @@ function openPop(wrap) {
 function positionPop(wrap) {
   const pop = getPop();
   if (!pop || !wrap) return;
-  const box = pop.querySelector('.kd-period-range-box');
-  const trigger = wrap.querySelector('.kd-period-trigger');
+  const box = pop.querySelector('.ty-period-range-box');
+  const trigger = wrap.querySelector('.ty-period-trigger');
   if (!box || !trigger) return;
   // pop 为 fixed 全屏容器（视口坐标系），box 相对它定位时直接用视口坐标，勿再加 scrollX/scrollY
   const rect = trigger.getBoundingClientRect();
@@ -146,12 +146,12 @@ function positionPop(wrap) {
 function renderPanels() {
   const pop = getPop();
   if (!pop) return;
-  const panels = pop.querySelectorAll('.kd-period-panel');
+  const panels = pop.querySelectorAll('.ty-period-panel');
   panels.forEach(panel => {
     const side = panel.dataset.side;
     const year = side === 'start' ? state.startYear : state.endYear;
-    panel.querySelector('.kd-period-year-text').textContent = `${year}年`;
-    const grid = panel.querySelector('.kd-period-grid');
+    panel.querySelector('.ty-period-year-text').textContent = `${year}年`;
+    const grid = panel.querySelector('.ty-period-grid');
     const list = allAvailablePeriods();
     const maxP = maxAvailablePeriod();
     grid.innerHTML = '';
@@ -159,7 +159,7 @@ function renderPanels() {
       const ym = `${year}-${pad2(m)}`;
       const cell = document.createElement('button');
       cell.type = 'button';
-      cell.className = 'kd-period-cell';
+      cell.className = 'ty-period-cell';
       cell.textContent = `${m}期`;
       cell.dataset.ym = ym;
       // 选中态
@@ -277,8 +277,8 @@ function applyShortcut(key) {
 }
 
 function initEvents() {
-  document.querySelectorAll('.kd-period-range').forEach(wrap => {
-    const trigger = wrap.querySelector('.kd-period-trigger');
+  document.querySelectorAll('.ty-period-range').forEach(wrap => {
+    const trigger = wrap.querySelector('.ty-period-trigger');
     if (!trigger || trigger.dataset.bound) return;
     trigger.dataset.bound = '1';
     trigger.addEventListener('click', () => openPop(wrap));
@@ -298,9 +298,9 @@ function initEvents() {
     const closeBtn = e.target.closest('[data-close="kdPeriodRangePop"]');
     if (closeBtn) { closePop(); return; }
 
-    const yearBtn = e.target.closest('.kd-period-year-prev, .kd-period-year-next');
+    const yearBtn = e.target.closest('.ty-period-year-prev, .ty-period-year-next');
     if (yearBtn) {
-      const panel = yearBtn.closest('.kd-period-panel');
+      const panel = yearBtn.closest('.ty-period-panel');
       onYearNav(panel.dataset.side, Number(yearBtn.dataset.step));
       return;
     }

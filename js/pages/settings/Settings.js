@@ -1,15 +1,15 @@
 // 页面模块（B 方案解耦，由 tools/migrate_domain.py 生成骨架）
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
-// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, AUX_TYPES, exportTable } from './_shared.js';
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
 // （否则裸调用抛 ReferenceError，导致「导入成功但读取账套失败」）
-const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
+const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
 
   /* ============================================================
    * 设置：凭证字 / 辅助核算 / 现金流量科目
@@ -243,7 +243,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
       tr.innerHTML =
         '<td class="mono">' + s.code + '</td>' +
         '<td>' + s.name + '</td>' +
-        '<td>' + ((globalThis.__KD_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
+        '<td>' + ((globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
         '<td>' + (s.normal === 'dr' ? '借' : '贷') + '</td>' +
         '<td><select class="cf-credit select-sm" data-code="' + s.code + '">' + opts + '</select></td>' +
         '<td><select class="cf-debit select-sm" data-code="' + s.code + '">' + opts2 + '</select></td>';
@@ -442,7 +442,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
   // 导入：复用 aisFile input（原 import-ais 的文件选择器，现移到 book-manage 页面内）
   // 支持两种文件：
   // 1) .json —— 本软件账套备份，直接前端 JSON.parse 恢复（原逻辑）
-  // 2) .ais —— 金蝶 KIS 账套，浏览器内用 mdb-reader 直接解析（零依赖，无需服务端）
+  // 2) .ais ——   账套，浏览器内用 mdb-reader 直接解析（零依赖，无需服务端）
   var bmFile = $('aisFile');
   if (bmFile) {
     bmFile.addEventListener('change', function () {
@@ -478,7 +478,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
     });
   }
 
-  // 金蝶 KIS 多年账套合并导入：金蝶按年导出 .ais，本入口把同店多年 .ais 合并为一个连续多年账套。
+  //  多年账套合并导入：按年导出 .ais，本入口把同店多年 .ais 合并为一个连续多年账套。
   // 流程：选多个 .ais -> parseMulti 合并（基础年完整导入+后续年只取凭证，凭证号跨年连续重排）
   // -> 跨年一致性校验（上一年期末 vs 下一年期初） -> 本地载入
   function handleMultiYearImport(files) {
@@ -491,7 +491,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
       showToast('解析模块未加载，请刷新页面后重试', 'error');
       return;
     }
-    // 用第一个文件名提取店名（去掉 _YYYY年_金蝶KIS格式.ais）
+    // 用第一个文件名提取店名（去掉 _YYYY年_ 格式.ais）
     var firstName = files[0].name || '账套';
     var defaultName = firstName.replace(/[_\s]*\d{4}\s*年.*$/, '').trim() || '多年合并账套';
     H.promptAsync('请输入账套名称：', defaultName, { title: '多年合并导入（' + files.length + ' 个 .ais）' })
@@ -574,7 +574,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
         html += '<td class="mono">' + esc(d.code) + (d.name ? ' ' + esc(d.name) : '') + '</td>';
         html += '<td class="mono ta-r">' + num(d.prevEnd).toFixed(2) + '</td>';
         html += '<td class="mono ta-r">' + num(d.curOpen).toFixed(2) + '</td>';
-        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > 1 ? 'kd-red' : '') + '">' + (d.diff > 0 ? '+' : '') + num(d.diff).toFixed(2) + '</td>';
+        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > 1 ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + num(d.diff).toFixed(2) + '</td>';
         html += '<td class="mono ta-r">' + diffRate + '</td>';
         html += '</tr>';
       });
@@ -736,7 +736,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
     });
   }
 
-  // 金蝶 KIS 账套 (.ais)：纯前端浏览器解析（零依赖，无需 Python / mdbtools / 服务器）。
+  //  账套 (.ais)：纯前端浏览器解析（零依赖，无需 Python / mdbtools / 服务器）。
   // 流程：浏览器内用 mdb-reader 直接读取 .ais -> KisImport 转换为账套结构 -> 本地载入。
   // 普通财务电脑无需安装任何环境，双击打开网页即可导入。
   function handleImportAis(file) {
@@ -791,7 +791,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
   function loadServerBookIntoLocal(id, book) {
     S.bookId = id; S.state = book;
     if (S.state.schemaVersion == null) S.state.schemaVersion = S.SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
-    // 补全账套字段并自动判定会计准则（金蝶导入不含 standard 字段，按科目 5xxx/6xxx 自动判定，
+    // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目 5xxx/6xxx 自动判定，
     // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
     if (typeof S.normalizeState === 'function') { try { S.normalizeState(); } catch (e) { console.warn('normalizeState 失败：' + e); } }
     S.ensureCashFlowMap();
@@ -821,9 +821,6 @@ function refreshParam() {
   var stdLab = $('sysStdLabel'); if (stdLab) stdLab.textContent = curLabel;
   var vc = p.voucherChecks || {};
   $('pChkDeficit').checked = !!vc.deficitCheck;
-  $('pChkMaker').checked = !!vc.makerNotAuditor;
-  $('pChkAuditor').checked = !!vc.auditorSameAsUnauditor;
-  $('pChkEdit').checked = !!vc.noEditOthers;
   $('pBookHideZero').checked = !!p.bookHideZero;
   $('pBookExpand').checked = !!p.bookExpandAll;
   $('pChkSettle').checked = !!p.checkBeforeSettle;
@@ -833,10 +830,7 @@ function refreshParam() {
       var p = S.state.param;
       // 仅保存凭证/账簿/结账行为选项；公司名称/启用期间/会计制度均不在此保存
       p.voucherChecks = {
-        deficitCheck: $('pChkDeficit').checked,
-        makerNotAuditor: $('pChkMaker').checked,
-        auditorSameAsUnauditor: $('pChkAuditor').checked,
-        noEditOthers: $('pChkEdit').checked
+        deficitCheck: $('pChkDeficit').checked
       };
       p.bookHideZero = $('pBookHideZero').checked;
       p.bookExpandAll = $('pBookExpand').checked;

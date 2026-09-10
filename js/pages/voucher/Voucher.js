@@ -7,19 +7,18 @@
  * 对外：export refreshVoucher/refreshSum/refreshQuery（main.js 挂 __renderXxx）；
  *       同时挂 globalThis.__VOUCHER__ 供 app.js 路由与查询页点击调用。
  *
- * 依赖桥接：app.js 顶层已把通用 helper 挂到 globalThis.__KINGDEE_HELPERS__，
+ * 依赖桥接：app.js 顶层已把通用 helper 挂到 globalThis.__TY_HELPERS__，
  * 这里优先取桥接，缺失项做轻量 fallback（不影响既有逻辑）。
  * ============================================================ */
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const U = H.U || window.util;
 const S = H.S || window.S;
 const $ = function (id) { return document.getElementById(id); };
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
-const EX = globalThis.__KINGDEE_EXTRA__ || {};
+const EX = globalThis.__TY_EXTRA__ || {};
 const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES) || [];
 
-import { bindSubjectRange, matchSubjectCode, closeSubjectPop } from '../../components/SubjectRangePicker.js';
-import { bindSubjectCombo } from '../../components/SubjectCombo.js';
+import { bindSubjectRange, matchSubjectCode, closeSubjectPop, bindSubjectPicker } from '../../components/SubjectRangePicker.js';
 import { subjectFullName } from '../../common/subject-name.js';
 
 /* —— 金额位格 helper（副本，纯函数，逐字自 app.js） —— */
@@ -36,12 +35,10 @@ function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2)
   var cells = '';
   for (var k = 0; k < 11; k++) {
     var active = (activeIndex === k) ? ' amt-cell-active' : '';
-    cells += '<div class="amt-cell' + active + '">' + (isNumber ? ' ' : chars[k]) + '</div>';
+    // 数字直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
+    cells += '<div class="amt-cell' + active + '">' + chars[k] + '</div>';
   }
-  var valLayer = (isNumber && t && !hideValueLayer)
-    ? '<div class="amt-value">' + t.replace('.', '') + '</div>'
-    : '';
-  return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + valLayer + '</div>';
+  return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + '</div>';
 }
 function isRed(val) {
   return (val !== '' && val != null && String(val).indexOf('-') >= 0 && !isNaN(parseFloat(val)));
@@ -169,11 +166,11 @@ function renderVoucherRows() {
     tr.innerHTML =
       '<td class="col-num ta-c"><span class="row-num">' + (i + 1) + '</span>' + ops + '</td>' +
       '<td><input class="v-summary" data-i="' + i + '" value="' + (r.summary || '') + '"></td>' +
-      // 科目列：编码输入框 + 右侧科目名称（金蝶形态：一眼看到「1001 库存现金」）
+      // 科目列：编码输入框 + 右侧科目名称（形态：一眼看到「1001 库存现金」）
       // 名称仅作展示、不进输入框，避免 value 混入名称后被当成编码写回。
       '<td class="col-subj">'
       + '<div class="v-subj-main">'
-      + '<input class="inp v-code" data-i="' + i + '" value="' + escAttr(r.code || '') + '" placeholder="科目编码/名称" autocomplete="off">'
+      + '<input class="inp v-code" data-i="' + i + '" value="' + escAttr(r.code || '') + '" size="' + (r.code ? Math.max(5, String(r.code).length + 1) : 12) + '" placeholder="科目编码/名称" autocomplete="off">'
       + '<span class="v-subj-name" data-i="' + i + '">' + escHtml(vchSubjNameOf(r)) + '</span>'
       + '</div>'
       + '<div class="v-subj-bal" data-i="' + i + '"></div>'
@@ -181,27 +178,32 @@ function renderVoucherRows() {
       amtCellHtml(r.dr, 'v-dr', i) +
       amtCellHtml(r.cr, 'v-cr', i) + '</tr>';
     tb.appendChild(tr);
-    // 科目联想：金蝶「输入框+下拉」——输入编码/名称弹下拉，点选/回车写回
-    bindVoucherCodeCombo(tb.querySelector('input[data-i="' + i + '"].v-code'), i);
+    // 科目选择：复用 SubjectRangePicker 的扁平列表弹层（点输入框即展开，空输入显示前若干科目）
+    var codeInput = tb.querySelector('input[data-i="' + i + '"].v-code');
+    bindSubjectPicker(codeInput, {
+      getSubjects: function () { return (typeof S !== 'undefined' && S.subjects) ? S.subjects() : []; },
+      onPick: function (code) {
+        codeInput.value = String(code);
+        codeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        // 选完焦点跳到借方金额
+        setTimeout(function () {
+          var dr = tb.querySelector('tr:last-child .v-dr');
+          if (dr) dr.focus();
+        }, 0);
+      }
+    });
+    // 整个科目格（含名称 span / 留白）点击也能弹出选择，而不只输入框
+    var subjCell = codeInput.closest('td.col-subj');
+    if (subjCell) subjCell.addEventListener('click', function () { codeInput.focus(); });
+    // 编码输入框随内容长度自适应宽度，让科目名称紧跟编码；
+    // 空状态放宽到 12 以完整显示占位提示，一旦有编码即缩窄
+    codeInput.addEventListener('input', function () {
+      codeInput.size = codeInput.value ? Math.max(5, codeInput.value.length + 1) : 12;
+    });
   });
   updateAmtTotals(); // 合计与借贷平衡提示统一收敛于此，避免与 updateAmtTotals 重复计算
 }
 
-// 录凭证科目联想输入：统一用共享组件 SubjectCombo（输入框+下拉）。
-// 选中后写回该分录的 code/name 并刷新（保持与旧 select 的 change 行为一致）。
-// renderVoucherRows 每次重建 DOM，旧 input 及其浮层随之销毁，故每次重建都重新绑定即可，
-// 不需要防重缓存（用 index 防重反而会让重建后的新 input 拿不到绑定）。
-function bindVoucherCodeCombo(input, i) {
-  if (!input) return;
-  bindSubjectCombo(input, {
-    onPick: function (code, subj) {
-      vRows[i].code = code;
-      vRows[i].name = subj ? subj.name : '';
-      syncSubjName(i);          // 选中后立即显示「编码 + 名称」
-      updateAmtTotals();
-    }
-  });
-}
 // 科目名称展示（完整路径名）：统一走共享实现 common/subject-name.js
 // （录凭证科目栏与科目联想下拉共用同一套拼接规则，避免两处逻辑漂移）
 function vchSubjNameOf(r) {
@@ -212,10 +214,10 @@ function vchSubjNameOf(r) {
 function syncSubjName(i) {
   var box = document.querySelector('#vRows .v-subj-name[data-i="' + i + '"]');
   if (box) box.textContent = vchSubjNameOf(vRows[i]);
-  syncAllSubjBals();   // 科目变化 → 同步刷新余额提示（金蝶式实时显示）
+  syncAllSubjBals();   // 科目变化 → 同步刷新余额提示（式实时显示）
 }
 
-/* —— 科目余额提示（金蝶式：科目下方一行小字，随借/贷金额实时变化） ——
+/* —— 科目余额提示（科目下方一行小字，随借/贷金额实时变化） ——
  * 口径 = generalLedger 该科目余额（借正贷负，已含下级）
  *      + 本张凭证中该科目已录入金额（借正贷负，含当前正在编辑的行）
  * 展示 = 按科目正常方向取正（资产/成本/费用类看借方、负债/权益/收入类看贷方），
@@ -270,14 +272,32 @@ function resetVoucherEdit() {
   vRows = [defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow()];
   fillVoucherWord();
   var w = $('vWord'); if (w) w.value = S.state.param.voucherWord || '记';
-  var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, currentPeriod());
+  // workMonth = 当前账期（currentPeriod 已统一为：最近已结账+1 / 最近有凭证 / 自然月）
+  var workMonth = currentPeriod();
+  var today = H.todayStr ? H.todayStr() : todayStr();
+
   var dt = $('vDate');
   if (dt) {
-    var curP = currentPeriod();
-    var now = new Date();
-    var natM = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
-    dt.value = (curP === natM) ? (H.todayStr ? H.todayStr() : todayStr()) : U.lastDay(curP);
+    var comp = (S.state && S.state.company) || {};
+    var sm = comp.startMonth ? (comp.startMonth + '-01') : '';
+    if (sm) dt.min = sm;
+    dt.max = today;
+    // 默认日期：今天在工作期间内 → 今天；否则 → 工作期间最后一天
+    var def;
+    if (today >= (workMonth + '-01') && today <= (workMonth + '-31')) {
+      def = today;
+    } else {
+      def = U.lastDay(workMonth);
+    }
+    if (sm && def < sm) def = sm;
+    dt.value = def;
   }
+  var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, workMonth);
+
+  // 同步凭证头期间文本，和顶部「当前账期」完全一致
+  var vpt = $('vPeriodText');
+  if (vpt) vpt.textContent = workMonth.slice(0, 4) + '年第' + (+workMonth.slice(5, 7)) + '期';
+
   var at = $('vAttach'); if (at) at.value = 0;
   vAttachFiles = [];
   renderAttachPanel();
@@ -397,7 +417,7 @@ function updateAmtTotals() {
     tip.textContent = '借贷平衡';
     tip.className = 'voucher-balance ok';
   }
-  // 科目余额提示随金额实时刷新（金蝶式：录入借/贷金额 → 该行科目余额立即变化）
+  // 科目余额提示随金额实时刷新（录入借/贷金额 → 该行科目余额立即变化）
   syncAllSubjBals();
 }
 
@@ -410,8 +430,15 @@ function setupVoucher() {
   bindAttachUpload();   // 附件上传（此前「上传附件」无任何绑定，点击无反应）
 
   // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
+  // 同时：跨月时凭证号自动取下一月的编号（不跨月不变）
   var dvEl = $('vDate');
-  if (dvEl) dvEl.addEventListener('change', function () { syncAllSubjBals(); });
+  if (dvEl) dvEl.addEventListener('change', function () {
+    syncAllSubjBals();
+    if (!vEditId) {
+      var w = $('vWord'); var no = $('vNo');
+      if (w && no) no.value = S.nextVoucherNo(w.value, monthOf(dvEl.value));
+    }
+  });
 
   $('vRows').addEventListener('input', function (e) {
     var t = e.target, i = +t.getAttribute('data-i');
@@ -453,7 +480,9 @@ function setupVoucher() {
   });
   // Enter 导航：录凭证键盘流 摘要→科目→借方→贷方→下一行摘要。
   // 金额格先触发 blur（完成金额格式化与位格显示，等价于鼠标点击其他区域），再跳到下一录入位。
-  // 科目格由 SubjectCombo 处理（有建议时 Enter 选中建议并 preventDefault，不会冒泡到此）。
+  // 科目格：点输入框/整格弹出科目选择（bindSubjectPicker，扁平列表）。弹层内支持键盘
+  // 导航（↑↓ 高亮、Enter 选中、Esc 关闭）；当弹层打开时 Enter 由弹层 stopPropagation 接管，
+  // 关闭后（或再次按 Enter）才冒泡到此跳到借方金额。
   $('vRows').addEventListener('keydown', function (e) {
     var t = e.target;
     if (!t || e.key !== 'Enter') return;
@@ -475,7 +504,7 @@ function setupVoucher() {
       return;
     }
     if (t.classList.contains('v-code')) {
-      // 仅当 SubjectCombo 未选中建议（未 preventDefault）时冒泡到此：跳到借方金额
+      // 科目选择为浏览用（点击选中），不拦截 Enter：直接跳到借方金额
       e.preventDefault();
       var drInp = tr && tr.querySelector('.v-dr');
       if (drInp) drInp.focus();
@@ -485,7 +514,7 @@ function setupVoucher() {
   $('vRows').addEventListener('change', function (e) {
     var t = e.target, i = +t.getAttribute('data-i');
     if (t.classList.contains('v-code')) {
-      // 科目已改为输入框+联想（bindVoucherCodeCombo 负责选中写回）。
+      // 科目已改为输入框+联想（bindSubjectPicker 负责选中写回）。
       // 这里兜底处理用户手输编码后失焦：反查名称；若编码不存在则给出提示但不清空输入。
       var s = S.subject(t.value);
       vRows[i].code = t.value;
@@ -626,7 +655,7 @@ function buildVoucher() {
 }
 
 /* ===================== 单张凭证打印 =====================
- * 不复用 kdPrint 的「克隆数据表格」路径（只带一张 grid，会丢凭证表头/页脚，
+ * 不复用 tyPrint 的「克隆数据表格」路径（只带一张 grid，会丢凭证表头/页脚，
  * Tauri 桌面尤其明显）。这里把当前凭证渲染成独立记账凭证纸（自包含 HTML）：
  *   Tauri   → save_export_file + open_in_explorer（与报表打印同一通道）
  *   浏览器 → 新窗口内打印
@@ -851,7 +880,8 @@ function saveVoucher() {
       if (!r.ok) { showToast(r.msg, 'warn'); return r; }
       autoUnaudited = !!r.unaudited;
     } else {
-      S.addVoucher(v);
+      var ar = S.addVoucher(v);
+      if (!ar || !ar.ok) { showToast((ar && ar.msg) || '保存失败', 'warn'); return ar || { ok: false }; }
       vEditId = v.id;
     }
     // 方案 B：凭证附件同步进原始凭证库（附件台账）。按 path 去重，编辑保存不会重复添加。
@@ -889,7 +919,16 @@ function loadVoucherToEdit(id) {
   vEditId = v.id;
   var w = $('vWord'); if (w) w.value = v.word || '记';
   var no = $('vNo'); if (no) no.value = v.no || '';
-  var dt = $('vDate'); if (dt) dt.value = v.date || '';
+  var dt = $('vDate');
+  if (dt) {
+    // 编辑态也设 min/max，防止改到非法区间
+    var comp = (S.state && S.state.company) || {};
+    var sm = comp.startMonth ? (comp.startMonth + '-01') : '';
+    var today = H.todayStr ? H.todayStr() : todayStr();
+    if (sm) dt.min = sm;
+    dt.max = today;
+    dt.value = v.date || '';
+  }
   var at = $('vAttach'); if (at) at.value = v.attach || 0;
   // 载入该凭证已有的附件元信息（老凭证无此字段时为 []，不影响编辑）
   vAttachFiles = (v.attachments || []).map(function (a) {
@@ -978,7 +1017,7 @@ function refreshQuery() {
   renderQuery(sInp ? sInp.value : currentPeriod(), eInp ? eInp.value : currentPeriod());
 }
 
-// 科目筛选：金蝶式「输入框 + 科目树」，默认留空即全部科目（不再默认选中第一个科目）。
+// 科目筛选：「输入框 + 科目树」，默认留空即全部科目（不再默认选中第一个科目）。
 // 只绑定一次，之后靠输入框自身的值驱动，避免重复 refresh 时把用户已输入的条件冲掉。
 var qSubjPicker = null;
 function bindSubjectRangeOnce() {
@@ -1054,7 +1093,7 @@ if (bQAudit) bQAudit.addEventListener('click', async function () {
     console.warn('[批量审核] 失败明细：', fails);
   }
 });
-// btnQPrint 已加 data-print，由全局委托统一走 kdPrint()，此处不再单独绑定。
+// btnQPrint 已加 data-print，由全局委托统一走 tyPrint()，此处不再单独绑定。
 // 查凭证导出：与列表同源（含跨期、科目过滤、字号排序），导出为 Excel
 var bQExport = $('btnQExport'); if (bQExport) bQExport.addEventListener('click', exportQuery);
 var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click', async function () {
@@ -1160,7 +1199,7 @@ function renderQuery(start, end) {
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
   if (!vs.length) { tb.innerHTML = '<tr><td colspan="12" class="empty-hint">本期无凭证</td></tr>'; return; }
-  // 科目名显示口径（对齐金蝶）：取科目表实时名称，科目改名后历史凭证显示同步更新；
+  // 科目名显示口径（对齐参考实现）：取科目表实时名称，科目改名后历史凭证显示同步更新；
   // 分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
   var maker = '本账套';
@@ -1377,7 +1416,7 @@ function renderVchTplList() {
   if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
   if (mineF.length) html += sec('我的模板', mine.length) + mineF.map(function (t) { return tplRow(t, false); }).join('');
   if (!html) {
-    html = '<div class="empty-hint" style="padding:26px 0;text-align:center;color:var(--kd-text-3)">'
+    html = '<div class="empty-hint" style="padding:26px 0;text-align:center;color:var(--ty-text-3)">'
       + (q ? '没有找到名称含「' + escHtml(q) + '」的模板' : '暂无可用模板') + '</div>';
   } else if (!mine.length && !q) {
     html += '<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>';
@@ -1439,7 +1478,7 @@ function applyVchTpl(t) {
   if (bOpen && menu) bOpen.addEventListener('click', function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; });
   // 点击其它处关闭下拉
   document.addEventListener('click', hideMenu);
-  // 下拉两项（金蝶形态）
+  // 下拉两项（形态）
   var sItem = $('vchTplSaveItem'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
   var uItem = $('vchTplUseItem'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
   var bClose = $('btnVchTplClose'); if (bClose) bClose.addEventListener('click', closeVchTpl);

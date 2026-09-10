@@ -1,10 +1,10 @@
 // 页面模块（B 方案解耦，由 tools/migrate_domain.py 生成骨架）
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
-// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const esc = H.esc;
@@ -212,7 +212,7 @@ const periodRangeValue = H.periodRangeValue;
     renderSalaryTplBody(); showToast('已新增模板');
   });
   $('btnResetSalaryTpl').addEventListener('click', async function () {
-    if (!(await H.confirmAsync('将清空当前模板并恢复金蝶默认 13 条，确认？', { title: '恢复默认' }))) return;
+    if (!(await H.confirmAsync('将清空当前模板并恢复默认 13 条，确认？', { title: '恢复默认' }))) return;
     S.resetSalaryVchTpls(); renderSalaryTplBody(); showToast('已恢复默认');
   });
 

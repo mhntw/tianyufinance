@@ -1,7 +1,7 @@
 [package]
 name = "xzys"
-version = "1.1.2"
-description = "添钰财务管理系统 —— 酒店经营台账（复刻金蝶精斗云云会计，本地单机版）"
+version = "1.1.6"
+description = "添钰财务管理系统 —— 酒店经营台账（本地单机版）"
 authors = ["chen"]
 edition = "2021"
 

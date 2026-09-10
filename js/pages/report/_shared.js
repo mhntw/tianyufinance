@@ -1,4 +1,4 @@
-const H = window.__KINGDEE_HELPERS__ || {};
+const H = window.__TY_HELPERS__ || {};
 const $ = id => document.getElementById(id);
 const S = H.S || window.store;
 const money = H.money || (v => v == null ? '0.00' : Number(v).toFixed(2));

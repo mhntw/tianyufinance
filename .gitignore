@@ -27,6 +27,8 @@ tauri/src-tauri/target/
 cwrj/
 # 历史备份目录（早期版本快照，含数据痕迹，无外推价值）
 backups_*/
+# 重构期临时备份（bak_kd_to_ty_* / bak_kingdee_* 等），不进远程仓库
+bak_*/
 # 工具导出产物（tools/_out 含真实账套 JSON 导出 = 客户财务数据）
 tools/_out/
 # 内部审计 / 上线文档（含真实账套指标与账套名）

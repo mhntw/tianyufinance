@@ -1,16 +1,16 @@
 // 页面模块（B 方案解耦，由 tools/migrate_domain.py 生成骨架）
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
-// 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
+// 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 //
 // 【搜索口径 · 全站统一】确定性「字符串包含匹配 + 父级连带」，不是模糊搜索：
-//   - 命中条件：科目编码 或 名称 包含关键词；若上级科目命中，则其下级一并视为命中
-//     （等效"全路径名匹配"，所以搜「银行存款」能带出「青岛银行」等子科目）；
-//   - 无相似度/拼音/编辑距离/评分排序，无正则，无递归（父链上溯带层数上限），
-//     因此同一关键词必得同一结果，不存在"忽多忽少"或回溯卡顿风险。
+// - 命中条件：科目编码 或 名称 包含关键词；若上级科目命中，则其下级一并视为命中
+// （等效"全路径名匹配"，所以搜「银行存款」能带出「青岛银行」等子科目）；
+// - 无相似度/拼音/编辑距离/评分排序，无正则，无递归（父链上溯带层数上限），
+// 因此同一关键词必得同一结果，不存在"忽多忽少"或回溯卡顿风险。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const showToast = H.showToast;
@@ -24,7 +24,7 @@ import { exportTable } from '../settings/_shared.js';
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 
-  // 金蝶式科目表：默认只显示一级科目，点行首箭头才逐级展开其子科目。
+  // 科目表：默认只显示一级科目，点行首箭头才逐级展开其子科目。
   // subjCollapsed: { code: true } = 该科目已收起（隐藏其直接子级；祖先收起时后级递归隐藏）
   var subjCollapsed = {};
   function refreshSubjects() { subjCollapseToLevel1(); renderSubjects(); }
@@ -90,9 +90,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var searching = !!String(($('subjSearch') || {}).value || '').trim();
     return S.subjects().filter(function (s) {
       if (!searching) {
-        // 分类口径：优先用金蝶导入的 grpCls（与金蝶界面一致），无则回退 cls。
+        // 分类口径：优先用导入的 grpCls（与界面一致），无则回退 cls。
         // 说明：cls 是「取数口径」（结转损益/报表按它取数），grpCls 是「展示分类」，
-        // 两者分离是为了让分类显示对齐金蝶、同时不动任何取数逻辑。
+        // 两者分离是为了让分类显示对齐参考实现、同时不动任何取数逻辑。
         var cc = s.grpCls || s.cls;
         if (subjTabCls === 'asset') { if (cc !== 'asset') return false; }
         else if (subjTabCls === 'liability') { if (cc !== 'liability') return false; }
@@ -128,7 +128,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         if (String(s.code).toLowerCase().indexOf(q) >= 0 || String(s.name || '').toLowerCase().indexOf(q) >= 0) hitBase[s.code] = 1;
       });
       // ② 全路径名等效匹配：命中科目的所有下级一并视为命中
-      //   → 搜「银行存款」可带出「青岛银行」「建行（陈总）」等子科目（子科目全名含父名）
+      // → 搜「银行存款」可带出「青岛银行」「建行（陈总）」等子科目（子科目全名含父名）
       list.forEach(function (s) {
         var cur = s.code, g = 0;
         while (cur && g++ < 40) {
@@ -191,8 +191,8 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   }
   // 编码联想：suggestOnly 模式（只提示已存在科目/父科目，不覆盖新编码输入）
   var _subCodeComboBound = false;
-  // 金蝶科目 Excel 类别 → 本项目类别（对齐金蝶精斗云导出的「科目」sheet 列结构）
-  var KDJ_CAT_MAP = {
+  // 科目 Excel 类别 → 本项目类别（对齐参考产品导出的「科目」sheet 列结构）
+  var TY_CAT_MAP = {
     '流动资产': 'asset', '非流动资产': 'asset',
     '流动负债': 'liability', '非流动负债': 'liability',
     '所有者权益': 'equity', '成本': 'cost',
@@ -200,10 +200,10 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     '其他损失': 'expense', '期间费用': 'expense', '所得税': 'expense',
     '以前年度损益调整': 'expense'
   };
-  // 金蝶辅助核算类别 → 本项目 aux key
-  var KDJ_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
+  // 辅助核算类别 → 本项目 aux key
+  var TY_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
 
-  // 从金蝶导出的科目 Excel 导入科目表
+  // 从导出的科目 Excel 导入科目表
   function importSubjectsFromExcel(buf, fname) {
     if (!window.XLSX) { showToast('缺少 Excel 解析库', 'error'); return; }
     var wb;
@@ -218,17 +218,17 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       var name = String(r['名称'] || '').trim();
       if (!code || !name) return; // 空行跳过
       var kdjCat = String(r['类别'] || '').trim();
-      var cls = KDJ_CAT_MAP[kdjCat];
+      var cls = TY_CAT_MAP[kdjCat];
       if (!cls) {
         // 按余额方向兜底：借→资产，贷→负债（方向最可靠）
         cls = (String(r['余额方向'] || '') === '贷') ? 'liability' : 'asset';
       }
-      // 辅助核算：金蝶类别名 → aux key
+      // 辅助核算：类别名 → aux key
       var auxStr = String(r['辅助核算类别'] || '');
       var aux = [];
       if (auxStr) {
         auxStr.split(/[\/、]/).forEach(function (a) {
-          var k = KDJ_AUX_MAP[a.trim()];
+          var k = TY_AUX_MAP[a.trim()];
           if (k && aux.indexOf(k) < 0) aux.push(k);
         });
       }
@@ -268,7 +268,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     $('subCode').value = s ? s.code : '';
     $('subCode').disabled = !!s;
     $('subName').value = s ? s.name : '';
-    // 类别下拉展示「展示分类」（金蝶 grpCls 优先）；同时记住原始取数口径 cls 与展示值，
+    // 类别下拉展示「展示分类」（grpCls 优先）；同时记住原始取数口径 cls 与展示值，
     // 保存时若用户没动下拉，就提交原 cls —— 否则会把展示分类写进取数口径，
     // 已有凭证的科目还会被「禁改类别」拦下（改名都保存不了）。
     $('subCls').value = s ? (s.grpCls || s.cls) : 'asset';
@@ -281,7 +281,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     });
     $('subQty').checked = !!(s && s.qty);
     $('subUnit').value = s ? (s.unit || '') : '';
-    // 改名提示（对齐金蝶）：仅编辑已有科目时显示
+    // 改名提示（对齐参考实现）：仅编辑已有科目时显示
     var nameTip = $('subjNameTip'); if (nameTip) nameTip.style.display = s ? '' : 'none';
     $('subjectModal').classList.add('show');
   }
@@ -317,7 +317,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   });
   // 搜索框：输入即过滤（含父链路径展示）
   var bSubjSearch = $('subjSearch'); if (bSubjSearch) bSubjSearch.addEventListener('input', function () { renderSubjects(); });
-  // 「展开所有级次」复选（金蝶语义）：勾选=显示全部级次；取消=回到一级收拢
+  // 「展开所有级次」复选（语义）：勾选=显示全部级次；取消=回到一级收拢
   var bExpand = $('subjExpandAll'); if (bExpand) bExpand.addEventListener('change', function () {
     if (bExpand.checked) subjCollapsed = {};
     else subjCollapseToLevel1();

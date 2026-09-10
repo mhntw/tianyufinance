@@ -1,9 +1,9 @@
 // Home.js —— 首页工作台（资金余额/应收应付/预计可用资金/净利润/收入成本/费用）
 // 本文件是从原始 app.js home 工作台块迁移而来，逻辑与 index.html DOM 一一对应。
-// 依赖桥接层 globalThis.__KINGDEE_HELPERS__（由 js/app.js 在启动时挂载）。
-// 设计原则：不依赖账套 cls 字段，避免金蝶导出标错导致数据失真。
+// 依赖桥接层 globalThis.__TY_HELPERS__（由 js/app.js 在启动时挂载）。
+// 设计原则：不依赖账套 cls 字段，避免导出标错导致数据失真。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 const $ = H.$;
 const S = H.S || window.S;
 const money = H.money;
@@ -30,8 +30,8 @@ function refreshHome() {
 
 /* ---------------- 首页「云备份」提醒（被动一条，两级静默） ---------------- */
 // 静默力度按「用户做了什么」区分，避免"点了去配置但没配成"反而安静 7 天：
-//   × 忽略        → 7 天（用户明确不想看）
-//   去配置/去备份 → 到明天 0 点（响应了但没办成，第二天再来；办成了后端状态自会变，横幅自动消失）
+// × 忽略        → 7 天（用户明确不想看）
+// 去配置/去备份 → 到明天 0 点（响应了但没办成，第二天再来；办成了后端状态自会变，横幅自动消失）
 var TIP_MUTE_MS = 7 * 24 * 60 * 60 * 1000;
 var TIP_MUTE_KEY = 'hbTipMute';
 
@@ -228,7 +228,7 @@ function renderArapItems(month, ar, itemsBox, totalId, label) {
   var box = document.getElementById(itemsBox);
   if (!box) return;
   // 取该一级科目下的「末级」往来单位（排除有下级子目的父科目，避免父子重名都列出）。
-  // 兼容金蝶无点编码：凡 code 以 ar 开头且更长、且不被其他科目 code 前缀包含者，即为末级。
+  // 兼容无点编码：凡 code 以 ar 开头且更长、且不被其他科目 code 前缀包含者，即为末级。
   var subs = (S.subjects() || []);
   var children = subs.filter(function (s) {
     if (!isChildOf(ar, s.code)) return false;   // 仅取 ar 的「直接/间接」下级

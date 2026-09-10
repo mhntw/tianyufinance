@@ -25,13 +25,13 @@ const ACCOUNT_CLASSES = {
   equity: { name: '权益', normal: 'cr', side: '贷' }, revenue: { name: '收入', normal: 'cr', side: '贷' },
   expense: { name: '费用', normal: 'dr', side: '借' }, cost: { name: '成本', normal: 'dr', side: '借' },
 };
-const KDJ_CAT_MAP = {
+const TY_CAT_MAP = {
   '流动资产': 'asset', '非流动资产': 'asset', '流动负债': 'liability', '非流动负债': 'liability',
   '所有者权益': 'equity', '成本': 'cost', '营业收入': 'revenue', '其他收益': 'revenue',
   '营业成本及税金': 'expense', '其他损失': 'expense', '期间费用': 'expense', '所得税': 'expense',
   '以前年度损益调整': 'expense'
 };
-const KDJ_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
+const TY_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
 
 function subject(code) { return subjects.find(s => s.code === code) || null; }
 function addSubject(code, name, cls, extra) {
@@ -67,11 +67,11 @@ rows.forEach(r => {
   const code = String(r['编码'] || '').trim();
   const name = String(r['名称'] || '').trim();
   if (!code || !name) return;
-  let cls = KDJ_CAT_MAP[String(r['类别'] || '').trim()];
+  let cls = TY_CAT_MAP[String(r['类别'] || '').trim()];
   if (!cls) cls = (String(r['余额方向'] || '') === '贷') ? 'liability' : 'asset';
   const auxStr = String(r['辅助核算类别'] || '');
   const aux = [];
-  if (auxStr) auxStr.split(/[\/、]/).forEach(a => { const k = KDJ_AUX_MAP[a.trim()]; if (k && aux.indexOf(k) < 0) aux.push(k); });
+  if (auxStr) auxStr.split(/[\/、]/).forEach(a => { const k = TY_AUX_MAP[a.trim()]; if (k && aux.indexOf(k) < 0) aux.push(k); });
   const isQty = String(r['数量核算'] || '') === '√' || /^\d+$/.test(String(r['数量核算'] || '').trim());
   const isFgn = /^(?!RMB$)/.test(String(r['外币核算'] || 'RMB').trim());
   const res = addSubject(code, name, cls, { aux, qty: isQty, foreign: isFgn });

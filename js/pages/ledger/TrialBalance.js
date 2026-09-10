@@ -1,22 +1,22 @@
 // 页面模块：科目余额表（page-trial-balance）
 // B 方案探针页：验证 "ESM 模块 + 全局 store 共享 + 渲染/事件" 全链路。
 // 设计铁律：只挪窝不改写 —— DOM 结构 / class / 交互与旧 app.js renderTb 逐字一致。
-// 本模块不 import store.js（避免重复执行 IIFE），改从 globalThis.__KINGDEE_EXPORT__ 取已加载的单例。
+// 本模块不 import store.js（避免重复执行 IIFE），改从 globalThis.__TY_EXPORT__ 取已加载的单例。
 
 function getStore() {
-  // 旧 store.js 以 <script src> 先加载，已挂到 globalThis.__KINGDEE_EXPORT__；
+  // 旧 store.js 以 <script src> 先加载，已挂到 globalThis.__TY_EXPORT__；
   // 同时也保留全局 S。优先取导出对象，缺失则回退 S。
-  const ex = globalThis.__KINGDEE_EXPORT__;
+  const ex = globalThis.__TY_EXPORT__;
   return (ex && ex.store) || globalThis.S;
 }
 function getUtil() {
-  const ex = globalThis.__KINGDEE_EXPORT__;
+  const ex = globalThis.__TY_EXPORT__;
   return (ex && ex.util) || globalThis.util;
 }
 
 const $ = (id) => document.getElementById(id);
 // 期间下拉守卫统一走桥接层 H.safeFillPeriod（app.js 内定义，含 bookKey 记忆）
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 
 // 科目名来自用户录入，渲染进 HTML / 属性前需转义，避免破坏结构
 // HTML 转义：统一走 app.js 的单点实现（H.esc），此前各页面各存一份逐字相同的拷贝。
@@ -86,7 +86,7 @@ export function renderTrialBalance() {
     eInp.value = eInp.value || def;
     if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('tbPeriodStart', 'tbPeriodEnd');
   }
-  // 口径保持单期间（用结束期间），仅 UI 对齐金蝶 range picker
+  // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
   renderTb(eInp ? eInp.value : def);
 }
 
@@ -144,8 +144,8 @@ function renderTb(month) {
     const eD = r.dir === '借' ? r.balance : 0;
     const eC = r.dir === '贷' ? r.balance : 0;
     // 合计累加口径（与展开状态自洽，杜绝父/子重复）：
-    //   有子且已展开 → 由子级明细贡献，父行不累加（父行已含子树，rollCodes 上卷会翻倍）；
-    //   末级 或 有子但收起（子级不可见）→ 累加本行（收起时本行=该支子树总额）。
+    // 有子且已展开 → 由子级明细贡献，父行不累加（父行已含子树，rollCodes 上卷会翻倍）；
+    // 末级 或 有子但收起（子级不可见）→ 累加本行（收起时本行=该支子树总额）。
     if (!hasKids[code] || collapsed(code)) {
       sum.obD += obD; sum.obC += obC; sum.pD += r.periodDr; sum.pC += r.periodCr;
       sum.yD += r.ytdDr; sum.yC += r.ytdCr; sum.eD += eD; sum.eC += eC;

@@ -3,8 +3,8 @@
 """
 tools/check_pages.py — ESM 页面「裸引用」静态体检（防回归）
 
-背景：本仓库的 ESM 页面（js/pages/**）统一从 globalThis.__KINGDEE_HELPERS__ /
-      __KINGDEE_EXPORT__ 取全局依赖。若某页面「使用了某符号却既未本地定义、
+背景：本仓库的 ESM 页面（js/pages/**）统一从 globalThis.__TY_HELPERS__ /
+      __TY_EXPORT__ 取全局依赖。若某页面「使用了某符号却既未本地定义、
       又未 import、又不以 H./EX./S./U./window./globalThis./store. 形式命名访问」，
       则该符号会在 ESM 模块作用域里抛 ReferenceError（如 Home.js/Cashier.js 曾发生
       “currentPeriod is not defined”）。
@@ -22,8 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / 'js' / 'pages'
 
-# 桥接层 helper（app.js __KINGDEE_HELPERS__ 直挂或经 U(util) 提供）
-BRIDGE = re.compile(r'\b(__KINGDEE_HELPERS__|H|EX|S|U|window|globalThis|store)\s*\.\s*([A-Za-z_$][\w$]*)')
+# 桥接层 helper（app.js __TY_HELPERS__ 直挂或经 U(util) 提供）
+BRIDGE = re.compile(r'\b(__TY_HELPERS__|H|EX|S|U|window|globalThis|store)\s*\.\s*([A-Za-z_$][\w$]*)')
 
 # 需要检查的「候选符号」：要么是桥接 helper，要么是 store 单例常用方法
 CANDIDATES = {

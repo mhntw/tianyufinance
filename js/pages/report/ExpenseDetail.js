@@ -78,7 +78,7 @@ function bindED() {
     }
   });
 
-  // btnEdPrint 已加 data-print，由全局委托统一走 kdPrint()。
+  // btnEdPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnEdExport') && $('btnEdExport').addEventListener('click', exportED);
 }
 
@@ -329,7 +329,7 @@ function refreshExpenseDetail() {
   // 费用明细表可选科目范围：损益类（5/6 开头），含收入/成本/费用等
   let subs = subjectFilter(s => ED_SUBJECT_RE.test(s.code));
 
-  // 按科目 code 去重：金蝶科目 code 本应唯一，但部分源账套（.ais）存在脏数据（如 5603 财务费用重复两条），
+  // 按科目 code 去重：科目 code 本应唯一，但部分源账套（.ais）存在脏数据（如 5603 财务费用重复两条），
   // 若不去重，费用明细表会渲染重复行、且合计把同一科目算多次（合计虚高）。此处按 code 唯一化，
   // 不影响科目展示页（subject 页如实呈现重复），仅纠正「按 code 聚合」类报表的计算。
   const _seenCode = {};
@@ -548,11 +548,11 @@ function renderEDPagination(totalRoots) {
   if (edState.page > totalPages) edState.page = totalPages;
 
   let html = '';
-  html += `<li class="${edState.page === 1 ? 'disabled' : ''}" data-page="${edState.page - 1}" title="上一页"><button><i class="kdicon kdicon-arrow-left"></i></button></li>`;
+  html += `<li class="${edState.page === 1 ? 'disabled' : ''}" data-page="${edState.page - 1}" title="上一页"><button><i class="tyicon tyicon-arrow-left"></i></button></li>`;
   for (let i = 1; i <= totalPages; i++) {
     html += `<li class="${i === edState.page ? 'active' : ''}" data-page="${i}" title="${i}"><button>${i}</button></li>`;
   }
-  html += `<li class="${edState.page === totalPages ? 'disabled' : ''}" data-page="${edState.page + 1}" title="下一页"><button><i class="kdicon kdicon-arrow-right"></i></button></li>`;
+  html += `<li class="${edState.page === totalPages ? 'disabled' : ''}" data-page="${edState.page + 1}" title="下一页"><button><i class="tyicon tyicon-arrow-right"></i></button></li>`;
   pagesEl.innerHTML = html;
 }
 

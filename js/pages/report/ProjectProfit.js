@@ -61,7 +61,7 @@ function bindPP() {
   window.__ppBound = true;
   // 刷新时同时重填项目下拉（如刚在「设置-辅助核算」新增了档案），再重算表格
   $('btnPpQuery') && $('btnPpQuery').addEventListener('click', () => { fillPPProjects(); refreshPP(); });
-  // btnPpPrint 已加 data-print，由全局委托统一走 kdPrint()。
+  // btnPpPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnPpExport') && $('btnPpExport').addEventListener('click', exportPP);
   $('ppAuxType') && $('ppAuxType').addEventListener('change', () => { fillPPProjects(); refreshPP(); });
   $('ppFrom') && $('ppFrom').addEventListener('change', refreshPP);

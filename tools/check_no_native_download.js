@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..', 'js');
-const allowFiles = new Set(['file-save-bridge.js', 'mdb-reader.js', '_shared.js', 'kindee.js']);
+const allowFiles = new Set(['file-save-bridge.js', 'mdb-reader.js', '_shared.js', 'ty-io.js']);
 
 function walk(dir) {
   let out = [];

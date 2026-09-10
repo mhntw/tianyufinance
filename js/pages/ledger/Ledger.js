@@ -5,8 +5,8 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 注：试算平衡表(trial-balance) 已在 js/pages/ledger/TrialBalance.js 独立迁走，本模块不含。
 
-const H = globalThis.__KINGDEE_HELPERS__ || {};
-const EX = globalThis.__KINGDEE_EXPORT__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
+const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const currentPeriod = H.currentPeriod;
@@ -93,7 +93,7 @@ function dlSubjectCodes() {
   return { codes: dlCurCode ? new Set([String(dlCurCode)]) : null, err: '' };
 }
 // 树只显示「有发生记录的科目」及其祖先：账套 420 个科目全列出来没有切换的意义，
-// 会计实际用到的通常几十到一百来个（金蝶的快速切换也是只显示发生科目）。
+// 会计实际用到的通常几十到一百来个（的快速切换也是只显示发生科目）。
 // 口径：出现过在任意凭证分录中的科目；为保留层级，其父科目一并带上。
 function dlTreeSubjects() {
   var subs = S.subjects() || [];
@@ -143,7 +143,7 @@ function dlTreeSyncCurrent(sc) {
   if (sc && sc.codes && sc.codes.size === 1) sc.codes.forEach(function (c) { single = c; });
   t.setCurrent(single);
 }
-// 首次进入明细账默认定位第一个有发生的科目（金蝶行为）——右侧树自动展开父链并高亮，
+// 首次进入明细账默认定位第一个有发生的科目（行为）——右侧树自动展开父链并高亮，
 // 主表直接显示该科目明细，而不是一进来铺全部科目。只做一次，之后由树的点选决定。
 var dlAutoFirstDone = false;
 function dlFirstUsedCode() {

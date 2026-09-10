@@ -1,7 +1,7 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：原始凭证。只挪窝不改写。
 import { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2,
   periodRangeOptions, periodRangeOptionsOri, monthsBetween, prevYearMonth, monthLabel, subjectLevel, subjectFilter, getSubjectNameByCode } from './_shared.js';
-const H = globalThis.__KINGDEE_HELPERS__ || {};
+const H = globalThis.__TY_HELPERS__ || {};
 
 var origCheckedIds = [];
 var origFilter = { name: '', bigType: '', smallType: '', vouchered: '', audit: '', isInvoice: '', group: '' };
@@ -145,7 +145,7 @@ function bindOriginal() {
     refresh();
   };
 
-  // 注：btnOrigPrint 已带 data-print，由全局委托统一走 kdPrint()，此处不再单独绑定（避免双击/双弹）。
+  // 注：btnOrigPrint 已带 data-print，由全局委托统一走 tyPrint()，此处不再单独绑定（避免双击/双弹）。
   $('btnOrigExport').onclick = exportOrig;
 
   $('origSiderTabs').addEventListener('click', function (e) {

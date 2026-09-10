@@ -107,15 +107,15 @@
           '<div style="font-family:monospace;font-size:13px;color:#1565c0;background:#e3f2fd;padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
         '</div>' +
         '<div style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #eee;">' +
-          '<button class="kd-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:14px;">打开文件夹</button>' +
-          '<button class="kd-export-close" style="padding:7px 16px;border:1px solid #ccd;background:#fff;border-radius:6px;cursor:pointer;font-size:14px;">关闭</button>' +
+          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:14px;">打开文件夹</button>' +
+          '<button class="ty-export-close" style="padding:7px 16px;border:1px solid #ccd;background:#fff;border-radius:6px;cursor:pointer;font-size:14px;">关闭</button>' +
         '</div>';
       overlay.appendChild(box);
       d.body.appendChild(overlay);
       function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
-      box.querySelector('.kd-export-close').onclick = close;
+      box.querySelector('.ty-export-close').onclick = close;
       overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
-      box.querySelector('.kd-export-open').onclick = function () {
+      box.querySelector('.ty-export-open').onclick = function () {
         close();
         // 打开 exports 所在目录（父目录），跨平台经 Rust open_in_explorer
         var exportsPath = String(path);
@@ -149,7 +149,7 @@
     saveExcel: saveExcel,
     saveText: saveText,
     toastExported: toastExported,
-    // 对外暴露唯一正确的 base64 编码实现，供 kdPrint 等复用，避免各处重复实现出错
+    // 对外暴露唯一正确的 base64 编码实现，供 tyPrint 等复用，避免各处重复实现出错
     bytesToBase64: bytesToBase64
   };
 
