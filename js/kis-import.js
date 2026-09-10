@@ -33,11 +33,31 @@
     return best ? best.cls : null;
   }
 
+  // 金蝶科目表 GLAcct.FGroup 的权威分类（账套实测规律）：
+  //   101/102 资产（流动/非流动）、201/202 负债（流动/长期）、301 权益、
+  //   400/401 成本、501/502 收入、503~507 费用。
+  // 用途：写入科目 grpCls，仅作「展示分类」（科目页分类 Tab / 科目类别列），
+  // 保证与金蝶界面一致；取数口径仍用 cls（结转损益、报表等按 cls 白名单/规则取数）。
+  function kdGroupCls(group) {
+    var g = parseInt(group, 10);
+    if (!g) return null;
+    if (g >= 101 && g <= 102) return 'asset';
+    if (g >= 201 && g <= 202) return 'liability';
+    if (g === 301) return 'equity';
+    if (g === 400 || g === 401) return 'cost';
+    if (g >= 501 && g <= 502) return 'revenue';
+    if (g >= 503 && g <= 507) return 'expense';
+    return null;
+  }
+
   function classify(code, dc) {
     var c = (code || '').trim();
     // 权威优先：命中标准准则一级科目（含子科目）直接采用模板类别
     var tpl = standardClsOf(c);
     if (tpl) return tpl;
+    // 成本类（生产成本/制造费用/研发支出/工程施工等）：归 cost，
+    // 不能落进 expense——否则结转损益会把生产成本余额结转到本年利润（错误）
+    if (/^(4001|4002|4101|4301|4401|4403)/.test(c)) return 'cost';
     var asset = ["1001","1002","1012","1101","1121","1122","1123","1131","1132","1221","1231","1321","1601","1602","1604","1701","1801","1901","100","101","102","110","112","113","122","123","132","160","170","180","190"];
     var liab  = ["2001","2201","2202","2203","2211","2221","2231","2241","2401","2501","2701","2801","200","220","221","222","223","224","240","250","270","280"];
     // 权益类。含「以前年度损益调整」金蝶/自定义变体（6901 企业会计制度、6000 自定义），
@@ -151,6 +171,10 @@
         code: code,
         name: name,
         cls: classify(code, dc),
+        // grpCls：金蝶 FGroup 归类（仅展示用，科目页分类 Tab 与科目类别列取它），
+        // 与金蝶界面保持一致；grp 保留原始编码便于追溯。
+        grpCls: kdGroupCls(r.FGroup) || null,
+        grp: parseInt(r.FGroup, 10) || null,
         normal: normal,
         level: parseInt(r.FLevel || 1, 10) || 1
       });

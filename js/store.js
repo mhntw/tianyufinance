@@ -1012,6 +1012,20 @@
     subject: function (code) {
       return this.state.subjects.filter(function (s) { return s.code === code; })[0] || null;
     },
+    // 科目编码 → 当前名称（显示层唯一入口）。
+    // 口径对齐金蝶：凭证/报表显示的是科目表「实时名称」，科目改名后历史单据显示同步更新；
+    // 分录里存的 name 仅作兜底（科目已不存在时使用）。
+    subjectName: function (code) {
+      var s = this.subject(code);
+      return s ? (s.name || '') : '';
+    },
+    // 一次性构建 code→name 映射：表格成百上千行时用 map 查名，
+    // 避免逐行调用 subject()（线性 filter）造成渲染变慢。
+    subjectNameMap: function () {
+      var map = {};
+      (this.state.subjects || []).forEach(function (s) { map[String(s.code)] = s.name || ''; });
+      return map;
+    },
     // 资金类科目（现金/银行）：库存现金1001、银行存款1002、其他货币资金1012 及其下级
     cashAccounts: function () {
       var prefix = ['1001', '1002', '1012'];
@@ -1043,7 +1057,7 @@
         code: code, name: name.trim(), cls: cls2, normal: ACCOUNT_CLASSES[cls2].normal,
         level: level, parent: parent ? parent.code : '',
         aux: [], qty: false, unit: '',
-        enabled: true // 财务严谨：科目停用而非删除
+        enabled: true // 历史字段：科目「停用」功能已下线，此字段仅为旧账套数据兼容保留，不再参与任何判断
       };
       if (extra) {
         if (Array.isArray(extra.aux)) s.aux = extra.aux.filter(function (k) {
@@ -1093,27 +1107,6 @@
       this._glCache = {};
       this.persist();
       return { ok: true };
-    },
-    removeSubject: function (code) {
-      // 财务严谨：科目改为「停用」而非删除——停用后历史凭证/余额保留，新增凭证不能再选。
-      // 停用不破坏历史引用，故无需阻止有历史引用的科目停用。
-      var s = this.subject(code);
-      if (!s) return { ok: false, msg: '科目不存在' };
-      s.enabled = false;
-      this.state.subjects.forEach(function (x) { if (x && x.code.indexOf(code) === 0) x.enabled = false; });
-      this._glCache = {};
-      this.persist();
-      return { ok: true, disabled: true };
-    },
-    // 重新启用科目：级联恢复其下子科目与账户档案（与停用对称）
-    enableSubject: function (code) {
-      var s = this.subject(code);
-      if (!s) return { ok: false, msg: '科目不存在' };
-      s.enabled = true;
-      this.state.subjects.forEach(function (x) { if (x && x.code.indexOf(code) === 0) x.enabled = true; });
-      this._glCache = {};
-      this.persist();
-      return { ok: true, enabled: true };
     },
 
     /* ===================== 期初余额 =====================

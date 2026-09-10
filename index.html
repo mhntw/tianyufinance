@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>添钰财务管理系统</title>
-  <link rel="stylesheet" href="css/style.css?v=2026091001">
+  <link rel="stylesheet" href="css/style.css?v=2026091013">
 </head>
 <body>
   <div class="layout">
@@ -1682,11 +1682,9 @@
           <div class="subj-checks">
             <input type="search" class="subj-search" id="subjSearch" placeholder="搜索编码/名称" autocomplete="off">
             <label class="subj-check"><input type="checkbox" id="subjExpandAll"> 展开所有级次</label>
-            <label class="subj-check"><input type="checkbox" id="subjShowDisabled" checked> 隐藏停用科目</label>
           </div>
           <div class="page-actions">
             <button class="btn" id="btnNewSubject">新增</button>
-            <button class="btn" id="btnSubjDelete">停用</button>
             <button class="btn" id="btnSubjImport">导入</button>
             <input type="file" id="subjImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
             <button class="btn" id="btnSubjExport">导出</button>
@@ -1696,8 +1694,6 @@
         <div class="grid-wrap">
           <table class="grid pp-grid" id="subjGrid">
             <thead><tr>
-              <th class="col-check"></th>
-              <th class="col-op">操作</th>
               <th class="col-code">科目编码</th>
               <th class="col-name">科目名称</th>
               <th>科目类别</th>
@@ -1705,11 +1701,12 @@
               <th>辅助核算类别</th>
               <th>数量核算</th>
               <th>是否现金科目</th>
+              <th class="col-op">操作</th>
             </tr></thead>
             <tbody id="subjBody"></tbody>
           </table>
         </div>
-        <div class="grid-foot" id="subjFoot">已选 <b id="subjSelCount">0</b> 条 / 共 <b id="subjTotalCount">0</b> 条</div>
+        <div class="grid-foot" id="subjFoot"><span id="subjScopeTip"></span>共 <b id="subjTotalCount">0</b> 条</div>
       </section>
 
       <section class="page" id="page-opening" data-unsaved-scope="opening">
@@ -2447,6 +2444,7 @@
           <label>计量单位 <input id="subUnit" class="inp inp-xs" style="margin-left:4px"></label>
         </div>
       </div>
+      <div class="k-tip info" id="subjNameTip" style="display:none">注意：科目名称修改后，以前期间凭证、报表上的科目名称都会变成新的科目名称。</div>
       <div class="modal-actions">
         <button class="btn" id="btnSaveSubject">保存</button>
         <button class="btn" id="btnCloseSubject">取消</button>
@@ -2587,19 +2585,19 @@
   <!-- Tauri 桌面存储引擎：经 window.__TAURI__.core.invoke 调用 Rust 端读写
        <应用数据目录>/添钰财务/books/ 真实文件，彻底去除 Python 服务端依赖。 -->
   <script src="js/storage.js?v=2026083002"></script>
-  <script src="js/standards.js?v=2026090924"></script>
-  <script src="js/store.js?v=2026090924"></script>
+  <script src="js/standards.js?v=2026091011"></script>
+  <script src="js/store.js?v=2026091007"></script>
   <script src="js/pinyin-abbr.js?v=2026090801"></script>
   <script src="js/xlsx.full.min.js?v=2026082131"></script>
   <script src="js/kindee.js?v=2026082131"></script>
   <script src="js/kd-menu-icons.js?v=2026082131"></script>
   <script src="js/buffer.js?v=2026082131"></script>
   <script src="js/mdb-reader.js?v=2026082131"></script>
-  <script src="js/kis-import.js?v=2026090917"></script>
+  <script src="js/kis-import.js?v=2026091011"></script>
   <script src="js/dialog-bridge.js?v=2026082727"></script>
   <script src="js/file-save-bridge.js?v=2026090902"></script>
-  <script src="js/app.js?v=2026091001"></script>
-  <script type="module" src="js/main.js?v=2026090924"></script>
+  <script src="js/app.js?v=2026091012"></script>
+  <script type="module" src="js/main.js?v=2026091013"></script>
 
   <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
     <div class="quick-settings-modal" id="quickSettingsModal">

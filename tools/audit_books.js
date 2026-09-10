@@ -20,7 +20,11 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const BOOKS_DIR = path.join(ROOT, 'data', 'books');
+// 账套目录：默认项目 data/books；可用 --dir=<路径> 指定（例如桌面应用的真实数据目录：
+//   ~/Library/Application Support/添钰财务/books）
+const ARGV = process.argv.slice(2);
+const DIR_ARG = (ARGV.find(a => a.indexOf('--dir=') === 0) || '').slice(6);
+const BOOKS_DIR = DIR_ARG ? path.resolve(DIR_ARG) : path.join(ROOT, 'data', 'books');
 const EPS = 0.01;
 
 const FUND_CODES = ['1001', '1002', '1012'];   // 库存现金 / 银行存款 / 其他货币资金
@@ -123,13 +127,48 @@ function audit(file) {
     '顶级 ' + r2(assetTop) + ' / 末级 ' + r2(assetLeaf) + ' 差 ' + rollGap
     + (rollGap > EPS ? '（差额通常来自「父科目自身挂了余额」）' : ''));
 
+  // ⑤ 结转损益口径一致性（关键）：结转损益按科目 cls(revenue/expense) 取数，
+  //    利润表按「编码白名单」取数；两者若不一致，会出现「结转后本年利润 ≠ 利润表净利润」。
+  //    这里逐期比对两个口径的净额，不一致即列出差异科目（通常是分类错误的损益科目）。
+  const PL_REV = /^(5001|5051|5111|5301|6001|6051|6111|6301)/;
+  const PL_EXP = /^(5401|5402|5403|5601|5602|5603|5711|5801|6401|6402|6403|6601|6602|6603|6711|6801)/;
+  const clsOf = {};
+  (j.subjects || []).forEach(s => { clsOf[String(s.code)] = s.cls; });
+  const mismatch = [];
+  for (let p = 1; p <= maxPeriod; p++) {
+    let clsRev = 0, clsExp = 0, plRev = 0, plExp = 0;
+    const diffDetail = {};
+    vouchers.forEach(v => {
+      if (Number(v.period) !== p) return;
+      (v.entries || []).forEach(e => {
+        const c = String(e.code);
+        if (c === '3103' || c === '3104') return;          // 排除结转科目（与结转逻辑一致）
+        const cls = clsOf[c];
+        const byCls = cls === 'revenue' ? (num(e.cr) - num(e.dr))
+                    : cls === 'expense' ? (num(e.dr) - num(e.cr)) : 0;
+        const byPl = PL_REV.test(c) ? (num(e.cr) - num(e.dr))
+                   : PL_EXP.test(c) ? (num(e.dr) - num(e.cr)) : 0;
+        if (cls === 'revenue') clsRev += byCls; else if (cls === 'expense') clsExp += byCls;
+        if (PL_REV.test(c)) plRev += byPl; else if (PL_EXP.test(c)) plExp += byPl;
+        if (Math.abs(byCls - byPl) > EPS) diffDetail[c] = r2((diffDetail[c] || 0) + (byCls - byPl));
+      });
+    });
+    const gap = r2((clsRev - clsExp) - (plRev - plExp));
+    if (Math.abs(gap) > EPS) {
+      mismatch.push(pad2(p) + '期 差 ' + gap + '（' + Object.keys(diffDetail).map(c => c + ':' + diffDetail[c]).slice(0, 5).join('、') + '）');
+    }
+  }
+  add('结转损益口径 = 利润表口径（逐期）', mismatch.length === 0,
+    mismatch.length ? '不一致：' + mismatch.join('；') + '。常见原因：损益科目分类(cls)与编码规则不符（重新导入账套可校正）'
+                    : '全部 ' + maxPeriod + ' 期一致（结转后本年利润将与利润表净利润相符）');
+
   const failed = checks.filter(c => !c.ok);
   return { file: path.basename(file), period: periodLabel, checks: checks, failed: failed,
            fundRight: fundRight, fundWrong: fundWrong };
 }
 
 (function main() {
-  const filter = process.argv[2] || '';
+  const filter = ARGV.find(a => a.indexOf('--dir=') !== 0) || '';
   const files = listBooks(filter);
   if (!files.length) { console.log('未找到账套：' + BOOKS_DIR + (filter ? '（过滤 ' + filter + '）' : '')); process.exit(0); }
   let bad = 0;

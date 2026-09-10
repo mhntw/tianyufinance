@@ -1003,6 +1003,36 @@
     });
   }
 
+  /** 复制文本到剪贴板（侧栏作者邮箱点击复制）：
+   *  navigator.clipboard 优先（Tauri/现代浏览器为安全上下文，可用）；
+   *  失败或老 WebView 回退 textarea + execCommand('copy')，两条路都失败才提示手动复制。 */
+  function copyAuthorMail(text) {
+    function done(ok) {
+      showToast(ok ? ('已复制邮箱：' + text) : ('复制失败，请手动复制：' + text), ok ? 'success' : 'warn', 2600);
+    }
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return !!ok;
+      } catch (e) { return false; }
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallback()); });
+        return;
+      }
+    } catch (e) { /* 继续走回退 */ }
+    done(fallback());
+  }
+
   /** 左侧导航：依据同一份 QUICK_MENU_ITEMS 数据源渲染，与设置弹窗自动同步 */
   function renderSideNav() {
     var nav = $('sidenav');
@@ -1058,9 +1088,16 @@
         '<svg class="nav-op-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="12" x2="3" y2="12"/><polyline points="8,7 3,12 8,17"/></svg>' +
       '</div>';
     // 侧栏底部作者信息（切换图标横向上方，深色小字常驻；收起导航后隐藏）
+    // 邮箱一行可点击自动复制（见 copyAuthorMail）
     var author = document.createElement('div');
     author.className = 'nav-author';
-    author.textContent = '©诗和远方';
+    author.innerHTML = '<div class="nav-author-name">©诗和远方</div>'
+      + '<div class="nav-author-mail" title="点击复制邮箱">tsmjg@icloud.com</div>';
+    var mailEl = author.querySelector('.nav-author-mail');
+    if (mailEl) mailEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      copyAuthorMail('tsmjg@icloud.com');
+    });
     nav.appendChild(op);
     nav.insertBefore(author, op);
     // hover 绑定：进入标题即把该组数据交给单例浮层渲染显示，离开再延时隐藏。
@@ -1395,6 +1432,35 @@
     if (!kw) { renderSearch(''); return; }
     var k = kw.toLowerCase();
 
+    // 科目匹配口径（全站统一）：编码、名称命中，或「其上级命中」——
+    // 等效全路径名匹配（子科目全名含父级名），搜「银行存款」能带出「青岛银行」等下级。
+    // 科目 / 账簿 / 凭证明细三处共用下面这套映射。
+    // 说明：这是确定性的「字符串包含匹配 + 父级连带」，不是模糊搜索——无相似度/评分/正则，
+    //       父链上溯有层数上限（防数据异常成环），同一关键词必得同一结果。
+    var subjAll = S.subjects();
+    var subjByCode = {};
+    subjAll.forEach(function (s) { subjByCode[String(s.code)] = 1; });
+    var subjHit = {};
+    subjAll.forEach(function (s) {
+      if (String(s.code).indexOf(k) >= 0 || String(s.name || '').toLowerCase().indexOf(k) >= 0) subjHit[String(s.code)] = 1;
+    });
+    // 是否存在「命中的上级科目」（沿真前缀父链上溯）
+    var hitWithAncestor = function (code) {
+      var c = String(code || ''), g = 0;
+      while (c && g++ < 40) {
+        var p = '';
+        for (var L = c.length - 1; L > 0; L--) { if (subjByCode[c.slice(0, L)]) { p = c.slice(0, L); break; } }
+        if (!p) return false;
+        if (subjHit[p]) return true;
+        c = p;
+      }
+      return false;
+    };
+    var subjMatch = function (code) {
+      var c = String(code || '');
+      return !!subjHit[c] || hitWithAncestor(c);
+    };
+
     // 凭证：摘要 / 科目编码或名称 / 字号(word-no) / 金额
     var numKw = parseFloat(kw);
     S.state.vouchers.forEach(function (v) {
@@ -1405,6 +1471,8 @@
         if ((e.summary || '').toLowerCase().indexOf(k) >= 0) hit = true;
         if (e.code.indexOf(k) >= 0) hit = true;
         if (s && s.name.toLowerCase().indexOf(k) >= 0) hit = true;
+        // 上级科目名命中同样算命中（搜「银行存款」能带出挂在「青岛银行」等子科目下的凭证）
+        if (!hit && subjMatch(e.code)) hit = true;
         if (!isNaN(numKw) && (Math.abs(e.dr - numKw) < 0.005 || Math.abs(e.cr - numKw) < 0.005)) { hit = true; amt = e.dr || e.cr; }
       });
       if (hit) res.voucher.push({ id: v.id, date: v.date, no: v.word + '-' + v.no, summary: v.summary || (v.entries[0] && v.entries[0].summary) || '', amount: amt });
@@ -1412,18 +1480,16 @@
     res.voucher.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     if (res.voucher.length > 20) res.voucher = res.voucher.slice(0, 20);
 
-    // 科目：编码或名称
-    S.subjects().forEach(function (s) {
-      if (s.code.indexOf(k) >= 0 || s.name.toLowerCase().indexOf(k) >= 0) {
-        res.subject.push({ code: s.code, name: s.name, cls: CLS_NAME[s.cls] || s.cls });
-      }
+    // 科目 / 账簿：复用上面统一构建的 subjMatch（编码/名称/上级命中）
+    subjAll.forEach(function (s) {
+      if (!subjMatch(s.code)) return;
+      res.subject.push({ code: s.code, name: s.name, cls: CLS_NAME[s.cls] || s.cls });
     });
 
-    // 账簿：按科目名匹配
-    S.subjects().forEach(function (s) {
-      if (s.code.indexOf(k) >= 0 || s.name.toLowerCase().indexOf(k) >= 0) {
-        res.ledger.push({ code: s.code, name: s.name });
-      }
+    // 账簿（同一匹配口径）
+    subjAll.forEach(function (s) {
+      if (!subjMatch(s.code)) return;
+      res.ledger.push({ code: s.code, name: s.name });
     });
     if (res.ledger.length > 8) res.ledger = res.ledger.slice(0, 8);
 

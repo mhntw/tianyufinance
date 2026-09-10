@@ -251,7 +251,8 @@ function ppCellFromIndex(idx, codes, dir, nameMatch) {
     }
   } else if (hasName) {
     idx.nameList.forEach(e => {
-      const nm = e.name || (S.subjectName && S.subjectName(e.code)) || '';
+      // 实时科目名优先（科目改名后同步更新），快照名兜底
+      const nm = (S.subjectName && S.subjectName(e.code)) || e.name || '';
       if (!nameMatch.some(k => nm.indexOf(k) >= 0)) return;
       sum += dir === 'dr' ? Number(e.dr || 0) : Number(e.cr || 0);
     });

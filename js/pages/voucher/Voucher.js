@@ -172,8 +172,11 @@ function renderVoucherRows() {
       // 科目列：编码输入框 + 右侧科目名称（金蝶形态：一眼看到「1001 库存现金」）
       // 名称仅作展示、不进输入框，避免 value 混入名称后被当成编码写回。
       '<td class="col-subj">'
+      + '<div class="v-subj-main">'
       + '<input class="inp v-code" data-i="' + i + '" value="' + escAttr(r.code || '') + '" placeholder="科目编码/名称" autocomplete="off">'
       + '<span class="v-subj-name" data-i="' + i + '">' + escHtml(vchSubjNameOf(r)) + '</span>'
+      + '</div>'
+      + '<div class="v-subj-bal" data-i="' + i + '"></div>'
       + '</td>' +
       amtCellHtml(r.dr, 'v-dr', i) +
       amtCellHtml(r.cr, 'v-cr', i) + '</tr>';
@@ -209,6 +212,40 @@ function vchSubjNameOf(r) {
 function syncSubjName(i) {
   var box = document.querySelector('#vRows .v-subj-name[data-i="' + i + '"]');
   if (box) box.textContent = vchSubjNameOf(vRows[i]);
+  syncAllSubjBals();   // 科目变化 → 同步刷新余额提示（金蝶式实时显示）
+}
+
+/* —— 科目余额提示（金蝶式：科目下方一行小字，随借/贷金额实时变化） ——
+ * 口径 = generalLedger 该科目余额（借正贷负，已含下级）
+ *      + 本张凭证中该科目已录入金额（借正贷负，含当前正在编辑的行）
+ * 展示 = 按科目正常方向取正（资产/成本/费用类看借方、负债/权益/收入类看贷方），
+ *        反向余额直接带负号（如资产类出现贷方余额显示 -100.00）。
+ * 注：generalLedger 有按月记忆化缓存，此处一次遍历建映射，行数少、开销可忽略。 */
+function syncAllSubjBals() {
+  if (!vRows || !vRows.length) return;
+  // 余额期间取「凭证日期所在期间」（改日期即换期，余额随之变化），无日期时回退当前期间
+  var dv = $('vDate');
+  var month = (dv && dv.value) ? monthOf(dv.value) : currentPeriod();
+  var balMap = {};                                    // code → 借正贷负余额
+  (S.generalLedger(month) || []).forEach(function (r) {
+    var b = Number(r.balance) || 0;
+    balMap[r.code] = (r.dir === '借' ? b : -b);
+  });
+  var deltaMap = {};                                  // code → 本张凭证已录净额（借正贷负）
+  vRows.forEach(function (r) {
+    if (!r.code) return;
+    deltaMap[r.code] = (deltaMap[r.code] || 0) + (U.num(r.dr) - U.num(r.cr));
+  });
+  vRows.forEach(function (r, i) {
+    var el = document.querySelector('#vRows .v-subj-bal[data-i="' + i + '"]');
+    if (!el) return;
+    var c = String(r.code || '');
+    var s = c ? S.subject(c) : null;
+    if (!s) { el.textContent = ''; return; }
+    var signed = (balMap[c] || 0) + (deltaMap[c] || 0);
+    var disp = (s.normal === 'cr') ? -signed : signed;
+    el.textContent = '余额：' + money(disp);
+  });
 }
 
 function refreshVoucher() {
@@ -360,6 +397,8 @@ function updateAmtTotals() {
     tip.textContent = '借贷平衡';
     tip.className = 'voucher-balance ok';
   }
+  // 科目余额提示随金额实时刷新（金蝶式：录入借/贷金额 → 该行科目余额立即变化）
+  syncAllSubjBals();
 }
 
 /* —— 一次性事件绑定（惰性守卫） —— */
@@ -369,6 +408,10 @@ function setupVoucher() {
   if (root) root.dataset.ready = '1';
 
   bindAttachUpload();   // 附件上传（此前「上传附件」无任何绑定，点击无反应）
+
+  // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
+  var dvEl = $('vDate');
+  if (dvEl) dvEl.addEventListener('change', function () { syncAllSubjBals(); });
 
   $('vRows').addEventListener('input', function (e) {
     var t = e.target, i = +t.getAttribute('data-i');
@@ -1117,6 +1160,9 @@ function renderQuery(start, end) {
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
   if (!vs.length) { tb.innerHTML = '<tr><td colspan="12" class="empty-hint">本期无凭证</td></tr>'; return; }
+  // 科目名显示口径（对齐金蝶）：取科目表实时名称，科目改名后历史凭证显示同步更新；
+  // 分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
+  var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
   var maker = '本账套';
   vs.forEach(function (v) {
     var first = true;
@@ -1138,7 +1184,7 @@ function renderQuery(start, end) {
         '<td>' + noCell + '</td>' +
         // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
         '<td class="cell-ellipsis" title="' + escAttr(e.summary || v.summary || '') + '">' + escHtml(e.summary || v.summary || '') + '</td>' +
-        '<td class="cell-ellipsis" title="' + escAttr(e.code + ' ' + (e.name || '')) + '">' + (e.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(e.code) + '">' + escHtml(e.code) + '</a> ' : '') + escHtml(e.name || '') + '</td>' +
+        '<td class="cell-ellipsis" title="' + escAttr(e.code + ' ' + (subjName[e.code] || e.name || '')) + '">' + (e.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(e.code) + '">' + escHtml(e.code) + '</a> ' : '') + escHtml(subjName[e.code] || e.name || '') + '</td>' +
         '<td class="ta-r mono">' + (U.num(e.dr) ? money(e.dr) : '') + '</td>' +
         '<td class="ta-r mono">' + (U.num(e.cr) ? money(e.cr) : '') + '</td>' +
         '<td>' + (first ? (v.attach || '') : '') + '</td>' +
@@ -1191,7 +1237,9 @@ function refreshRecycleBin() {
     var tr = document.createElement('tr');
     tr.className = 'log-row-reopen';
     var entries = (v.entries || []).map(function (e) {
-      return (e.code || '') + ' ' + (e.name || '') + (e.dr ? ' 借' + e.dr : (e.cr ? ' 贷' + e.cr : ''));
+      // 科目名同样取实时名称（回收站行数少，逐个查即可），快照名兜底
+      var nm = (S.subjectName && S.subjectName(e.code)) || e.name || '';
+      return (e.code || '') + ' ' + nm + (e.dr ? ' 借' + e.dr : (e.cr ? ' 贷' + e.cr : ''));
     }).join('；');
     tr.innerHTML =
       '<td class="mono">' + (v.date || '') + '</td>' +

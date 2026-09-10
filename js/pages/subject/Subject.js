@@ -2,6 +2,12 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 设计：globalThis.__KINGDEE_HELPERS__（app.js 注册）、globalThis.__KINGDEE_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
+//
+// 【搜索口径 · 全站统一】确定性「字符串包含匹配 + 父级连带」，不是模糊搜索：
+//   - 命中条件：科目编码 或 名称 包含关键词；若上级科目命中，则其下级一并视为命中
+//     （等效"全路径名匹配"，所以搜「银行存款」能带出「青岛银行」等子科目）；
+//   - 无相似度/拼音/编辑距离/评分排序，无正则，无递归（父链上溯带层数上限），
+//     因此同一关键词必得同一结果，不存在"忽多忽少"或回溯卡顿风险。
 
 const H = globalThis.__KINGDEE_HELPERS__ || {};
 const EX = globalThis.__KINGDEE_EXPORT__ || {};
@@ -73,18 +79,29 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   }
   /* 科目页：分类 Tab（资产/负债/共同/权益/成本/损益）+ 树形展开 + 勾选计数 */
   var subjTabCls = 'asset';   // 当前分类 Tab（默认选中「资产」）
-  var subjChecked = {};       // 勾选待删科目 code 集合
+  // 科目编辑弹窗：展示分类（grpCls||cls）与原始取数口径 cls，用于「没改分类就不改口径」
+  var subjModalBaseCls = '';
+  var subjModalShowCls = 'asset';
+
   function subjFiltered() {
+    // 搜索态 = 全局搜索：忽略当前分类 Tab，跨全部类别匹配。
+    // 否则搜索只在当前分类内生效（在「资产」页搜「管理费用」搜不到），使用不便。
+    // 清空搜索框即回到当前分类浏览；切分类 Tab 会自动退出搜索（见 Tab 点击处理）。
+    var searching = !!String(($('subjSearch') || {}).value || '').trim();
     return S.subjects().filter(function (s) {
-      // 分类 Tab：本项目账套无「共同/成本」类科目，对应为空（如实呈现）
-      if (subjTabCls === 'asset') { if (s.cls !== 'asset') return false; }
-      else if (subjTabCls === 'liability') { if (s.cls !== 'liability') return false; }
-      else if (subjTabCls === 'equity') { if (s.cls !== 'equity') return false; }
-      else if (subjTabCls === 'pl') { if (s.cls !== 'revenue' && s.cls !== 'expense') return false; }
-      else if (subjTabCls === 'cost') { if (s.cls !== 'cost') return false; }
-      else if (subjTabCls === 'common') { return false; }
-      // 「隐藏停用科目」默认勾选（金蝶语义）；取消勾选才展示停用行（含启用按钮）
-      if (s.enabled === false && subjShowDisabled && subjShowDisabled.checked) return false;
+      if (!searching) {
+        // 分类口径：优先用金蝶导入的 grpCls（与金蝶界面一致），无则回退 cls。
+        // 说明：cls 是「取数口径」（结转损益/报表按它取数），grpCls 是「展示分类」，
+        // 两者分离是为了让分类显示对齐金蝶、同时不动任何取数逻辑。
+        var cc = s.grpCls || s.cls;
+        if (subjTabCls === 'asset') { if (cc !== 'asset') return false; }
+        else if (subjTabCls === 'liability') { if (cc !== 'liability') return false; }
+        else if (subjTabCls === 'equity') { if (cc !== 'equity') return false; }
+        else if (subjTabCls === 'pl') { if (cc !== 'revenue' && cc !== 'expense') return false; }
+        else if (subjTabCls === 'cost') { if (cc !== 'cost') return false; }
+        else if (subjTabCls === 'common') { return false; }
+      }
+      // 科目「停用」功能已整体下线（不需要的科目不用即可），故不再做启用状态过滤
       // 关键词不在筛选层剔除（避免把父链祖先滤掉）——搜索态由 renderSubjects 统一控制显隐
       return true;
     });
@@ -105,15 +122,36 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var kwTxt = (swBox ? (swBox.value || '') : '').trim();
     if (kwTxt) {
       var q = kwTxt.toLowerCase();
+      // ① 基础命中：编码 / 末级名称包含关键字
+      var hitBase = {};
+      list.forEach(function (s) {
+        if (String(s.code).toLowerCase().indexOf(q) >= 0 || String(s.name || '').toLowerCase().indexOf(q) >= 0) hitBase[s.code] = 1;
+      });
+      // ② 全路径名等效匹配：命中科目的所有下级一并视为命中
+      //   → 搜「银行存款」可带出「青岛银行」「建行（陈总）」等子科目（子科目全名含父名）
+      list.forEach(function (s) {
+        var cur = s.code, g = 0;
+        while (cur && g++ < 40) {
+          var p = pmAll[cur];
+          if (!p) break;
+          if (hitBase[p]) { hitBase[s.code] = 1; break; }
+          cur = p;
+        }
+      });
+      // ③ 命中集 + 各自父链 = 可见集（父链保证层级可读）
       searchVisible = {};
       list.forEach(function (s) {
-        var hit = String(s.code).toLowerCase().indexOf(q) >= 0 || String(s.name || '').toLowerCase().indexOf(q) >= 0;
-        if (!hit) return;
-        var cur = s.code, g = 0;
+        if (!hitBase[s.code]) return;
+        var cur2 = s.code, g2 = 0;
         searchVisible[s.code] = 1;
-        while (cur && g++ < 40) { var p = pmAll[cur]; if (!p) break; searchVisible[p] = 1; cur = p; }
+        while (cur2 && g2++ < 40) { var p2 = pmAll[cur2]; if (!p2) break; searchVisible[p2] = 1; cur2 = p2; }
       });
     }
+    // 搜索态视觉提示：分类 Tab 淡化（当前分类不参与过滤）+ 底部标注"全局搜索"
+    var tabsBox = $('subjTabs');
+    if (tabsBox) tabsBox.classList.toggle('subj-tabs-searching', !!kwTxt);
+    var scopeTip = $('subjScopeTip');
+    if (scopeTip) scopeTip.textContent = kwTxt ? '全局搜索（跨全部类别）：' : '';
     var expandAllOn = !!($('subjExpandAll') && $('subjExpandAll').checked);
     list.forEach(function (s) {
       var aux = (s.aux || []).map(function (k) {
@@ -134,24 +172,22 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       var tr = document.createElement('tr');
       if (hidden) tr.className = 'subj-hidden';
       tr.innerHTML =
-        '<td class="col-check"><input type="checkbox" class="row-chk" data-code="' + s.code + '"' + (subjChecked[s.code] ? ' checked' : '') + '></td>' +
-        '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a> <a class="link-toggle" data-code="' + s.code + '">' + (s.enabled === false ? '启用' : '停用') + '</a></td>' +
         '<td class="mono">' + s.code + '</td>' +
-        '<td class="col-name">' + indent + arrow + '<span class="subj-name">' + s.name + (s.enabled === false ? ' <span class="tag-disabled">停用</span>' : '') + '</span></td>' +
-        '<td>' + ACCOUNT_CLASSES[s.cls].name + '</td>' +
-        '<td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
+        '<td class="col-name">' + indent + arrow + '<span class="subj-name">' + s.name + '</span></td>' +
+        '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name + '</td>' +
+        '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side + '</td>' +
         '<td>' + (aux || '<span class="muted">—</span>') + '</td>' +
         '<td>' + (s.qty ? (s.unit || '数量') : '—') + '</td>' +
-        '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '√' : '—') + '</td>';
+        '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '✓' : '—') + '</td>' +
+        '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a></td>';
       tb.appendChild(tr);
     });
     if (!list.length) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="9" class="empty-hint">暂无该类科目</td>';
+      tr.innerHTML = '<td colspan="8" class="empty-hint">暂无该类科目</td>';
       tb.appendChild(tr);
     }
     $('subjTotalCount').textContent = list.length;
-    $('subjSelCount').textContent = Object.keys(subjChecked).length;
   }
   // 编码联想：suggestOnly 模式（只提示已存在科目/父科目，不覆盖新编码输入）
   var _subCodeComboBound = false;
@@ -197,7 +233,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         });
       }
       // 数量核算（外币核算字段已随外币功能下线，不再读取）
-      var isQty = String(r['数量核算'] || '') === '√' || /^\d+$/.test(String(r['数量核算'] || '').trim());
+      // 兼容两种对勾写法：新导出/界面统一用 ✓，历史 Excel 模板可能仍写 √（都要能导入）
+      var qtyCell = String(r['数量核算'] || '').trim();
+      var isQty = qtyCell === '✓' || qtyCell === '√' || /^\d+$/.test(qtyCell);
       var extra = { aux: aux, qty: isQty };
 
       var res = S.addSubject(code, name, cls, extra);
@@ -230,7 +268,12 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     $('subCode').value = s ? s.code : '';
     $('subCode').disabled = !!s;
     $('subName').value = s ? s.name : '';
-    $('subCls').value = s ? s.cls : 'asset';
+    // 类别下拉展示「展示分类」（金蝶 grpCls 优先）；同时记住原始取数口径 cls 与展示值，
+    // 保存时若用户没动下拉，就提交原 cls —— 否则会把展示分类写进取数口径，
+    // 已有凭证的科目还会被「禁改类别」拦下（改名都保存不了）。
+    $('subCls').value = s ? (s.grpCls || s.cls) : 'asset';
+    subjModalBaseCls = s ? s.cls : '';
+    subjModalShowCls = s ? (s.grpCls || s.cls) : 'asset';
     bindSubCodeCombo();
     var aux = s ? (s.aux || []) : [];
     Array.prototype.forEach.call($('subAux').querySelectorAll('input'), function (cb) {
@@ -238,6 +281,8 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     });
     $('subQty').checked = !!(s && s.qty);
     $('subUnit').value = s ? (s.unit || '') : '';
+    // 改名提示（对齐金蝶）：仅编辑已有科目时显示
+    var nameTip = $('subjNameTip'); if (nameTip) nameTip.style.display = s ? '' : 'none';
     $('subjectModal').classList.add('show');
   }
   $('subjBody').addEventListener('click', async function (e) {
@@ -253,37 +298,17 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       renderSubjects();
       return;
     }
-    if (e.target.classList.contains('link-toggle')) {
-      var tCode = e.target.getAttribute('data-code');
-      var tSub = S.subjects().filter(function (s) { return s.code === tCode; })[0];
-      var disabling = !(tSub && tSub.enabled === false);
-      var act = disabling ? '停用' : '启用';
-      if (disabling) {
-        if (!(await H.confirmAsync('确定停用科目「' + (tSub ? (tSub.code + ' ' + tSub.name) : tCode) + '」吗？\n停用后该科目及子科目不能再用于新增凭证，但历史凭证与余额保留。', { title: '停用科目' }))) return;
-        var r = S.removeSubject(tCode);
-        if (!r.ok) return showToast(r.msg, 'error');
-      } else {
-        var r2 = S.enableSubject(tCode);
-        if (!r2.ok) return showToast(r2.msg, 'error');
-      }
-      delete subjChecked[tCode];
-      renderSubjects(); showToast('已' + act);
-    } else if (e.target.classList.contains('link-edit')) {
+    if (e.target.classList.contains('link-edit')) {
       openSubjectModal(e.target.getAttribute('data-code'));
     }
   });
   $('btnNewSubject').addEventListener('click', function () { openSubjectModal(null); });
-  // 行勾选计数（「已选 X 条」）
-  $('subjBody').addEventListener('change', function (e) {
-    if (!e.target.classList.contains('row-chk')) return;
-    var code = e.target.getAttribute('data-code');
-    if (e.target.checked) subjChecked[code] = 1; else delete subjChecked[code];
-    $('subjSelCount').textContent = Object.keys(subjChecked).length;
-  });
   // 分类 Tab + 展开级次 + 隐藏禁用（6 Tab）
   Array.prototype.forEach.call($('subjTabs').querySelectorAll('.subj-tab'), function (btn) {
     btn.addEventListener('click', function () {
       subjTabCls = btn.getAttribute('data-cls');
+      // 切分类 = 退出全局搜索（否则搜索结果不随分类变化，容易困惑）
+      var sb = $('subjSearch'); if (sb) sb.value = '';
       Array.prototype.forEach.call($('subjTabs').querySelectorAll('.subj-tab'), function (b) {
         b.classList.toggle('active', b === btn);
       });
@@ -298,8 +323,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     else subjCollapseToLevel1();
     renderSubjects();
   });
-  if ($('subjShowDisabled')) $('subjShowDisabled').addEventListener('change', function () { renderSubjects(); });
-  // 工具条（新增/导入/导出/删除/打印）
+  // 工具条（新增/导入/导出/打印）
   $('btnSubjImport').addEventListener('click', function () { $('subjImportFile').click(); });
   $('subjImportFile').addEventListener('change', function (e) {
     var f = e.target.files[0]; if (!f) return;
@@ -317,28 +341,16 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       return {
         '科目编码': s.code,
         '科目名称': s.name,
-        '科目类别': (ACCOUNT_CLASSES[s.cls] || {}).name || s.cls,
-        '方向': (ACCOUNT_CLASSES[s.cls] || {}).side || '',
+        '科目类别': (ACCOUNT_CLASSES[s.grpCls || s.cls] || {}).name || (s.grpCls || s.cls),
+        '方向': (ACCOUNT_CLASSES[s.grpCls || s.cls] || {}).side || '',
         '辅助核算': (s.aux || []).map(function (k) {
           var t = AUX_TYPES.filter(function (x) { return x.key === k; })[0];
           return t ? t.name : k;
         }).join('/'),
-        '数量核算': s.qty ? '√' : ''
+        '数量核算': s.qty ? '✓' : ''
       };
     });
     exportTable(rows, '会计科目');
-  });
-  $('btnSubjDelete').addEventListener('click', async function () {
-    var codes = Object.keys(subjChecked);
-    if (!codes.length) return showToast('请先勾选要停用的科目', 'error');
-    if (!(await H.confirmAsync('确认停用选中的 ' + codes.length + ' 个科目？\n停用后这些科目及其子科目不能再用于新增凭证，历史凭证与余额保留。', { title: '停用科目' }))) return;
-    var okCount = 0;
-    codes.forEach(function (c) {
-      var r = S.removeSubject(c);
-      if (r.ok) { delete subjChecked[c]; okCount++; }
-    });
-    renderSubjects();
-    showToast('已停用 ' + okCount + ' 个科目');
   });
   $('btnCloseSubject').addEventListener('click', function () { $('subjectModal').classList.remove('show'); });
   $('btnSaveSubject').addEventListener('click', function () {
@@ -352,8 +364,11 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     // 子科目类别必须与父一致（addSubject 在 cls 为空时自动继承父）。
     // 传空字符串让父继承逻辑生效，避免财务手动选错类别。
     var isChild = !editing && newCode.length >= 6;
-    var cls = isChild ? '' : $('subCls').value;
-    var r = editing ? S.updateSubject(code, $('subName').value, $('subCls').value, extra)
+    var pickedCls = $('subCls').value;
+    // 编辑态：下拉未改动 → 沿用原取数口径 cls（展示分类与取数口径分离，不因展示而改口径）
+    if (editing && pickedCls === subjModalShowCls) pickedCls = subjModalBaseCls;
+    var cls = isChild ? '' : pickedCls;
+    var r = editing ? S.updateSubject(code, $('subName').value, pickedCls, extra)
                     : S.addSubject(newCode, $('subName').value, cls, extra);
     if (!r.ok) return showToast(r.msg, 'error');
     $('subjectModal').classList.remove('show');

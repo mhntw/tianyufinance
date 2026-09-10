@@ -115,6 +115,7 @@ function buildSubjectPop(anchor, subs, onPick, onlyParent) {
     const rows = subs.filter(function (s) {
       if (!k) return true;
       // 与 SubjectCombo 同口径：编码 / 末级名 / 全路径名 均可命中
+      //（确定性字符串包含匹配，非模糊搜索）
       return String(s.code).indexOf(k) >= 0
         || String(s.name).toLowerCase().indexOf(k) >= 0
         || String(subjectFullName(s.code, s.name)).toLowerCase().indexOf(k) >= 0;

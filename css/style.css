@@ -336,6 +336,9 @@ img, svg { display: block; max-width: 100%; }
   user-select: none;
 }
 .sidenav.collapsed .nav-author { display: none; }
+/* 作者邮箱：可点击复制（hover 提示 + 链接色） */
+.nav-author-mail { margin-top: 1px; color: var(--kd-blue); cursor: pointer; }
+.nav-author-mail:hover { text-decoration: underline; }
 
 /* 侧栏底部操作区（复刻金蝶 .opWrapper--1HuXG：含「浅色模式」+「收起导航」两个 bottomMenuBtn） */
 .nav-op-wrapper {
@@ -664,16 +667,22 @@ img, svg { display: block; max-width: 100%; }
 #subjGrid { display: block; overflow-x: auto; overflow-y: visible; }
 #subjGrid .grid { width: 100%; min-width: 100%; table-layout: fixed; }
 #subjGrid th { text-align: left; }
-#subjGrid .col-check { width: 40px; text-align: center; position: sticky; left: 0; z-index: 3; }
-#subjGrid .col-op { width: 96px; text-align: left; position: sticky; left: 40px; z-index: 3; }
+/* 操作列移到最右并改为吸右（原吸左第 2 列）；只留「编辑」故收窄到 64px
+   （首列勾选框已移除） */
+#subjGrid .col-op { width: 64px; text-align: left; position: sticky; right: 0; z-index: 3; }
 #subjGrid .col-code { width: 120px; }
 #subjGrid .col-name { width: auto; min-width: 200px; } /* 名称列自适应（原 335px 太宽） */
-#subjGrid tbody td.col-check { z-index: 1; }
-#subjGrid tbody td.col-op { z-index: 1; }
-#subjGrid tbody td.col-check input { vertical-align: middle; margin: 0; }
+/* sticky 单元格必须不透明，且跟随斑马纹/hover：否则横滚时透字、鼠标悬停时右侧出现白块 */
+#subjGrid tbody td.col-op { z-index: 1; background: #fff; }
+#subjGrid tbody tr:nth-child(odd) td.col-op { background: #fafcff; }
+#subjGrid tbody tr:hover td.col-op { background: #ebf7ff; }
+
 /* 科目树形显示（金蝶式：默认一级收拢，行首箭头逐级展开） */
 #subjGrid .col-name { min-width: 280px; }
 #subjBody tr.subj-hidden { display: none; }
+/* 科目页搜索态：搜索跨全部类别（当前分类不参与过滤），故分类 Tab 淡化提示 */
+.subj-tabs.subj-tabs-searching { opacity: .5; }
+#subjScopeTip { color: var(--kd-blue); margin-right: 6px; }
 #subjBody .subj-indent { display: inline-block; }
 /* 尺寸/居中统一走文末「树形展开三角」规则，此处只留本页专属的间距与配色 */
 #subjBody .subj-arrow,
@@ -2814,12 +2823,21 @@ select:not([class]),
 }
 /* 科目列：编码输入框 + 科目名称同格显示（金蝶形态「1001 库存现金」）。
    名称仅展示、不参与取值，超长省略号截断，不影响编码输入与联想下拉。 */
-#vRows td.col-subj { display: flex; align-items: center; gap: 2px; }
+/* 科目列：第一行「编码 + 名称」，第二行「余额：xxx」（金蝶式，随金额实时变化）。
+   凭证表行高 62px，两行内容放得下，行高不变。 */
+#vRows td.col-subj { display: flex; flex-direction: column; justify-content: center; gap: 0; }
+#vRows td.col-subj .v-subj-main { display: flex; align-items: center; gap: 2px; min-width: 0; }
 #vRows td.col-subj .v-code { flex: 0 0 104px; width: 104px; min-width: 0; padding: 0 3px; }
 #vRows .v-subj-name {
   flex: 1; min-width: 0; font-size: 12.5px; color: var(--kd-text-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 科目余额提示（金蝶式）：科目名下方一行小字，无科目时不占位 */
+#vRows .v-subj-bal {
+  font-size: 11.5px; line-height: 1.5; color: var(--kd-text-3);
+  padding-left: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#vRows .v-subj-bal:empty { display: none; }
 #vRows .v-aux { width: 140px; }
 
 /* 数据与安全-数据恢复（原基础功能区 backup-list，tool-card 系已随 #page-tools 删除） */

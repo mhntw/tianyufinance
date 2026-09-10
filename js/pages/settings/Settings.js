@@ -289,7 +289,7 @@ const refreshAll = (globalThis.__KINGDEE_HELPERS__ || {}).refreshAll;
     if (v.maker) lines.push('制单：' + v.maker + ' · 状态：' + (v.status || 'draft'));
     (v.entries || []).forEach(function (e) {
       var amt = e.dr ? '借 ' + num(e.dr).toFixed(2) : (e.cr ? '贷 ' + num(e.cr).toFixed(2) : '0.00');
-      lines.push('  ' + (e.code || '') + ' ' + (e.name || '') + ' ' + amt);
+      lines.push('  ' + (e.code || '') + ' ' + ((S.subjectName && S.subjectName(e.code)) || e.name || '') + ' ' + amt);
     });
     return lines.join('\n');
   }

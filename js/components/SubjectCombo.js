@@ -25,8 +25,7 @@ function bindSubjectCombo(input, opts) {
   // 无需重新绑定。与 SubjectRangePicker 的实时读取保持一致。
   function subjects() {
     var all = (typeof S !== 'undefined' && S.subjects) ? S.subjects() : [];
-    // 联想候选排除停用科目（新增/修改凭证不能选停用科目）；pick 查找用全量保留已有值
-    all = all.filter(function (s) { return s.enabled !== false; });
+    // 科目「停用」功能已下线：不再按启用状态过滤，所有科目均可联想选择
     if (typeof opts.filter === 'function') all = all.filter(opts.filter);
     return all;
   }
@@ -43,6 +42,7 @@ function bindSubjectCombo(input, opts) {
     return subs.filter(function (s) {
       // 除「编码前缀 / 末级名」外，再按「全路径名」匹配：
       // 搜「银行存款」「其他应收款」等父级名也能命中其下级科目（下拉显示的正是全名）。
+      // 确定性字符串包含匹配（非模糊搜索：无相似度/评分/正则），结果稳定可预期。
       var full = subjectFullName(s.code, s.name).toLowerCase();
       return String(s.code).toLowerCase().indexOf(k) === 0
         || String(s.name).toLowerCase().indexOf(k) >= 0
@@ -88,7 +88,7 @@ function bindSubjectCombo(input, opts) {
 
   function pick(code) {
     var s = null;
-    // 用全量科目查找（含停用科目），保证编辑已有凭证时停用科目的值也能匹配显示
+    // 用全量科目查找，保证编辑已有凭证时历史科目值也能匹配显示
     var all = (typeof S !== 'undefined' && S.subjects) ? S.subjects() : [];
     all.some(function (x) { if (String(x.code) === String(code)) { s = x; return true; } return false; });
     // suggestOnly 模式（新增科目编码联想）：只回传所选科目信息，不写回 input——
