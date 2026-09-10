@@ -897,8 +897,12 @@
     ]},
   ];
 
-  /** 默认勾选的菜单项（key 列表，最多 15 个网格图标 + 录凭证大卡片） */
-  var DEFAULT_QUICK_KEYS = ['voucher-edit','voucher-query','detail-ledger','trial-balance','report-balance','report-profit','general-ledger','cash-flow','asset-card','multi-ledger'];
+  /** 默认勾选的菜单项（key 列表，顺序即首页展示顺序；录凭证为固定项，另计大卡片不占 15 个名额）
+   *  默认：录凭证（固定）→ 查凭证 → 明细账 → 总账 → 科目余额表 → 资产负债表 → 利润表 → 标准现金流量表 → 费用明细表
+   */
+  var DEFAULT_QUICK_KEYS = ['voucher-edit','voucher-query','detail-ledger','general-ledger','trial-balance','report-balance','report-profit','cash-flow','expense-detail'];
+  // 固定项：始终勾选、不可取消（录凭证是日常第一入口，取消会造成首页无凭证入口）
+  var FIXED_QUICK_KEY = 'voucher-edit';
 
   function getSavedQuickKeys() {
     try { var s = localStorage.getItem('quick_menu_keys'); if (s) return JSON.parse(s); } catch(e){}
@@ -921,14 +925,19 @@
     var body = $('qsBody');
     if (!overlay || !body) return;
     var savedKeys = getSavedQuickKeys();
-    var html = '';
+    var html = '<div class="qs-tip">「录凭证」为固定功能，默认勾选且不可取消；其余功能可自由勾选（最多 15 个）。</div>';
     QUICK_MENU_ITEMS.forEach(function (group) {
       html += '<div class="qs-group">';
       html += '<div class="qs-group-title">' + group.group + '</div>';
       html += '<div class="qs-items">';
       group.items.forEach(function (item) {
-        var checked = savedKeys.indexOf(item.key) >= 0 ? 'checked' : '';
-        html += '<div class="qs-item"><input type="checkbox" id="qsk_' + item.key + '" value="' + item.key + '" ' + checked + '/><label for="qsk_' + item.key + '">' + item.name + '</label></div>';
+        var fixed = item.key === FIXED_QUICK_KEY;
+        var checked = (fixed || savedKeys.indexOf(item.key) >= 0) ? 'checked' : '';
+        var lockAttr = fixed ? ' disabled title="录凭证为固定功能，不可取消"' : '';
+        html += '<div class="qs-item' + (fixed ? ' qs-item-fixed' : '') + '">'
+          + '<input type="checkbox" id="qsk_' + item.key + '" value="' + item.key + '" ' + checked + lockAttr + '/>'
+          + '<label for="qsk_' + item.key + '">' + item.name
+          + (fixed ? '<span class="qs-fixed-tag">固定</span>' : '') + '</label></div>';
       });
       html += '</div></div>';
     });
@@ -936,9 +945,10 @@
     // 限制常用功能最多 15 个网格图标（不含录凭证大卡片，按非 voucher-edit 计数）
     body.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
       cb.addEventListener('change', function () {
+        if (cb.value === FIXED_QUICK_KEY) { cb.checked = true; return; } // 固定项兜底：不可取消
         var iconCount = 0;
         body.querySelectorAll('input[type="checkbox"]:checked').forEach(function (c) {
-          if (c.value !== 'voucher-edit') iconCount++;
+          if (c.value !== FIXED_QUICK_KEY) iconCount++;
         });
         if (iconCount > 15) {
           cb.checked = false;
@@ -963,12 +973,13 @@
     var keys = [];
     cbs.forEach(function(cb){ keys.push(cb.value); });
     // 兜底：网格图标（非录凭证）最多 15 个，超出截断
-    var icons = keys.filter(function (k) { return k !== 'voucher-edit'; });
+    var icons = keys.filter(function (k) { return k !== FIXED_QUICK_KEY; });
     if (icons.length > 15) {
       icons = icons.slice(0, 15);
-      keys = keys.filter(function (k) { return k === 'voucher-edit'; }).concat(icons);
       showToast('常用功能最多添加 15 个，已保留前 15 个');
     }
+    // 录凭证固定首位且必选（即使被禁用勾选也始终写入）
+    keys = [FIXED_QUICK_KEY].concat(icons);
     saveQuickKeys(keys);
     closeQuickSettings();
     renderQuickIcons(keys);
@@ -978,7 +989,7 @@
     var grid = document.querySelector('.home-quick-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    var iconKeys = keys.filter(function(k){ return k !== 'voucher-edit'; });
+    var iconKeys = keys.filter(function(k){ return k !== FIXED_QUICK_KEY; });
     iconKeys.forEach(function (key) {
       var item = findQuickItem(key);
       if (!item) return;
