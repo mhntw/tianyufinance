@@ -1418,6 +1418,12 @@
 
     renderSearch(kw, res);
   }
+  // 全局搜索里的科目名统一显示「一级-二级-末级」全路径名（与录凭证/科目下拉同口径），
+  // 避免搜到「陈小龙」这类末级科目时看不出挂在哪个科目下。
+  function subjFullName(s) {
+    var fn = globalThis.subjectFullName;
+    return fn ? fn(s.code, s.name) : (s.name || '');
+  }
   function renderSearch(kw, res) {
     if (!searchResult) return;
     if (!kw) { searchResult.innerHTML = '<div class="search-empty">输入金额 / 科目 / 摘要 / 凭证字号进行搜索</div>'; if (searchDropdown) searchDropdown.hidden = true; return; }
@@ -1441,7 +1447,7 @@
       html += '<div class="search-group-title">科目</div>';
       res.subject.forEach(function (s) {
         html += '<div class="search-item" data-go="subject" data-code="' + s.code + '">' +
-          '<div class="si-main"><span class="si-title">' + s.code + ' ' + s.name + '</span></div>' +
+          '<div class="si-main"><span class="si-title">' + s.code + ' ' + subjFullName(s) + '</span></div>' +
           '<div class="si-sub">' + s.cls + '</div></div>';
       });
     }
@@ -1449,7 +1455,7 @@
       html += '<div class="search-group-title">账簿</div>';
       res.ledger.forEach(function (s) {
         html += '<div class="search-item" data-go="ledger" data-code="' + s.code + '">' +
-          '<div class="si-main"><span class="si-title">' + s.code + ' ' + s.name + '</span></div>' +
+          '<div class="si-main"><span class="si-title">' + s.code + ' ' + subjFullName(s) + '</span></div>' +
           '<div class="si-sub">科目余额表 / 总账 / 明细账</div></div>';
       });
     }

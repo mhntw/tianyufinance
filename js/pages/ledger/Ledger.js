@@ -295,18 +295,23 @@ function refreshMl() {
   renderMl(r.code, month, r.err);
 }
 // 取某科目的【直属】下级科目（多栏账按直属子目分栏）。
-// 段式编码（对齐金蝶）：1001 一级，下级 = 前缀 + 2 位（100101、10010101）。
-// 直属 = 去掉末级 2 位后的前缀等于父（即层级比父恰好高一级）。
+// 父子一律以「表内最长真前缀」判定（兼容 4+2 与 7/9 位混合账）：
+// B 是 A 的直属子 ⟺ B 的最长表内前缀 == A。
 function childSubjectsOf(code) {
-  var subs = S.subjects().filter(function (s) {
+  var subs = S.subjects();
+  var by = {};
+  subs.forEach(function (s) { by[s.code] = 1; });
+  var under = subs.filter(function (s) {
     return s.code !== code && s.code.indexOf(code) === 0 && s.code.length > code.length;
   });
-  var direct = subs.filter(function (s) {
-    // 段式：去掉末级 2 位后等于父，即直属（100101 的父是 1001）
-    if (s.code.length > code.length + 2) return s.code.slice(0, -2) === code;
-    return true; // 恰好高一级
+  var direct = under.filter(function (s) {
+    for (var L = s.code.length - 1; L > 0; L--) {
+      var pre = s.code.slice(0, L);
+      if (by[pre]) return pre === code; // 最长表内前缀
+    }
+    return false;
   });
-  if (!direct.length) direct = subs;
+  if (!direct.length) direct = under; // 兜底：无直属时沿用全部下级（保持旧行为不空列）
   return direct;
 }
 function renderMl(code, month, err) {

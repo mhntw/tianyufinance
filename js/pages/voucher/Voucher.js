@@ -20,6 +20,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES) || [];
 
 import { bindSubjectRange, matchSubjectCode, closeSubjectPop } from '../../components/SubjectRangePicker.js';
 import { bindSubjectCombo } from '../../components/SubjectCombo.js';
+import { subjectFullName } from '../../common/subject-name.js';
 
 /* —— 金额位格 helper（副本，纯函数，逐字自 app.js） —— */
 function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2) {
@@ -168,7 +169,12 @@ function renderVoucherRows() {
     tr.innerHTML =
       '<td class="col-num ta-c"><span class="row-num">' + (i + 1) + '</span>' + ops + '</td>' +
       '<td><input class="v-summary" data-i="' + i + '" value="' + (r.summary || '') + '"></td>' +
-      '<td><input class="inp v-code" data-i="' + i + '" value="' + (r.code || '') + '" placeholder="科目编码/名称" autocomplete="off"></td>' +
+      // 科目列：编码输入框 + 右侧科目名称（金蝶形态：一眼看到「1001 库存现金」）
+      // 名称仅作展示、不进输入框，避免 value 混入名称后被当成编码写回。
+      '<td class="col-subj">'
+      + '<input class="inp v-code" data-i="' + i + '" value="' + escAttr(r.code || '') + '" placeholder="科目编码/名称" autocomplete="off">'
+      + '<span class="v-subj-name" data-i="' + i + '">' + escHtml(vchSubjNameOf(r)) + '</span>'
+      + '</td>' +
       amtCellHtml(r.dr, 'v-dr', i) +
       amtCellHtml(r.cr, 'v-cr', i) + '</tr>';
     tb.appendChild(tr);
@@ -188,9 +194,21 @@ function bindVoucherCodeCombo(input, i) {
     onPick: function (code, subj) {
       vRows[i].code = code;
       vRows[i].name = subj ? subj.name : '';
+      syncSubjName(i);          // 选中后立即显示「编码 + 名称」
       updateAmtTotals();
     }
   });
+}
+// 科目名称展示（完整路径名）：统一走共享实现 common/subject-name.js
+// （录凭证科目栏与科目联想下拉共用同一套拼接规则，避免两处逻辑漂移）
+function vchSubjNameOf(r) {
+  if (!r) return '';
+  return subjectFullName(r.code, r.name);
+}
+// 只更新名称文本节点，不重建整行（避免输入框失焦/光标跳动、下拉被销毁）
+function syncSubjName(i) {
+  var box = document.querySelector('#vRows .v-subj-name[data-i="' + i + '"]');
+  if (box) box.textContent = vchSubjNameOf(vRows[i]);
 }
 
 function refreshVoucher() {
@@ -361,6 +379,7 @@ function setupVoucher() {
     else if (t.classList.contains('v-code')) {
       vRows[i].code = t.value;
       var s = S.subject(t.value); vRows[i].name = s ? s.name : '';
+      syncSubjName(i);   // 手输编码时同步右侧名称
       return; // 科目输入无需重建 DOM，直接返回，避免重建导致科目下拉丢失焦点
     } else if (t.classList.contains('v-dr') || t.classList.contains('v-cr')) {
       var field = t.classList.contains('v-dr') ? 'v-dr' : 'v-cr';
@@ -428,6 +447,7 @@ function setupVoucher() {
       var s = S.subject(t.value);
       vRows[i].code = t.value;
       vRows[i].name = s ? s.name : '';
+      syncSubjName(i);   // 失焦兜底：同步右侧名称（编码不存在时显示为空）
       if (t.value && !s) {
         H.showToast && H.showToast('科目编码不存在：' + t.value, 'warn');
       }
@@ -1199,6 +1219,216 @@ function refreshRecycleBin() {
 }
 
 /* —— 对外暴露：刷新 + 跨页入口 —— */
+/* ===================== 日常凭证模板（结构模板，金额留空待填） ===================== */
+function vchTplCurrentEntries() {
+  var out = [];
+  (vRows || []).forEach(function (r) {
+    var dr = U.num(r.dr), cr = U.num(r.cr);
+    if (!r.code || (dr <= 0 && cr <= 0)) return; // 仅收集带科目且已定借贷方向的行
+    out.push({
+      code: r.code,
+      name: ((S.subject(r.code) || {}).name) || r.name || '',
+      summary: r.summary || '',
+      side: dr > 0 ? 'dr' : 'cr'
+    });
+  });
+  return out;
+}
+function openVchTpl() {
+  var m = $('vchTplModal'); if (!m) return;
+  m.classList.add('show');
+  var s = $('vchTplSearch'); if (s) s.value = '';
+  renderVchTplList();
+  if (s) { try { s.focus(); } catch (e) {} }
+}
+function closeVchTpl() { var m = $('vchTplModal'); if (m) m.classList.remove('show'); }
+/* —— 系统模板（软件内置，只读）：套用前把基准科目适配到本账套科目 ——
+ * 匹配顺序：本账套精确编码 → old/small2013 损益码迁移 → 同名科目 → 名称前缀取最短编码。
+ * 匹配不到的行不进模板，避免带空科目行套用；缺行在卡片上红字提示、套用时提醒补录。
+ */
+var BUILTIN_VCH_TPL = globalThis.STANDARD_VCH_TEMPLATES || [];
+function tplSubjectHit(code) {
+  var s = S.subject ? S.subject(code) : null;
+  return s ? { code: String(s.code), name: s.name || '' } : null;
+}
+function resolveTplAccount(code, name) {
+  var c0 = String(code || '');
+  var r = tplSubjectHit(c0); if (r) return r;
+  if (globalThis.migrateSubjectCode) {
+    var a1 = globalThis.migrateSubjectCode(c0, 'old', 'small2013');
+    if (a1 !== c0) { r = tplSubjectHit(a1); if (r) return r; }
+    var a2 = globalThis.migrateSubjectCode(c0, 'small2013', 'old');
+    if (a2 !== c0) { r = tplSubjectHit(a2); if (r) return r; }
+  }
+  var subs = (S.subjects ? S.subjects() : []) || [];
+  if (!subs.length) return null;
+  var pick = function (arr) {
+    if (!arr || !arr.length) return null;
+    arr = arr.slice().sort(function (a, b) {
+      return (String(a.code).length - String(b.code).length) || (String(a.code) < String(b.code) ? -1 : 1);
+    });
+    var s = arr[0];
+    return { code: String(s.code), name: s.name || '' };
+  };
+  var n = String(name || '').trim();
+  if (n) {
+    var eq = pick(subs.filter(function (s) { return s.name === n; }));
+    if (eq) return eq;
+    var pf = pick(subs.filter(function (s) { return s.name && s.name.indexOf(n) === 0; }));
+    if (pf) return pf;
+  }
+  return null;
+}
+function builtinTplResolved() {
+  return (BUILTIN_VCH_TPL || []).map(function (t, i) {
+    var ok = [], miss = [];
+    (t.entries || []).forEach(function (e) {
+      var s = resolveTplAccount(e.code, e.name);
+      if (s) ok.push({ summary: e.summary || '', code: s.code, name: s.name || '', side: e.side === 'cr' ? 'cr' : 'dr' });
+      else miss.push({ code: e.code, name: e.name || '' });
+    });
+    return { id: 'sys' + i, name: t.name, word: t.word || '记', builtin: true, entries: ok, missing: miss };
+  });
+}
+function renderVchTplList() {
+  var box = $('vchTplList'); if (!box) return;
+  var mine = S.vchTemplates() || [];
+  var sys = builtinTplResolved();
+  var q = String(($('vchTplSearch') || {}).value || '').trim().toLowerCase();
+  var pass = function (t) { return !q || String(t.name || '').toLowerCase().indexOf(q) >= 0; };
+  var sysF = sys.filter(pass), mineF = mine.filter(pass);
+  function tplRow(t, builtin) {
+    var segs = (t.entries || []).map(function (e) {
+      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + (e.side === 'cr' ? '贷' : '借') + '</i>'
+        + '<em class="muted">' + escHtml(e.code || '') + '</em> ' + escHtml(e.name || '')
+        + (e.summary ? '<span class="muted vch-tpl-sum"> · ' + escHtml(e.summary) + '</span>' : '') + '</span>';
+    }).join('<span class="vch-tpl-sep">／</span>');
+    var miss = (builtin && t.missing && t.missing.length)
+      ? '<div class="vch-tpl-miss">缺少 ' + t.missing.length + ' 个科目：'
+        + t.missing.map(function (m) { return escHtml(m.code + ' ' + m.name); }).join('、')
+        + '，已跳过，套用后请补录</div>' : '';
+    var use = t.entries.length
+      ? '<button type="button" class="btn btn-xs btn-primary vch-tpl-use" data-id="' + escAttr(t.id) + '">使用</button>'
+      : '<span class="muted" style="font-size:12px">不可用</span>';
+    return '<div class="vch-tpl-row">'
+      + '<div class="vch-tpl-main">'
+      + '<div class="vch-tpl-name"><span class="vch-tpl-word">' + escHtml(t.word || '记') + '</span><b>' + escHtml(t.name) + '</b>'
+      + (builtin ? '<span class="vch-tpl-tag">内置</span>' : '') + '</div>'
+      + (segs ? '<div class="vch-tpl-preview">' + segs + '</div>' : '') + miss
+      + '</div>'
+      + '<div class="vch-tpl-ops">' + use
+      + (builtin ? '' : '<button type="button" class="btn btn-xs vch-tpl-del" data-id="' + escAttr(t.id) + '">删除</button>')
+      + '</div>'
+      + '</div>';
+  }
+  function sec(title, count) {
+    return '<div class="vch-tpl-sec"><span class="vch-tpl-sec-name">' + title + '</span>'
+      + '<span class="vch-tpl-cnt">' + count + ' 个</span></div>';
+  }
+  var html = '';
+  if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
+  if (mineF.length) html += sec('我的模板', mine.length) + mineF.map(function (t) { return tplRow(t, false); }).join('');
+  if (!html) {
+    html = '<div class="empty-hint" style="padding:26px 0;text-align:center;color:var(--kd-text-3)">'
+      + (q ? '没有找到名称含「' + escHtml(q) + '」的模板' : '暂无可用模板') + '</div>';
+  } else if (!mine.length && !q) {
+    html += '<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>';
+  }
+  box.innerHTML = html;
+}
+function saveCurrentAsTpl() {
+  var entries = vchTplCurrentEntries();
+  if (!entries.length) { showToast('请先录入带金额的分录（用于确定借贷方向）', 'warn'); return; }
+  var base = (entries[0].summary || '').trim() || ((S.subject(entries[0].code) || {}).name || '常用业务');
+  var dup = (S.vchTemplates() || []).filter(function (x) { return x.name === base; }).length;
+  var name = dup ? (base + ' (' + (dup + 1) + ')') : base;
+  var r = S.saveVchTemplate(name, entries);
+  if (!r.ok) return showToast(r.msg, 'error');
+  showToast('已保存为模板「' + name + '」（' + entries.length + ' 条分录）', 'success', 3200);
+  renderVchTplList();
+}
+function applyVchTpl(t) {
+  if (!t) return;
+  var dirty = vEditId ? true : (vRows || []).some(function (r) {
+    return r.code || U.num(r.dr) || U.num(r.cr) || (r.summary || '').trim();
+  });
+  function fill() {
+    vEditId = null;
+    vAttachFiles = [];
+    if (renderAttachPanel) renderAttachPanel();
+    vRows = (t.entries || []).filter(function (e) { return e.code; }).map(function (e) {
+      var r = defaultVoucherRow();
+      r.summary = e.summary || '';
+      r.code = e.code || '';
+      r.name = e.name || ((S.subject(e.code) || {}).name) || '';
+      return r;
+    });
+    while (vRows.length < 4) vRows.push(defaultVoucherRow());
+    var w = $('vWord'); if (w) w.value = S.state.param.voucherWord || '记';
+    var no = $('vNo'); if (no) no.value = S.nextVoucherNo((w && w.value) || '记', currentPeriod());
+    var dt = $('vDate');
+    if (dt) {
+      var curP = currentPeriod();
+      var now = new Date();
+      var natM = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+      dt.value = (curP === natM) ? (H.todayStr ? H.todayStr() : todayStr()) : U.lastDay(curP);
+    }
+    var at = $('vAttach'); if (at) at.value = 0;
+    renderVoucherRows();
+    closeVchTpl();
+    showToast('已套用模板「' + t.name + '」，请填写金额后保存', 'success', 3200);
+  }
+  if (!dirty) return fill();
+  if (H.confirmAsync) {
+    H.confirmAsync('套用模板将覆盖当前录入内容，是否继续？', { title: '套用凭证模板' })
+      .then(function (ok) { if (ok) fill(); });
+  } else fill();
+}
+(function bindVchTpl() {
+  var menu = $('vchTplMenu');
+  var bOpen = $('btnVchTpl');
+  function hideMenu() { if (menu) menu.hidden = true; }
+  if (bOpen && menu) bOpen.addEventListener('click', function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  // 点击其它处关闭下拉
+  document.addEventListener('click', hideMenu);
+  // 下拉两项（金蝶形态）
+  var sItem = $('vchTplSaveItem'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
+  var uItem = $('vchTplUseItem'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
+  var bClose = $('btnVchTplClose'); if (bClose) bClose.addEventListener('click', closeVchTpl);
+  var tplSearch = $('vchTplSearch');
+  if (tplSearch) tplSearch.addEventListener('input', function () { renderVchTplList(); });
+  var list = $('vchTplList');
+  if (list) list.addEventListener('click', function (e) {
+    var use = e.target.closest && e.target.closest('.vch-tpl-use');
+    var del = e.target.closest && e.target.closest('.vch-tpl-del');
+    if (use) {
+      var id = use.getAttribute('data-id');
+      var t = null;
+      if (id && id.slice(0, 3) === 'sys') {
+        (builtinTplResolved() || []).some(function (x) { if (x.id === id) { t = x; return true; } return false; });
+      } else {
+        (S.vchTemplates() || []).some(function (x) { if (x.id === id) { t = x; return true; } return false; });
+      }
+      if (!t) return;
+      if (t.builtin) {
+        if (!t.entries.length) { showToast('模板「' + t.name + '」的科目在本账套中均不存在，无法套用', 'warn'); return; }
+        if (t.missing && t.missing.length) {
+          showToast('模板「' + t.name + '」有 ' + t.missing.length + ' 条分录的科目本账套没有，已跳过，套用后请补录', 'warn', 4000);
+        }
+      }
+      applyVchTpl(t);
+    } else if (del) {
+      H.confirmAsync('确定删除该模板？', { title: '删除凭证模板' })
+        .then(function (ok) {
+          if (!ok) return;
+          var r = S.removeVchTemplate(del.getAttribute('data-id'));
+          if (!r.ok) return showToast(r.msg, 'error');
+          showToast('模板已删除');
+          renderVchTplList();
+        });
+    }
+  });
+})();
 export { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin };
 // app.js 路由 / 查询页点击调用入口
 globalThis.__VOUCHER__ = {

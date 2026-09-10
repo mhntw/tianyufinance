@@ -11,6 +11,8 @@
 //
 // 依赖：全局 $、S（Store 单例）、__KINGDEE_HELPERS__（取 esc）、window、document
 
+import { subjectFullName } from '../common/subject-name.js';
+
 const H = globalThis.__KINGDEE_HELPERS__ || {};
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 
@@ -39,8 +41,12 @@ function bindSubjectCombo(input, opts) {
     var k = String(kw || '').trim().toLowerCase();
     if (!k) return subs.slice(0, 12); // 空输入显示前几个，方便直接点选
     return subs.filter(function (s) {
+      // 除「编码前缀 / 末级名」外，再按「全路径名」匹配：
+      // 搜「银行存款」「其他应收款」等父级名也能命中其下级科目（下拉显示的正是全名）。
+      var full = subjectFullName(s.code, s.name).toLowerCase();
       return String(s.code).toLowerCase().indexOf(k) === 0
-        || String(s.name).toLowerCase().indexOf(k) >= 0;
+        || String(s.name).toLowerCase().indexOf(k) >= 0
+        || full.indexOf(k) >= 0;
     }).slice(0, 12);
   }
 
@@ -69,7 +75,7 @@ function bindSubjectCombo(input, opts) {
     pop.innerHTML = rows.map(function (s, i) {
       return '<div class="subj-combo-row' + (i === activeRow ? ' active' : '') + '" data-code="' + esc(s.code) + '">'
         + '<span class="m" style="color:var(--kd-text-3);font-variant-numeric:tabular-nums;margin-right:8px">' + esc(s.code) + '</span>'
-        + '<span>' + esc(s.name) + '</span></div>';
+        + '<span>' + esc(subjectFullName(s.code, s.name)) + '</span></div>';
     }).join('');
     Array.prototype.forEach.call(pop.querySelectorAll('.subj-combo-row'), function (row, i) {
       row.addEventListener('mouseenter', function () { activeRow = i; render(); });

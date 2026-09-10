@@ -400,4 +400,77 @@
     if (fromKey === 'small2013' && toKey === 'old') return CODE_MAP_2013_TO_OLD[code] || code;
     return code;
   };
+
+  /* ---------- 系统凭证模板（软件内置「常规/业务」常用凭证） ----------
+   * 形态与金蝶「常用凭证」一致：只存 摘要 + 科目 + 借贷方向，套用后填金额。
+   * 编码以 old（5xxx 损益码）为基准；账套为 small2013（6xxx）或明细化科目时，
+   * Voucher.js 套用侧按账套科目做 code 迁移 / 同名适配，不写死两套数据。
+   * 属性：{ name, word, entries:[{summary, code, name, side:'dr'|'cr'}] }
+   */
+  var STANDARD_VCH_TEMPLATES = [
+    { name: '提现', word: '记', entries: [
+      { summary: '提现', code: '1001', name: '库存现金', side: 'dr' },
+      { summary: '',     code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '付银行手续费', word: '记', entries: [
+      { summary: '银行手续费', code: '5603', name: '财务费用', side: 'dr' },
+      { summary: '',           code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '报销差旅费', word: '记', entries: [
+      { summary: '差旅费', code: '5602', name: '管理费用', side: 'dr' },
+      { summary: '',        code: '1001', name: '库存现金', side: 'cr' } ] },
+    { name: '收到货款', word: '记', entries: [
+      { summary: '收到货款', code: '1002', name: '银行存款', side: 'dr' },
+      { summary: '',         code: '1122', name: '应收账款', side: 'cr' } ] },
+    { name: '支付货款', word: '记', entries: [
+      { summary: '支付货款', code: '2202', name: '应付账款', side: 'dr' },
+      { summary: '',         code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '赊购（挂账）', word: '记', entries: [
+      { summary: '赊购入库', code: '1405', name: '库存商品', side: 'dr' },
+      { summary: '',         code: '2202', name: '应付账款', side: 'cr' } ] },
+    { name: '赊销（挂账）', word: '记', entries: [
+      { summary: '赊销确认收入', code: '1122', name: '应收账款', side: 'dr' },
+      { summary: '',             code: '5001', name: '主营业务收入', side: 'cr' } ] },
+    { name: '计提所得税', word: '记', entries: [
+      { summary: '计提所得税', code: '5801', name: '所得税费用', side: 'dr' },
+      { summary: '',           code: '2221', name: '应交税费', side: 'cr' } ] },
+    { name: '计提营业税金及附加', word: '记', entries: [
+      { summary: '计提税金及附加', code: '5403', name: '税金及附加', side: 'dr' },
+      { summary: '',               code: '2221', name: '应交税费', side: 'cr' } ] },
+    { name: '计提盈余公积', word: '记', entries: [
+      { summary: '提取盈余公积', code: '3104', name: '利润分配', side: 'dr' },
+      { summary: '',             code: '3101', name: '盈余公积', side: 'cr' } ] },
+    { name: '收到投资款', word: '记', entries: [
+      { summary: '收到投资款', code: '1002', name: '银行存款', side: 'dr' },
+      { summary: '',           code: '3001', name: '实收资本', side: 'cr' } ] },
+    { name: '借入短期借款', word: '记', entries: [
+      { summary: '借入短期借款', code: '1002', name: '银行存款', side: 'dr' },
+      { summary: '',             code: '2001', name: '短期借款', side: 'cr' } ] },
+    { name: '偿还短期借款', word: '记', entries: [
+      { summary: '偿还短期借款', code: '2001', name: '短期借款', side: 'dr' },
+      { summary: '',             code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '向个人借款', word: '记', entries: [
+      { summary: '向个人借款', code: '1002', name: '银行存款', side: 'dr' },
+      { summary: '',           code: '2241', name: '其他应付款', side: 'cr' } ] },
+    { name: '归还其他应付款', word: '记', entries: [
+      { summary: '归还其他应付款', code: '2241', name: '其他应付款', side: 'dr' },
+      { summary: '',               code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '预借差旅费', word: '记', entries: [
+      { summary: '预借差旅费', code: '1221', name: '其他应收款', side: 'dr' },
+      { summary: '',           code: '1001', name: '库存现金', side: 'cr' } ] },
+    { name: '报销办公费', word: '记', entries: [
+      { summary: '办公费', code: '5602', name: '管理费用', side: 'dr' },
+      { summary: '',        code: '1001', name: '库存现金', side: 'cr' } ] },
+    { name: '支付水电费', word: '记', entries: [
+      { summary: '水电费', code: '5602', name: '管理费用', side: 'dr' },
+      { summary: '',        code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '收到银行利息', word: '记', entries: [
+      { summary: '收到银行利息', code: '1002', name: '银行存款', side: 'dr' },
+      { summary: '',             code: '5603', name: '财务费用', side: 'cr' } ] },
+    { name: '购买固定资产', word: '记', entries: [
+      { summary: '购买固定资产', code: '1601', name: '固定资产', side: 'dr' },
+      { summary: '',             code: '1002', name: '银行存款', side: 'cr' } ] },
+    { name: '发放工资', word: '记', entries: [
+      { summary: '发放工资', code: '2211', name: '应付职工薪酬', side: 'dr' },
+      { summary: '',          code: '1002', name: '银行存款', side: 'cr' } ] }
+  ];
+  global.STANDARD_VCH_TEMPLATES = STANDARD_VCH_TEMPLATES;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -88,7 +88,7 @@ export function createSubjectTree(opts) {
     line.className = 'dl-tn' + (n.kids.length ? ' dl-tn-parent' : '');
     const arrow = document.createElement('span');
     arrow.className = 'dl-arrow';
-    arrow.textContent = n.kids.length ? '▸' : '';
+    arrow.textContent = n.kids.length ? '▶' : '';
     arrow.style.visibility = n.kids.length ? 'visible' : 'hidden';
     n.arrowEl = arrow;
     const codeEl = document.createElement('span'); codeEl.className = 'dl-code'; codeEl.textContent = n.s.code;
@@ -135,7 +135,7 @@ export function createSubjectTree(opts) {
       if (kw) n.line.classList.remove('dl-hide');                 // 搜索时整树保留
       else if (ancestorCollapsed(n.s.code)) n.line.classList.add('dl-hide');
       else n.line.classList.remove('dl-hide');
-      if (n.kids.length) n.arrowEl.textContent = collapsed.has(n.s.code) ? '▸' : '▾';
+      if (n.kids.length) n.arrowEl.textContent = collapsed.has(n.s.code) ? '▶' : '▼';
     }
   }
   function applySearch() {

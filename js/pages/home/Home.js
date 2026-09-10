@@ -215,23 +215,11 @@ function isChildOf(parent, sub) {
   return false;
 }
 
-// 科目期末余额（子科目聚合）：基于 generalLedger 的 balance(绝对值) + dir(借/贷)，
-// 按方向带符号聚合。父级自身有余额时一并并入，避免"有子目就丢弃父级余额"导致少算。
+// 科目期末余额：一律走 store.subjectEndBalance（唯一实现）。
+// 说明：generalLedger 每行余额已含全部下级，页面若自行「父级 + 子级」聚合会成倍虚增
+// （本项目已因此翻车 4 次），故此处不再维护第二份聚合逻辑。
 function subjectBalance(code, month) {
-  var rows = S.generalLedger(month) || [];
-  function signed(r) {
-    if (!r) return 0;
-    var b = Number(r.balance) || 0;
-    return r.dir === '借' ? b : -b;   // 借正贷负，还原真实余额方向
-  }
-  var direct = null;
-  for (var i = 0; i < rows.length; i++) { if (rows[i].code === code) { direct = rows[i]; break; } }
-  // 聚合：父级自身余额 + 所有下级余额
-  var sum = direct ? signed(direct) : 0;
-  rows.forEach(function (r) {
-    if (r.code !== code && isChildOf(code, r.code)) sum += signed(r);
-  });
-  return round2(sum);
+  return S.subjectEndBalance ? S.subjectEndBalance(code, month) : 0;
 }
 
 // 应收应付卡片：顶部合计 + 末级往来单位明细

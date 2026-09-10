@@ -110,6 +110,9 @@ function edSubjectTree() {
   return { roots, map };
 }
 
+// 科目弹层名称统一显示全路径名（与录凭证/科目下拉同口径）
+const edFullName = n => (globalThis.subjectFullName ? globalThis.subjectFullName(n.code, n.name) : (n.name || ''));
+
 function buildEDSubjectPop() {
   const pop = $('edSubjectPop');
   const trigger = $('edSubjectTrigger');
@@ -130,7 +133,7 @@ function buildEDSubjectPop() {
         <div class="ed-subj-row">
           <span class="ed-subj-toggle ${toggleCls}"></span>
           <input type="checkbox" value="${n.code}" id="ed-subj-${n.code}" data-subj="1">
-          <label for="ed-subj-${n.code}">${n.code} ${esc(n.name)}</label>
+          <label for="ed-subj-${n.code}">${n.code} ${esc(edFullName(n))}</label>
         </div>
         ${childrenHtml}
       </div>`;

@@ -72,6 +72,14 @@
     var y = Math.floor(total / 12), m = (total % 12) + 1;
     return y + '-' + ('0' + m).slice(-2);
   }
+  // 凭证排序：月份 → 凭证字 → 字号数值（避免字符串字典序把 记-19 排在 记-2 之前）
+  function voucherOrderCmp(a, b) {
+    var ma = voucherMonth(a), mb = voucherMonth(b);
+    if (ma !== mb) return ma < mb ? -1 : 1;
+    var wa = a.word || '记', wb = b.word || '记';
+    if (wa !== wb) return wa < wb ? -1 : 1;
+    return (parseInt(a.no, 10) || 0) - (parseInt(b.no, 10) || 0);
+  }
   function lastDay(month) { // month: 'YYYY-MM' -> 该月最后一天 'YYYY-MM-DD'
     var p = month.split('-');
     var y = +p[0], m = +p[1];
@@ -185,6 +193,7 @@
       fixedAssets: [],       // 固定资产卡片
       payrolls: [],          // 工资记录
       salaryVchTpls: [],     // 工资凭证模板（计提/发放）
+      vchTemplates: [],      // 日常凭证模板（常用业务结构，按账套保存）
       depts: DEFAULT_DEPTS.map(function (s) { return Object.assign({}, s); }), // 部门职员种子（酒店三部门）
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
@@ -965,15 +974,38 @@
 
     /* ===================== 科目 ===================== */
     subjects: function () {
+      // 父/level 实算用的全量编码集（状态内的原始科目，不做自身递归）
+      var rawList = this.state.subjects;
+      var allBy = {};
+      rawList.forEach(function (x) { allBy[String(x.code)] = 1; });
+      function longestParent(code) {
+        var c = String(code || ''), best = '';
+        for (var L = c.length - 1; L > 0; L--) {
+          var pre = c.slice(0, L);
+          if (allBy[pre]) { best = pre; break; }
+        }
+        return best;
+      }
       return this.state.subjects.slice().sort(function (a, b) {
         return a.code < b.code ? -1 : (a.code > b.code ? 1 : 0);
       }).map(function (s) {
-        // 惰性补 level：新增子科目经 addSubject 已写 level；历史/默认科目无 level 字段，
-        // 按段式编码推导（一级4位=0，每+2位=+1）。纯推导在奇数编码上会偏，但编码正则已保证偶数位。
+        // level/parent 缺失时兜底：以「表内最长真前缀」实算，1 基（一级=1）。
+        // 与 normalizeState 的存量校正同口径，任何奇数位/混长账套结果一致。
         if (typeof s.level !== 'number') {
-          var len = String(s.code || '').length;
-          s.level = len >= 6 ? (len - 4) / 2 : 0;
+          var p = longestParent(s.code);
+          var cur = p, lvl = 1, guard = 0;
+          while (cur && guard++ < 40) {
+            lvl++;
+            var pp = '';
+            for (var L2 = cur.length - 1; L2 > 0; L2--) {
+              var pre2 = cur.slice(0, L2);
+              if (allBy[pre2]) { pp = pre2; break; }
+            }
+            cur = pp;
+          }
+          s.level = lvl;
         }
+        if (typeof s.parent !== 'string') s.parent = longestParent(s.code);
         return s;
       });
     },
@@ -989,16 +1021,22 @@
     },
     addSubject: function (code, name, cls, extra) {
       code = String(code).trim();
-      // 编码：段式纯数字（对齐金蝶精斗云）——一级 4 位，每下级 +2 位，前缀表层级。
-      // 例：1001（一级）、100101（二级）、10010101（三级）。
-      if (!/^\d{4,16}$/.test(code)) return { ok: false, msg: '科目编码须为 4-16 位数字（一级 4 位，每级下级 +2 位）' };
-      if (code.length % 2 !== 0) return { ok: false, msg: '科目编码位数为奇数，层级不完整（一级 4 位，其后每级 +2 位）' };
+      // 编码：前缀树体系（兼容 4 位、4+2、4+3/7 位、更深等真实账套）——
+      // 一级 = 4 位（表内无父）；子科目 = 父编码 + 若干位数字，父取「表内存在的最长真前缀」。
+      // 不再强制偶数位 / 固定每级 +2（旧式会把 7 位兄弟账的父子关系判断、新科目无法同长新增）。
+      if (!/^\d{4,16}$/.test(code)) return { ok: false, msg: '科目编码须为 4-16 位数字' };
       if (this.subject(code)) return { ok: false, msg: '科目编码已存在' };
-      // 子科目：父 = 去掉末级 2 位后的前缀，且父必须已存在；类别默认继承父科目
-      var level = code.length >= 6 ? (code.length - 4) / 2 : 0;
-      var parentCode = level > 0 ? code.slice(0, -2) : '';
+      var parentCode = '';
+      for (var _L = code.length - 1; _L > 0; _L--) {
+        var _pre = code.slice(0, _L);
+        if (this.subject(_pre)) { parentCode = _pre; break; }
+      }
       var parent = parentCode ? this.subject(parentCode) : null;
-      if (level > 0 && !parent) return { ok: false, msg: '父科目不存在：' + parentCode };
+      if (code.length > 4 && !parent) {
+        return { ok: false, msg: '父科目不存在：' + (parentCode || '编码前缀未在科目表内') };
+      }
+      var parentLv = parent && typeof parent.level === 'number' && parent.level > 0 ? parent.level : 1;
+      var level = parent ? parentLv + 1 : 1;
       var cls2 = cls || (parent ? parent.cls : '');
       if (!ACCOUNT_CLASSES[cls2]) return { ok: false, msg: '科目类别无效' };
       var s = {
@@ -1169,6 +1207,37 @@
         null, null, this._voucherAuditSummary(v),
         { id: v.id, action_type: 'create', target_name: v.word + '-' + v.no, result: 'success' });
       return v;
+    },
+    // ============ 日常凭证模板（按账套，常用业务结构） ============
+    // 模板只存科目/摘要/方向（不含金额——套用后现场填），entries: [{code,name,summary,side}]
+    vchTemplates: function () {
+      return this.state.vchTemplates || [];
+    },
+    saveVchTemplate: function (name, entries) {
+      var list = entries || [];
+      if (!list.length) return { ok: false, msg: '当前没有可保存的分录' };
+      var tpl = {
+        id: 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: (String(name || '').trim() || '常用业务'),
+        entries: list.map(function (e) {
+          return { code: e.code || '', name: e.name || '', summary: e.summary || '', side: e.side === 'cr' ? 'cr' : 'dr' };
+        }),
+        createdAt: new Date().toISOString()
+      };
+      if (!tpl.entries.some(function (e) { return e.code; })) return { ok: false, msg: '模板至少需要一条带科目的分录' };
+      this.state.vchTemplates = this.state.vchTemplates || [];
+      this.state.vchTemplates.push(tpl);
+      this.persist();
+      return { ok: true, tpl: tpl };
+    },
+    removeVchTemplate: function (id) {
+      var arr = this.state.vchTemplates || [];
+      var idx = -1;
+      arr.forEach(function (t, i) { if (t.id === id) idx = i; });
+      if (idx < 0) return { ok: false, msg: '模板不存在' };
+      arr.splice(idx, 1);
+      this.persist();
+      return { ok: true };
     },
     // 凭证审计摘要（精简后留痕用）：仅保留关键字段，避免日志条目过大
     _voucherAuditSummary: function (v) {
@@ -1486,7 +1555,8 @@
      */
     periodVouchers: function (month) {
       return this.state.vouchers.filter(function (v) { return v.deleted !== 'y' && voucherMonth(v) === month; })
-        .sort(function (a, b) { return (voucherMonth(a) + a.word + a.no) < (voucherMonth(b) + b.word + b.no) ? -1 : 1; });
+        // 排序：月份 → 凭证字 → 字号（数值，避免记-19 排在记-2 前的字典序）
+        .sort(voucherOrderCmp);
     },
     vouchersBefore: function (month) { // < month（含期初之前）
       return this.state.vouchers.filter(function (v) { return v.deleted !== 'y' && voucherMonth(v) < month; });
@@ -1497,7 +1567,7 @@
         if (v.deleted === 'y') return false;
         var m = voucherMonth(v);
         return m >= y + '-01' && m <= month;
-      }).sort(function (a, b) { return (voucherMonth(a) + a.word + a.no) < (voucherMonth(b) + b.word + b.no) ? -1 : 1; });
+      }).sort(voucherOrderCmp);
     },
 
     // ============ 立即存档（手动按钮与结账/结转等触发点共用） ============
@@ -2307,6 +2377,57 @@
       });
       this._glCache[glKey] = result;
       return result;
+    },
+
+    /* ============================================================
+     * 余额取数「唯一实现」（契约层）
+     * ------------------------------------------------------------
+     * 【契约】generalLedger 每行余额已用 rollCodes 上卷：父行 = 自身 + 全部下级。
+     *   因此取某科目余额时：
+     *     ① 科目表中存在该科目 → 直接取这一行（它已含下级），
+     *        **严禁**再按前缀把子科目加一遍（否则成倍虚增）；
+     *     ② 只有明细科目、没有该一级科目（如只建了 100201/100202）→
+     *        回退为其下属「末级」行相加（末级无下级，不会重复计）。
+     * 【历史踩坑】本项目已因此口径翻车 4 次（利润汇总、现金流量表、试算平衡合计、
+     *   首页资金余额），故收敛为下面两个 API：页面一律调用，禁止自行遍历子科目聚合。
+     * ============================================================ */
+
+    // 科目期末余额（带符号：借正贷负），已含下级。全站唯一实现。
+    subjectEndBalance: function (code, month) {
+      var self = this;
+      var rows = this.generalLedger(month) || [];
+      function signed(r) {
+        if (!r) return 0;
+        var b = Number(r.balance) || 0;
+        return r.dir === '借' ? b : -b;   // 借正贷负，还原真实余额方向
+      }
+      var c = String(code);
+      var direct = null;
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].code === c) { direct = rows[i]; break; }
+      }
+      if (direct) return round2(signed(direct));   // 父行已含下级，直接用
+      // 回退：无该一级科目行 → 仅累加其下属末级行
+      var kids = this.childCodesOf(c) || [];
+      var cand = [c].concat(kids);
+      var sum = 0;
+      cand.forEach(function (k) {
+        if (!(self.childCodesOf(k) || []).length) {   // 末级：无下级
+          var r = null;
+          for (var j = 0; j < rows.length; j++) { if (rows[j].code === k) { r = rows[j]; break; } }
+          sum += signed(r);
+        }
+      });
+      return round2(sum);
+    },
+
+    // 资金余额 = 库存现金(1001) + 银行存款(1002) + 其他货币资金(1012)
+    // 只取三个一级科目行（各自已含下级银行子户等），不可再按前缀匹配子行。
+    cashBalance: function (month) {
+      var self = this;
+      var sum = 0;
+      ['1001', '1002', '1012'].forEach(function (c) { sum += self.subjectEndBalance(c, month); });
+      return round2(sum);
     },
     // 明细账：逐笔 + 每行余额 + 期初/本期合计/本年累计
     detailLedger: function (code, month) {
@@ -3686,6 +3807,29 @@
       if (!this.state.param.voucherChecks) this.state.param.voucherChecks = def.param.voucherChecks;
       for (var vk in def.param.voucherChecks) {
         if (this.state.param.voucherChecks[vk] === undefined) this.state.param.voucherChecks[vk] = def.param.voucherChecks[vk];
+      }
+      // 科目层级统一（存量校正）：父子一律按「表内最长真前缀」实算，level=1 基（一级=1）。
+      // 兼容 4+2、7 位、9 位与混长账套——旧式按 (长度-4)/2 推导在 7 位账会偏，此处强制幂等收敛。
+      if (Array.isArray(this.state.subjects) && this.state.subjects.length) {
+        var subjRaw = this.state.subjects;
+        var subjBy = {};
+        subjRaw.forEach(function (x) { subjBy[String(x.code)] = 1; });
+        var subjRawSort = subjRaw.slice().sort(function (a, b) {
+          return (a.code ? String(a.code).length : 0) - (b.code ? String(b.code).length : 0)
+            || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+        });
+        var subjLv = {};
+        subjRawSort.forEach(function (x) {
+          var c = String(x.code || ''); if (!c) return;
+          var best = '';
+          for (var L2 = c.length - 1; L2 > 0; L2--) {
+            var pre2 = c.slice(0, L2);
+            if (subjBy[pre2]) { best = pre2; break; }
+          }
+          x.parent = best || '';
+          x.level = best ? (subjLv[best] || 1) + 1 : 1;
+          subjLv[c] = x.level;
+        });
       }
       // 软删除字段迁移：老账套凭证无 deleted 字段，统一补 'n'（活动凭证）。
       // 已 deleted==='y' 的凭证保持原状（回收站可见）。deletedAt/deletedBy 无则不补。

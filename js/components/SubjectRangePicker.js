@@ -10,6 +10,8 @@
 //
 // 依赖：全局 $、S（Store 单例）、__KINGDEE_HELPERS__
 
+import { subjectFullName } from '../common/subject-name.js';
+
 const $ = globalThis.$ || function (id) { return document.getElementById(id); };
 const H = globalThis.__KINGDEE_HELPERS__ || {};
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
@@ -112,7 +114,10 @@ function buildSubjectPop(anchor, subs, onPick, onlyParent) {
     const k = String(kw || '').trim().toLowerCase();
     const rows = subs.filter(function (s) {
       if (!k) return true;
-      return String(s.code).indexOf(k) >= 0 || String(s.name).toLowerCase().indexOf(k) >= 0;
+      // 与 SubjectCombo 同口径：编码 / 末级名 / 全路径名 均可命中
+      return String(s.code).indexOf(k) >= 0
+        || String(s.name).toLowerCase().indexOf(k) >= 0
+        || String(subjectFullName(s.code, s.name)).toLowerCase().indexOf(k) >= 0;
     });
     if (!rows.length) {
       list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--kd-text-3)">'
@@ -123,7 +128,7 @@ function buildSubjectPop(anchor, subs, onPick, onlyParent) {
       return '<div class="subj-range-row" data-code="' + esc(s.code) + '" style="padding:6px 10px;cursor:pointer;'
         + 'display:flex;gap:8px;line-height:1.6">'
         + '<span style="color:var(--kd-text-3);font-variant-numeric:tabular-nums">' + esc(s.code) + '</span>'
-        + '<span>' + esc(s.name) + '</span></div>';
+        + '<span>' + esc(subjectFullName(s.code, s.name)) + '</span></div>';
     }).join('');
     Array.prototype.forEach.call(list.querySelectorAll('.subj-range-row'), function (row) {
       row.addEventListener('mouseenter', function () { row.style.background = '#F2F7FD'; });

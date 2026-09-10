@@ -605,6 +605,58 @@ img, svg { display: block; max-width: 100%; }
 .subj-checks { display: inline-flex; gap: 16px; align-items: center; font-size: 13px; color: var(--kd-text-2); }
 .subj-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
 .subj-check input { accent-color: var(--kd-btn); }
+.subj-search {
+  width: 170px; height: 28px; padding: 0 10px;
+  border: 1px solid var(--kd-border-2); border-radius: 4px;
+  font-size: 13px; color: var(--kd-text); outline: none; background: #fff;
+}
+.subj-search:focus { border-color: var(--kd-blue); }
+/* 凭证模板弹窗列表（jinbooks 风格：搜索条 + 分组行式列表） */
+#vchTplModal .modal-box { width: 680px; max-width: calc(100vw - 32px); }
+.vch-tpl-body { padding: 10px 16px 14px; }
+.vch-tpl-top { display: flex; align-items: center; }
+.vch-tpl-searchbox {
+  flex: 1; display: flex; align-items: center; gap: 6px; height: 32px;
+  padding: 0 10px; border: 1px solid var(--kd-border-2); border-radius: 6px; background: #fff;
+}
+.vch-tpl-searchbox:focus-within { border-color: var(--kd-blue); box-shadow: 0 0 0 2px rgba(24, 110, 240, .08); }
+.vch-tpl-search-ic { font-size: 15px; color: #9aa4b2; line-height: 1; }
+.vch-tpl-search { flex: 1; border: none; outline: none; font-size: 13px; color: var(--kd-text); background: none; }
+.vch-tpl-list { max-height: 56vh; overflow: auto; margin-top: 8px; padding: 0 2px 2px; }
+.vch-tpl-sec { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: 13px; font-weight: 600; color: #576a83; }
+.vch-tpl-sec::after { content: ''; flex: 1; height: 1px; background: #eceef1; }
+.vch-tpl-cnt { font-size: 11px; font-weight: 400; color: #9aa4b2; }
+.vch-tpl-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-radius: 6px; }
+.vch-tpl-row:hover { background: #eef4fd; }
+.vch-tpl-main { flex: 1; min-width: 0; }
+.vch-tpl-name { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--kd-text); }
+.vch-tpl-name b { font-weight: 600; }
+.vch-tpl-word {
+  display: inline-block; min-width: 18px; text-align: center; font-size: 11px; line-height: 16px;
+  color: var(--kd-blue); background: rgba(24, 110, 240, .08); border-radius: 3px; padding: 0 4px;
+}
+.vch-tpl-tag { font-size: 10px; line-height: 1; padding: 2px 5px; color: #1870f0; background: #e8f1ff; border-radius: 3px; }
+.vch-tpl-preview {
+  font-size: 12px; color: var(--kd-text-3); margin-top: 3px; line-height: 1.7;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vch-tpl-seg { white-space: nowrap; }
+.vch-tpl-seg .muted { color: #9aa4b2; }
+.vch-tpl-drc { font-style: normal; font-weight: 600; color: #D93026; margin-right: 3px; }
+.vch-tpl-sep { margin: 0 7px; color: #d3d9e0; }
+.vch-tpl-miss { margin-top: 3px; font-size: 12px; color: #D93026; line-height: 1.6; }
+.vch-tpl-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.vch-tpl-empty-my { font-size: 12px; color: #9aa4b2; text-align: center; padding: 4px 0 2px; }
+/* 录凭证工具栏「模板」下拉 */
+.vch-tpl-wrap { position: relative; display: inline-flex; }
+.vch-tpl-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 120;
+  min-width: 148px; padding: 4px 0;
+  background: #fff; border: 1px solid var(--kd-border);
+  border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+}
+.vch-tpl-menu a { display: block; padding: 7px 14px; font-size: 13px; color: var(--kd-text); text-decoration: none; white-space: nowrap; }
+.vch-tpl-menu a:hover { background: var(--kd-bg); color: var(--kd-blue); }
 /* 科目页表格（金蝶 kd-table：表头左对齐；checkbox 列 40px sticky left 0；操作列 96px sticky left 40px） */
 /* 横向超宽由自身横滚（overflow-x:auto），sticky left 列相对本容器固定；纵向交给 .page.active 整页滚动（避免双滚动条）。
    注：overflow-y 保持 visible；无 max-height 限制故纵向不出滚动条。
@@ -619,6 +671,20 @@ img, svg { display: block; max-width: 100%; }
 #subjGrid tbody td.col-check { z-index: 1; }
 #subjGrid tbody td.col-op { z-index: 1; }
 #subjGrid tbody td.col-check input { vertical-align: middle; margin: 0; }
+/* 科目树形显示（金蝶式：默认一级收拢，行首箭头逐级展开） */
+#subjGrid .col-name { min-width: 280px; }
+#subjBody tr.subj-hidden { display: none; }
+#subjBody .subj-indent { display: inline-block; }
+/* 尺寸/居中统一走文末「树形展开三角」规则，此处只留本页专属的间距与配色 */
+#subjBody .subj-arrow,
+#subjBody .subj-arrow-leaf { margin-left: 2px; }
+#subjBody .subj-arrow { cursor: pointer; color: var(--kd-text-2); user-select: none; border-radius: 3px; }
+#subjBody .subj-arrow:hover { color: var(--kd-blue); background: #eef4fd; }
+#subjBody .subj-name { white-space: nowrap; }
+/* 打印时把收拢的子级一并打全（与全平铺时代的纸面一致） */
+@media print {
+  #subjBody tr.subj-hidden { display: table-row !important; }
+}
 /* 凭证字/币别（金蝶 kd-table：表头左对齐） */
 #vwGrid th, #curGrid th { text-align: left; }
 #vwGrid .col-op, #curGrid .col-op { width: 90px; text-align: left; }
@@ -2745,6 +2811,14 @@ select:not([class]),
   border: none;
   box-shadow: none;
   background: transparent;
+}
+/* 科目列：编码输入框 + 科目名称同格显示（金蝶形态「1001 库存现金」）。
+   名称仅展示、不参与取值，超长省略号截断，不影响编码输入与联想下拉。 */
+#vRows td.col-subj { display: flex; align-items: center; gap: 2px; }
+#vRows td.col-subj .v-code { flex: 0 0 104px; width: 104px; min-width: 0; padding: 0 3px; }
+#vRows .v-subj-name {
+  flex: 1; min-width: 0; font-size: 12.5px; color: var(--kd-text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #vRows .v-aux { width: 140px; }
 
@@ -5052,6 +5126,12 @@ body.kd-privacy .revenue-cost-card .chart-line::after {
   white-space: nowrap;
 }
 .ml-seg td:nth-child(3) { padding-left: 14px; }
+/* 科目余额表树形显示（金蝶式：默认一级收拢，行首小三角逐级展开；与科目页同款交互） */
+#tbBody .tb-indent { display: inline-block; }
+#tbBody .tb-arrow,
+#tbBody .tb-arrow-leaf { margin-left: 2px; }
+#tbBody .tb-arrow { cursor: pointer; color: var(--kd-text-2); user-select: none; border-radius: 3px; }
+#tbBody .tb-arrow:hover { color: var(--kd-blue); background: #eef4fd; }
 /* 合计行（.tb-total）外观统一吃全局 .grid，此处不再重复定义 */
 /* 长科目名：nowrap 保持单行（金蝶风格），超出用省略号截断，完整名称见 td 的 title 提示。
    配合 colgroup 给名称列留出的宽度生效；缺 overflow/ellipsis 时超长文本会溢出到相邻金额列。 */
@@ -5738,3 +5818,31 @@ html.is-mobile .modal-box { max-width: 92vw; }
   .dl-layout { display: block; }
   .dl-main { overflow: visible; }
 }
+
+/* ============ 树形展开三角（全站统一尺寸/手感） ============
+ * 覆盖：科目页 #subjBody、明细账快速切换树 .dl-arrow、费用明细表内 .ed-tree-arrow、
+ *       费用明细科目弹层 .ed-subj-toggle、原始凭证分类树 .orig-tree 父级三角。
+ * 口径：12px 实心 ▶/▼（比正文小一档、比原 10px 明显，不过分抢眼）+ 18×18 点击区。
+ * 只统一外观与点击手感，不改动各页默认展开策略与点击语义（各页树语义不同，保持原状最稳）。
+ * 说明：以下选择器与原规则同特异性，靠位置在后覆盖尺寸。
+ */
+#subjBody .subj-arrow,
+#subjBody .subj-arrow-leaf,
+#tbBody .tb-arrow,
+#tbBody .tb-arrow-leaf,
+.dl-arrow,
+.ed-tree-arrow,
+.ed-subj-toggle,
+.orig-tree .tree-parent .tree-arrow {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; font-size: 12px; line-height: 1;
+  vertical-align: middle; text-align: center;
+}
+.dl-arrow { flex: 0 0 18px; }                 /* 行内 flex 项：同步放宽基准宽度 */
+.ed-tree-arrow { margin-right: 6px; }         /* 保留原缩进间隙 */
+.ed-tree-spacer { width: 18px; }              /* 末级占位与箭头同宽，保证名称列对齐 */
+.dl-arrow, .ed-tree-arrow, .ed-subj-toggle:not(.empty), .tb-arrow, #subjBody .subj-arrow { cursor: pointer; }
+.dl-arrow:hover, .ed-tree-arrow:hover, .ed-subj-toggle:not(.empty):hover, .tb-arrow:hover { color: var(--kd-blue); }
+/* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加。
+   统一为字符三角（border 画法作废）；不设 color，避免覆盖「选中行白色三角」规则。 */
+.orig-tree .tree-parent .tree-arrow { border: none; margin-right: 2px; }

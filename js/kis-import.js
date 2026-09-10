@@ -319,6 +319,49 @@
       var fn = (fileName || '').replace(/\.(ais|json)$/i, '').trim();
       companyName = fn || '新账套';
     }
+
+    // ===== 常用凭证模板（用户自定义） =====
+    // 金蝶 .ais：GLVchTemplateEx=模板头（FID/FName/FVchGroup），GLVchTemplateExInfo=分录（FGroupID→FID,
+    // FExp 摘要 / FAcctID 科目 / FDR 借贷方向）。金额不存 → 结构模板，与软件「模板只存结构」口径一致。
+    // GLVchTemplate*（多准则系统预置模板）不导入，避免与本账套准则/科目冲突。
+    var vchTemplates = [];
+    try {
+      var tplHeads = getRows(reader, 'GLVchTemplateEx');
+      var tplLines = getRows(reader, 'GLVchTemplateExInfo');
+      if (tplHeads.length || tplLines.length) {
+        var subjName = {};
+        subjects.forEach(function (s) { subjName[s.code] = s.name || ''; });
+        var linesBy = {};
+        tplLines.forEach(function (r) {
+          var gid = r.FGroupID;
+          if (gid == null) return;
+          if (!linesBy[gid]) linesBy[gid] = [];
+          linesBy[gid].push({
+            summary: r.FExp || '',
+            code: String(r.FAcctID || ''),
+            name: subjName[String(r.FAcctID || '')] || '',
+            side: String(r.FDR || '') === '贷' ? 'cr' : 'dr'
+          });
+        });
+        tplHeads.forEach(function (r) {
+          var name = String(r.FName || '').trim();
+          if (!name || r.FID == null) return;
+          var entries = (linesBy[r.FID] || []).filter(function (e) {
+            return e.code && subjName[e.code] !== undefined;
+          });
+          if (!entries.length) return;
+          vchTemplates.push({
+            id: 'K' + r.FID,
+            name: name,
+            word: (r.FVchGroup || '记') || '记',
+            entries: entries
+          });
+        });
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[AIS] 常用凭证模板读取失败', e);
+    }
+
     var ledger = {
       company: { name: companyName, startMonth: startMonth,  currency: 'RMB' },
       param: { fxRate: 1 },
@@ -326,6 +369,7 @@
       openingBalances: opening,
       vouchers: vouchers,
       closedPeriods: closedPeriods,
+      vchTemplates: vchTemplates,   // 金蝶用户自定义常用凭证模板（仅结构，金额留空）
       fixedAssets: [],
       salary: [],
       meta: {
@@ -430,17 +474,19 @@
    * 设计：
    *   - 按文件名年份排序，以最早年为"基础年"完整导入
    *   - 后续年只取凭证 + 科目（去重合并），丢弃期初余额（保留基础年的"开业期初"）
-   *   - 凭证号跨年重排为连续号（记-1..N），避免跨年冲突
+   *   - 凭证号按「字 + 期间」从 1 编号（默认，与金蝶字号口径一致：
+   *     每期从 1 重新计，跨年/跨月允许同号，号码不会随账期无限滚大）
    *   - 跨年一致性校验：基础年+后续年凭证累积推导期末 vs 下一年.ais 实际期初
    *
    * 使用：
    *   KisImport.parseMulti(
    *     [file2024, file2025, file2026],
-   *     { baseName: '绅蓝之星', voucherNoStrategy: 'renumber' }
+   *     { baseName: '绅蓝之星', voucherNoStrategy: 'monthly' }
    *   ) -> Promise<{ ledger, stats, warnings }>
    *
    * voucherNoStrategy:
-   *   'renumber'（默认）跨年连续重排：记-1..N
+   *   'monthly'（默认）按月（字+期间）从 1 编号：记字第1号每月重置，同金蝶
+   *   'renumber' 跨年连续重排：记-1..N（全局连续，号会逐年滚大，一般不再使用）
    *   'prefix'   年份前缀：no 不变，但 voucher.id 改为 年-字-号
    *   'keep'      原样保留（跨年重复，不推荐）
    * ============================================================ */
@@ -562,7 +608,7 @@
       merged.closedPeriods.sort();
 
       // 5. 凭证号重排策略
-      var strategy = options.voucherNoStrategy || 'renumber';
+      var strategy = options.voucherNoStrategy || 'monthly';
       var warnings = [];
 
       // 全局按 date+原序排序
@@ -572,7 +618,24 @@
         return (a.period || 0) - (b.period || 0) || (a.no || 0) - (b.no || 0);
       });
 
-      if (strategy === 'renumber') {
+      if (strategy === 'monthly') {
+        // 按月（字+期间）从 1 编号：与金蝶字号口径一致，每期从 1 重新计，
+        // 跨年/跨月允许同号，id 含日期保持唯一；号码不会随账期无限滚大。
+        var monthCounter = {};
+        allVouchers.forEach(function (v) {
+          var w = v.word || '记';
+          var ym = (v.date || '').slice(0, 7);
+          if (!/^\d{4}-\d{2}$/.test(ym)) {
+            var y = (v.date || '').slice(0, 4);
+            var p = Math.max(1, parseInt(v.period, 10) || 1);
+            ym = y + '-' + (p < 10 ? '0' : '') + p;
+          }
+          var key = w + '|' + ym;
+          monthCounter[key] = (monthCounter[key] || 0) + 1;
+          v.no = monthCounter[key];
+          v.id = w + '-' + v.no + '-' + (v.date || '');  // id 含日期保证唯一
+        });
+      } else if (strategy === 'renumber') {
         // 跨年连续重排：按凭证字分组，每组从 1 开始连续编号
         var noCounter = {};
         allVouchers.forEach(function (v) {

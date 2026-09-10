@@ -18,8 +18,60 @@ import { exportTable } from '../settings/_shared.js';
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 
-  function refreshSubjects() { renderSubjects(); }
-  /* 科目页：分类 Tab（资产/负债/共同/权益/成本/损益）+ 展开所有级次 + 勾选计数 */
+  // 金蝶式科目表：默认只显示一级科目，点行首箭头才逐级展开其子科目。
+  // subjCollapsed: { code: true } = 该科目已收起（隐藏其直接子级；祖先收起时后级递归隐藏）
+  var subjCollapsed = {};
+  function refreshSubjects() { subjCollapseToLevel1(); renderSubjects(); }
+  // 直接父科目映射：在给定集合内取该编码的「最长真前缀」作为父。
+  // 真实账套编码层级不规整（4 位、4+2=6 位、4+3=7 位、更深混合），
+  // 不能用「固定去尾 2 位」推导（会把 1002001 的父错算成 10020）。
+  function subjParentMap(subjects) {
+    var byCode = {};
+    (subjects || []).forEach(function (s) { byCode[String(s.code)] = 1; });
+    var pm = {};
+    (subjects || []).forEach(function (s) {
+      var c = String(s.code), best = '';
+      for (var L = c.length - 1; L > 0; L--) {
+        var pre = c.slice(0, L);
+        if (byCode[pre]) { best = pre; break; } // 最长的存在于集合中的真前缀 = 直接父
+      }
+      pm[c] = best;
+    });
+    return pm;
+  }
+  // 沿父链上溯：任一祖先已收起则该行隐藏
+  function subjAncestorCollapsed(pm, code) {
+    var cur = code, depth = 0;
+    while (cur && depth++ < 40) {
+      var p = pm[cur];
+      if (!p) return false;
+      if (subjCollapsed[p]) return true;
+      cur = p;
+    }
+    return false;
+  }
+  // 层级深度 = 到根的父链长度（真实缩进依据）
+  function subjDepth(pm, code) {
+    var d = 0, c = code, guard = 0;
+    while (c && guard++ < 40) {
+      var p = pm[c];
+      if (!p) break;
+      d++; c = p;
+    }
+    return d;
+  }
+  // 初始态：所有「存在直接子科目」的父级一律收起 → 只露一级
+  function subjCollapseToLevel1() {
+    var subs = S.subjects() || [];
+    var pm = subjParentMap(subs);
+    var parents = {};
+    subs.forEach(function (s) {
+      var p = pm[String(s.code)];
+      if (p) parents[p] = 1;
+    });
+    subjCollapsed = parents;
+  }
+  /* 科目页：分类 Tab（资产/负债/共同/权益/成本/损益）+ 树形展开 + 勾选计数 */
   var subjTabCls = 'asset';   // 当前分类 Tab（默认选中「资产」）
   var subjChecked = {};       // 勾选待删科目 code 集合
   function subjFiltered() {
@@ -31,12 +83,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       else if (subjTabCls === 'pl') { if (s.cls !== 'revenue' && s.cls !== 'expense') return false; }
       else if (subjTabCls === 'cost') { if (s.cls !== 'cost') return false; }
       else if (subjTabCls === 'common') { return false; }
-      // 默认隐藏停用科目；勾选「显示停用科目」才展示（含启用按钮），保证列表清爽且支持重新启用
-      if (s.enabled === false && !(subjShowDisabled && subjShowDisabled.checked)) return false;
-      // 展开所有级次：不勾选只显示一级科目（科目树折叠态）
-      // 用 level 字段判断（兼容点分 1122.01 与段式 112201 两种层级编码）
-      var lv = (s.level !== undefined) ? s.level : 0;
-      if (!$('subjExpandAll').checked && lv > 0) return false;
+      // 「隐藏停用科目」默认勾选（金蝶语义）；取消勾选才展示停用行（含启用按钮）
+      if (s.enabled === false && subjShowDisabled && subjShowDisabled.checked) return false;
+      // 关键词不在筛选层剔除（避免把父链祖先滤掉）——搜索态由 renderSubjects 统一控制显隐
       return true;
     });
   }
@@ -44,17 +93,51 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var tb = $('subjBody'); tb.innerHTML = '';
     var list = subjFiltered();
     var cashCodes = S.cashAccounts().map(function (s) { return s.code; });
+    // 父链映射用全量科目（祖先判断不受当前分类过滤影响）；
+    // 箭头关系依据当前列表内的直接父子关系（父子一般同属一个分类）
+    var pmAll = subjParentMap(S.subjects());
+    var pmList = subjParentMap(list);
+    var hasKids = {};
+    list.forEach(function (s) { var p = pmList[s.code]; if (p) hasKids[p] = 1; });
+    // 搜索态：命中的科目 + 其整条父链都显示（无关展开开关）；未搜时由「展开所有级次」开关与折叠态决定
+    var searchVisible = null;
+    var swBox = $('subjSearch');
+    var kwTxt = (swBox ? (swBox.value || '') : '').trim();
+    if (kwTxt) {
+      var q = kwTxt.toLowerCase();
+      searchVisible = {};
+      list.forEach(function (s) {
+        var hit = String(s.code).toLowerCase().indexOf(q) >= 0 || String(s.name || '').toLowerCase().indexOf(q) >= 0;
+        if (!hit) return;
+        var cur = s.code, g = 0;
+        searchVisible[s.code] = 1;
+        while (cur && g++ < 40) { var p = pmAll[cur]; if (!p) break; searchVisible[p] = 1; cur = p; }
+      });
+    }
+    var expandAllOn = !!($('subjExpandAll') && $('subjExpandAll').checked);
     list.forEach(function (s) {
       var aux = (s.aux || []).map(function (k) {
         var t = AUX_TYPES.filter(function (x) { return x.key === k; })[0];
         return t ? t.name : k;
       }).join('/');
+      var lv = subjDepth(pmAll, s.code);
+      var hidden = searchVisible
+        ? !searchVisible[s.code]
+        : (expandAllOn ? false : subjAncestorCollapsed(pmAll, s.code));
+      // 行首箭头：有子科目可展开；末级用等宽占位保证名称对齐
+      var arrow = hasKids[s.code]
+        ? '<span class="subj-arrow' + (subjCollapsed[s.code] ? ' collapsed' : '') + '" data-code="' + s.code
+          + '" title="' + (subjCollapsed[s.code] ? '展开下级科目' : '收起下级科目') + '">'
+          + (subjCollapsed[s.code] ? '▶' : '▼') + '</span>'
+        : '<span class="subj-arrow-leaf"></span>';
+      var indent = '<span class="subj-indent" style="width:' + (lv * 14) + 'px"></span>';
       var tr = document.createElement('tr');
+      if (hidden) tr.className = 'subj-hidden';
       tr.innerHTML =
         '<td class="col-check"><input type="checkbox" class="row-chk" data-code="' + s.code + '"' + (subjChecked[s.code] ? ' checked' : '') + '></td>' +
         '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a> <a class="link-toggle" data-code="' + s.code + '">' + (s.enabled === false ? '启用' : '停用') + '</a></td>' +
         '<td class="mono">' + s.code + '</td>' +
-        '<td>' + s.name + (s.enabled === false ? ' <span class="tag-disabled">停用</span>' : '') + '</td>' +
+        '<td class="col-name">' + indent + arrow + '<span class="subj-name">' + s.name + (s.enabled === false ? ' <span class="tag-disabled">停用</span>' : '') + '</span></td>' +
         '<td>' + ACCOUNT_CLASSES[s.cls].name + '</td>' +
         '<td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
         '<td>' + (aux || '<span class="muted">—</span>') + '</td>' +
@@ -64,7 +147,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     });
     if (!list.length) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="8" class="empty-hint">暂无该类科目</td>';
+      tr.innerHTML = '<td colspan="9" class="empty-hint">暂无该类科目</td>';
       tb.appendChild(tr);
     }
     $('subjTotalCount').textContent = list.length;
@@ -134,9 +217,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       suggestOnly: true,
       onPick: function (selCode, subj) {
         if (!subj) return;
-        var parent = S.subject(selCode.slice(0, -2));
+        var parent = subj.parent ? S.subject(subj.parent) : null;
         var msg = subj.name + '（' + subj.code + '）';
-        if (selCode.length >= 6 && parent) msg += '，父科目：' + parent.name + '（' + parent.code + '）';
+        if (parent) msg += '，父科目：' + parent.name + '（' + parent.code + '）';
         showToast(msg + (S.subject(inp.value) ? '，该编码已存在' : ''));
       }
     });
@@ -158,6 +241,18 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     $('subjectModal').classList.add('show');
   }
   $('subjBody').addEventListener('click', async function (e) {
+    if (e.target.classList.contains('subj-arrow')) {
+      var aCode = e.target.getAttribute('data-code');
+      var chkE = $('subjExpandAll');
+      if (chkE && chkE.checked) {
+        // 「展开所有级次」态下点箭头 = 退出全展，只收起该分支，其余保持展开（保留后续逐级操作）
+        chkE.checked = false;
+        subjCollapsed = {};
+      }
+      if (subjCollapsed[aCode]) delete subjCollapsed[aCode]; else subjCollapsed[aCode] = true;
+      renderSubjects();
+      return;
+    }
     if (e.target.classList.contains('link-toggle')) {
       var tCode = e.target.getAttribute('data-code');
       var tSub = S.subjects().filter(function (s) { return s.code === tCode; })[0];
@@ -195,7 +290,14 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       renderSubjects();
     });
   });
-  $('subjExpandAll').addEventListener('change', function () { renderSubjects(); });
+  // 搜索框：输入即过滤（含父链路径展示）
+  var bSubjSearch = $('subjSearch'); if (bSubjSearch) bSubjSearch.addEventListener('input', function () { renderSubjects(); });
+  // 「展开所有级次」复选（金蝶语义）：勾选=显示全部级次；取消=回到一级收拢
+  var bExpand = $('subjExpandAll'); if (bExpand) bExpand.addEventListener('change', function () {
+    if (bExpand.checked) subjCollapsed = {};
+    else subjCollapseToLevel1();
+    renderSubjects();
+  });
   if ($('subjShowDisabled')) $('subjShowDisabled').addEventListener('change', function () { renderSubjects(); });
   // 工具条（新增/导入/导出/删除/打印）
   $('btnSubjImport').addEventListener('click', function () { $('subjImportFile').click(); });
