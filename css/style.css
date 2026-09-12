@@ -1938,7 +1938,14 @@ select:not([class]),
   font-weight: 400;
   background: #fff;                          /* 合计行底色与表体统一白底 */
 }
-.total-label { color: var(--ty-text-2); }
+.total-label { color: var(--ty-text-2); white-space: nowrap; }
+.total-label-num { margin-right: 6px; }
+.total-label-cn {
+  font-size: 12.5px;
+  color: var(--ty-text-1);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
 
 /* 底部栏（仅制单人） */
 .voucher-footer {
@@ -3129,19 +3136,15 @@ select:not([class]),
  * 真实取值来源：云会计_files/main.d261698f.chunk.css
  * ============================================================ */
 
-/* 网格容器：严格 drag-container / drag-wrapper-container 布局
- * 真实取值来源：main.d261698f.chunk.css
- *   .drag-container .drag-wrapper-container{display:flex;flex-wrap:wrap;position:relative;width:calc(100% + 16px)}
- *   .drag-container .grid-square-wrapper{display:inline-block;background-color:#fff;padding-right:16px;margin-bottom:16px}
- *   .drag-container .width-1{width:25%}  .drag-container .width-3{width:100%}  （首页首行4卡片=4列）
- * 机制：drag-wrapper-container 宽 = 100% + 16px（向右溢出 16px，抵掉 contentItemWrapper 的右边 padding），
- *       子卡 padding-right:16px 形成列间距，width-3 占 100% 即与白框右缘齐平。 */
-.drag-container {
-  width: 100%;
-  flex-basis: 0;
-  flex-grow: 1;
-  max-width: 100%;
-}
+/* 网格容器（首页财务指标卡片）
+ * 机制：drag-wrapper-container 宽 = 100% + 16px（向右溢出 16px，抵掉外层白框的右内边距），
+ *       每个格子 padding-right:16px 形成列间距，于是最右一列与白框右缘齐平。
+ * 说明：这里只保留实际生效的设定 ——
+ *   · .drag-container 的父级是普通 block（非 flex 容器），故自身不需要 flex-basis/flex-grow；
+ *   · 格子由 .drag-wrapper-container 的 flex 布局负责，flex 子项会被 blockify，
+ *     故 .grid-square-wrapper 不需要 display:inline-block；外层白框本就是白底，
+ *     白底对白底也不可见，故不需要 background-color。 */
+.drag-container { width: 100%; }
 .drag-container .drag-wrapper-container {
   display: flex;
   flex-wrap: wrap;
@@ -3149,78 +3152,19 @@ select:not([class]),
   width: calc(100% + 16px);
 }
 .drag-container .grid-square-wrapper {
-  display: inline-block;
-  background-color: #fff;
-  padding-right: 16px;
-  margin-bottom: 20px;      /* 卡片行间距（上下边距）调大 */
-  box-sizing: border-box;
-}
-/* 首页财务指标卡：全局统一 flex 防溢出。
-   flex 子项默认 min-width:auto（最小宽=内容宽），缩放/容器变窄时不收缩导致横向溢出。
-   对卡片层级统一 min-width:0，使任意卡片内部 flex 内容可随卡片收缩；min-width:auto
-   只在不缩窄时无差别，不破坏既有布局。 */
-.drag-container .grid-square-wrapper,
-.drag-container .drag-rect.grid-square,
-.drag-container .drag-rect.grid-square > * {
+  padding-right: 16px;      /* 列间距 */
+  margin-bottom: 20px;      /* 行间距 */
+  box-sizing: border-box;   /* 必要：否则 1/6 宽 + 16px 内边距会撑破一行 */
+  /* 防横向溢出：flex 子项默认 min-width:auto（最小宽=内容宽），容器变窄时不收缩会溢出 */
   min-width: 0;
+  /* 格子最小高度 = 卡片高度下限（卡片 height:100% 填满格子）。
+     内容更高的卡片会自然撑高，同行由 flex stretch 拉齐；整体调高/调矮只改这一个数。 */
+  min-height: 320px;
 }
-/* 发票卡片（复刻 .invoice-card，首页源码实证） */
-.invoice-drag-rect { min-height: 275px; }
-.invoice-card .drag-header { display: flex; align-items: center; padding: 4px 16px; }
-.invoice-card .padding { padding: 8px 16px 16px; }
-.invoice-card .info-wrapper { display: flex; }
-.invoice-card .info { flex: 1; min-width: 0; }
-.invoice-card .info:first-child { margin-right: 0; }
-/* 两块之间用分隔，这里按原页左块撑满、右块同行；实际两块横向并列 */
-.ty-card-invoice-info { display: inline-block; width: 50%; vertical-align: top; }
-.invoice-card .info .title {
-  display: block;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--ty-text);
-  line-height: 22px;
-  margin-bottom: 4px;
-}
-.invoice-card .info .sub-title {
-  font-size: 12px;
-  color: var(--ty-text-3);
-  font-weight: 400;
-  margin-left: 4px;
-}
-/*  ty-inv-empty 空状态：居中、透明 SVG 图 + 暂无数据 */
-.ty-empty.ty-inv-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px 0 16px;
-}
-.ty-empty.ty-inv-empty .ty-empty-image { width: 168px; height: 96px; margin-bottom: 8px; }
-.ty-empty.ty-inv-empty .ty-empty-description { color: var(--ty-text-3); font-size: 13px; line-height: 22px; }
-/* 有数据时：张数 / 金额 两行 */
-.ty-invoice-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
-.ty-invoice-row .ty-invoice-label { color: var(--ty-text-3); }
-.ty-invoice-row .ty-invoice-value { color: var(--ty-text); font-weight: 400; }
-/* 录入发票按钮（.invoice-card-go-btn .ty-btn .ty-btn-primary） */
-.invoice-card-go-btn {
-  margin-top: 12px;
-  height: 32px;
-  padding: 0 16px;
-  border-radius: 4px;
-  background: var(--ty-blue);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-}
-.invoice-card-go-btn:hover { background: #1f7fe6; }
 
-/* 首页财务指标 = 6 列网格：width-1 = 1/6、width-2 = 1/3、width-3 = 100%、width-4 = 2/3（一行 6 个卡片，单卡窄高不扁宽） */
+/* 首页财务指标：一行 6 张卡（HTML 只用 width-1；width-2/3/4 无处使用，已删除） */
 .drag-container .width-1 { width: calc(100% / 6); }
-.drag-container .width-2 { width: calc(100% / 3); }
-.drag-container .width-3 { width: 100%; }
-.drag-container .width-4 { width: calc(100% / 3 * 2); }
-/* 窄屏回退：宽度不够时自动降档，避免挤压错乱（原始无此段，为本地适配） */
+/* 窄屏回退：宽度不够时自动降档，避免挤压错乱 */
 @media (max-width: 1400px) {
   .drag-container .width-1 { width: 25%; }
 }
@@ -3229,14 +3173,9 @@ select:not([class]),
 }
 @media (max-width: 1000px) {
   .drag-container .width-1 { width: 50%; }
-  .drag-container .width-2,
-  .drag-container .width-4 { width: 100%; }
 }
 @media (max-width: 640px) {
-  .drag-container .width-1,
-  .drag-container .width-2,
-  .drag-container .width-3,
-  .drag-container .width-4 { width: 100%; padding-right: 0; }
+  .drag-container .width-1 { width: 100%; padding-right: 0; }
 }
 /*  wrapper--ifBdg 白框内边距 + 标题 tab 样式（来源同 main chunk.css） */
 .wrapper--ifBdg { padding: 24px 24px 28px; }   /* 财务指标区块上下边距调大 */
@@ -3263,22 +3202,24 @@ select:not([class]),
   background: #fff;
   border: 1px solid #d1dff0;
   border-radius: 8px;
-  overflow: visible;
   box-shadow: 0 1px 4px rgba(0,0,0,.04);
-  /*  .grid-square{width:100%;height:100%}：白色卡片填满等高 wrapper，
-     保证同一行卡片底部整齐（配合 .home-metrics 的 align-items:stretch）。
-     不强制 min-height，卡片高度由内容自然决定、同行等高由 stretch 完成 */
+  /* 填满格子：格子被 flex 拉伸到本行最高，卡片填满它，同行卡片底部才齐平。
+     卡片高度下限由格子的 min-height 决定（见上）。 */
   height: 100%;
-  min-height: 215px;        /* 卡片整体高度调高（内容少也保持舒展） */
 }
 
-/* 卡片头部（drag-header：浅蓝底 #e7f2ff、40px 高、圆角上 8px、两端对齐，
-   header 自身无 padding，左右内距由 .title / 右侧控件各自的 10px 20px 承担） */
+/* 卡片头部（drag-header：浅灰底 #f5f6f8、44px 高、圆角上 8px、两端对齐，
+   header 自身无 padding，左右内距由 .title / 右侧控件各自的 10px 20px 承担）
+   注：44px 而非参考产品的 30px——头部需容纳 14px 的期间下拉（jinbooks 用 el-select 可压到 30px，
+   原生 select 加上下 padding 后 30px 放不下）；底色沿用浅灰，与页签条/新增凭证同色。 */
+/* 卡片头部：左 title 自动吸收剩余空间，右期间控件稳定占位不漂移 */
 .drag-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: #f5f6f8;         /* 统一浅灰：卡片头部与页签条/新增凭证同色，分区柔和不抢眼 */
+  /* justify-content 默认 flex-start 即可：左侧 title 自然占据左位，
+     右侧元素靠 margin-left: auto 推到右边，比 space-between 更稳
+     （space-between 在只有两个子元素时其实和 flex-start + margin-left:auto 等价） */
+  background: #f5f6f8;
   height: 44px;
   line-height: 44px;
   padding: 0;
@@ -3292,31 +3233,136 @@ select:not([class]),
   font-size: 14px;
   font-weight: 400;
   color: var(--ty-text);
-  padding: 10px var(--card-pad-x);   /* 横向边距统一引用 --card-pad-x */
+  padding: 10px var(--card-pad-x);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1 1 auto;        /* 吸收挤压空间，优先收缩 */
+  min-width: 0;          /* 关键：允许 flex 子项收缩到内容以下（否则 ellipsis 不生效，期间会被挤） */
 }
-/* 卡片标题内的期间标注（如「（全年）」）：浅灰、稍小，弱化视觉权重 */
-.drag-header .title .title-tag {
-  color: #9aa7ad;
+/* 存量卡片右上角期间（如"2026年08期"）：固定显示最新期末，稳定占位不漂移 */
+.drag-header .card-period {
   font-size: 12px;
-  font-weight: 400;
+  color: var(--ty-text-muted, #8c9a9f);
+  padding-right: var(--card-pad-x);
+  white-space: nowrap;
+  flex-shrink: 0;         /* 不收缩 */
+  margin-left: auto;      /* 推到 flex 右端 */
+  min-width: 72px;        /* 稳定占位：避免缩放时因内容宽度变动导致位置漂移 */
+  text-align: right;
 }
-/*  .drag-header .card 右侧控件同 10px 20px，与标题左右对称。
-   期间下拉：固定不收缩（flex-shrink:0 + nowrap），右侧 padding 对齐卡片右边距；
-   左侧 padding 收紧，避免与 Tab/标题间距过大、且在窄卡片下撑宽头部导致 space-between 溢出。 */
-.drag-header .ty-select.select-period {
+/* 流量卡片右上角独立期间 select：明显的控件感，与存量卡片静态文字区分开 */
+.drag-header .card-period-select {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 10px var(--card-pad-x) 10px 0;
+  padding-right: var(--card-pad-x);
+  margin-left: auto;      /* 推到 flex 右端 */
+  min-width: 80px;        /* 稳定占位：避免 option 切换导致 select 宽度跳变 */
 }
-.drag-header .date-info {
+.drag-header .card-period-select select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--ty-text, #3c4a51);
+  font-weight: 500;
+  /* 明显的控件底色和圆角，与存量卡片静态文字（无背景、灰色）形成对比 */
+  background: #eef1f4 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
+  background-size: 10px 6px;
+  border: 1px solid #d5dde1;
+  border-radius: 4px;
+  padding: 0 22px 0 10px;
+  height: 24px;
+  line-height: 22px;
+  cursor: pointer;
+  outline: none;
+  width: 100%;            /* 填满父容器 min-width，不再随 option 文字长度跳变 */
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.drag-header .card-period-select select:hover {
+  border-color: #3b82f6;
+  background-color: #e0eaff;
+}
+.drag-header .card-period-select select:focus {
+  border-color: #3b82f6;
+  background-color: #fff;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* 费用卡片公式行：两行布局
+ *   销售费用 + 管理费用 + 财务费用
+ *   ¥8.00    +     ¥12.00   +  ¥2.00
+ * flex-wrap: wrap 自动处理多子项：空间够一行排完，不够折两行，
+ * 卡片高度有限时 overflow 兜底裁剪（和卡片整体风格一致）。
+ * 每个 cell 固定 min-width 保证折行后不会被挤成一团。
+ */
+.formula-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.formula-row .formula-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background-color 0.15s ease;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.formula-row .formula-cell .formula-label {
+  color: var(--ty-text-muted, #8c9a9f);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.formula-row .formula-cell .formula-amt {
+  color: var(--ty-text, #3c4a51);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.formula-row .formula-cell.amt-link {
+  cursor: pointer;
+}
+.formula-row .formula-cell.amt-link:hover {
+  background-color: #e0eaff;
+}
+.formula-row .formula-cell.amt-link:hover .formula-label,
+.formula-row .formula-cell.amt-link:hover .formula-amt {
+  color: #3b82f6;
+}
+.formula-row .formula-sep {
+  color: var(--ty-text-muted, #8c9a9f);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 2.5;
+  user-select: none;
+  flex: 0 0 auto;
+  padding: 0 1px;
+}
+/* 财务指标标题栏：左「财务指标」+ 右期间选择（flex 两端对齐）。
+   期间下拉从卡片头移到此处后，卡片头只剩标题 —— 6 列窄卡下标题不会再被右侧控件挤掉。 */
+.wrapper--ifBdg .titleWrapper--2ThdD {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* 标题栏内的期间下拉：字号与标题(16px)一致，且不带卡片头专用的右侧内距 */
+.wrapper--ifBdg .titleWrapper--2ThdD .ty-select.select-period {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 10px var(--card-pad-x);   /* 头部右侧信息（预计可用资金等）与内容区左右对齐，引用 --card-pad-x */
-  font-size: 12px;
-  color: var(--ty-text-2);
+  padding: 0;
+  font-size: 16px;
 }
 
 /* ============================================================
@@ -3382,17 +3428,8 @@ body.ty-privacy #otherAp::after,
 body.ty-privacy #otherRevenue::after,
 body.ty-privacy #otherSaleExp::after,
 body.ty-privacy #otherAdminExp::after { content: '****'; font-size: 14px; color: var(--ty-text); letter-spacing: 1px; }
-/* 图表区蒙层（canvas 像素无法 CSS 改，用覆盖层打码） */
-body.ty-privacy .net-profit-card .chart-line,
-body.ty-privacy .revenue-cost-card .chart-line,
 body.ty-privacy .fund-balance-card .fv2,
 body.ty-privacy .estimated-balance-card .padding { position: relative; }
-body.ty-privacy .net-profit-card .chart-line::after,
-body.ty-privacy .revenue-cost-card .chart-line::after {
-  content: '隐私模式'; position: absolute; inset: 0; display: flex;
-  align-items: center; justify-content: center; font-size: 14px;
-  color: var(--ty-text-2); background: rgba(255,255,255,0.7); letter-spacing: 2px;
-}
 /* 隐私按钮激活态（选中高亮） */
 #btnMetricPrivacy.on { color: var(--ty-blue); }
 
@@ -3441,6 +3478,11 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
   -moz-appearance: none;
   appearance: none;
   border: none;
+  /* 原生 select 不继承字号/字体/颜色（浏览器默认约 13.3px，比标题小一档），
+     显式继承以与 .drag-header .title（14px）保持一致 */
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
   background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right center;
   background-size: 10px 6px;
   padding: 0 14px 0 0;
@@ -3490,12 +3532,12 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 
 /* ---- 字段层级 fv1~fv8（财务指标统一字段样式，逐字复刻）---- */
 /* fv1：主数区（资金余额）；=标签在上、16px 值在下（row，text-align:right） */
-.fv1 { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; }
+.fv1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .fv1 .fv1-f { font-size: 14px; display: inline-block; margin-right: 2px; color: var(--ty-text); letter-spacing: 0; font-weight: 400; }
-.fv1 .fv1-v { font-size: 16px; text-align: right; line-height: 20px; word-break: normal; white-space: nowrap; color: var(--ty-text); font-weight: 400; }
+.fv1 .fv1-v { font-size: 14px; text-align: right; line-height: 20px; word-break: normal; white-space: nowrap; color: var(--ty-text); font-weight: 600; }
 
 /* fv2：次要行（浅灰标签+黑色值）；左字右值 */
-.fv2 { display: flex; justify-content: flex-start; align-items: baseline; margin-top: 16px; gap: 8px; }
+.fv2 { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; gap: 8px; }
 .fv2 .fv2-f { color: var(--ty-text-2); margin-right: 8px; word-break: break-all; font-size: 12px; letter-spacing: 0; }
 .fv2 .fv2-v { color: var(--ty-text); font-size: 12px; letter-spacing: 0; }   /* 原版 fv2-v 为黑色 var(--ty-text) */
 
@@ -3506,15 +3548,15 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 .arap-items::-webkit-scrollbar-thumb { background: rgba(170,182,190,0.35); border-radius: 4px; }
 .arap-items::-webkit-scrollbar-thumb:hover { background: rgba(150,164,172,0.55); }
 .arap-items::-webkit-scrollbar-track { background: transparent; }
-.arap-item { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #eef2f4; }
+.arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #eef2f4; }
 .arap-item:last-child { border-bottom: none; }
-.arap-item .ai-name { color: var(--ty-text-2); font-size: 12px; letter-spacing: 0; word-break: break-all; margin-right: 8px; }
-.arap-item .ai-val { color: var(--ty-text); font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.arap-item .ai-name { color: var(--ty-text-2); font-size: 12px; letter-spacing: 0; word-break: break-all; margin-right: 8px; flex: 1 1 auto; min-width: 0; }
+.arap-item .ai-val { color: var(--ty-text); font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 
 /* fv3：主数行（与 fv1 视觉一致，16px 加粗） */
-.fv3 { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; }
+.fv3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .fv3 .fv3-f { font-size: 14px; display: inline-block; margin-right: 2px; color: var(--ty-text); letter-spacing: 0; line-height: 20px; font-weight: 400; }
-.fv3 .fv3-v { font-size: 16px; word-break: normal; white-space: nowrap; color: var(--ty-text); line-height: 20px; font-weight: 400; }
+.fv3 .fv3-v { font-size: 14px; word-break: normal; white-space: nowrap; color: var(--ty-text); line-height: 20px; font-weight: 600; }
 
 /* fv4：竖排居中（预计可用资金运算项 / 资金比率） */
 .fv4 { display: flex; flex-direction: column; align-items: flex-start; }
@@ -3524,7 +3566,7 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 /* fv5：竖排居中（带标题） */
 .fv5 { display: flex; flex-direction: column; align-items: flex-start; }
 .fv5 .fv5-f { font-size: 14px; color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; margin-bottom: 4px; letter-spacing: 0; line-height: 20px; }
-.fv5 .fv5-v { font-size: 16px; color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; text-align: left; letter-spacing: 0; line-height: 20px; }
+.fv5 .fv5-v { font-size: 14px; color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; text-align: left; letter-spacing: 0; line-height: 20px; }
 
 /* fv6：较上期/较同期 行（左字右值 + 三角） */
 .fv6 { display: flex; align-items: center; }
@@ -3532,17 +3574,26 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 .fv6 .ic-dec { color: #1ba854; font-size: 16px; }   /* 减=绿 */
 .fv6 .ic-inc { color: #fb2323; font-size: 16px; }   /* 增=红 */
 
-/* fv7：竖排左对齐（净利润/收入/成本/费用主数，14小标题 + 16/18大值） */
-.fv7 { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
-.fv7 .fv7-f { font-size: 14px; color: var(--ty-text-2); font-weight: 400; margin-bottom: 2px; display: inline-block; margin-right: 2px; letter-spacing: 0; line-height: 20px; }
-.fv7 .fv7-v { font-size: 16px; color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; letter-spacing: 0; line-height: 20px; }
+/* fv7：两行（标签在上、金额在下）——净利润/收入/成本/费用的金额长
+   （如「收入」+「3,544,599.15」≈166px），而 1/6 窄卡内容宽仅约 161px，横排必挤。
+   标签与金额均左对齐：竖排下右对齐会让标签与金额形成两处错位的左缘，观感散乱。 */
+.fv7 { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; }
+.fv7 .fv7-f { font-size: 14px; color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; letter-spacing: 0; line-height: 20px; text-align: left; }
+.fv7 .fv7-v { font-size: 14px; color: var(--ty-text); font-weight: 600; word-break: normal; white-space: nowrap; letter-spacing: 0; line-height: 20px; text-align: left; }
 
-/* fv8：横排（左字右值，14浅灰） */
-.fv8 { display: flex; padding-top: 2px; }
-.fv8 .fv8-f { display: inline-block; margin-right: 2px; word-break: keep-all; font-size: 14px; color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; }
-.fv8 .fv8-v { font-size: 16px; color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; white-space: nowrap; }
+/* fv8：同 fv7 两行（毛利率），左对齐 */
+.fv8 { display: flex; flex-direction: column; align-items: stretch; padding-top: 2px; }
+.fv8 .fv8-f { display: inline-block; margin-right: 2px; word-break: keep-all; font-size: 14px; color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; text-align: left; }
+.fv8 .fv8-v { font-size: 14px; color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; white-space: nowrap; text-align: left; }
+/* 比率类值（净利润率/毛利率/费用占比）统一降级为次要字号：
+   主数值已放大到 20px，比率若同尺寸会喧宾夺主（参考产品 jinbooks 用 .small 0.9em 同理） */
+.fv7 .fv7-v.is-rate { font-size: 14px; font-weight: 400; color: var(--ty-text-2); line-height: 20px; }
 
 /* 主数放大（资金余额 fv1 / 净利润·收入·成本·费用 fv7）已合入上方基础规则，此处不再重复 */
+
+/* 金额统一等宽数字（tabular-nums）：数字字符等宽，位数不同也能纵向对齐，
+   数据刷新时不会因为 1/8 宽度不同而左右跳动。财务看板逐行比对金额时很实用。 */
+.fv1-v, .fv2-v, .fv3-v, .fv5-v, .fv7-v, .fv8-v { font-variant-numeric: tabular-nums; }
 
 /* ---- 较上期/较同期 箭头图标（ic-inc 增=红 / ic-dec 减=绿）---- */
 .ic {
@@ -3557,37 +3608,14 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 .ic-dec { border-top: 6px solid #1ba854; }       /* 减·绿（向下三角） */
 .ic-neutral { border-bottom: 6px solid #9aa4b3; } /* 无数据·中性灰（待数据就绪后 JS 动态切 inc/dec） */
 
-/* ---- 资金余额卡片（fundMiniChart 进度条，：收入/支出并排，各 50% 宽）---- */
-.fund-mini {
-  height: 8px;
-  width: calc(50% - 1px);   /* 源码：width: calc(50% - 1px) */
-  margin-right: 1px;        /* 源码：margin-right: 1px（两图之间 1px 缝） */
-  display: inline-block;
-  vertical-align: top;
-  margin-top: 8px;
-}
-.fund-mini canvas { display: block; width: 100% !important; height: 8px !important; }
-.bar-info { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--ty-text-2); }
-.bar-info .info-text { display: inline-flex; align-items: baseline; gap: 4px; margin-right: 14px; }
-.bar-info .info-text span:first-child { color: var(--ty-text-2); }
-.bar-info .info-text span:last-child { color: var(--ty-text); font-weight: 400; }
-.inline-block { display: inline-block; }
-.paddingR4 { padding-right: 4px; }
 
-/* ---- 预计可用资金卡片（格式同资金余额：简易字段行，无灰块、无加减号）---- */
 
-/* details：两栏比率（现金比率 / 速动比率）， .details 真实值 */
-.details { display: flex; justify-content: center; margin-top: 16px; padding: 16px 0; }
-.details .detail { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.details .detail .fv4 { align-items: center; }
-.details .detail .fv4-f { font-size: 14px; color: var(--ty-text-2); margin-bottom: 4px; }
-.details .detail .fv4-v { font-size: 16px; font-weight: 400; color: var(--ty-text); }
 .detail-split-wrapper { display: flex; align-items: flex-start; padding: 8px var(--card-pad-x) 16px; margin-top: 2px; }   /*  .detail-split-wrapper padding:8px 0 16px;margin-top:2px；横向补齐 --card-pad-x 与 .padding 对齐 */
 .detail-split { flex: 1; text-align: left; }
 .cost-card .detail-split-wrapper .fv5 { align-items: flex-start; }
 .cost-card .detail-split-wrapper .fv5-f,
 .cost-card .detail-split-wrapper .fv5-v { text-align: left; }
-.details .split-line, .detail-split-wrapper .split-line {
+.detail-split-wrapper .split-line {
   width: 1px; align-self: stretch; background: #ced3d6; margin: 0 8px;   /*  split-line background:#ced3d6 */
 }
 
@@ -3597,46 +3625,12 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 /* 费用卡内的 .detail：纵向堆叠（费用主值在上，较上期/同期在下），费用卡口径 */
 .cost-card .detail { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }
 .cost-card .detail .fv7 { width: 100%; }
+/* 收入成本卡内的 .detail：纵向堆叠（收入 / 成本+毛利率 分两行）。
+   align-items:stretch 让子项撑满卡宽 —— 原先靠 HTML 上的 width:57% 限制宽度，
+   那是图表时代（右侧有柱状图）的遗留，图表移除后应占满整宽、金额右缘才能与其他卡对齐。 */
+.revenue-cost-card .detail { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; }
 
-/* ---- 图表区（chart-info / chart-unit 真实值）---- */
-.chart-info {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 45px;          /*  chart-info margin-top:45px */
-  align-items: center;
-}
-.chart-info .title { font-size: 12px; color: var(--ty-text-2); }
-.chart-info .infos { display: flex; gap: 12px; }
-.chart-info .info { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ty-text-2); }
-.chart-info .dot, .chart-info .line,
-.char-bar .dot1, .char-bar .dot2, .char-bar .dot3 {
-  display: inline-block;
-  width: 6px; height: 6px; border-radius: 50%;
-  vertical-align: 2px;
-}
-.chart-info .dot { background-image: linear-gradient(180deg,#95e5ff,#5cc7ff); }
-.chart-info .line {
-  width: 12px; height: 0; border-top: 2px solid #1ba854; border-radius: 0;
-}
-.dot1 { background: #5cc7ff; }
-.dot2 { background: #8B5CF6; }
-.dot3 { background: #F59E0B; }
-#availPie { height: 200px; }
-/* 应收应付卡片饼图：仅饼图，居中、适中高度 */
-#arapPie { height: 160px; }
-.chart-unit {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--ty-text-2);
-  line-height: 16px;
-  font-weight: 400;
-  margin-top: 10px;
-}
-
-/* ECharts 容器高度严格对齐（净利润/收入成本 178px，费用 138px） */
-.trend-chart { position: relative; width: 100%; height: 178px; }
-/* 同行指标卡对齐：卡片等高 + 图表推到卡片底部基线，避免图像七上八下 */
+/* 同行指标卡等高（原为「图表推到卡片底部基线」，图表已移除，等高仍用于卡片对齐） */
 .net-profit-card, .revenue-cost-card, .cost-card {
   height: 100%;
   display: flex;
@@ -3650,29 +3644,8 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
   flex-direction: column;
   min-height: 0;
 }
-.net-profit-card .trend-chart,
-.revenue-cost-card .chart-bar,
-.cost-card .chart-pie { margin-top: auto; }
-.chart-bar   { position: relative; width: 100%; height: 178px; }
-.chart-pie   { position: relative; width: 100%; height: 260px; }
-#expensePie { height: 200px; }   /* 费用卡饼图， fee 卡饼图约138px，窄卡内取200px避免过高挤压图例 */
-.chart-line  { position: relative; width: 100%; max-width: 100%; height: 300px; }
 
-/* ---- 费用卡片 char-bar 图例（.char-bar 真实值）---- */
 .cost-card .padding { padding: 26px var(--card-pad-x); }   /* 费用卡：上下边距与其他卡片统一调大 */
-/* 净利润/收入成本卡：图例横向一行 */
-.char-bar {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: var(--ty-text-2);
-}
-/* 费用卡：图例三行（每行：圆点+名称+金额整体左对齐），示例管理费/财务费/销售费分行显示 */
-.cost-card .chart-info { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }   /* 覆盖全局 align-items:center，图例靠左不居中 */
-.cost-card .char-bar { display: flex; align-items: center; justify-content: flex-start; margin-bottom: 0; }   /* 覆盖全局 space-between，dot 起点对齐 */
-.cost-card .char-bar .dot1, .cost-card .char-bar .dot2, .cost-card .char-bar .dot3 { margin-right: 6px; }
-.char-bar .money { font-weight: 400; color: var(--ty-text); }
 
 .empty-wrapper { padding: 12px 14px; }
 .marginT24 { margin-top: 24px; }
@@ -4131,37 +4104,6 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
   font-weight: 400;
 }
 .settle-tab { white-space: nowrap; }
-
-/* 折旧宿主页（page-asset-depr）：页内 Tab 收敛 折旧凭证/汇总/明细/变动记录 */
-#page-asset-depr .asset-subtabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  background: #fff;
-  border-bottom: 1px solid var(--ty-border);
-  padding: 12px 16px 0;
-}
-#page-asset-depr .asset-subtab {
-  position: relative;
-  padding: 8px 20px;
-  font-size: 13px;
-  color: var(--ty-text-2);
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  cursor: pointer;
-  margin-right: 2px;
-  user-select: none;
-}
-#page-asset-depr .asset-subtab:hover { color: var(--ty-blue); }
-#page-asset-depr .asset-subtab.active {
-  color: #fff;
-  background: var(--ty-blue);
-  border-color: var(--ty-blue);
-}
-#page-asset-depr .asset-sub { display: none; }
-#page-asset-depr .asset-sub.active { display: block; }
 
 /* 弹窗内表格滚动容器（资产类别 / 部门职员 / 工资凭证模板 收敛为弹窗后复用） */
 .asset-cat-scroll {
@@ -4863,8 +4805,6 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
     overflow: visible;
   }
   .page.active .page-head { display: none; }
-  /* 折旧宿主：打印时隐藏页内 Tab 条，仅打印当前激活子面板表格 */
-  #page-asset-depr .asset-subtabs { display: none !important; }
   /* 激活页标题（卡片头文字）作为打印表头 */
   .page.active .card-head {
     display: block !important;
@@ -5100,6 +5040,23 @@ body.ty-privacy .revenue-cost-card .chart-line::after {
 .link-gl-subject { color: var(--ty-blue); text-decoration: none; cursor: pointer; }
 .link-voucher:hover,
 .link-gl-subject:hover { text-decoration: underline; }
+
+/* 利润表金额 -> 总账 跳转链接 */
+.pl-amt-link { color: var(--ty-blue); text-decoration: none; cursor: pointer; }
+.pl-amt-link:hover { text-decoration: underline; }
+/* 首页卡片金额可点击跳总账：默认保持深色（看板宜克制，不整片变蓝），
+   鼠标悬停才提示「此处可点」 */
+.amt-link { cursor: pointer; }
+.amt-link:hover { color: var(--ty-blue); text-decoration: underline; }
+/* 总账“仅显示”提示条（位于期间旁，与金蝶过滤按钮位置类似） */
+.gl-filter-hint {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; background: #FFF8E1; border: 1px solid #F0D58C;
+  border-radius: 4px; font-size: 13px; color: #8a5a00; white-space: nowrap;
+}
+.gl-filter-hint[hidden] { display: none; }
+.gl-filter-clear { color: var(--ty-blue); text-decoration: none; cursor: pointer; margin-left: 2px; }
+.gl-filter-clear:hover { text-decoration: underline; }
 
 /* ============================================================
  * 账簿（总账 / 明细账 / 科目余额表）
@@ -5606,35 +5563,6 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-range-shortcuts button:hover { color: var(--ty-blue); border-color: var(--ty-blue); }
 .ty-period-range-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px 14px; }
 
-/* ============================================================
- * 手机端只读模式（html.is-mobile 由 app.js 移动端检测挂载）
- * 仅显示首页财务指标 6 卡，隐藏侧边栏/搜索/标签栏/其他页面/录入入口
- * ============================================================ */
-html.is-mobile .sidenav { display: none !important; }
-html.is-mobile .topbar-search { display: none !important; }
-html.is-mobile .content-toolbar { display: none !important; }
-/* 非首页页面一律隐藏（手机端只读，仅看首页指标） */
-html.is-mobile section.page:not(#page-home) { display: none !important; }
-/* 首页：隐藏常用功能、右侧资讯栏、其他科目指标 */
-html.is-mobile #page-home .wrapper--2ZSon { display: none !important; }
-
-/* 首页两栏：左主区占满，取消浮动与灰条 */
-html.is-mobile .wrapper--nEFLj .contentL--1JUu7 { float: none; width: 100%; border-right: none; border-bottom: none; }
-html.is-mobile .wrapper--nEFLj { overflow: visible; }
-/* 6 张财务指标卡：单列全宽（去掉卡片 16px 右 padding，配合下方网格容器宽度修正） */
-html.is-mobile #page-home .grid-square-wrapper { width: 100% !important; margin-right: 0 !important; padding-right: 0 !important; }
-/* 财务指标白框：左右内边距收窄，避免手机两侧白边过宽 */
-html.is-mobile .wrapper--ifBdg { padding: 16px 10px 24px; }
-/* 网格容器：去掉 calc(100% + 16px) 右溢出，消除横向可拖动/回弹 */
-html.is-mobile .drag-wrapper-container { width: 100%; }
-/* 页面内边距收窄 + 禁止任何横向滚动/拖动 */
-html.is-mobile .page.active { padding: 8px 10px 20px; overflow-x: hidden; }
-html.is-mobile, html.is-mobile body { overflow-x: hidden; overscroll-behavior-x: none; }
-/* 顶部栏紧凑：保留账套名/期间/用户，隐藏搜索 */
-html.is-mobile .topbar { padding: 0 12px; }
-html.is-mobile .topbar-user { font-size: 12.5px; }
-html.is-mobile .modal-box { max-width: 92vw; }
-
 /* ============ 浏览器存储模式横幅（防丢数据告警） ============ */
 .server-banner {
   display: none;
@@ -5890,3 +5818,5 @@ html.is-mobile .modal-box { max-width: 92vw; }
 /* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加。
    统一为字符三角（border 画法作废）；不设 color，避免覆盖「选中行白色三角」规则。 */
 .orig-tree .tree-parent .tree-arrow { border: none; margin-right: 2px; }
+
+

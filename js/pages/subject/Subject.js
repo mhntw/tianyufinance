@@ -18,11 +18,10 @@ const currentPeriod = H.currentPeriod;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
 const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-import { bindSubjectCombo } from '../../components/SubjectCombo.js';
+import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { exportTable } from '../settings/_shared.js';
-// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
+// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
-const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 
   // 科目表：默认只显示一级科目，点行首箭头才逐级展开其子科目。
   // subjCollapsed: { code: true } = 该科目已收起（隐藏其直接子级；祖先收起时后级递归隐藏）
@@ -154,10 +153,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     if (scopeTip) scopeTip.textContent = kwTxt ? '全局搜索（跨全部类别）：' : '';
     var expandAllOn = !!($('subjExpandAll') && $('subjExpandAll').checked);
     list.forEach(function (s) {
-      var aux = (s.aux || []).map(function (k) {
-        var t = AUX_TYPES.filter(function (x) { return x.key === k; })[0];
-        return t ? t.name : k;
-      }).join('/');
       var lv = subjDepth(pmAll, s.code);
       var hidden = searchVisible
         ? !searchVisible[s.code]
@@ -176,15 +171,13 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         '<td class="col-name">' + indent + arrow + '<span class="subj-name">' + s.name + '</span></td>' +
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name + '</td>' +
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side + '</td>' +
-        '<td>' + (aux || '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (s.qty ? (s.unit || '数量') : '—') + '</td>' +
         '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '✓' : '—') + '</td>' +
         '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a></td>';
       tb.appendChild(tr);
     });
     if (!list.length) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="8" class="empty-hint">暂无该类科目</td>';
+      tr.innerHTML = '<td colspan="6" class="empty-hint">暂无该类科目</td>';
       tb.appendChild(tr);
     }
     $('subjTotalCount').textContent = list.length;
@@ -200,8 +193,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     '其他损失': 'expense', '期间费用': 'expense', '所得税': 'expense',
     '以前年度损益调整': 'expense'
   };
-  // 辅助核算类别 → 本项目 aux key
-  var TY_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
 
   // 从导出的科目 Excel 导入科目表
   function importSubjectsFromExcel(buf, fname) {
@@ -223,20 +214,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         // 按余额方向兜底：借→资产，贷→负债（方向最可靠）
         cls = (String(r['余额方向'] || '') === '贷') ? 'liability' : 'asset';
       }
-      // 辅助核算：类别名 → aux key
-      var auxStr = String(r['辅助核算类别'] || '');
-      var aux = [];
-      if (auxStr) {
-        auxStr.split(/[\/、]/).forEach(function (a) {
-          var k = TY_AUX_MAP[a.trim()];
-          if (k && aux.indexOf(k) < 0) aux.push(k);
-        });
-      }
-      // 数量核算（外币核算字段已随外币功能下线，不再读取）
-      // 兼容两种对勾写法：新导出/界面统一用 ✓，历史 Excel 模板可能仍写 √（都要能导入）
-      var qtyCell = String(r['数量核算'] || '').trim();
-      var isQty = qtyCell === '✓' || qtyCell === '√' || /^\d+$/.test(qtyCell);
-      var extra = { aux: aux, qty: isQty };
+      var extra = {};
 
       var res = S.addSubject(code, name, cls, extra);
       if (res.ok) ok++;
@@ -251,8 +229,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   function bindSubCodeCombo() {
     var inp = $('subCode'); if (!inp || _subCodeComboBound) return;
     _subCodeComboBound = true;
-    bindSubjectCombo(inp, {
-      suggestOnly: true,
+    // 统一到唯一科目选择组件 bindSubjectPicker；仅作编码提示、不写回输入框（等价旧 suggestOnly）
+    bindSubjectPicker(inp, {
+      limit: 12, // 空输入/多匹配时收敛前 12 条（与旧 SubjectCombo 一致）
       onPick: function (selCode, subj) {
         if (!subj) return;
         var parent = subj.parent ? S.subject(subj.parent) : null;
@@ -275,12 +254,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     subjModalBaseCls = s ? s.cls : '';
     subjModalShowCls = s ? (s.grpCls || s.cls) : 'asset';
     bindSubCodeCombo();
-    var aux = s ? (s.aux || []) : [];
-    Array.prototype.forEach.call($('subAux').querySelectorAll('input'), function (cb) {
-      cb.checked = aux.indexOf(cb.value) >= 0;
-    });
-    $('subQty').checked = !!(s && s.qty);
-    $('subUnit').value = s ? (s.unit || '') : '';
     // 改名提示（对齐参考实现）：仅编辑已有科目时显示
     var nameTip = $('subjNameTip'); if (nameTip) nameTip.style.display = s ? '' : 'none';
     $('subjectModal').classList.add('show');
@@ -336,18 +309,13 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     reader.readAsArrayBuffer(f);
   });
   $('btnSubjExport').addEventListener('click', function () {
-    // 导出科目表为 Excel：编码/名称/类别/方向/辅助核算/数量
+    // 导出科目表为 Excel：编码/名称/类别/方向
     var rows = S.subjects().map(function (s) {
       return {
         '科目编码': s.code,
         '科目名称': s.name,
         '科目类别': (ACCOUNT_CLASSES[s.grpCls || s.cls] || {}).name || (s.grpCls || s.cls),
-        '方向': (ACCOUNT_CLASSES[s.grpCls || s.cls] || {}).side || '',
-        '辅助核算': (s.aux || []).map(function (k) {
-          var t = AUX_TYPES.filter(function (x) { return x.key === k; })[0];
-          return t ? t.name : k;
-        }).join('/'),
-        '数量核算': s.qty ? '✓' : ''
+        '方向': (ACCOUNT_CLASSES[s.grpCls || s.cls] || {}).side || ''
       };
     });
     exportTable(rows, '会计科目');
@@ -355,10 +323,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   $('btnCloseSubject').addEventListener('click', function () { $('subjectModal').classList.remove('show'); });
   $('btnSaveSubject').addEventListener('click', function () {
     var code = $('subCode').value;
-    var extra = {
-      aux: Array.prototype.map.call($('subAux').querySelectorAll('input:checked'), function (cb) { return cb.value; }),
-      qty: $('subQty').checked, unit: $('subUnit').value
-    };
+    var extra = {};
     var editing = $('subCode').disabled;
     var newCode = $('subCode').value.trim();
     // 子科目类别必须与父一致（addSubject 在 cls 为空时自动继承父）。

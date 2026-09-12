@@ -74,49 +74,161 @@
     XLSX.utils.book_append_sheet(wb, ws, '固定资产卡片');
     return wb;
   }
-  // 导入：解析 xlsx 回卡片数组（按 31 列表头对齐；也兼容仅含关键列的精简表）
+  // 导入：解析 xlsx 回卡片数组
+  // 采用「表头别名映射」——既兼容本软件导出的 31 列表头，
+  // 也兼容金蝶/通用固定资产清单常见叫法（资产编码/资产名称/原值…）。
+  var FA_ALIASES = {
+    code:           ['编码', '资产编码', '卡片编号', '卡片编码', '代码', '编号', '资产代码', 'cardno', 'code'],
+    name:           ['名称', '资产名称', '固定资产名称', 'cardname', 'name'],
+    category:       ['类别', '资产类别', '固定资产类别', 'category'],
+    dept:           ['部门', '使用部门', 'dept', 'department'],
+    acqDate:        ['入账日期', '开始使用日期', '投入使用日期', '使用日期', '购置日期', 'acqdate', 'usedate'],
+    entryPeriod:    ['录入期间', '入账期间', '会计期间', 'entryperiod'],
+    original:       ['原值', '资产原值', '固定资产原值', 'original', 'cost'],
+    accumDeprBegin: ['期初累计折旧', '累计折旧期初', 'accumdeprbegin'],
+    accumDepr:      ['累计折旧', '期末累计折旧', '已提折旧', 'accumdepr'],
+    life:           ['使用年限', '预计使用期数', '预计使用期限', '预计使用年限', '使用期限', '折旧年限', '使用期数', 'life', 'usefulyears'],
+    salvage:        ['残值', '净残值', '预计净残值', 'salvage'],
+    salvageRate:    ['残值率', '净残值率', '预计残值率%', '残值率%', 'salvageRate', 'salvagerate'],
+    impairment:     ['减值准备', 'impairment'],
+    netValueBegin:  ['期初净值', '净值期初', 'netvaluebegin'],
+    netValueEnd:    ['期末净值', '净值期末', 'netvalueend'],
+    method:         ['折旧方法', '折旧方式', 'method', 'deprmethod'],
+    status:         ['状态', '使用状况', '使用状态', 'status'],
+    qty:            ['数量', 'qty'],
+    spec:           ['规格型号', '规格', '型号', 'spec', 'model'],
+    location:       ['存放地点', '存放位置', '地点', 'location'],
+    user:           ['使用人', '保管人', '责任人', 'user', 'keeper'],
+    cleanPeriod:    ['清理期间', 'cleanperiod'],
+    addVoucher:     ['新增资产凭证', '增加凭证', 'addvoucher'],
+    cleanVoucher:   ['清理凭证', 'cleanvoucher'],
+    impairVoucher:  ['减值准备凭证', 'impairvoucher'],
+    otherVoucher:   ['其他变动凭证', 'othervoucher'],
+    memo:           ['备注', '摘要', '说明', 'memo', 'remark'],
+    periodUsed:     ['已折旧期间数', '已折旧期间', 'periodused'],
+    yearDepr:       ['本年已折旧', 'yeardepr'],
+    // 科目字段：对齐「卡片新增」表单的 7 个科目选择，金蝶模板导出里直接带这些列
+    faAcctId:       ['固定资产科目', 'faacctid'],
+    accDeprAcct:    ['累计折旧科目', 'accdeptacct'],
+    deprFeeAcct:    ['折旧费用科目', 'deprfeeacct'],
+    cleanAcct:      ['资产清理科目', 'cleanacct'],
+    purchaseAcct:   ['资产购入对方科目', 'purchaseacct'],
+    taxAcct:        ['税金科目', 'taxacct'],
+    impairAcct:     ['减值准备对方科目', 'impairacct']
+  };
+  function faNorm(s) { return (s == null ? '' : String(s)).trim().toLowerCase().replace(/[\s_\-()（）]/g, ''); }
+  var FA_ALIAS_NORM = {};
+  Object.keys(FA_ALIASES).forEach(function (f) { FA_ALIAS_NORM[f] = FA_ALIASES[f].map(faNorm); });
+  // 根据表头行（数组）建立「字段 -> 列序号」映射；先精确匹配，再子串兜底
+  function buildAssetColMap(headerArr) {
+    var fieldToCol = {}, colTaken = {};
+    (headerArr || []).forEach(function (cell, ci) {
+      if (colTaken[ci]) return;
+      var nh = faNorm(cell);
+      if (!nh) return;
+      Object.keys(FA_ALIAS_NORM).forEach(function (f) {
+        if (fieldToCol[f] !== undefined) return;
+        if (FA_ALIAS_NORM[f].indexOf(nh) >= 0) { fieldToCol[f] = ci; colTaken[ci] = true; }
+      });
+    });
+    (headerArr || []).forEach(function (cell, ci) {
+      if (colTaken[ci]) return;
+      var nh = faNorm(cell);
+      if (nh.length < 2) return;
+      if (nh.indexOf('科目') >= 0) return; // 会计科目列(如累计折旧科目)只含编码,不能充作金额字段
+      Object.keys(FA_ALIAS_NORM).forEach(function (f) {
+        if (fieldToCol[f] !== undefined) return;
+        FA_ALIAS_NORM[f].forEach(function (a) {
+          if (a.length >= 2 && nh.indexOf(a) >= 0) { fieldToCol[f] = ci; colTaken[ci] = true; }
+        });
+      });
+    });
+    return fieldToCol;
+  }
+  // 扫描工作表，找真正的表头行：含可识别字段关键字最多的那一行。
+  // 金蝶等导出常在表头前放标题行/副标题行（如「卡片」「云会计演示账套」），
+  // 不能直接把首行当表头，否则后续列全部取不到。
+  function findAssetHeaderRow(aoa) {
+    var bestIdx = 0, bestScore = 2;
+    for (var idx = 0; idx < aoa.length && idx <= 20; idx++) {
+      var score = 0;
+      (aoa[idx] || []).forEach(function (cell) {
+        var nh = faNorm(cell);
+        if (!nh) return;
+        Object.keys(FA_ALIAS_NORM).forEach(function (f) {
+          if (FA_ALIAS_NORM[f].indexOf(nh) >= 0) score++;
+        });
+      });
+      if (score > bestScore) { bestScore = score; bestIdx = idx; }
+    }
+    return bestIdx;
+  }
   function parseAssetWorkbook(wb) {
     var name = (wb.SheetNames || [])[0];
     if (!name) return [];
-    var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '', raw: false });
-    if (!rows.length) return [];
-    var keys = Object.keys(rows[0]);
-    // 取表头中能识别的字段（编码/名称/类别/部门/原值…）
-    return rows.map(function (row) {
-      var get = function (cands) {
-        for (var i = 0; i < cands.length; i++) { if (row[cands[i]] !== undefined && row[cands[i]] !== '') return row[cands[i]]; }
-        return '';
+    var aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: false });
+    if (!aoa.length) return [];
+    var headerIdx = findAssetHeaderRow(aoa);
+    var fieldToCol = buildAssetColMap(aoa[headerIdx]);
+    var get = function (field, row) {
+      var ci = fieldToCol[field];
+      return ci !== undefined ? (row[ci] == null ? '' : row[ci]) : '';
+    };
+    var out = [];
+    for (var i = headerIdx + 1; i < aoa.length; i++) {
+      var arr = aoa[i];
+      if (!arr || !arr.length) continue;
+      var hasVal = arr.some(function (c) { return c !== '' && c != null; });
+      if (!hasVal) continue;
+      var fa = {
+        code: get('code', arr),
+        name: get('name', arr),
+        category: get('category', arr),
+        dept: get('dept', arr),
+        acqDate: get('acqDate', arr),
+        entryPeriod: get('entryPeriod', arr),
+        original: num(get('original', arr).toString().replace(/[^\d.\-]/g, '')),
+        accumDeprBegin: num(get('accumDeprBegin', arr).toString().replace(/[^\d.\-]/g, '')),
+        accumDepr: num(get('accumDepr', arr).toString().replace(/[^\d.\-]/g, '')),
+        // 金蝶「预计使用期数」按"月/期"计；本软件 life 按"年"存。无"年"后缀的纯数字按 ÷12 折算。
+        life: (function () { var r = get('life', arr).toString(); var v = num(r.replace(/[^\d.\-]/g, '')); return (v && r.indexOf('年') < 0) ? v / 12 : v; })(),
+        // 残值：优先取文件「残值」列；若文件只给残值率%没给残值(金蝶常见)，按「原值×残值率%」补算，与卡片新增表单同逻辑，否则折旧基数会算错
+        salvage: (function () {
+          var s = num(get('salvage', arr).toString().replace(/[^\d.\-]/g, ''));
+          if (s > 0) return s;
+          var r = num(get('salvageRate', arr).toString().replace(/[^\d.\-]/g, ''));
+          var o = num(get('original', arr).toString().replace(/[^\d.\-]/g, ''));
+          return (o > 0 && r > 0) ? o * r / 100 : s;
+        })(),
+        salvageRate: get('salvageRate', arr),
+        impairment: num(get('impairment', arr).toString().replace(/[^\d.\-]/g, '')),
+        netValueBegin: num(get('netValueBegin', arr).toString().replace(/[^\d.\-]/g, '')),
+        netValueEnd: num(get('netValueEnd', arr).toString().replace(/[^\d.\-]/g, '')),
+        method: get('method', arr) || '平均年限法',
+        status: get('status', arr) || '正常',
+        qty: num(get('qty', arr).toString().replace(/[^\d.\-]/g, '')),
+        spec: get('spec', arr),
+        location: get('location', arr),
+        user: get('user', arr),
+        cleanPeriod: get('cleanPeriod', arr),
+        addVoucher: get('addVoucher', arr),
+        cleanVoucher: get('cleanVoucher', arr),
+        impairVoucher: get('impairVoucher', arr),
+        otherVoucher: get('otherVoucher', arr),
+        memo: get('memo', arr),
+        periodUsed: num(get('periodUsed', arr).toString().replace(/[^\d.\-]/g, '')),
+        yearDepr: num(get('yearDepr', arr).toString().replace(/[^\d.\-]/g, '')),
+        faAcctId: get('faAcctId', arr),
+        accDeprAcct: get('accDeprAcct', arr),
+        deprFeeAcct: get('deprFeeAcct', arr),
+        cleanAcct: get('cleanAcct', arr),
+        purchaseAcct: get('purchaseAcct', arr),
+        taxAcct: get('taxAcct', arr),
+        impairAcct: get('impairAcct', arr)
       };
-      return {
-        code: get(['编码', 'code', '资产编码']),
-        name: get(['名称', 'name', '资产名称']),
-        category: get(['类别', 'category', '资产类别']),
-        dept: get(['部门', 'dept']),
-        acqDate: get(['开始使用日期', 'acqDate', '使用日期']),
-        entryPeriod: get(['录入期间', 'entryPeriod']),
-        original: num(get(['原值', 'original'])),
-        accumDeprBegin: num(get(['期初累计折旧', 'accumDeprBegin'])),
-        accumDepr: num(get(['期末累计折旧', 'accumDepr'])),
-        life: num(get(['预计使用期限', 'life']).toString().replace(/[^\d.]/g, '')),
-        salvage: num(get(['残值', 'salvage'])),
-        salvageRate: get(['残值率%', '残值率', 'salvageRate']),
-        impairment: num(get(['减值准备', 'impairment'])),
-        netValueBegin: num(get(['期初净值', 'netValueBegin'])),
-        netValueEnd: num(get(['期末净值', 'netValueEnd'])),
-        method: get(['折旧方法', 'method']) || '平均年限法',
-        status: get(['状态', 'status']) || '正常',
-        qty: num(get(['数量', 'qty'])),
-        spec: get(['规格型号', 'spec']),
-        location: get(['存放地点', 'location']),
-        user: get(['使用人', 'user']),
-        cleanPeriod: get(['清理期间', 'cleanPeriod']),
-        addVoucher: get(['新增资产凭证', 'addVoucher']),
-        cleanVoucher: get(['清理凭证', 'cleanVoucher']),
-        impairVoucher: get(['减值准备凭证', 'impairVoucher']),
-        otherVoucher: get(['其他变动凭证', 'otherVoucher']),
-        memo: get(['备注', 'memo'])
-      };
-    }).filter(function (fa) { return fa.name && fa.original; });
+      if (fa.name) out.push(fa);
+    }
+    return out;
   }
 
   global.TyIo = {

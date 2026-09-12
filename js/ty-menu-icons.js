@@ -51,10 +51,9 @@ var TY_SUBMENU_GROUPS = {
   ],
   '账簿': [
     {title: '主账簿', icon: 'icon-zhuzhangbu', items: ['明细账', '总账', '科目余额表', '多栏账']},
-    {title: '辅助账簿', icon: 'icon-fuzhuzhangbu', items: ['数量金额明细账', '数量金额总账', '核算项目余额表', '核算项目明细账', '核算项目组合表']},
   ],
   '报表': [
-    {title: '报表', icon: 'baobiao3', items: ['资产负债表', '利润表', '项目利润表', '标准现金流量表', '主要应交税金明细表', '费用明细表']},
+    {title: '报表', icon: 'baobiao3', items: ['资产负债表', '利润表', '标准现金流量表', '主要应交税金明细表', '费用明细表']},
     {title: '自定义报表', icon: 'zidingyibaobiao', items: ['报表中心']},
   ],
   '资产': [
@@ -64,8 +63,8 @@ var TY_SUBMENU_GROUPS = {
     {title: '工资', icon: 'richangyewu2', items: ['工资', '工资统计']},
   ],
   '设置': [
-    {title: '基础资料', icon: 'shezhi2', items: ['科目', '凭证字', '辅助核算', '期初余额', '现金流量初始余额', '科目现金流量项目']},
-    {title: '系统设置', icon: 'xitongshezhi2', items: ['系统参数', '数据与安全', '凭证模板', '套打模板', '操作日志']},
+    {title: '基础资料', icon: 'shezhi2', items: ['科目', '凭证字', '期初余额', '现金流量初始余额', '科目现金流量项目']},
+    {title: '系统设置', icon: 'xitongshezhi2', items: ['系统参数', '数据与安全', '套打模板', '操作日志']},
     {title: '自定义打印', icon: 'dayin', items: ['打印设置']},
   ],
 };

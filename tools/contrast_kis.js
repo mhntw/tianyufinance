@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * contrast_kis.js — 金蝶 KIS 基准 vs xzys 报表导出 逐科目逐月对照
+ * contrast_kis.js — 金蝶 KIS 基准 vs ty 报表导出 逐科目逐月对照
  *
  * 用法：
- *   node tools/contrast_kis.js <金蝶baseline.json> <xzys导出目录> [bookId] [--leaf-only]
+ *   node tools/contrast_kis.js <金蝶baseline.json> <ty导出目录> [bookId] [--leaf-only]
  *
  * 示例：
  *   node tools/contrast_kis.js tools/_out/添钰_baseline.json tools/_out 添钰来客_2026年_金蝶KIS格式_1788134974712
@@ -13,16 +13,16 @@
  *   stdout 汇总
  *
  * 对照字段（容差 0.01 元）：
- *   期初余额  begBal    vs  xzys (obDr - obCr)       [借方为正 signed]
- *   本期借方  debit     vs  xzys periodDr
- *   本期贷方  credit    vs  xzys periodCr
- *   期末余额  endBal    vs  xzys (endDr - endCr)    [借方为正 signed]
- *   本年借方  ydDebit   vs  xzys ytdDr
- *   本年贷方  ydCredit  vs  xzys ytdCr
+ *   期初余额  begBal    vs  ty (obDr - obCr)       [借方为正 signed]
+ *   本期借方  debit     vs  ty periodDr
+ *   本期贷方  credit    vs  ty periodCr
+ *   期末余额  endBal    vs  ty (endDr - endCr)    [借方为正 signed]
+ *   本年借方  ydDebit   vs  ty ytdDr
+ *   本年贷方  ydCredit  vs  ty ytdCr
  *
  * 归一化规则：金蝶 GLBal 的 begBal/endBal 已是「借方为正」signed 值
  *            （资产+、负债-、累计折旧- 等），不论科目方向。
- *            xzys 用 endDr/endCr 双栏，signed = endDr - endCr（不论 normal）。
+ *            ty 用 endDr/endCr 双栏，signed = endDr - endCr（不论 normal）。
  */
 'use strict';
 
@@ -37,7 +37,7 @@ function parseArgs() {
   const leafOnly = argv.indexOf('--leaf-only') >= 0;
   const positional = argv.filter(a => !a.startsWith('--'));
   if (positional.length < 2) {
-    console.error('用法: node tools/contrast_kis.js <金蝶baseline.json> <xzys导出目录> [bookId] [--leaf-only]');
+    console.error('用法: node tools/contrast_kis.js <金蝶baseline.json> <ty导出目录> [bookId] [--leaf-only]');
     process.exit(1);
   }
   return {
@@ -76,7 +76,7 @@ function loadBaseline(p) {
   };
 }
 
-/* ---------- 加载 xzys generalLedger ---------- */
+/* ---------- 加载 ty generalLedger ---------- */
 function loadXzysGL(outDir, bookId, month) {
   const p = path.join(outDir, bookId + '_generalLedger_' + month + '.json');
   if (!fs.existsSync(p)) return null;
@@ -87,17 +87,17 @@ function loadXzysGL(outDir, bookId, month) {
 }
 
 /* ---------- 对单月对照 ---------- */
-function contrastMonth(baseline, xzysGL, opts) {
-  const month = xzysGL.month;
+function contrastMonth(baseline, tyGL, opts) {
+  const month = tyGL.month;
   const kisBal = baseline.balanceByPeriod[month] || {};
   const diffs = [];
   let commonCount = 0, matchCount = 0;
 
-  const allCodes = new Set([...Object.keys(kisBal), ...Object.keys(xzysGL.rowMap)]);
+  const allCodes = new Set([...Object.keys(kisBal), ...Object.keys(tyGL.rowMap)]);
 
   allCodes.forEach(code => {
     const kisRow = kisBal[code];
-    const xzysRow = xzysGL.rowMap[code];
+    const tyRow = tyGL.rowMap[code];
     const subj = baseline.subjMap[code];
     const isLeaf = !baseline.childMap[code] || baseline.childMap[code].length === 0;
 
@@ -105,30 +105,30 @@ function contrastMonth(baseline, xzysGL, opts) {
     if (opts.leafOnly && !isLeaf) return;
 
     // 一边缺失
-    if (!kisRow && xzysRow) {
-      // 金蝶只为有发生/有余额的科目建 GLBal 行；若 xzys 全 0，视为一致
-      const xzysAllZero = (Math.abs(xzysRow.obDr) < EPS && Math.abs(xzysRow.obCr) < EPS &&
-        Math.abs(xzysRow.periodDr) < EPS && Math.abs(xzysRow.periodCr) < EPS &&
-        Math.abs(xzysRow.endDr) < EPS && Math.abs(xzysRow.endCr) < EPS &&
-        Math.abs(xzysRow.ytdDr) < EPS && Math.abs(xzysRow.ytdCr) < EPS);
-      if (xzysAllZero) { commonCount++; matchCount++; return; }
+    if (!kisRow && tyRow) {
+      // 金蝶只为有发生/有余额的科目建 GLBal 行；若 ty 全 0，视为一致
+      const tyAllZero = (Math.abs(tyRow.obDr) < EPS && Math.abs(tyRow.obCr) < EPS &&
+        Math.abs(tyRow.periodDr) < EPS && Math.abs(tyRow.periodCr) < EPS &&
+        Math.abs(tyRow.endDr) < EPS && Math.abs(tyRow.endCr) < EPS &&
+        Math.abs(tyRow.ytdDr) < EPS && Math.abs(tyRow.ytdCr) < EPS);
+      if (tyAllZero) { commonCount++; matchCount++; return; }
       diffs.push({
-        code, name: xzysRow.name, leaf: isLeaf,
+        code, name: tyRow.name, leaf: isLeaf,
         kind: 'missing_in_kis',
-        detail: '金蝶基准无此科目余额，xzys 有'
+        detail: '金蝶基准无此科目余额，ty 有'
       });
       return;
     }
-    if (kisRow && !xzysRow) {
-      // 金蝶有余额但 xzys 无此科目——先看金蝶余额是否全 0
+    if (kisRow && !tyRow) {
+      // 金蝶有余额但 ty 无此科目——先看金蝶余额是否全 0
       const kisAllZero = (Math.abs(kisRow.begBal) < EPS && Math.abs(kisRow.debit) < EPS &&
         Math.abs(kisRow.credit) < EPS && Math.abs(kisRow.endBal) < EPS &&
         Math.abs(kisRow.ydDebit) < EPS && Math.abs(kisRow.ydCredit) < EPS);
       if (kisAllZero) { commonCount++; matchCount++; return; }
       diffs.push({
         code, name: subj ? subj.name : '', leaf: isLeaf,
-        kind: 'missing_in_xzys',
-        detail: 'xzys 无此科目，金蝶有余额'
+        kind: 'missing_in_ty',
+        detail: 'ty 无此科目，金蝶有余额'
       });
       return;
     }
@@ -136,23 +136,23 @@ function contrastMonth(baseline, xzysGL, opts) {
 
     // 6 字段对比
     const fields = [
-      { f: 'begBal',   kis: kisRow.begBal,            xzys: xzysRow.obDr - xzysRow.obCr, label: '期初余额' },
-      { f: 'debit',    kis: kisRow.debit,             xzys: xzysRow.periodDr,           label: '本期借方' },
-      { f: 'credit',   kis: kisRow.credit,            xzys: xzysRow.periodCr,           label: '本期贷方' },
-      { f: 'endBal',   kis: kisRow.endBal,            xzys: xzysRow.endDr - xzysRow.endCr, label: '期末余额' },
-      { f: 'ydDebit',  kis: kisRow.ydDebit,           xzys: xzysRow.ytdDr,              label: '本年借方' },
-      { f: 'ydCredit', kis: kisRow.ydCredit,          xzys: xzysRow.ytdCr,              label: '本年贷方' }
+      { f: 'begBal',   kis: kisRow.begBal,            ty: tyRow.obDr - tyRow.obCr, label: '期初余额' },
+      { f: 'debit',    kis: kisRow.debit,             ty: tyRow.periodDr,           label: '本期借方' },
+      { f: 'credit',   kis: kisRow.credit,            ty: tyRow.periodCr,           label: '本期贷方' },
+      { f: 'endBal',   kis: kisRow.endBal,            ty: tyRow.endDr - tyRow.endCr, label: '期末余额' },
+      { f: 'ydDebit',  kis: kisRow.ydDebit,           ty: tyRow.ytdDr,              label: '本年借方' },
+      { f: 'ydCredit', kis: kisRow.ydCredit,          ty: tyRow.ytdCr,              label: '本年贷方' }
     ];
 
     let rowHasDiff = false;
     fields.forEach(fd => {
-      const diff = round2(fd.kis - fd.xzys);
+      const diff = round2(fd.kis - fd.ty);
       if (Math.abs(diff) >= EPS) {
         rowHasDiff = true;
         diffs.push({
-          code, name: xzysRow.name, leaf: isLeaf,
+          code, name: tyRow.name, leaf: isLeaf,
           field: fd.f, label: fd.label,
-          kis: round2(fd.kis), xzys: round2(fd.xzys), diff,
+          kis: round2(fd.kis), ty: round2(fd.ty), diff,
           kind: 'value_mismatch'
         });
       }
@@ -168,10 +168,10 @@ function contrastMonth(baseline, xzysGL, opts) {
 function main() {
   const opts = parseArgs();
   const baseline = loadBaseline(opts.baselinePath);
-  console.log('=== 金蝶 KIS vs xzys 对照 ===');
+  console.log('=== 金蝶 KIS vs ty 对照 ===');
   console.log('金蝶基准: ' + baseline.source + ' (' + baseline.subjects.length + ' 科目)');
   console.log('金蝶期间: ' + baseline.periods.join(', '));
-  console.log('xzys 导出目录: ' + opts.outDir);
+  console.log('ty 导出目录: ' + opts.outDir);
   console.log('bookId: ' + (opts.bookId || '(未指定，将自动推断)'));
   console.log('模式: ' + (opts.leafOnly ? '仅末级科目' : '全部科目（含父级）'));
   console.log('');
@@ -189,12 +189,12 @@ function main() {
   const summary = [];
 
   baseline.periods.forEach(month => {
-    const xzysGL = loadXzysGL(opts.outDir, bookId, month);
-    if (!xzysGL) {
-      console.log('[' + month + '] xzys 无此月导出，跳过');
+    const tyGL = loadXzysGL(opts.outDir, bookId, month);
+    if (!tyGL) {
+      console.log('[' + month + '] ty 无此月导出，跳过');
       return;
     }
-    const r = contrastMonth(baseline, xzysGL, opts);
+    const r = contrastMonth(baseline, tyGL, opts);
     totalDiff += r.diffs.length;
     totalCommon += r.commonCount;
     totalMatch += r.matchCount;
@@ -237,7 +237,7 @@ function main() {
       kindMap[k].samples.forEach(s => {
         if (s.kind === 'value_mismatch') {
           console.log('    示例: ' + s.code + ' ' + s.name + ' ' + s.label +
-            '  金蝶=' + s.kis + '  xzys=' + s.xzys + '  差=' + s.diff + (s.leaf ? '' : ' (父级)'));
+            '  金蝶=' + s.kis + '  ty=' + s.ty + '  差=' + s.diff + (s.leaf ? '' : ' (父级)'));
         } else {
           console.log('    示例: ' + s.code + ' ' + s.name + '  ' + s.detail + (s.leaf ? '' : ' (父级)'));
         }

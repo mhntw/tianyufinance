@@ -10,9 +10,8 @@ const currentPeriod = H.currentPeriod;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
 const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
+// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
-const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 
   // 通用：对象数组导出 Excel（「导出」）
   // 统一走安全包装 __safeExportExcel：Tauri 下写入 exports 目录（避免浏览器下载静默失效），
@@ -25,4 +24,4 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   }
 
 export { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
-  ACCOUNT_CLASSES, AUX_TYPES, exportTable };
+  ACCOUNT_CLASSES, exportTable };

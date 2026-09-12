@@ -218,38 +218,11 @@ function refreshPl() {
   // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
   renderPl(eInp ? eInp.value : def);
 }
-// 利润表行计算（配置化）：读 state.reportRules.incomeStatement 规则，
-// 按行求值并返回 [{label, cur, ytd, isGrp}]，供 renderPl(DOM) 与 exportPl(Excel) 共用。
-// 规则结构见 js/standards.js。缺规则时回退 globalThis.STANDARDS.old（兼容异常账套）。
+// 利润表行计算：唯一实现已下沉到 store.incomeStatement（首页财务指标共用同一份行计算），
+// 此处仅保留页面侧别名，使 renderPl(DOM) 与 exportPl(Excel) 的调用点保持不变。
+// 行结构见 js/standards.js；返回项含 id（语义行标识），供「跳利润表并高亮指定行」使用。
 function computeIncomeRows(month) {
-  var pl = S.profitStatement(month);
-  var byCode = {};
-  pl.items.forEach(function (it) { byCode[it.code] = it; });
-  function amt(code) { var it = byCode[code]; return it ? { cur: it.cur, ytd: it.ytd } : { cur: 0, ytd: 0 }; }
-  function sum(codes) {
-    return (codes || []).reduce(function (a, c) { var x = amt(c); return { cur: a.cur + x.cur, ytd: a.ytd + x.ytd }; },
-                                { cur: 0, ytd: 0 });
-  }
-  var fallback = (globalThis.STANDARDS && globalThis.STANDARDS.old && globalThis.STANDARDS.old.reportRules.incomeStatement) || [];
-  var rules = (S.state.reportRules && S.state.reportRules.incomeStatement) || fallback;
-  var subtotals = {}; // id -> {cur, ytd}，供后续 subtotal 引用 ref
-  var out = [];
-  rules.forEach(function (r) {
-    if (r.type === 'subtotal') {
-      var cur = 0, ytd = 0;
-      (r.formula || []).forEach(function (f) {
-        var v = f.ref ? (subtotals[f.ref] || { cur: 0, ytd: 0 }) : sum(f.codes || []);
-        var sign = f.sign === '-' ? -1 : 1;
-        cur += sign * v.cur; ytd += sign * v.ytd;
-      });
-      if (r.id) subtotals[r.id] = { cur: cur, ytd: ytd };
-      out.push({ label: r.label, cur: cur, ytd: ytd, isGrp: true });
-    } else {
-      var s = sum(r.codes || []);
-      out.push({ label: r.label, cur: s.cur, ytd: s.ytd, isGrp: false });
-    }
-  });
-  return out;
+  return S.incomeStatement(month);
 }
 
 function renderPl(month) {
@@ -262,11 +235,89 @@ function renderPl(month) {
     no += 1;
     var tr = document.createElement('tr');
     tr.className = r.isGrp ? 'grp-row' : '';
+    // 行标识（语义 id，见 js/standards.js）：首页指标跳转过来时按它定位并高亮该行。
+    // 小计行（含净利润）也有 id，故「净利润」卡片跳过来同样能定位——它没有科目编码，
+    // 无法跳总账，但定位到报表行是成立的。
+    if (r.id) tr.setAttribute('data-row-id', r.id);
+    var clickable = (!r.isGrp && r.codes && r.codes.length);
+    var fmtCodes = (r.codes || []).join(',');
+    function plAmt(v) {
+      return clickable
+        ? '<a href="#" class="pl-amt-link" data-codes="' + fmtCodes + '">' + moneyRed(v) + '</a>'
+        : moneyRed(v);
+    }
     tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + r.label +
                    '</td><td class="ta-c">' + no + '</td>' +
-                   amtCell(r.cur, r.isGrp ? 'grp-amt' : '') +
-                   amtCell(r.ytd, r.isGrp ? 'grp-amt' : '');
+                   '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.cur) + '</td>' +
+                   '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.ytd) + '</td>';
     tb.appendChild(tr);
+  });
+}
+
+/* ===================== 首页指标 → 利润表 跳转 =====================
+ * 与 Ledger.js 的 __glJumpTo 同构：设期间 → 切页 → 显式重绘 → 定位高亮。
+ * 首页损益卡片（收入 / 成本 / 费用 / 净利润）走这条链，形成完整下钻：
+ *     首页指标 → 利润表（定位本项目行）→ 点行金额 → 总账明细
+ * 之所以不直接从首页跳总账：
+ *   ① 利润表是这些数字的口径归宿（两者同源于 store.plSummary），跳过报表层无法核对口径；
+ *   ② 「费用」是销售+管理+财务三行合计，「净利润」行根本没有科目编码，
+ *      直接跳总账表达不了这两者。故跳报表、再由报表行下钻总账。
+ */
+var PL_HL_MS = 2500;   // 高亮保留时长：够看清「点的是这一行」，又不至于常驻成陈旧状态
+var plHlTimer = null;
+function highlightPlRows(rowIds) {
+  var tb = $('plBody');
+  if (!tb || !rowIds || !rowIds.length) return;
+  var want = {};
+  rowIds.forEach(function (x) { want[String(x)] = 1; });
+  // 先清上一次的：连续跳转时不残留旧目标，否则多行同时亮起会分不清
+  tb.querySelectorAll('tr.row-hl').forEach(function (tr) { tr.classList.remove('row-hl'); });
+  var hits = [];
+  tb.querySelectorAll('tr[data-row-id]').forEach(function (tr) {
+    if (want[tr.getAttribute('data-row-id')]) hits.push(tr);
+  });
+  if (!hits.length) return;   // 规则被改过致该行不存在：静默返回，不影响页面可用
+  hits.forEach(function (tr) { tr.classList.add('row-hl'); });
+  // 滚动延到下一拍：切页刚把 section 置为可见，立即 scrollIntoView 在部分浏览器上会落空
+  //（app.js 搜索跳转高亮同因，也用了 60ms）。高亮本身立即生效，不依赖这个延时。
+  setTimeout(function () {
+    try { hits[0].scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* 忽略：不支持 smooth 也不影响定位 */ }
+  }, 60);
+  if (plHlTimer) clearTimeout(plHlTimer);
+  plHlTimer = setTimeout(function () {
+    hits.forEach(function (tr) { tr.classList.remove('row-hl'); });
+    plHlTimer = null;
+  }, PL_HL_MS);
+}
+// 首页指标跳利润表入口。rowIds：语义行 id 数组（如费用 = ['sellExp','adminExp','finExp']）
+// fromMonth / toMonth：目标期间范围。单月（本期/上期）时两者相同，
+// 整段（本年/去年）时 from=年初、to=年末，让利润表直接显示正确的区间。
+globalThis.__plJumpToRow = function (rowIds, fromMonth, toMonth) {
+  if (typeof rowIds === 'string') rowIds = [rowIds];
+  var sInp = $('plPeriodStart'), eInp = $('plPeriodEnd');
+  if (sInp && eInp) {
+    // refreshPl 仅在期间为空时兜底，故先写入即生效；触发器文案同步刷新。
+    sInp.value = fromMonth || toMonth || '';
+    eInp.value = toMonth || fromMonth || '';
+    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('plPeriodStart', 'plPeriodEnd');
+  }
+  if (globalThis.goPage) globalThis.goPage('report-profit');
+  refreshPl();                 // 显式重绘，不依赖 goPage 的「已激活则跳过重渲染」优化
+  highlightPlRows(rowIds);
+};
+
+// 利润表金额点击 -> 跳总账并定位对应科目（仅带真实科目编码的 leaf 行可点，subtotal 计算行不绑）
+if (!globalThis.__plAmtJumpBound) {
+  globalThis.__plAmtJumpBound = true;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('.pl-amt-link');
+    if (!a) return;
+    e.preventDefault();
+    var codes = (a.getAttribute('data-codes') || '').split(',').filter(Boolean);
+    if (!codes.length) return;
+    var eInp = document.getElementById('plPeriodEnd');
+    var month = eInp ? eInp.value : currentPeriod();
+    if (globalThis.__glJumpTo) globalThis.__glJumpTo(codes, month);
   });
 }
 

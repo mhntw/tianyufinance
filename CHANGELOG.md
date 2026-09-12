@@ -3,6 +3,69 @@
 本文件记录历次功能优化与缺陷修复，按时间倒序排列。
 
 ---
+## 2026-09-12 — 冻结「结转损益 / 计提折旧」重构（决策记录，非代码改动）
+
+- **决定**：`js/store.js` 的 `carryForwardProfit`（65 行）与 `depreciateMonth`（67 行）逻辑正确、行为已由自动化守护锁定。本轮及后续默认**不**做「加花括号 / 改缩进 / 拆辅助函数」等纯可读性改动——不改业务口径，风险大于收益；
+- **守护机制**（若将来确需改动这两函数，改后必须全部跑绿）：
+  - 结转损益幂等 → `node tools/verify_invariants.js` 的 I6；
+  - 结转损益口径 = 利润表口径（逐期）→ `node tools/audit_books.js`；
+  - 折旧重复计提幂等（不产生额外凭证）→ `node tools/verify_e2e_snapshot.js` ②；
+- **基线（2026-09-12 验证）**：I1–I10 不变量全 PASS；结转口径审计 4 账套 12/7/12/7 期全一致；
+- **若确需重构**：单独开一轮，改完立即跑上述脚本，全部 PASS 才算完成。
+
+---
+
+## 2026-09-12 — 首页与利润表口径同源、指标下钻跳转、清理手机版设定
+
+### 首页损益口径与利润表真正同源（消除第三套实现）
+- 此前首页「收入/成本/费用/净利润」自带 5xxx/6xxx 编码清单、逐分录累加，是独立于利润表引擎的**第三套口径**：用户自定义利润表规则时首页不跟随，且两处一旦漂移没有任何机制能发现（利润表侧有 I10 恒等式保护，首页游离在外）；
+- 利润表规则行补**语义 id**（`js/standards.js` 两套准则模板共 20 行，对应金蝶/jinbooks 的 `itemCode`）；老账套 `reportRules` 是模板快照、不会自动获得新字段，故在 `normalizeState` 中按 **codes 排序签名**回填（对科目顺序调整免疫；空 codes 的多行同签名无法唯一匹配，不参与回填）；
+- 行计算下沉为 `store.incomeStatement(month)`（从 `Report.js` 逐字搬移、不改算法），`Report.js` 的 `computeIncomeRows` 改为薄封装；新增 `store.plSummary(month)` 按行 id 取数，返回 `{ cur, ytd, codes, ids, missing }`；
+- 首页改调 `plSummary`：单月取 `cur`、整段取 `ytd`（等价金蝶 `periodType=MONTH/YEAR`，故无需给报表引擎新增该概念），删掉自带的 8 个编码常量与 `buildProfitRange`；
+- **回归**：搬移前后逐行对比 940 项、新旧口径对比 752 项（2 真账套 × 全部有凭证月份 × 4 期间模式 × 4 指标）均 **0 差异**，现有数字一个未变；另补 6xxx 准则端到端用例（含结转凭证不使收入翻倍、所得税不进费用）。
+
+### 首页指标 → 利润表 下钻跳转
+- 收入/成本/费用/净利润四张卡点金额 → 跳「报表 → 利润表」并高亮对应项目行（`Report.js` 新增 `__plJumpToRow` / `highlightPlRows`），形成「首页指标 → 利润表 → 点行金额 → 总账明细」完整下钻；
+- 「费用」是销售+管理+财务三行合计、「净利润」行无科目编码 —— 直接跳总账表达不了，故改为跳报表、再由报表行下钻总账；其余卡片（资金/应收应付）无对应报表，保持直接跳总账；
+- 行定位复用项目既有的 `.row-hl` 高亮类；滚动沿用 `app.js` 搜索跳转的 60ms 延时（切页刚置可见时立即 `scrollIntoView` 会落空）；高亮 2.5s 渐隐，连续跳转先清旧目标；
+- 跳转目标由取数处注入（`data-pl-rows` 与 `data-codes` 互斥），规则行缺失时取消可点态并给说明，不静默跳到与数字无关的位置。
+
+### 清理手机版设定（本软件无手机版）
+- 移除 `app.js` 的手机端检测（移动 UA / 触屏宽度 < 900px）、`window.__IS_MOBILE` 与 `html.is-mobile` 挂载；
+- 移除 `goPage` 中「手机端任何跳转一律回首页」的强制重定向；
+- 移除 `style.css` 中 `html.is-mobile ...` 只读模式样式整块（29 行）；
+- `index.html` 移除 `<meta name="viewport">`（桌面 webview 无作用，与「无手机版」保持一致）；
+- **保留** `style.css` 的窄屏 media query（≤1400/1200/1000/640px 时首页 6 卡自动降档）—— 那是**桌面窗口拖窄**时的响应式保护，非手机版设定；已核实 `tauri.conf.json` 未禁用 resize、未设 minWidth，拖窄窗口时这些规则会实际生效；
+- 连带收益：不再存在手机端只读模式，首页卡片跳转在唯一目标环境（桌面）下均正常。
+
+### 资源版本号改为构建时自动注入（根治手工 bump）
+- **问题**：`index.html` 与各级 ESM import 的 `?v=` 全靠人工维护，且引用链有三层（`index.html` → `main.js` → 各页面 → `components/`）。改一个被引用文件，必须把所有引用者的版本号一起改；漏改任一环，webview 就命中磁盘缓存的旧文件，而且**故障是静默的**——改动看起来"没生效"，不报任何错。实测本轮改动就需同时改 `main.js`，而若改的是 `components/SubjectPicker.js` 则需改 6 个文件（`main.js` + `Ledger.js`/`Asset.js`/`Subject.js`/`Voucher.js`/`Settle.js`）；
+- **修复**：`tauri/scripts/build-dist.mjs` 在同步 `dist/` 后自动注入版本号 —— 源文件的 `?v=` 一律改为占位符 `?v=dev`（不再代表任何含义、不需要再 bump），打包时统一改写为**本次构建的内容指纹**（dist 内全部待发布文件按相对路径排序、逐个喂「路径 + 原始字节」进 sha1，取前 12 位）；
+- 为什么用单一全局指纹而非逐文件哈希：`dist/` 是本地磁盘资源，没有重复"下载"成本；单一指纹免去「被引用者先算、引用者后算」的拓扑排序，也就彻底不存在"改了子模块忘改引用者"的漏洞（任一文件变 → 全量 URL 变，中间层 `main.js` 因自身 import 文本被改写而自动跟着变）；
+- **验证**：`dist` 内 39 处版本值统一为同一指纹；重复构建指纹不变（同源可复现）；新增/删除任一文件指纹随之变化；恢复后回到原指纹；
+- 覆盖范围：`index.html` 16 处、`js/main.js` 17 处、`Ledger.js` 2 处、`Asset.js`/`Subject.js`/`Voucher.js`/`Settle.js` 各 1 处，共 39 处；
+- **发布链路保证**：GitHub Actions 用 `tauri-action` 跑 `tauri build` → 必经 `beforeBuildCommand` → 本脚本，故发布版不可能因遗漏 bump 而陈旧；`tauri build` 与云端构建行为一致；
+- 说明：`tauri dev` 走 `devUrl`（`python3 -m http.server`，源目录），不经本脚本；该服务会返回 `Last-Modified` 并按 `If-Modified-Since` 回 304，故 dev 下普通刷新即为最新（如遇极端缓存，硬刷新一次即可）。
+
+### 发布流程去掉「本机打包」，全部改由 GitHub 云端产出
+- `发布新版.command` 移除第 5 步「本机打 macOS 包」（`cd tauri && npm run tauri build`），步骤由 5 步收敛为 4 步，编号与提示同步更新；
+- 依据：`.github/workflows/build-release.yml` 已由 `build-windows`（NSIS）+ `build-macos`（app,dmg）两个 job 串行产出双平台安装包并进同一 Release（`releaseDraft: false`），**本机打包并非必要环节**，删掉不损失任何产物；
+- 收益：本机无需安装 Rust / Xcode，也不占用本机数分钟编译时间；
+- 顺带修正两处过时文案：
+  - 结尾原写「Release 草稿在 …… 记得去点一下 Publish release 才能正式发布」，但工作流已是 `releaseDraft: false`（自动发布），现改为「约 10~20 分钟后可直接下载」；
+  - 第 4 步说明原写「自动打包 Windows 安装包」，实为 Windows + macOS 双平台，已更正；
+- `README.md` 同步：把「本机手动打包（备选）」一节换成「想先拿个测试包（不用本机编译）」（指向手动触发的「构建预览包」工作流，产物进 Artifacts、不进 Release）；「日常发布入口」改为 4 步并标注**本机全程不编译**；常见问题补充「发布后安装包在哪」与资源版本号自动注入的说明。
+
+### 清理本机打包相关残留
+- 删除 `tauri/run-build.ps1`（Windows 本机打包脚本：跑 `npm run tauri build -- --bundles nsis` 并把 `*-setup.exe` 复制到项目根）—— 全库无活引用，仅 CHANGELOG 历史条目提及；
+- 删除 `tauri/scripts/build-dist.sh` —— `build-dist.mjs` 的旧版 POSIX 前身（其自身注释已说明改用 Node 实现以摆脱 `sh` 依赖）；`tauri.conf.json` 的 `beforeBuildCommand` 只调 `.mjs`，全库无引用；
+- 删除 `tauri/WINDOWS_BUILD.md`（51 行 Windows 本机手动打包手册）—— 与「本机不打包」流程矛盾；
+- `tauri/README.md`：移除 `WINDOWS_BUILD.md` 指引（并将「本目录命令仅供本机自测/备选」改为「仅用于开发期 `tauri dev` 调试」）；「如何打包（macOS 本机）」一节改为「如何拿到安装包」（云端正式发布 / 云端预览包两条路径）；「注意事项」删除与新章节重复的一条；
+- `README.md` 目录树：去掉 `WINDOWS_BUILD.md` 条目；`scripts/build-dist.mjs` 的说明补上「按内容指纹自动注入资源版本号」；
+- `docs/go-live-blockers.md`（2026-09-05 审计快照）：「双平台打包」待办项原指向 macOS `npm run tauri build` / Windows `tauri/run-build.ps1`，改为云端构建路径并标注旧方式已弃用 —— 属修正死引用，不改动该文档的审查结论；
+- 复检：全库已无 `run-build` / `build-dist.sh` / `WINDOWS_BUILD` / 本机打包 的活引用（仅存 CHANGELOG 历史条目与本次说明）；`tauri/scripts/` 现只剩 `build-dist.mjs`；构建脚本冒烟通过且指纹与本次改造前后一致（`4c14fa08b33a`，可复现）。
+
+---
 
 ## 2026-09-10 — 常用功能设置优化（录凭证固定 + 默认顺序）
 

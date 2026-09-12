@@ -6,7 +6,7 @@ const $ = H.$ || function () { return null; };
 const S = H.S;
 const U = H.U;
 const money = H.money;
-import { bindSubjectCombo } from '../../components/SubjectCombo.js';
+import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 const showToast = H.showToast;
 const currentPeriod = H.currentPeriod;
 const syncAll = H.syncAll;
@@ -998,7 +998,7 @@ function selectSettleTemplate(id) {
 }
 
 // 特殊模板字段填充（期末调汇 / 结转销售成本）
-// 结账模板科目选择：统一用共享组件 SubjectCombo（输入框+联想）。
+// 结账模板科目选择：统一用唯一科目选择组件 bindSubjectPicker（输入框+联想）。
 // 此前是硬编码 8 个损益科目的下拉，科目表改了就不同步；现改为从 S.subjects() 取全部科目，
 // 并支持联想输入（对齐参考实现）。首次绑定一次（dataset 守卫），之后只回填 value。
 function fillCostSubjSelect(selId, selected) {
@@ -1006,7 +1006,8 @@ function fillCostSubjSelect(selId, selected) {
   if (!sel) return;
   if (!sel.dataset.comboBound) {
     sel.dataset.comboBound = '1';
-    bindSubjectCombo(sel);
+    // 统一到唯一科目选择组件 bindSubjectPicker；选中即写回输入框（与旧 SubjectCombo 行为一致）
+    bindSubjectPicker(sel, { onPick: function (code) { sel.value = code; } });
   }
   sel.value = selected || '';
 }

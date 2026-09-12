@@ -15,9 +15,8 @@ const syncAll = H.syncAll;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
 const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
+// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
-const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
 // 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。

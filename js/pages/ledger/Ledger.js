@@ -20,8 +20,9 @@ const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); retur
 const escHtml = H.esc;
 const escAttr = escHtml;
 
-import { bindSubjectRange, closeSubjectPop } from '../../components/SubjectRangePicker.js';
-import { createSubjectTree } from '../../components/SubjectTree.js?v=2026090803';
+import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
+import { createSubjectTree } from '../../components/SubjectTree.js?v=dev';
+import { updatePeriodRangeTrigger } from '../../components/PeriodRangePicker.js';
 
 /* ===================== 通用：安全填充（带守卫，避免查询时重置用户选择） ===================== */
 // 期间下拉守卫统一走桥接层 H.safeFillPeriod（app.js 内定义，含 bookKey 记忆）
@@ -42,7 +43,92 @@ function safeFillAuxItem(sel, typeKey) {
 // 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
+
+// 利润表金额跳转来的总账科目过滤（Set(code) | null）：仅显示对应编码，跳转目标强制显示
+var glFilterCodes = null;
+
+// 金额点击触发：按科目编码跳总账并定位
+// codes:  科目编码数组（多科目行全部带入）
+// month:  起始期间（利润表传单月）
+// toMonth: 结束期间，可选；不传则与 month 相同（利润表、首页「本期/上期」都是单月；
+//          首页「本年/去年」为区间，传该区间末月）
+globalThis.__glJumpTo = function (codes, month, toMonth) {
+  var gi = document.getElementById('glCode');
+  if (gi) gi.value = (codes || []).join(','); // 同步到筛选框，与手输筛选表现一致
+  var sInp = document.getElementById('glPeriodStart');
+  var eInp = document.getElementById('glPeriodEnd');
+  if (sInp && eInp && month) {
+    sInp.value = month;
+    eInp.value = toMonth || month;
+    updatePeriodRangeTrigger('glPeriodStart', 'glPeriodEnd');
+  }
+  if (globalThis.goPage) globalThis.goPage('general-ledger');
+  glFilterCodes = new Set((codes || []).map(String)); // 跳转来的编码始终有效，直接写入过滤集合
+  refreshGl();
+};
+
+// 跳转到总账后，表头展示“仅显示”提示与清除入口
+function updateGlFilterBanner() {
+  var el = document.getElementById('glFilterHint');
+  if (!el) return;
+  if (!glFilterCodes || glFilterCodes.size === 0) { el.hidden = true; el.innerHTML = ''; return; }
+  var subs = (S.subjects() || []).filter(function (s) { return glFilterCodes.has(String(s.code)); });
+  var names = subs.map(function (s) { return s.code + ' ' + s.name; });
+  glFilterCodes.forEach(function (c) {
+    if (!subs.some(function (s) { return String(s.code) === c; })) names.push(c);
+  });
+  el.hidden = false;
+  el.innerHTML = '当前仅显示：' + names.join('、') +
+    ' <a href="#" id="glFilterClear" class="gl-filter-clear">清除筛选</a>';
+}
+
+// 清除总账科目过滤
+if (!globalThis.__glFilterClearBound) {
+  globalThis.__glFilterClearBound = true;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('#glFilterClear');
+    if (!a) return;
+    e.preventDefault();
+    glFilterCodes = null;
+    var gi = document.getElementById('glCode');
+    if (gi) gi.value = '';
+    refreshGl();
+  });
+}
+
+// 总账「科目」筛选框：单框模式（bindSubjectPicker，与录凭证科目框同款）。
+// 点/聚焦即弹科目树，输入实时按编码/名称过滤，Enter 确认；选中科目及其下级组成过滤集合。
+// 与利润表跳转共用同一 glFilterCodes 过滤机制与横幅（跳转直接写 glFilterCodes，不走此框）。
+var glSubjPicker = null;
+function glSubjectPicker() {
+  if (!glSubjPicker) {
+    glSubjPicker = bindSubjectPicker(document.getElementById('glCode'), {
+      getSubjects: function () { return S.subjects(); },
+      btnId: 'glCodeBtn',
+      onPick: function (code) {
+        if (!code) return;
+        var gi = document.getElementById('glCode');
+        if (gi) gi.value = code; // 框内显示当前选中（重开弹层时与录凭证同款：先看到当前科目）
+        glFilterCodes = glCodesFor(code);
+        refreshGl();
+      }
+    });
+  }
+  return glSubjPicker;
+}
+// 选中科目及其下级（前缀匹配）组成过滤集合；无可匹配时回落为全部
+function glCodesFor(code) {
+  var c = String(code);
+  var set = new Set();
+  (S.subjects() || []).forEach(function (s) {
+    var sc = String(s.code);
+    if (sc === c || sc.indexOf(c) === 0) set.add(sc);
+  });
+  return set.size ? set : null;
+}
+
 function refreshGl() {
+  glSubjectPicker(); // 确保筛选框已绑定（页面 section 常驻 DOM）
   var month = periodRangeValue('glPeriod', currentPeriod());
   renderGl(month);
 }
@@ -54,10 +140,12 @@ function renderGl(month) {
   var hideZero = p.bookHideZero !== false;   // 默认 true：无期初+本期发生额的科目不显示（默认）
   var expandAll = p.bookExpandAll !== false; // 默认 true：展开所有级次；false 时只显示一级科目
   S.generalLedger(month).forEach(function (r) {
+    // 利润表跳转来的科目过滤：只显示对应编码（跳转目标强制显示，不受 hideZero 影响）
+    if (glFilterCodes && !glFilterCodes.has(r.code)) return;
     // 折叠：未展开全部级次时，只保留一级科目（编码长度 <=4，4-2-2 段式）
     if (!expandAll && r.code.length > 4) return;
-    // 隐藏零行：期初借贷与本期借贷贷方均为 0 时跳过（受 bookHideZero 控制）
-    if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
+    // 隐藏零行：期初借贷与本期借贷贷方均为 0 时跳过（受 bookHideZero 控制，但跳转目标强制显示）
+    if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
     var tr = document.createElement('tr');
     tr.className = 'gl-subject';
     tr.innerHTML = '<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) + '</td>' +
@@ -81,6 +169,7 @@ function renderGl(month) {
       '<td class="ta-r mono">' + money(r.ytdBalance && r.ytdDir === '借' ? r.ytdBalance : 0) + '</td><td class="ta-r mono">' + money(r.ytdBalance && r.ytdDir === '贷' ? r.ytdBalance : 0) + '</td>';
     tb.appendChild(tr3);
   });
+  updateGlFilterBanner();
 }
 
 /* ===================== 明细账 ===================== */
@@ -210,10 +299,11 @@ function renderDlSegment(tb, code, month, vmap) {
   var d = S.detailLedger(code, month);
   if (!d) return false;
   var s = d.subject;
-  var obD = s.normal === 'dr' ? d.obDr : 0, obC = s.normal === 'cr' ? d.obCr : 0;
-  var obBal = 0, obDir = '';
-  if (s.normal === 'dr') { obBal = d.obDr - d.obCr; obDir = obBal >= 0 ? '借' : '贷'; obBal = Math.abs(obBal); }
-  else { obBal = d.obCr - d.obDr; obDir = obBal >= 0 ? '贷' : '借'; obBal = Math.abs(obBal); }
+  // 期初余额行：借贷方列永远显示空（金蝶口径——期初是"状态"不是"本期发生额"），
+  // 余额列+方向列才显示净额。
+  var obNetDr = d.obDr - d.obCr;
+  var obBal = Math.abs(obNetDr);
+  var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
   // 科目分组行：单科目模式下一眼看不出在看哪个科目，"全部"模式下更是必需
   var th = document.createElement('tr');
   th.className = 'dl-subj-head';
@@ -221,7 +311,8 @@ function renderDlSegment(tb, code, month, vmap) {
   tb.appendChild(th);
   var tro = document.createElement('tr');
   tro.className = 'dl-seg';
-  tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono">' + money(obD) + '</td><td class="ta-r mono">' + money(obC) + '</td><td class="ta-r mono">' + money(obBal) + '</td><td>' + obDir + '</td>';
+  // 期初行：借贷方列强制空，只在余额列显示净额
+  tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td class="ta-r mono">' + money(obBal) + '</td><td>' + obDir + '</td>';
   tb.appendChild(tro);
   d.rows.forEach(function (r) {
     // 凭证字号可点 → 跳转到该凭证（可编辑，store 保证仅未结账期间可保存）
@@ -275,19 +366,22 @@ function renderDl(month) {
 // 所以不提供「全部」。但旧实现默认选中第一个科目，而第一个科目往往是叶子科目，
 // 一进页面就显示红色错误提示 —— 改为只列非明细科目供选择，没有则给出明确说明。
 var mlSubjPicker = null;
+var mlCurCode = null;
 function mlSubjectCode() {
   if (!mlSubjPicker) {
-    mlSubjPicker = bindSubjectRange({
-      inputId: 'mlCode', btnId: 'mlCodeBtn', onlyParent: true,
-      onChange: function () { refreshMl(); }
+    mlSubjPicker = bindSubjectPicker(document.getElementById('mlCode'), {
+      getSubjects: function () { return S.subjects(); },
+      onlyParent: true,
+      btnId: 'mlCodeBtn',
+      onPick: function (code) {
+        var gi = document.getElementById('mlCode');
+        if (gi) gi.value = code || '';
+        mlCurCode = code || null;
+        refreshMl();
+      }
     });
   }
-  if (!mlSubjPicker) return { code: '', err: '' };
-  var r = mlSubjPicker.resolve();
-  // 多栏账只接受单个父科目
-  var codes = r.ok && r.codes ? Array.from(r.codes) : [];
-  if (r.ok && codes.length > 1) return { code: '', err: '多栏账一次只能选择一个科目（当前命中 ' + codes.length + ' 个）' };
-  return { code: codes[0] || '', err: r.ok ? '' : r.msg };
+  return { code: mlCurCode || '', err: '' };
 }
 function refreshMl() {
   var month = periodRangeValue('mlPeriod', currentPeriod());
@@ -358,14 +452,15 @@ function renderMl(code, month, err) {
     return;
   }
   var subj = d.subject;
-  var obD = subj.normal === 'dr' ? d.obDr : 0, obC = subj.normal === 'cr' ? d.obCr : 0;
-  var obBal = 0, obDir = '';
-  if (subj.normal === 'dr') { obBal = d.obDr - d.obCr; obDir = obBal >= 0 ? '借' : '贷'; obBal = Math.abs(obBal); }
-  else { obBal = d.obCr - d.obDr; obDir = obBal >= 0 ? '贷' : '借'; obBal = Math.abs(obBal); }
+  // 期初余额行：借贷方列永远空（金蝶口径），方向+余额列显示净额
+  var obNetDr = d.obDr - d.obCr;
+  var obBal = Math.abs(obNetDr);
+  var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
   var tro = document.createElement('tr');
   tro.className = 'ml-seg';
+  // 期初行：借贷方列强制空，只在方向+余额列显示净额
   var initCells = '<td></td><td></td><td>期初余额</td>' +
-    '<td class="ta-r mono">' + money(obD) + '</td><td class="ta-r mono">' + money(obC) + '</td>' +
+    '<td class="ta-r mono"></td><td class="ta-r mono"></td>' +
     '<td class="ta-c">' + obDir + '</td><td class="ta-r mono">' + money(obBal) + '</td>';
   cols.forEach(function () { initCells += '<td class="ta-r mono"></td>'; });
   tro.innerHTML = initCells;
@@ -413,195 +508,10 @@ function renderMl(code, month, err) {
   tb.appendChild(try_);
 }
 
-/* ===================== 数量金额总账 / 数量金额明细账 ===================== */
-function qtySubjects() { return S.subjects().filter(function (s) { return s.qty; }); }
-function qtyCells(qty, amt) {
-  var price = num(qty) ? num(amt) / num(qty) : 0;
-  return '<td class="ta-r mono">' + (num(qty) ? num(qty) : '') + '</td>' +
-         '<td class="ta-r mono">' + (num(qty) ? money(price) : '') + '</td>' +
-         '<td class="ta-r mono">' + money(amt) + '</td>';
-}
 function emptyRow(tbody, colspan, text) {
   tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="empty-hint">' + text + '</td></tr>';
 }
-// 数量金额总账/明细账：只列数量核算科目（s.qty），与旧 safeFillQty 口径一致。
-// 两个页面各有自己的科目输入框（qgCode / qdCode），各自独立绑定一次，
-// 缓存用模块级变量（ESM 严格模式下 this 为 undefined，不能用 this 存缓存）。
-var qgSubjPicker = null;
-var qdSubjPicker = null;
-function qgSubjectPicker() {
-  if (!qgSubjPicker) {
-    qgSubjPicker = bindSubjectRange({
-      inputId: 'qgCode', btnId: 'qgCodeBtn', filter: function (s) { return s.qty; },
-      onChange: function () { refreshQg(); }
-    });
-  }
-  return qgSubjPicker;
-}
-function qgSubjectCode() {
-  var p = qgSubjectPicker();
-  if (!p) return { code: '', err: '' };
-  var r = p.resolve();
-  if (!r.ok) return { code: '', err: r.msg };
-  var codes = r.codes ? Array.from(r.codes) : [];
-  if (codes.length > 1) return { code: '', err: '一次只能选择一个数量核算科目（当前命中 ' + codes.length + ' 个）' };
-  return { code: codes[0] || '', err: '' };
-}
-function qdSubjectPicker() {
-  if (!qdSubjPicker) {
-    qdSubjPicker = bindSubjectRange({
-      inputId: 'qdCode', btnId: 'qdCodeBtn', filter: function (s) { return s.qty; },
-      onChange: function () { refreshQd(); }
-    });
-  }
-  return qdSubjPicker;
-}
-function qdSubjectCode() {
-  var p = qdSubjectPicker();
-  if (!p) return { code: '', err: '' };
-  var r = p.resolve();
-  if (!r.ok) return { code: '', err: r.msg };
-  var codes = r.codes ? Array.from(r.codes) : [];
-  if (codes.length > 1) return { code: '', err: '一次只能选择一个数量核算科目（当前命中 ' + codes.length + ' 个）' };
-  return { code: codes[0] || '', err: '' };
-}
-function refreshQg() {
-  var month = periodRangeValue('qgPeriod', currentPeriod());
-  var r = qgSubjectCode();
-  renderQg(r.code, month, r.err);
-}
-function renderQg(code, month, err) {
-  var tb = $('qgBody'); tb.innerHTML = '';
-  if (err) { emptyRow(tb, 12, err); return; }
-  if (!code || !month) { emptyRow(tb, 12, '请选择数量核算科目与期间'); return; }
-  var d = S.detailLedger(code, month);
-  if (!d || !d.rows.length) { emptyRow(tb, 12, '本期无发生额'); return; }
-  var dr = 0, cr = 0, qdr = 0, qcr = 0;
-  d.rows.forEach(function (r) { dr += num(r.dr); cr += num(r.cr); qdr += num(r.qtyDr); qcr += num(r.qtyCr); });
-  var last = d.rows[d.rows.length - 1];
-  var tr = document.createElement('tr');
-  tr.innerHTML = '<td>' + month + '</td><td>本期合计</td>' +
-    qtyCells(qdr, dr) + qtyCells(qcr, cr) +
-    '<td>' + last.dir + '</td>' + qtyCells(qdr - qcr, last.bal);
-  tb.appendChild(tr);
-}
-function refreshQd() {
-  var month = periodRangeValue('qdPeriod', currentPeriod());
-  var r = qdSubjectCode(); // 明细账页使用自己的科目选择器（qdCode）
-  renderQd(r.code, month, r.err);
-}
-function renderQd(code, month, err) {
-  var tb = $('qdBody'); tb.innerHTML = '';
-  if (err) { emptyRow(tb, 13, err); return; }
-  if (!code || !month) { emptyRow(tb, 13, '请选择数量核算科目与期间'); return; }
-  var d = S.detailLedger(code, month);
-  if (!d || !d.rows.length) { emptyRow(tb, 13, '本期无发生额'); return; }
-  var qbal = 0;
-  var vm = voucherVmap();
-  d.rows.forEach(function (r) {
-    qbal += num(r.qtyDr) - num(r.qtyCr);
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
-      qtyCells(r.qtyDr, r.dr) + qtyCells(r.qtyCr, r.cr) +
-      '<td>' + r.dir + '</td>' + qtyCells(qbal, r.bal);
-    tb.appendChild(tr);
-  });
-}
-
-/* ===================== 核算项目明细账 / 余额表 / 组合表 ===================== */
-function auxTypes() { return S.auxTypes ? S.auxTypes() : []; }
-function fillAuxTypeSelect(sel) {
-  sel.innerHTML = '';
-  var list = auxTypes();
-  if (!list.length) { sel.innerHTML = '<option value="">（未启用核算项目）</option>'; return; }
-  list.forEach(function (t) {
-    var o = document.createElement('option'); o.value = t.key; o.textContent = t.name;
-    sel.appendChild(o);
-  });
-}
-function fillAuxItemSelect(sel, typeKey) {
-  sel.innerHTML = '<option value="">全部</option>';
-  (S.auxItems ? S.auxItems(typeKey) : []).forEach(function (it) {
-    var o = document.createElement('option'); o.value = it.id; o.textContent = it.name;
-    sel.appendChild(o);
-  });
-}
-function refreshAx() {
-  periodRangeValue('axPeriod', currentPeriod());
-  safeFillAuxType($('axType'));
-  safeFillAuxItem($('axItem'), $('axType').value);
-  // 类别切换联动重填项目下拉（幂等绑定，避免重复监听）
-  var axTypeSel = $('axType');
-  if (axTypeSel && !axTypeSel.dataset.linked) {
-    axTypeSel.addEventListener('change', function () {
-      safeFillAuxItem($('axItem'), $('axType').value);
-      renderAx();
-    });
-    axTypeSel.dataset.linked = '1';
-  }
-  renderAx();
-}
-function renderAx() {
-  var tb = $('axBody'); tb.innerHTML = '';
-  var month = periodRangeValue('axPeriod', currentPeriod());
-  var rows = S.auxLedger ? S.auxLedger($('axType').value, $('axItem').value, month) : [];
-  if (!rows.length) { emptyRow(tb, 8, '当前账套未启用核算项目，或本期无相关发生额'); return; }
-  var vm = voucherVmap();
-  rows.forEach(function (r) {
-    var tr = document.createElement('tr');
-    var axSubj = r.code + ' ' + r.name;
-    var axSubjHtml = (r.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a> ' : '') + escHtml(r.name || '');
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(axSubj) + '">' + axSubjHtml + '</td>' +
-      '<td class="ta-r mono">' + money(r.dr) +
-      '</td><td class="ta-r mono">' + money(r.cr) + '</td><td>' + r.dir + '</td><td class="ta-r mono">' + money(r.bal) + '</td>';
-    tb.appendChild(tr);
-  });
-}
-function refreshAb() {
-  periodRangeValue('abPeriod', currentPeriod());
-  safeFillAuxType($('abType'));
-  renderAb();
-}
-function renderAb() {
-  var tb = $('abBody'); tb.innerHTML = '';
-  var month = periodRangeValue('abPeriod', currentPeriod());
-  var rows = S.auxBalance ? S.auxBalance($('abType').value, month) : [];
-  if (!rows.length) { emptyRow(tb, 8, '当前账套未启用核算项目，或本期无相关余额'); return; }
-  rows.forEach(function (r) {
-    var tr = document.createElement('tr');
-    var abSubj = r.code + ' ' + r.name;
-    var abSubjHtml = (r.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a> ' : '') + escHtml(r.name || '');
-    tr.innerHTML = '<td class="cell-ellipsis" title="' + escAttr(r.itemName) + '">' + escHtml(r.itemName) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(abSubj) + '">' + abSubjHtml + '</td>' +
-      '<td class="ta-r mono">' + money(r.obDr) + '</td><td class="ta-r mono">' + money(r.obCr) +
-      '</td><td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) +
-      '</td><td class="ta-r mono">' + money(r.endDr) + '</td><td class="ta-r mono">' + money(r.endCr) + '</td>';
-    tb.appendChild(tr);
-  });
-}
-function refreshAc() {
-  periodRangeValue('acPeriod', currentPeriod());
-  renderAc();
-}
-function renderAc() {
-  var tb = $('acBody'); tb.innerHTML = '';
-  var month = periodRangeValue('acPeriod', currentPeriod());
-  var rows = S.auxCombine ? S.auxCombine($('acMode').value, month) : [];
-  if (!rows.length) { emptyRow(tb, 7, '当前账套未启用核算项目，无组合数据'); return; }
-  rows.forEach(function (r) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="cell-ellipsis" title="' + escAttr(r.label) + '">' + escHtml(r.label) + '</td>' +
-      '<td class="ta-r mono">' + money(r.obDr) +
-      '</td><td class="ta-r mono">' + money(r.obCr) + '</td><td class="ta-r mono">' + money(r.dr) +
-      '</td><td class="ta-r mono">' + money(r.cr) + '</td><td class="ta-r mono">' + money(r.endDr) +
-      '</td><td class="ta-r mono">' + money(r.endCr) + '</td>';
-    tb.appendChild(tr);
-  });
-}
 
 export {
-  refreshGl, refreshDl, refreshMl, refreshQg, refreshQd, refreshAx, refreshAb, refreshAc
+  refreshGl, refreshDl, refreshMl
 };

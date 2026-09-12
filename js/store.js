@@ -59,14 +59,19 @@
   // 兼容两种 period： 标准 1~12；6 位期间号 YYYYMM（如 202201 -> '2022-01'）。
   // 归期不再强依赖 date，无 date 的账套也能正确按月归集。
   function voucherMonth(v) {
+    // 回退到原始逻辑：优先用 FDate（凭证日期）算期间。
+    // 金蝶 KIS 标准版绝大多数凭证 FDate=FPeriod（不跨期），此口径正确。
+    // 跨期凭证（FDate 月份 ≠ FPeriod）暂由用户通过重新导入+GLSetup 正确识别启用期来避免。
     if (v.date) return monthOf(v.date);
+    // 无 FDate 时，用 FPeriod 回退（新导入老数据可能没有 date）
     var p = parseInt(v.period, 10);
     if (!p) return '';
     if (p > 999) {
       var ym = String(p);
       return ym.slice(0, 4) + '-' + ym.slice(4, 6);
     }
-    var sm = (self.state.company && self.state.company.startMonth) || '2026-01';
+    var gS = globalThis.S;
+    var sm = (gS && gS.state && gS.state.company && gS.state.company.startMonth) || '2026-01';
     var sp = sm.split('-'); var sy = +sp[0] || 2026, smm = +sp[1] || 1;
     var total = (sy * 12 + (smm - 1)) + (p - 1);
     var y = Math.floor(total / 12), m = (total % 12) + 1;
@@ -124,14 +129,6 @@
     return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  /* ---------- 核算项目类别（标准辅助核算） ---------- */
-  var AUX_TYPES = [
-    { key: 'customer', name: '客户' },
-    { key: 'supplier', name: '供应商' },
-    { key: 'dept',     name: '部门' },
-    { key: 'employee', name: '职员' },
-    { key: 'project',  name: '项目' }
-  ];
 
   /* ---------- 现金流量主表项目（对照：标准现金流量表 36 行：经营1-10/投资11-22/筹资23-32/汇率33/净增加34/期初35/期末36） ---------- */
   // rowNum 为明细项目行次（小计/净额/净增加/期初/期末为计算行，不在此列）；分类标题行 rowNum 为空。
@@ -198,7 +195,6 @@
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
       operationLogs: [],      // 操作日志 [{ time, user, action, detail }]
-      auxItems: {},          // 核算项目：{ customer:[{id,name}], supplier:[], dept:[], employee:[], project:[] }
       originals: [],         // 原始凭证（电子档案/附件管理），字段对照：
                                // {id,name,remark,smallType,amount,voucherTpl,group,isInvoice,uploadTime,uploader,fileSize,checkStatus,auditTime,voucherNo,period,vouchered,audited,voucherId}
                                // 数据来自用户导入/拍照，新账套为空表（不预置假数据）
@@ -267,6 +263,46 @@
     if (has601) return 'small2013';
     if (has501) return 'old';
     return null;
+  }
+
+  /* ---------- 利润表规则行 id 回填（老账套迁移，幂等） ----------
+   * 背景：state.reportRules 是准则模板的【深拷贝快照】，模板后续新增的字段不会自动进入老账套。
+   * 而语义 id 是「首页与利润表同源取数」的枢纽（首页按 id 从利润表行取值，见 S.plSummary），
+   * 老账套缺 id 会导致首页对应指标取不到数（显示 0），故按【codes 签名】从模板回填。
+   *
+   * 设计要点：
+   *   ① 签名 = codes 排序后 join(',') —— 对用户调整科目顺序免疫；
+   *   ② codes 为空的行不参与 —— 模板内多行空 codes 同签名，无法唯一匹配（其 id 仅作占位）；
+   *   ③ 汇总【所有】准则模板建索引，而不只是本账套 standard —— 账套准则可能被
+   *      detectStandardBySubjects 重判定，而两套模板签名互斥（5xxx / 6xxx），合并索引无冲突；
+   *   ④ 已有 id 的行一律不动（幂等，绝不覆盖历史值）；
+   *   ⑤ 只改内存，随下一次正常写盘落库（与 normalizeState 的只读语义一致）。
+   * 返回值：本次回填的行数（供自检/回归脚本用）。
+   */
+  function rowSigOfCodes(codes) {
+    return (codes || []).map(String).slice().sort().join(',');
+  }
+  function backfillIncomeRowIds(rules) {
+    if (!rules || !Array.isArray(rules.incomeStatement)) return 0;
+    var stds = (global.STANDARDS || {});
+    var bySig = {};
+    Object.keys(stds).forEach(function (k) {
+      var tpl = stds[k] && stds[k].reportRules && stds[k].reportRules.incomeStatement;
+      if (!Array.isArray(tpl)) return;
+      tpl.forEach(function (r) {
+        if (!r || r.type === 'subtotal' || !r.id) return;
+        var sig = rowSigOfCodes(r.codes);
+        if (!sig || bySig[sig]) return;
+        bySig[sig] = r.id;
+      });
+    });
+    var n = 0;
+    rules.incomeStatement.forEach(function (r) {
+      if (!r || r.type === 'subtotal' || r.id) return;
+      var id = bySig[rowSigOfCodes(r.codes)];
+      if (id) { r.id = id; n++; }
+    });
+    return n;
   }
 
   /* ---------- Store 单例 ---------- */
@@ -1053,13 +1089,10 @@
       var s = {
         code: code, name: name.trim(), cls: cls2, normal: ACCOUNT_CLASSES[cls2].normal,
         level: level, parent: parent ? parent.code : '',
-        aux: [], qty: false, unit: '',
+        qty: false, unit: '',
         enabled: true // 历史字段：科目「停用」功能已下线，此字段仅为旧账套数据兼容保留，不再参与任何判断
       };
       if (extra) {
-        if (Array.isArray(extra.aux)) s.aux = extra.aux.filter(function (k) {
-          return AUX_TYPES.some(function (t) { return t.key === k; });
-        });
         if (extra.qty) { s.qty = true; s.unit = String(extra.unit || '').trim(); }
       }
       this.state.subjects.push(s);
@@ -1094,9 +1127,6 @@
       }
       s.name = name.trim();
       if (extra) {
-        if (Array.isArray(extra.aux)) s.aux = extra.aux.filter(function (k) {
-          return AUX_TYPES.some(function (t) { return t.key === k; });
-        });
         s.qty = !!extra.qty;
         if (extra.unit !== undefined) s.unit = String(extra.unit || '').trim();
       }
@@ -1759,6 +1789,10 @@
     hasCarryForward: function (month) {
       return this.carryForwardState(month).done;
     },
+    // 【冻结】结转损益：行为已由自动化守护锁定 —— 幂等见 tools/verify_invariants.js I6，
+    // 口径见 tools/audit_books.js「结转损益口径 = 利润表口径（逐期）」。
+    // 纯可读性改动（花括号/缩进/拆辅助函数）不改业务口径，风险 > 收益，默认不动；
+    // 确需重构时：单独开一轮，改完立即跑上述两脚本，全绿才算完成（决策记录见 CHANGELOG 2026-09-12）。
     carryForwardProfit: function (month) {
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       // 幂等（财务规范：一个期间只能结转一次损益）：按 v.kind 定位结转凭证，
@@ -2388,6 +2422,9 @@
             if (codes.indexOf(e.code) >= 0) { ytdDr += num(e.dr); ytdCr += num(e.cr); }
           });
         });
+        // 损益类（收入/费用）期初余额恒为 0：按年结转清零，与金蝶科目余额表口径一致；
+        // 否则往月损益发生额会被累加进期初，导致「期初/期末」两列与金蝶对不上（本期/累计不受影响）。
+        if (s.cls === 'revenue' || s.cls === 'expense') op = { dr: 0, cr: 0 };
         // 期末余额（按正常方向）
         var endDr = op.dr + periodDr, endCr = op.cr + periodCr;
         var balance = 0, dir = '';
@@ -2458,6 +2495,33 @@
       var sum = 0;
       ['1001', '1002', '1012'].forEach(function (c) { sum += self.subjectEndBalance(c, month); });
       return round2(sum);
+    },
+
+    // 科目本期发生额 {dr, cr}——与 subjectEndBalance 完全同一取数契约：
+    // ① 科目表存在该科目 → 直接取这一行（父行已上卷全部下级，禁止再加子行）；
+    // ② 无该科目行（如只建了 100201）→ 回退为其下属末级行相加。
+    // 用途：首页「资金净收入」= 资金类科目本期借方(流入) − 本期贷方(流出)（金蝶口径）。
+    subjectPeriodAmount: function (code, month) {
+      var self = this;
+      var rows = this.generalLedger(month) || [];
+      function rowOf(c) {
+        for (var i = 0; i < rows.length; i++) if (rows[i].code === c) return rows[i];
+        return null;
+      }
+      function acc(r, out) {
+        if (!r) return;
+        out.dr += Number(r.periodDr) || 0;
+        out.cr += Number(r.periodCr) || 0;
+      }
+      var out = { dr: 0, cr: 0 };
+      var c = String(code);
+      var direct = rowOf(c);
+      if (direct) { acc(direct, out); return { dr: round2(out.dr), cr: round2(out.cr) }; }
+      var kids = this.childCodesOf(c) || [];
+      [c].concat(kids).forEach(function (k) {
+        if (!(self.childCodesOf(k) || []).length) acc(rowOf(k), out);   // 末级：无下级
+      });
+      return { dr: round2(out.dr), cr: round2(out.cr) };
     },
     // 明细账：逐笔 + 每行余额 + 期初/本期合计/本年累计
     detailLedger: function (code, month) {
@@ -2538,287 +2602,6 @@
     // 科目余额表（至某月末）
     trialBalance: function (month) {
       return this.generalLedger(month);
-    },
-
-    /* ===================== 核算项目（辅助核算） =====================
-     * 科目可挂核算项目（客户/供应商/部门/职员/项目）。
-     * 分录上以 e.aux = { type:'customer', id:'xxx' } 记录。
-     * ============================================================== */
-    auxTypes: function () { return AUX_TYPES.slice(); },
-    auxTypeName: function (key) {
-      var t = AUX_TYPES.filter(function (x) { return x.key === key; })[0];
-      return t ? t.name : key;
-    },
-    auxItems: function (typeKey) {
-      if (!typeKey) return [];
-      return ((this.state.auxItems || {})[typeKey] || []).slice();
-    },
-    auxItemName: function (typeKey, id) {
-      var it = this.auxItems(typeKey).filter(function (x) { return x.id === id; })[0];
-      return it ? it.name : '';
-    },
-    addAuxItem: function (typeKey, name, memo) {
-      if (!AUX_TYPES.some(function (t) { return t.key === typeKey; }))
-        return { ok: false, msg: '核算项目类别无效' };
-      name = String(name || '').trim();
-      if (!name) return { ok: false, msg: '名称不能为空' };
-      if (!this.state.auxItems) this.state.auxItems = {};
-      if (!this.state.auxItems[typeKey]) this.state.auxItems[typeKey] = [];
-      if (this.state.auxItems[typeKey].some(function (x) { return x.name === name; }))
-        return { ok: false, msg: '该核算项目已存在' };
-      this.state.auxItems[typeKey].push({ id: 'ax' + Date.now().toString(36), name: name, memo: memo || '', enabled: true });
-      this.persist();
-      return { ok: true };
-    },
-    updateAuxItem: function (typeKey, id, patch) {
-      var list = (this.state.auxItems || {})[typeKey] || [];
-      var it = list.filter(function (x) { return x.id === id; })[0];
-      if (!it) return { ok: false, msg: '核算项目不存在' };
-      if (patch.name !== undefined) {
-        var nm = String(patch.name || '').trim();
-        if (!nm) return { ok: false, msg: '名称不能为空' };
-        if (list.some(function (x) { return x.id !== id && x.name === nm; }))
-          return { ok: false, msg: '该核算项目已存在' };
-        it.name = nm;
-      }
-      if (patch.memo !== undefined) it.memo = patch.memo;
-      if (patch.enabled !== undefined) it.enabled = !!patch.enabled;
-      this.persist();
-      return { ok: true };
-    },
-    removeAuxItem: function (typeKey, id) {
-      var used = this.state.vouchers.some(function (v) {
-        return (v.entries || []).some(function (e) {
-          return e.aux && e.aux.type === typeKey && e.aux.id === id;
-        });
-      });
-      if (used) return { ok: false, msg: '该核算项目已被凭证引用，无法删除' };
-      var list = (this.state.auxItems || {})[typeKey] || [];
-      this.state.auxItems[typeKey] = list.filter(function (x) { return x.id !== id; });
-      this.persist();
-      return { ok: true };
-    },
-    // 批量导入核算项目（「导入」）：items=[{name,memo}]；跳过空名与重复名
-    importAuxItems: function (typeKey, items) {
-      if (!AUX_TYPES.some(function (t) { return t.key === typeKey; }))
-        return { ok: false, msg: '核算项目类别无效', count: 0 };
-      if (!this.state.auxItems) this.state.auxItems = {};
-      if (!this.state.auxItems[typeKey]) this.state.auxItems[typeKey] = [];
-      var list = this.state.auxItems[typeKey], added = 0;
-      (items || []).forEach(function (it) {
-        var nm = String((it.name || '')).trim();
-        if (!nm || list.some(function (x) { return x.name === nm; })) return;
-        list.push({ id: 'ax' + Date.now().toString(36) + added, name: nm, memo: it.memo || '', enabled: true });
-        added++;
-      });
-      if (added) this.persist();
-      return { ok: true, count: added };
-    },
-    // 恢复默认核算项目（「恢复默认」）：清空当前类别全部档案
-    resetAuxItems: function (typeKey) {
-      if (!AUX_TYPES.some(function (t) { return t.key === typeKey; }))
-        return { ok: false, msg: '核算项目类别无效' };
-      // 财务严谨：清空辅助档案前校验凭证引用，避免凭证辅助核算悬空（与 removeAuxItem 一致）
-      var used = this.state.vouchers.some(function (v) {
-        return (v.entries || []).some(function (e) { return e.aux && e.aux.type === typeKey; });
-      });
-      if (used) return { ok: false, msg: '该核算项目已被凭证引用，无法清空；请先调整凭证' };
-      this.state.auxItems[typeKey] = [];
-      this.persist();
-      return { ok: true };
-    },
-
-    /* ===================== 原始凭证（电子档案 / 发票单据） =====================
-     * 「原始凭证」：管理发票/单据影像，可生成凭证。
-     * ============================================================== */
-    originals: function () { return (this.state.originals || []).slice(); },
-    addOriginal: function (rec) {
-      rec = rec || {};
-      if (!rec.name)
-        return { ok: false, msg: '请填写附件名称' };
-      if (!this.state.originals) this.state.originals = [];
-      this.state.originals.unshift({
-        id: 'og' + Date.now().toString(36),
-        name: rec.name || '',
-        remark: rec.remark || '',
-        smallType: rec.smallType || '差旅发票',
-        amount: num(rec.amount),
-        voucherTpl: rec.voucherTpl || '—',
-        group: rec.group || '默认组',
-        isInvoice: rec.isInvoice === undefined ? '1' : (rec.isInvoice ? '1' : '0'),
-        uploadTime: rec.uploadTime || nowTimeStr(),
-        uploader: rec.uploader || (this.state.currentUser || 'admin'),
-        fileSize: rec.fileSize || '0K',
-        checkStatus: rec.checkStatus || '未查验',
-        auditTime: rec.auditTime || '',
-        voucherNo: rec.voucherNo || '',
-        period: rec.period || currentPeriod(),
-        vouchered: rec.vouchered || '0',
-        audited: rec.audited || '未审核',
-        voucherId: rec.voucherId || '',
-        path: rec.path || ''
-      });
-      this.persist();
-      return { ok: true };
-    },
-    // 录凭证上传的附件 → 同步进原始凭证库（凭证附件台账）。按 path 去重，避免编辑凭证重复保存时重复添加。
-    addOriginalFromAttachment: function (file, voucher) {
-      var list = this.state.originals || [];
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].path && file.path && list[i].path === file.path) return { ok: true, duplicated: true };
-      }
-      var vno = (voucher && (voucher.word || '记') + '-' + (voucher.no != null ? voucher.no : '')) || '';
-      return this.addOriginal({
-        name: file.name || '附件',
-        remark: '',
-        smallType: '其他',
-        amount: 0,
-        voucherTpl: '—',
-        group: '默认组',
-        isInvoice: false,
-        fileSize: (file.size ? Math.round(file.size / 1024) + 'K' : '0K'),
-        path: file.path || '',
-        voucherNo: vno,
-        period: voucher ? (voucher.period || '') : '',
-        vouchered: vno ? '1' : '0',
-        voucherId: voucher ? (voucher.id || '') : ''
-      });
-    },
-    // 删除原始凭证（电子档案）。财务严谨：已关联/已生成凭证的原始凭证禁删，避免凭证附件台账悬空。
-    removeOriginal: function (id) {
-      var list = this.state.originals || [];
-      var o = list.filter(function (x) { return x.id === id; })[0];
-      if (!o) return { ok: false, msg: '原始凭证不存在' };
-      var linked = o.vouchered === '1' || o.voucherId || o.voucherNo;
-      if (linked) return { ok: false, msg: '该原始凭证已关联凭证（' + (o.voucherNo || o.voucherId || '') + '），请先解除关联后再删除' };
-      this.state.originals = list.filter(function (x) { return x.id !== id; });
-      this.persist();
-      this.addLog('删除原始凭证', o.name || '', '原始凭证');
-      return { ok: true };
-    },
-    // 遍历命中指定核算项目的分录
-    _eachAuxEntry: function (typeKey, itemId, vouchers, fn) {
-      vouchers.forEach(function (v) {
-        (v.entries || []).forEach(function (e) {
-          if (!e.aux || e.aux.type !== typeKey) return;
-          if (itemId && e.aux.id !== itemId) return;
-          fn(v, e);
-        });
-      });
-    },
-
-    // 核算项目明细账
-    auxLedger: function (typeKey, itemId, month) {
-      if (!typeKey || !month) return [];
-      var self = this;
-      var rows = [];
-      // 期初（该核算项目累计至本月前）
-      var opMap = {};
-      this._eachAuxEntry(typeKey, itemId, this.vouchersBefore(month), function (v, e) {
-        var k = e.code + '|' + e.aux.id;
-        if (!opMap[k]) opMap[k] = { dr: 0, cr: 0 };
-        opMap[k].dr += num(e.dr); opMap[k].cr += num(e.cr);
-      });
-      var run = {};
-      this._eachAuxEntry(typeKey, itemId, this.periodVouchers(month), function (v, e) {
-        var s = self.subject(e.code);
-        if (!s) return;
-        var k = e.code + '|' + e.aux.id;
-        if (!run[k]) run[k] = { dr: (opMap[k] || {}).dr || 0, cr: (opMap[k] || {}).cr || 0 };
-        run[k].dr += num(e.dr); run[k].cr += num(e.cr);
-        var bal, dir;
-        if (s.normal === 'dr') { bal = run[k].dr - run[k].cr; dir = bal >= 0 ? '借' : '贷'; }
-        else { bal = run[k].cr - run[k].dr; dir = bal >= 0 ? '贷' : '借'; }
-        rows.push({
-          date: v.date || voucherMonth(v), word: v.word, no: v.no,
-          summary: e.summary || v.summary,
-          code: e.code, name: s.name,
-          itemName: self.auxItemName(typeKey, e.aux.id),
-          dr: num(e.dr), cr: num(e.cr), bal: Math.abs(bal), dir: dir
-        });
-      });
-      return rows;
-    },
-
-    // 核算项目余额表
-    auxBalance: function (typeKey, month) {
-      if (!typeKey || !month) return [];
-      var self = this;
-      var map = {};
-      function slot(code, id) {
-        var k = code + '|' + id;
-        if (!map[k]) map[k] = { code: code, id: id, obDr: 0, obCr: 0, dr: 0, cr: 0 };
-        return map[k];
-      }
-      this._eachAuxEntry(typeKey, null, this.vouchersBefore(month), function (v, e) {
-        var m = slot(e.code, e.aux.id);
-        m.obDr += num(e.dr); m.obCr += num(e.cr);
-      });
-      this._eachAuxEntry(typeKey, null, this.periodVouchers(month), function (v, e) {
-        var m = slot(e.code, e.aux.id);
-        m.dr += num(e.dr); m.cr += num(e.cr);
-      });
-      return Object.keys(map).sort().map(function (k) {
-        var m = map[k];
-        var s = self.subject(m.code) || { name: '', normal: 'dr' };
-        var endDrRaw = m.obDr + m.dr, endCrRaw = m.obCr + m.cr;
-        var ob = m.obDr - m.obCr, end = endDrRaw - endCrRaw;
-        var isDr = s.normal === 'dr';
-        return {
-          code: m.code, name: s.name,
-          itemName: self.auxItemName(typeKey, m.id),
-          obDr: isDr ? Math.max(ob, 0) : (ob > 0 ? ob : 0),
-          obCr: isDr ? (ob < 0 ? -ob : 0) : Math.max(-ob, 0),
-          dr: m.dr, cr: m.cr,
-          endDr: isDr ? Math.max(end, 0) : (end > 0 ? end : 0),
-          endCr: isDr ? (end < 0 ? -end : 0) : Math.max(-end, 0)
-        };
-      });
-    },
-
-    // 核算项目组合表：科目-辅助核算组合 / 双辅助核算组合
-    auxCombine: function (mode, month) {
-      if (!month) return [];
-      var self = this;
-      var map = {};
-      function slot(label) {
-        if (!map[label]) map[label] = { label: label, obDr: 0, obCr: 0, dr: 0, cr: 0 };
-        return map[label];
-      }
-      function labelOf(e) {
-        if (!e.aux) return null;
-        var s = self.subject(e.code);
-        var itemName = self.auxItemName(e.aux.type, e.aux.id);
-        if (mode === 'aux-aux') {
-          if (!e.aux2) return null;
-          return self.auxTypeName(e.aux.type) + '：' + itemName + ' / ' +
-                 self.auxTypeName(e.aux2.type) + '：' + self.auxItemName(e.aux2.type, e.aux2.id);
-        }
-        return (e.code + ' ' + (s ? s.name : '')) + ' / ' + self.auxTypeName(e.aux.type) + '：' + itemName;
-      }
-      function walk(vouchers, isPeriod) {
-        vouchers.forEach(function (v) {
-          (v.entries || []).forEach(function (e) {
-            var label = labelOf(e);
-            if (!label) return;
-            var m = slot(label);
-            if (isPeriod) { m.dr += num(e.dr); m.cr += num(e.cr); }
-            else { m.obDr += num(e.dr); m.obCr += num(e.cr); }
-          });
-        });
-      }
-      walk(this.vouchersBefore(month), false);
-      walk(this.periodVouchers(month), true);
-      return Object.keys(map).sort().map(function (k) {
-        var m = map[k];
-        var ob = m.obDr - m.obCr, end = (m.obDr + m.dr) - (m.obCr + m.cr);
-        return {
-          label: m.label,
-          obDr: ob > 0 ? ob : 0, obCr: ob < 0 ? -ob : 0,
-          dr: m.dr, cr: m.cr,
-          endDr: end > 0 ? end : 0, endCr: end < 0 ? -end : 0
-        };
-      });
     },
 
     /* ===================== 报表 ===================== */
@@ -2918,6 +2701,125 @@
         totalExpense: totalExpense,
         netProfit: netProfit,
         month: month
+      };
+    },
+    // 利润表（配置化行计算）：读 state.reportRules.incomeStatement 规则按行求值。
+    // 返回 [{ id, label, codes, cur, ytd, isGrp }]：
+    //   cur = 本月金额，ytd = 本年累计（年初至该月），对应金蝶 currentBalance / cumulativeBalance。
+    // 本方法是利润表的【唯一行计算实现】，「报表 → 利润表」渲染/导出与首页财务指标
+    // （见 plSummary）共用，从根上杜绝「首页一套口径、利润表另一套」的漂移。
+    // 缺规则时回退 STANDARDS.old（兼容异常账套）。规则结构与语义 id 见 js/standards.js。
+    incomeStatement: function (month) {
+      var self = this;
+      var pl = this.profitStatement(month);
+      var byCode = {};
+      pl.items.forEach(function (it) { byCode[it.code] = it; });
+      function amt(code) { var it = byCode[code]; return it ? { cur: it.cur, ytd: it.ytd } : { cur: 0, ytd: 0 }; }
+      function sum(codes) {
+        return (codes || []).reduce(function (a, c) { var x = amt(c); return { cur: a.cur + x.cur, ytd: a.ytd + x.ytd }; },
+                                    { cur: 0, ytd: 0 });
+      }
+      var fallback = (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.reportRules.incomeStatement) || [];
+      var rules = (self.state.reportRules && self.state.reportRules.incomeStatement) || fallback;
+      var subtotals = {}; // id -> {cur, ytd}，供后续 subtotal 引用 ref
+      var out = [];
+      rules.forEach(function (r) {
+        if (r.type === 'subtotal') {
+          var cur = 0, ytd = 0;
+          (r.formula || []).forEach(function (f) {
+            var v = f.ref ? (subtotals[f.ref] || { cur: 0, ytd: 0 }) : sum(f.codes || []);
+            var sign = f.sign === '-' ? -1 : 1;
+            cur += sign * v.cur; ytd += sign * v.ytd;
+          });
+          if (r.id) subtotals[r.id] = { cur: cur, ytd: ytd };
+          out.push({ id: r.id || '', label: r.label, cur: cur, ytd: ytd, isGrp: true, codes: [] });
+        } else {
+          var s = sum(r.codes || []);
+          out.push({ id: r.id || '', label: r.label, cur: s.cur, ytd: s.ytd, isGrp: false, codes: r.codes || [] });
+        }
+      });
+      return out;
+    },
+    // 首页财务指标取数：按【语义行 id】从利润表行取值，与「报表 → 利润表」共用同一份行计算。
+    // 对应金蝶/jinbooks：首页调利润表服务生成报表 → 按 itemCode 取该行 currentBalance。
+    // 期间语义（与金蝶 periodType 等价，故无需给报表引擎新增 periodType）：
+    //   单月（本期 / 上期）→ 取 cur，即本月金额（金蝶 periodType=MONTH 的 currentBalance）
+    //   整段（本年 / 去年）→ 取 ytd，即年初至该月累计（金蝶 periodType=YEAR 的口径）
+    // 返回各项含 ids / codes：
+    //   ids  → 实际命中的利润表行 id（供首页点金额跳利润表时高亮；「费用」命中三行，故为列表）
+    //   codes → 各行取数科目的并集（供需要跳总账明细的场合）
+    // 「卡片显示的数字」「跳过去的报表行」「跳过去的科目」三者同源，不会出现对不上的情况。
+    // 行缺失（用户自定义改过规则）时该项计 0 并列入 missing，由页面显式提示，不静默给错数。
+    plSummary: function (month) {
+      var self = this;
+      var rows = this.incomeStatement(month);
+      var byId = {};
+      rows.forEach(function (r) { if (r.id) byId[r.id] = r; });
+      function pick(ids) {
+        var cur = 0, ytd = 0, codes = [], matched = [], missing = [];
+        ids.forEach(function (id) {
+          var r = byId[id];
+          if (!r) { missing.push(id); return; }
+          matched.push(id);
+          cur += num(r.cur); ytd += num(r.ytd);
+          (r.codes || []).forEach(function (c) { if (codes.indexOf(c) < 0) codes.push(c); });
+        });
+        // ids = 实际命中的行 id（供首页跳利润表时高亮；「费用」卡命中三行，
+        //       故这里返回列表而非单值）。codes 同理是各行取数科目的并集。
+        return { cur: cur, ytd: ytd, codes: codes, ids: matched, missing: missing };
+      }
+      return {
+        month: month,
+        revenue: pick(['revenue']),
+        cost: pick(['cost']),
+        // 期间费用合计：优先取利润表规则里的 periodExpenseTotal subtotal 行
+        // （公式 = 销售费用 + 管理费用 + 财务费用 + 可选研发费用，由用户自定义规则控制），
+        // 老账套（reportRules 是旧模板，没有 periodExpenseTotal）回退到三行硬编码相加。
+        // 这样用户改利润表规则（如给 rdExp 填 codes、或调整费用口径）时，费用卡自动跟随。
+        // 额外带 formula 明细：每项 {label, cur, ytd, ids}，供首页费用卡渲染
+        // "销售费用 12万 + 管理费用 8万 + 财务费用 2万" 公式行。
+        expense: (function () {
+          var rules = (self.state.reportRules && self.state.reportRules.incomeStatement) || [];
+          var periodRule = null;
+          for (var k = 0; k < rules.length; k++) {
+            if (rules[k].id === 'periodExpenseTotal') { periodRule = rules[k]; break; }
+          }
+          var e, formulaItems = [];
+          if (periodRule) {
+            // 新账套：用 periodExpenseTotal 的 formula 取数 + 构造明细
+            e = pick(['periodExpenseTotal']);
+            (periodRule.formula || []).forEach(function (f) {
+              // f 可能是 ref（引用另一个 subtotal 行）或 codes（直接引用科目）
+              // 我们优先查 byId 里已有的行（普通行 id 如 sellExp 在 byId 里）
+              var refId = f.ref || null;
+              // codes 模式：尝试按 codes 匹配到 byId 里的普通行（如 codes=['5601'] → sellExp 行）
+              if (!refId && f.codes && f.codes.length) {
+                for (var idKey in byId) {
+                  var rCodes = byId[idKey].codes || [];
+                  if (rCodes.length === f.codes.length && rCodes.every(function (c, i) { return c === f.codes[i]; })) {
+                    refId = idKey; break;
+                  }
+                }
+              }
+              if (refId && byId[refId]) {
+                var row = byId[refId];
+                formulaItems.push({ label: row.label, cur: row.cur, ytd: row.ytd, ids: [refId], sign: f.sign === '-' ? -1 : 1 });
+              }
+            });
+          } else {
+            // 老账套：回退三行硬编码 + 从 byId 拿明细
+            e = pick(['sellExp', 'adminExp', 'finExp']);
+            ['sellExp', 'adminExp', 'finExp'].forEach(function (id) {
+              if (byId[id]) {
+                var r = byId[id];
+                formulaItems.push({ label: r.label, cur: r.cur, ytd: r.ytd, ids: [id], sign: 1 });
+              }
+            });
+          }
+          e.formula = formulaItems;
+          return e;
+        })(),
+        netProfit: pick(['netProfit'])
       };
     },
     // 未结转损益净额（截至 month 月末，含当月）：收入净额 − 费用净额。
@@ -3318,7 +3220,8 @@
       fa.entryPeriod = fa.entryPeriod || '';          // 录入期间
       fa.original = num(fa.original);                 // 原值
       fa.accumDeprBegin = num(fa.accumDeprBegin);     // 期初累计折旧
-      fa.accumDepr = num(fa.accumDepr) || 0;         // 期末累计折旧
+      fa.accumDepr = num(fa.accumDepr);               // 期末累计折旧
+      if (!fa.accumDepr && fa.accumDeprBegin) fa.accumDepr = fa.accumDeprBegin; // 卡片新增只给期初时，期末以期初为起点
       fa.life = num(fa.life);                         // 预计使用期限（年）
       fa.salvage = num(fa.salvage);                  // 残值
       fa.salvageRate = fa.salvageRate !== undefined && fa.salvageRate !== '' ? num(fa.salvageRate)
@@ -3363,9 +3266,10 @@
     },
     removeFixedAsset: function (id) {
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-      // 财务严谨：已计提折旧或已生成清理凭证的资产卡片禁止删除（避免账实不符），只能「清理」
-      if (fa && (num(fa.accumDepr) > 0 || fa.deprMonth || fa.cleanVoucher)) {
-        return { ok: false, msg: '该资产已计提折旧' + (fa.cleanVoucher ? '/已清理' : '') + '，不可删除；请使用「清理」处理' };
+      // 财务严谨：本系统已为该卡片生成过凭证（新增/折旧/清理）的，禁止删除（避免账实不符），只能「清理」。
+      // 仅外部导入、尚未在本系统生成任何凭证的卡片（累计折旧只是导入数值、无实际过账）允许删除。
+      if (fa && (fa.deprMonth || fa.addVoucher || fa.cleanVoucher)) {
+        return { ok: false, msg: '该资产已在本系统生成凭证' + (fa.cleanVoucher ? '（含清理凭证）' : '') + '，不可删除；请使用「清理」处理' };
       }
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
       this.persist();
@@ -3441,11 +3345,23 @@
       this.persist();
       return { ok: true, voucher: saved, total: total, count: done.length };
     },
-    // 月折旧额（直线法）
+    // 月折旧额（直线法，按月均摊剩余净值）
+    // 关键：以「已折旧期间」为计数器，按 剩余净值 / 剩余寿命 计算，
+    // 这样导入/带历史卡片（金蝶折旧率可能不同）也能精确摊到（原值-残值），不会重提或超提。
     assetMonthlyDepr: function (fa) {
       if (!fa.life || fa.life <= 0) return 0;
-      return (num(fa.original) - num(fa.salvage)) / (fa.life * 12);
+      var base = num(fa.original) - num(fa.salvage);
+      var totalMonths = fa.life * 12;
+      var monthsPosted = num(fa.periodUsed || 0);
+      var remainingMonths = totalMonths - monthsPosted;
+      if (remainingMonths <= 0) return 0;
+      var accumulated = num(fa.accumDepr);
+      var remainingBase = Math.max(0, base - accumulated);
+      return remainingBase / remainingMonths;
     },
+    // 【冻结】计提折旧：幂等（重复计提不产生额外凭证）由 tools/verify_e2e_snapshot.js ② 守护，
+    // 凭证借贷平衡由不变量 I1 兜底。纯可读性改动不改业务口径，风险 > 收益，默认不动；
+    // 确需重构时：单独开一轮，改完立即跑 verify_e2e_snapshot.js 与 verify_invariants.js，全绿才算完成。
     // 计提某月折旧 -> 生成凭证（借 5602 管理费用-折旧费 / 贷 1602 累计折旧）
     depreciateMonth: function (month) {
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
@@ -3469,16 +3385,19 @@
         // 次月起提
         if (fa.acqDate >= lastDay(month)) return; // 购置晚于本月，不提
         var acqMonth = fa.acqDate.slice(0, 7);
-        var doneMonths = fa.deprMonth ? monthsBetween(acqMonth, fa.deprMonth) : 0;
-        // 本月应计提前提：已计提月份 < 应提总月，且本月 >= 次月
-        var totalMonths = Math.ceil((num(fa.original) - num(fa.salvage)) / (self.assetMonthlyDepr(fa) || 1)) || (fa.life * 12);
-        if (doneMonths >= totalMonths) return; // 已提满
-        if (monthsBetween(acqMonth, month) < 1) return; // 次月起
-        var md = self.assetMonthlyDepr(fa);
+        // 已提期间数=卡片「已折旧期间」计数器（导入/卡片新增填写，逐月递增）；不再用 deprMonth 反推，
+        // 否则历史卡会被当成全新资产从购置月起重提整段寿命而超提。
+        var totalMonths = fa.life * 12;
+        var monthsPosted = num(fa.periodUsed || 0);
+        if (monthsPosted >= totalMonths) return; // 已提满
+        if (monthsBetween(acqMonth, month) < 1) return; // 次月起提
+        var md = self.assetMonthlyDepr(fa); // 统一口径：剩余净值 / 剩余寿命（历史卡按月均摊剩余）
         if (md <= 0) return;
-        // 末月补足残值差额
-        var remaining = (num(fa.original) - num(fa.salvage)) - (doneMonths * md);
-        var amt = Math.min(md, remaining);
+        // 末月按剩余净值精确补足，保证累计折旧恰好落到（原值-残值）
+        var accumulated = num(fa.accumDepr);
+        var remainingBase = Math.max(0, (num(fa.original) - num(fa.salvage)) - accumulated);
+        var lastMonth = (monthsPosted + 1 >= totalMonths);
+        var amt = lastMonth ? remainingBase : md;
         if (amt <= 0) return;
         var fee = fa.deprFeeAcct ? self.subjectRole('DEPR_FEE', fa.deprFeeAcct) : feeSubj;
         var dep = fa.accDeprAcct ? self.subjectRole('ACC_DEPR', fa.accDeprAcct) : depSubj;
@@ -3504,7 +3423,7 @@
       var dvno = (saved.word || '转') + '-' + (saved.no != null ? saved.no : '');
       assetLines.forEach(function (al) {
         self.state.fixedAssets.forEach(function (fa) {
-          if (fa.id === al.id) { fa.deprMonth = month; fa.accumDepr = num(fa.accumDepr) + al.amt; fa.deprVoucher = dvno; }
+          if (fa.id === al.id) { fa.deprMonth = month; fa.accumDepr = num(fa.accumDepr) + al.amt; fa.periodUsed = num(fa.periodUsed || 0) + 1; fa.deprVoucher = dvno; }
         });
       });
       this.persist();
@@ -3512,6 +3431,35 @@
       return { ok: true, voucher: saved, total: total };
     },
     // 折旧汇总表
+    // 原始凭证（电子档案/附件管理）
+    originals: function () { return this.state.originals || []; },
+    addOriginalFromAttachment: function (file, ctx) {
+      ctx = ctx || {};
+      var path = file.path || file.name || '';
+      // 按 path 去重：同一路径已存在则跳过，编辑凭证重存不会重复添加
+      if (this.state.originals.some(function (o) { return (o._path || '') === path; })) return null;
+      var o = {
+        id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+        name: file.name || path.split(/[\\/]/).pop() || '未命名附件',
+        remark: '', smallType: '', amount: 0, group: '', isInvoice: false,
+        uploadTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        fileSize: file.size || 0, checkStatus: '', auditTime: '',
+        voucherNo: (ctx.word || '') + (ctx.no != null ? ('-' + ctx.no) : ''),
+        period: ctx.period || '', vouchered: ctx.voucherNo ? '1' : '',
+        audited: false, voucherId: ctx.id || '', _path: path
+      };
+      this.state.originals.push(o);
+      return o;
+    },
+    removeOriginal: function (id) {
+      var self = this;
+      var idx = this.state.originals.findIndex(function (o) { return o.id === id; });
+      if (idx < 0) return { ok: false, msg: '未找到该原始凭证' };
+      var o = this.state.originals[idx];
+      if (o.vouchered || o.voucherId || o.voucherNo) return { ok: false, msg: '已关联凭证的原始凭证不可删除，请先解除关联' };
+      this.state.originals.splice(idx, 1);
+      return { ok: true };
+    },
 
     /* ===================== 备份与恢复 ===================== */
     restoreFromData: function (data) {
@@ -3828,6 +3776,9 @@
       if (!this.state.reportRules || typeof this.state.reportRules !== 'object') {
         this.state.reportRules = (global.cloneStandard ? global.cloneStandard(this.state.standard).reportRules : def.reportRules);
       }
+      // 利润表规则行 id 回填（老账套迁移，幂等）：快照不会自动获得模板新增的语义 id，
+      // 缺失会让首页「收入/成本/费用/净利润」取不到数。此处只改内存，随下次写盘落库。
+      backfillIncomeRowIds(this.state.reportRules);
       // 同步 param.standard 显示名与机器键一致（标签随准则，避免「小企业」标签配旧准则编码的误导）
       if (global.STANDARDS && global.STANDARDS[this.state.standard]) {
         this.state.param.standard = global.STANDARDS[this.state.standard].label;
@@ -3961,7 +3912,6 @@
   // 暴露（兼容旧全局脚本：app.js 等仍依赖 global.S）
   global.S = S;
   global.ACCOUNT_CLASSES = ACCOUNT_CLASSES;
-  global.AUX_TYPES = AUX_TYPES;
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, num: num, money: money
@@ -3971,7 +3921,6 @@
   const exported = {
     store: S,
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
-    AUX_TYPES: AUX_TYPES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, num: num, money: money

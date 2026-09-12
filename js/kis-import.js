@@ -220,44 +220,101 @@
         cr: Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100
       });
     });
-    // 按日期为主排序（YYYY-MM-DD 字典序=时间序，跨年账套也正确），同日期按期间号/凭证号
+    // 排序口径与金蝶界面显示一致：先按【期间年月】分组（date 的 YYYY-MM），
+    // 同期间内按 FDate（凭证日期）升序、同日期按原始 FNum 升序。
+    // 重排原因：金蝶 KIS 修改/加录凭证后会重写 FNum 但界面显示用"期内位置序号"，
+    // 直接读 FNum 会导致修改过的凭证号错位（如金蝶显示记-2，FNum 却变成了 37）。
+    // 解决：排序后按期内从 1 重新编号，与金蝶界面显示完全一致。
     vchOrder.sort(function (a, b) {
-      var c = a.date < b.date ? -1 : (a.date > b.date ? 1 : 0);
-      return c || (a.period - b.period) || (a.no - b.no);
+      var aYm = (a.date || '').slice(0, 7);
+      var bYm = (b.date || '').slice(0, 7);
+      if (aYm !== bYm) return aYm < bYm ? -1 : 1;
+      var dc = (a.date || '').localeCompare(b.date || '');
+      if (dc !== 0) return dc;
+      return (+a.no || 0) - (+b.no || 0);
+    });
+    // 按期内重新编号：word+期间 分组，每组从 1 开始递增
+    var noCounters = {};
+    vchOrder.forEach(function (v) {
+      var ym = (v.date || '').slice(0, 7);
+      var key = (v.word || '记') + '|' + ym;
+      noCounters[key] = (noCounters[key] || 0) + 1;
+      v.no = noCounters[key];
     });
     var vouchers = vchOrder;
 
-    // 3. 期初余额：见下方（需先由凭证推导出起始年份，跨年账套才能正确取最早期间）
+    // 3. 期初余额：见下方（需先确定账套真实启用期，跨年账套才能正确取"开业期初"行）
 
     var base = (fileName || '账套').replace(/\.[^.]+$/, '');
     var startYear = new Date().getFullYear();
-    if (vouchers.length) {
-      // 按日期排序后第一条即为最早凭证；跳过空日期脏数据，取第一条有效日期年份
-      for (var i = 0; i < vouchers.length; i++) {
-        var y = parseInt((vouchers[i].date || '').slice(0, 4), 10);
-        if (y && y >= 1900 && y <= 2200) { startYear = y; break; }
+    var startPeriod = 0;
+
+    // ① 优先：读金蝶 GLSetup 表拿 FStartYear + FStartPeriod — 账套真实启用期的唯一权威来源
+    // 历史 bug：未读 GLSetup，靠凭证最早日期猜 startYear，跨年账套的 GLBal 里会混入上年结转空壳行，
+    // minPeriodKey 被抢成上年1月，openingBalances 误取上年结转余额当"开业期初"，
+    // 导致 store 的 openingOf(code, 当期) = 开业期初 + 之前凭证累计 → 多算了一整年
+    try {
+      var setupRows = getRows(reader, 'GLSetup');
+      if (setupRows && setupRows.length) {
+        var s = setupRows[0];  // GLSetup 通常只有一行
+        var sy = parseInt(s.FStartYear || s.FYear || s.FStartYear ? s.FStartYear : 0, 10) || 0;
+        var sp = parseInt(s.FStartPeriod || s.FPeriod || s.FStartMonth || 0, 10) || 0;
+        if (!sy) {
+          // 回退：GLSetup 里可能用 FStartDate 存启用日期（YYYY-MM-DD 或 Date 对象）
+          var sd = s.FStartDate || s.FBeginDate || s.FBeginBalDate;
+          if (sd) {
+            if (sd instanceof Date) { sy = sd.getUTCFullYear(); sp = sd.getUTCMonth() + 1; }
+            else {
+              var sm = String(sd).match(/(\d{4})[-/年](\d{1,2})/);
+              if (sm) { sy = parseInt(sm[1],10); sp = parseInt(sm[2],10); }
+            }
+          }
+        }
+        if (sy >= 1900 && sy <= 2200 && (sp >= 1 && sp <= 12)) {
+          startYear = sy;
+          startPeriod = sp;
+        }
       }
-    } else {
-      var m = base.match(/(\d{4})\s*年/);
-      if (m) startYear = parseInt(m[1], 10);
+    } catch (e) { /* 老账套可能没 GLSetup 表，忽略 */ }
+
+    // ② 回退：从凭证最早日期推 startYear（仅当 GLSetup 无效时）
+    if (!startPeriod) {
+      if (vouchers.length) {
+        for (var i = 0; i < vouchers.length; i++) {
+          var y = parseInt((vouchers[i].date || '').slice(0, 4), 10);
+          if (y && y >= 1900 && y <= 2200) { startYear = y; break; }
+        }
+      } else {
+        var m = base.match(/(\d{4})\s*年/);
+        if (m) startYear = parseInt(m[1], 10);
+      }
     }
     var pad = function(n){ return (n<10?'0':'')+n; };
 
-    // 3. 期初余额：取最早期间、最外层汇总行(*/*)，仅抽末级 code（排除父级避免上卷翻倍）。
-    // 关键：跨年账套中 FPeriod 若为标准版 1~12，必须先用 startYear 补全年份再比较，
-    // 否则不同年份的同月行会互相覆盖，期初余额会取成「最后一个年份的 1 月」而非最早年份。
+    // ③ 从 GLBal 取真实的 minPeriodKey：
+    //   - 如果 startPeriod 已确定（来自 GLSetup），直接算 key，只匹配这个精确期间的行
+    //   - 如果 GLSetup 无效，回退遍历取最小 FPeriod（兼容极端老账套）
     var balRows = getRows(reader, 'GLBal');
     function periodOf(r) { var p = parseInt(r.FPeriod || 0, 10) || 0; return p > 999 ? p % 100 : p; }
-    // 完整期间号：6 位期间号（YYYYMM）直接返回；标准版 1~12 用 startYear 补全年份
     function periodKeyOf(r) {
       var p = parseInt(r.FPeriod || 0, 10) || 0;
       return p > 999 ? p : startYear * 100 + p;
     }
     var minPeriodKey = 0;
-    balRows.forEach(function (r) {
-      var k = periodKeyOf(r);
-      if (k && (!minPeriodKey || k < minPeriodKey)) minPeriodKey = k;
-    });
+    if (startPeriod) {
+      // 精确模式：只取启用期 FPeriod 行的 FBal 作为开业期初
+      minPeriodKey = startYear * 100 + startPeriod;
+      // 但必须确认 GLBal 里真的有这个期间的行，否则还是遍历取最小
+      var hasThisPeriod = balRows.some(function (r) { return periodKeyOf(r) === minPeriodKey; });
+      if (!hasThisPeriod) minPeriodKey = 0;
+    }
+    if (!minPeriodKey) {
+      // 回退：遍历 GLBal 取最小期间
+      balRows.forEach(function (r) {
+        var k = periodKeyOf(r);
+        if (k && (!minPeriodKey || k < minPeriodKey)) minPeriodKey = k;
+      });
+    }
     var minPeriod = minPeriodKey ? minPeriodKey % 100 : 0;
     // 币种回退：优先综合币 '*' 行（标准版 GLBal 汇总行 FCyID='*'）；
     // 若账套完全没有综合币行（外币/多币种账套），回退到出现次数最多的币种行，
@@ -309,7 +366,9 @@
       };
     });
     if (!minPeriod) minPeriod = 1;
-    var startMonth = startYear + '-' + pad(minPeriod);
+    // startMonth：优先用 GLSetup 的真实启用期；回退到 minPeriod（遍历 GLBal 取最小）
+    var effectiveStartPeriod = startPeriod || minPeriod;
+    var startMonth = startYear + '-' + pad(effectiveStartPeriod);
 
     // 推导结账进度（closedPeriods）：标准规范下，凭证最大期间之前的各月均已结账，
     // 当前期间 = 最后凭证年份的最大期间（"当期未结账期"）。

@@ -1,67 +1,15 @@
-// 科目范围选择器（对齐参考产品·云会计的科目筛选交互）
+// 统一科目选择组件（全站唯一的「选科目」弹层实现）
 //
-// 为什么不用下拉：下拉天然必须有一个选中项，于是"默认选第一个科目"就成了默认值，
-// 而财务打开查凭证/明细账想看的其实是全部科目。的做法是「输入框 + 科目树按钮」，
-// 输入框为空即代表全部，同时支持编码范围语法，比下拉表达力更强：
-// 1001            单个科目
-// 1001,1009       多个科目（逗号分隔）
-// 2121-2131       科目范围（含两端及其所有下级科目）
-// 见 源码/jdy_pages_distilled/format/凭证_查凭证.html:2063
+// 交互：输入框为空 = 全部科目；点/聚焦输入框即弹出科目列表，输入编码或名称即时联想，点选/回车写回。
+// 空输入不默认选中任何科目（避免原生下拉「默认选第一个科目」的问题），更贴合财务「想看全部」的习惯。
+// 全站统一复用 bindSubjectPicker：录凭证、总账、多栏账、数量账、查凭证、结账模板、固定资产、新增科目编码。
 //
-// 依赖：全局 $、S（Store 单例）、__TY_HELPERS__
+// 依赖：全局 S（Store 单例）、__TY_HELPERS__
 
 import { subjectFullName } from '../common/subject-name.js';
 
-const $ = globalThis.$ || function (id) { return document.getElementById(id); };
 const H = globalThis.__TY_HELPERS__ || {};
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
-
-// 中文逗号/顿号/空格都当作分隔符：财务手工输入时不会去切输入法
-const SEP_RE = /[,，、\s]+/;
-
-/**
- * 解析科目范围表达式。
- * @returns {{ok:boolean, codes:Set<string>|null, msg:string}}
- *   codes 为 null 表示「全部科目」（表达式为空）；ok=false 时 msg 为错误原因。
- */
-function parseSubjectRange(expr, allSubjects) {
-  const raw = String(expr == null ? '' : expr).trim();
-  if (!raw) return { ok: true, codes: null, msg: '' };
-
-  const all = allSubjects || [];
-  // 按编码升序，范围匹配依赖顺序
-  const codes = all.map(s => String(s.code)).sort();
-  const hits = new Set();
-
-  for (const token of raw.split(SEP_RE)) {
-    if (!token) continue;
-
-    // 范围：2121-2131（同时容忍中文破折号、全角连字符）
-    const dash = token.match(/^(.+?)[-－—~～](.+)$/);
-    if (dash) {
-      const lo = dash[1].trim(), hi = dash[2].trim();
-      if (!lo || !hi) return { ok: false, codes: null, msg: '范围写法不完整："' + token + '"' };
-      if (lo > hi) return { ok: false, codes: null, msg: '范围起始不能大于结束："' + token + '"' };
-      let n = 0;
-      for (const c of codes) {
-        // 字符串比较即可覆盖下级科目：'2121.01' 以 '2121' 开头，必然落在 ['2121','2131'] 内
-        if (c >= lo && c <= hi) { hits.add(c); n++; }
-      }
-      if (!n) return { ok: false, codes: null, msg: '范围内没有科目："' + token + '"' };
-      continue;
-    }
-
-    // 单码：允许只输入前缀（如 '1122' 命中 '1122' 及 '1122.01'）
-    let n = 0;
-    for (const c of codes) {
-      if (c === token || c.indexOf(token) === 0) { hits.add(c); n++; }
-    }
-    if (!n) return { ok: false, codes: null, msg: '科目编码不存在："' + token + '"' };
-  }
-
-  if (!hits.size) return { ok: true, codes: null, msg: '' };
-  return { ok: true, codes: hits, msg: '' };
-}
 
 /** 判断科目编码是否命中（codes 为 null 即全部命中） */
 function matchSubjectCode(codes, code) {
@@ -70,7 +18,7 @@ function matchSubjectCode(codes, code) {
 }
 
 // ---------------------------------------------------------------
-// 科目树弹层
+// 科目选择弹层
 // ---------------------------------------------------------------
 let openPop = null;
 
@@ -91,11 +39,13 @@ document.addEventListener('mousedown', function (e) {
 function buildSubjectPop(anchor, subs, onPick, opts) {
   opts = opts || {};
   const onlyParent = !!opts.onlyParent;
+  const limit = opts.limit | 0;         // >0 时最多渲染这么多行（长列表收敛，避免一屏几百项）
   const bareInput = !!opts.bareInput;   // 无内置搜索框，搜索由外部输入框驱动
   const filterInput = opts.filterInput || null; // 外部输入框（bareInput=true 时用）
   closeSubjectPop();
   const pop = document.createElement('div');
   pop.className = 'subj-range-pop';
+  pop._anchor = anchor; // 记录触发元素：bindSubjectPicker 以此判断「本输入框的弹层是否正开着」
   Object.assign(pop.style, {
     position: 'fixed', zIndex: '9999', background: '#fff',
     border: '1px solid var(--ty-border)', borderRadius: '4px',
@@ -146,6 +96,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
         || String(s.name).toLowerCase().indexOf(k) >= 0
         || String(subjectFullName(s.code, s.name)).toLowerCase().indexOf(k) >= 0;
     });
+    if (limit > 0) rows = rows.slice(0, limit);
     if (!rows.length) {
       list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--ty-text-3)">'
         + (onlyParent ? '暂无非明细科目（需先维护下级科目）' : '无匹配科目') + '</div>';
@@ -215,105 +166,75 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
  */
 export function bindSubjectPicker(input, opts) {
   if (!input) return;
-  const getSubjects = opts.getSubjects || (() => []);
+  opts = opts || {};
+  const getSubjects = opts.getSubjects || function () {
+    return (typeof S !== 'undefined' && S.subjects) ? S.subjects() : [];
+  };
   const onPick = opts.onPick || function () {};
-  let isOpen = false;
+  const onlyParent = !!opts.onlyParent;
+  const limit = opts.limit | 0;
+  const filterFn = (typeof opts.filter === 'function') ? opts.filter : null;
+  const btn = opts.btnId ? document.getElementById(opts.btnId) : null;
+  // 输入框与触发按钮都算「触发器」：外部点击判定遇到它们不关闭弹层。
+  // 关键修复——此前只有 btn 加了该类，录凭证的科目输入框没加，导致「点一下输入框本身」
+  // 就被全局 mousedown 判为「点到外面」而关闭弹层，随后被 isOpen 逻辑挡住再也打不开。
+  input.classList.add('subj-range-btn');
+  if (btn) btn.classList.add('subj-range-btn');
 
-  function open() {
-    if (isOpen) return;
-    isOpen = true;
-    buildSubjectPop(input, getSubjects(), function (code) {
-      isOpen = false;
-      onPick(code);
-      setTimeout(function () { input.focus(); }, 0);
-    }, { bareInput: true, filterInput: input });
+  // 科目预处理：自定义过滤 + 仅非明细科目（多栏账需要父科目分栏）
+  function pickSubjects() {
+    let all = getSubjects();
+    if (filterFn) all = all.filter(filterFn);
+    if (onlyParent) {
+      all = all.filter(function (s) {
+        return all.some(function (c) {
+          return c.code !== s.code && String(c.code).indexOf(String(s.code)) === 0
+            && String(c.code).length > String(s.code).length;
+        });
+      });
+    }
+    return all;
   }
 
-  input.addEventListener('focus', open);
-  input.addEventListener('click', open);
+  // 本输入框对应的弹层当前是否正开着：以弹层自身记录的 anchor 为准，不用布尔 flag。
+  // 外部点击 / 切到别的输入框只要关掉了弹层（openPop 被清或换人），这里立刻视为已关闭，
+  // 于是下一次点击/输入必然能重新打开——从根本上消除「点了没反应」的状态卡死。
+  function isMine() { return !!openPop && openPop._anchor === input; }
+
+  function doOpen() {
+    if (isMine()) return; // 已经是本输入框的弹层，无需重建（避免重复建浮层）
+    buildSubjectPop(input, pickSubjects(), function (code) {
+      // 回传科目对象（供「新增科目编码」等仅提示场景展示父科目）；是否写回 input 由调用方的 onPick 决定
+      var s = null, all = getSubjects() || [];
+      for (var i = 0; i < all.length; i++) { if (String(all[i].code) === String(code)) { s = all[i]; break; } }
+      onPick(code, s);
+    }, { bareInput: true, filterInput: input, onlyParent: onlyParent, limit: limit });
+  }
+  function doClose() { closeSubjectPop(); }
+
+  input.addEventListener('focus', doOpen);
+  input.addEventListener('click', doOpen);
+  // 触发按钮：再次点击切换关闭（输入框点击/聚焦只打开，不关闭，便于继续输入）
+  if (btn) btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (isMine()) doClose(); else doOpen();
+  });
   input.addEventListener('input', function () {
-    if (input._subjPopRender) input._subjPopRender(input.value);
+    // 已打开 → 仅按当前内容过滤；已关闭（例如刚点过外部）→ 重新打开并过滤。
+    // 修复「输入科目编码不显示科目」：此前只渲染已存在弹层，弹层被关后就写进了脱离 DOM 的列表。
+    if (isMine() && input._subjPopRender) input._subjPopRender(input.value);
+    else doOpen();
   });
   input.addEventListener('blur', function () {
     // 延迟关闭：点选行时 mousedown 已 preventDefault 保焦点，不会触发 blur；
-    // 真正离开（Tab/点外部）再关，避免选完残留弹层。
-    setTimeout(function () { isOpen = false; closeSubjectPop(); }, 150);
+    // 真正离开（Tab/点外部）再关。只关「本输入框的」弹层，避免误关刚为别的框打开的弹层。
+    setTimeout(function () {
+      if (openPop && openPop._anchor === input && document.activeElement !== input) closeSubjectPop();
+    }, 150);
   });
   input.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeSubjectPop(); isOpen = false; }
+    if (e.key === 'Escape') { closeSubjectPop(); }
   });
 }
 
-/**
- * 把「科目」下拉改造为「输入框 + 科目树按钮」。
- * @param {object} o
- *   inputId       输入框 id
- *   btnId         科目树按钮 id（可选，缺省则自动在输入框后插入）
- *   onlyParent    只列非明细科目（有下级科目的），多栏账用
- *   onChange      选中/输入变化回调
- * @returns {{value:()=>string, set:(v:string)=>void, resolve:()=>{ok,codes,msg}, error:()=>string}}
- */
-export function bindSubjectRange(o) {
-  const inp = $(o.inputId);
-  if (!inp) return null;
-
-  // 输入框保留用户写的表达式本身（行为），查询时再解析成科目集合
-  let lastErr = '';
-
-  function subjects() {
-    let all = (typeof S !== 'undefined' && S.subjects) ? S.subjects() : [];
-    // 调用方自定义过滤（如数量账只列数量核算科目）
-    if (typeof o.filter === 'function') all = all.filter(o.filter);
-    if (!o.onlyParent) return all;
-    // 只留「有下级科目」的项：多栏账必须按下级科目分栏
-    return all.filter(function (s) {
-      return all.some(function (c) {
-        return c.code !== s.code && String(c.code).indexOf(String(s.code)) === 0
-          && String(c.code).length > String(s.code).length;
-      });
-    });
-  }
-
-  const btn = o.btnId ? $(o.btnId) : null;
-  const trigger = btn || inp;
-  trigger.classList.add('subj-range-btn');
-  if (btn) {
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (openPop) { closeSubjectPop(); return; }
-      const subs = subjects();
-      if (!subs.length) {
-        lastErr = o.onlyParent
-          ? '当前科目表没有非明细科目（多栏账需要有下级科目的科目）'
-          : '科目表为空';
-        if (typeof o.onChange === 'function') o.onChange(inp.value, lastErr);
-        return;
-      }
-      buildSubjectPop(btn, subs, function (code) {
-        inp.value = code;
-        lastErr = '';
-        if (typeof o.onChange === 'function') o.onChange(inp.value, '');
-      }, { onlyParent: o.onlyParent });
-    });
-  }
-
-  inp.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && typeof o.onChange === 'function') o.onChange(inp.value, '');
-  });
-  inp.addEventListener('change', function () {
-    if (typeof o.onChange === 'function') o.onChange(inp.value, '');
-  });
-
-  return {
-    value: function () { return inp.value; },
-    set: function (v) { inp.value = v || ''; lastErr = ''; },
-    resolve: function () {
-      const r = parseSubjectRange(inp.value, subjects());
-      lastErr = r.ok ? '' : r.msg;
-      return r;
-    },
-    error: function () { return lastErr; }
-  };
-}
-
-export { parseSubjectRange, matchSubjectCode, closeSubjectPop };
+export { matchSubjectCode };

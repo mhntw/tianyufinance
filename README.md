@@ -45,32 +45,33 @@ git tag v1.0.1 && git push origin v1.0.1
 
 Windows 与 macOS 并行构建，约 10~30 分钟；完成后仓库 **Releases** 页可见 `v1.0.1`，从 Assets 下载对应平台安装包即可分发。
 
-> macOS 提示：安装包未做 Apple 签名，系统若拦截，右键点击安装包 →「打开」即可（与本机打包行为一致）。
+> macOS 提示：安装包未做 Apple 签名，系统若拦截，右键点击安装包 →「打开」即可。
 
-### 本机手动打包（备选）
+### 想先拿个测试包（不用本机编译）
 
-日常不需要，仅本地自测时使用：
+在 GitHub 仓库 → **Actions** → **构建预览包（手动）** → **Run workflow**：
+Windows / macOS 双平台同时构建，产物在该次运行的 **Artifacts** 里，**不创建 Release**，不影响正式版本。
 
-```bash
-cd tauri
-npm install           # 首次
-npm run tauri build   # 产物在 src-tauri/target/release/bundle/dmg 与 .../macos
-```
+> 本机不需要装 Rust / Xcode，也不占本机编译时间。正式发布仍走上面的 tag 方式。
 
 ### 日常发布入口（推荐）
 
-双击根目录「发布新版.command」（仅本机本地脚本，未入库）：
+双击根目录「发布新版.command」（本机脚本，未入库）。共 4 步，**本机全程不编译**：
 
-- **日常存档**：第 3 步直接回车
-- **发布新版本（Windows + macOS 一次全出）**：第 3 步输 `y` → 自动 bump 版本号 + 打 tag → GitHub 自动构建并发布正式 Release
-- 第 4 步「本机打 mac 包」仅用于**立即试装**（CI 已自动出，可跳过）
+1. 账套数据对账（不通过则中止发布，防口径 bug 随版本流出）
+2. 提交本地改动（回车用默认说明）
+3. 推送到 GitHub
+4. 可选发布：输 `y` → 自动 bump 版本号 + 打 tag → GitHub 云端构建 Windows / macOS 双平台安装包并**直接发布 Release**
+
+- **只存档不发布**：第 4 步直接回车即可（前三步照常完成）。
 
 ### 常见问题
 
 - **手动 Run 之后找不到安装包？** 手动 Run 的产物只在运行记录底部 **Artifacts**，不会进 Release；想进 Release 用上面的 tag 方式。
 - **macOS 包打不开？** 未签名包首次打开请右键 →「打开」。
-- **版本号怎么定？** 打 tag 前先确认 `tauri.conf.json` 的 `version` 与 tag 一致（如 tag `v1.0.1` ↔ version `1.0.1`）。
-- **前端改了没生效？** `tauri build` 前会由 `scripts/build-dist.mjs` 自动同步前端到打包源，无需手动维护。
+- **应用版本号怎么定？** 打 tag 前先确认 `tauri.conf.json` 的 `version` 与 tag 一致（如 tag `v1.0.1` ↔ version `1.0.1`）。发布脚本会自动改这个字段，一般无需手改。
+- **前端改了没生效？** `tauri build` 前由 `scripts/build-dist.mjs` 自动同步前端到打包源，并**按内容指纹自动注入资源版本号**（源文件里的 `?v=dev` 只是占位符，不需要也不应手工 bump）。注意这与上面的「应用版本号」是两回事。
+- **发布后安装包在哪？** 构建完即自动发布在仓库 **Releases** 页（`releaseDraft: false`，无需手动 Publish）。
 
 ## 数据存储位置（重要）
 
@@ -107,8 +108,7 @@ npm run tauri dev  # 打开桌面调试窗口，前端热改即时生效
 │   └── pages/                # 凭证 / 科目 / 账薄 / 报表 / 资产 / 工资 / 期末 / 设置
 ├── tauri/                    # Tauri 2 桌面壳
 │   ├── src-tauri/            # Rust：文件读写 / 备份 / 附件 / 数据目录
-│   ├── scripts/build-dist.mjs# 打包前把最新前端同步到 dist/（跨平台 Node 脚本）
-│   └── WINDOWS_BUILD.md      # Windows 本地打包手册（可选，已由 CI 取代日常使用）
+│   └── scripts/build-dist.mjs# 打包前同步前端到 dist/，并按内容指纹自动注入资源版本号
 ├── tools/                    # 验证与诊断脚本（审计 / 不变量 / 兼容性自检）
 ├── .github/workflows/        # GitHub Actions：Windows/macOS 自动打包发布
 ├── CHANGELOG.md              # 变更记录（功能演进与缺陷修复历史）

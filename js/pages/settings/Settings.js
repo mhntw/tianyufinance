@@ -4,7 +4,7 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
-  ACCOUNT_CLASSES, AUX_TYPES, exportTable } from './_shared.js';
+  ACCOUNT_CLASSES, exportTable } from './_shared.js';
 const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
@@ -12,7 +12,7 @@ const H = globalThis.__TY_HELPERS__ || {};
 const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
 
   /* ============================================================
-   * 设置：凭证字 / 辅助核算 / 现金流量科目
+   * 设置：凭证字 / 现金流量科目
    * ============================================================ */
   function refreshVoucherWord() {
     var tb = $('vwBody'); tb.innerHTML = '';
@@ -51,99 +51,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
   });
 
   // 注：原币别管理（refreshCurrency/addCurrency）已随外币核算功能整体下线
-
-  var auxCurrent = 'customer';
-  function refreshAuxSetting() {
-    var types = $('auxTypes'); types.innerHTML = '';
-    S.auxTypes().forEach(function (t) {
-      var d = document.createElement('div');
-      d.className = 'aux-type-item' + (t.key === auxCurrent ? ' active' : '');
-      d.textContent = t.name;
-      d.setAttribute('data-key', t.key);
-      d.addEventListener('click', function () { auxCurrent = t.key; refreshAuxSetting(); });
-      types.appendChild(d);
-    });
-    renderAuxBody();
-  }
-  function renderAuxBody() {
-    var tb = $('auxBody'); tb.innerHTML = '';
-    var items = S.auxItems(auxCurrent);
-    // 默认隐藏停用档案；勾选「显示停用档案」才展示（含启用按钮），保证列表清爽且支持重新启用
-    var auxShow = $('auxShowDisabled');
-    if (!(auxShow && auxShow.checked)) items = items.filter(function (x) { return x.enabled !== false; });
-    if (!items.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-hint">暂无档案</td></tr>'; return; }
-    items.forEach(function (it) {
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="mono">' + (it.id || '') + '</td>' +
-        '<td><input class="inp input-sm aux-name" data-id="' + it.id + '" value="' + esc(it.name) + '"></td>' +
-        '<td><input class="inp input-sm aux-memo" data-id="' + it.id + '" value="' + esc(it.memo || '') + '" placeholder="—"></td>' +
-        '<td class="center"><input type="checkbox" class="aux-enabled" data-id="' + it.id + '"' + (it.enabled !== false ? ' checked' : '') + '></td>' +
-        '<td><a class="link-toggle" data-id="' + it.id + '" data-name="' + esc(it.name) + '">' + (it.enabled === false ? '启用' : '停用') + '</a></td>';
-      tb.appendChild(tr);
-    });
-    tb.querySelectorAll('.aux-name, .aux-memo').forEach(function (inp) {
-      inp.addEventListener('change', function () {
-        var id = this.getAttribute('data-id');
-        var patch = this.classList.contains('aux-name') ? { name: this.value } : { memo: this.value };
-        var r = S.updateAuxItem(auxCurrent, id, patch);
-        if (!r.ok) { showToast(r.msg); refreshAuxSetting(); return; }
-      });
-    });
-    tb.querySelectorAll('.aux-enabled').forEach(function (chk) {
-      chk.addEventListener('change', function () {
-        S.updateAuxItem(auxCurrent, this.getAttribute('data-id'), { enabled: this.checked });
-      });
-    });
-    tb.querySelectorAll('.link-toggle').forEach(function (a) {
-      a.addEventListener('click', async function () {
-        var id = this.getAttribute('data-id');
-        var name = this.getAttribute('data-name') || '';
-        var item = (S.auxItems(auxCurrent) || []).filter(function (x) { return x.id === id; })[0];
-        var disabling = !(item && item.enabled === false);
-        if (disabling) {
-          if (!(await H.confirmAsync('确定停用' + ({ customer: '客户', supplier: '供应商', inventory: '存货' }[auxCurrent] || auxCurrent) + '「' + name + '」？\n停用后新增凭证不能再选该档案，历史凭证引用保留。', { title: '停用核算项目' }))) return;
-        }
-        S.updateAuxItem(auxCurrent, id, { enabled: disabling ? false : true });
-        refreshAuxSetting();
-      });
-    });
-  }
-  var auxShowChk = $('auxShowDisabled');
-  if (auxShowChk && !auxShowChk.__auxBound) {
-    auxShowChk.addEventListener('change', function () { renderAuxBody(); });
-    auxShowChk.__auxBound = true;
-  }
-  $('btnAddAuxItem').addEventListener('click', async function () {
-    var name = await H.promptAsync('新增' + (S.auxTypeName(auxCurrent) || '核算项目') + '名称：', '', { title: '新增档案' });
-    if (!name) return;
-    var memo = (await H.promptAsync('备注（可留空）：', '', { title: '备注' })) || '';
-    var r = S.addAuxItem(auxCurrent, name, memo);
-    if (!r.ok) { showToast(r.msg); return; }
-    refreshAuxSetting(); showToast('已新增档案');
-  });
-  $('btnAuxExport').addEventListener('click', function () {
-    var items = S.auxItems(auxCurrent).map(function (it) {
-      return { 编码: it.id, 名称: it.name, 备注: it.memo || '', 启用状态: it.enabled !== false ? '启用' : '禁用' };
-    });
-    exportTable(items, S.auxTypeName(auxCurrent) + '档案');
-  });
-  $('btnAuxImport').addEventListener('click', async function () {
-    var txt = await H.promptAsync('粘贴导入数据（每行一条：名称,备注；逗号分隔，可省略备注）：', '', { title: '粘贴导入' });
-    if (!txt) return;
-    var items = txt.split(/\n|\r/).map(function (line) {
-      var p = line.split(','); return { name: (p[0] || '').trim(), memo: (p[1] || '').trim() };
-    }).filter(function (x) { return x.name; });
-    var r = S.importAuxItems(auxCurrent, items);
-    if (!r.ok) { showToast(r.msg); return; }
-    refreshAuxSetting(); showToast('已导入 ' + r.count + ' 条档案');
-  });
-  $('btnAuxReset').addEventListener('click', async function () {
-    if (!(await H.confirmAsync('恢复默认将清空当前「' + S.auxTypeName(auxCurrent) + '」全部档案，确定？', { title: '恢复默认' }))) return;
-    var r = S.resetAuxItems(auxCurrent);
-    if (!r.ok) { showToast(r.msg); return; }
-    refreshAuxSetting(); showToast('已恢复默认（清空档案）');
-  });
+  // 注：原辅助核算档案管理（refreshAuxSetting 等）已随 store.js 底层函数一并下线
 
   /* ============================================================
    * 设置：现金流量初始余额（对照：现金流量初始余额页）
@@ -960,7 +868,7 @@ function refreshSystemSettings() {
 }
 
 export {
-  refreshVoucherWord, refreshAuxSetting, refreshCashflowInit, refreshCashflowProject,
+  refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
   refreshBackup, refreshLogs, refreshBookManage,
   refreshSysEvents,
   refreshParam, refreshSystemSettings

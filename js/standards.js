@@ -205,28 +205,45 @@
 
   /* ---------- 利润表规则 ----------
    * 行定义数组，渲染器按行序输出。每行：
-   *   { label, codes }                          普通行：sum(codes)
+   *   { id, label, codes }                      普通行：sum(codes)
    *   { type:'subtotal', id, label, formula }   小计行：formula 求值
    * formula 元素：{ codes?, ref?, sign:'+'|'-' }  codes=按编码取数，ref=引用前述 subtotal id
+   *
+   * id = 语义行标识（全表唯一，对应金蝶/jinbooks 的 itemCode）。用途：
+   *   首页财务指标按 id 从利润表行取数（store.plSummary），与利润表页共用同一份行计算，
+   *   杜绝「首页一套口径、利润表另一套」的漂移。
+   *   首页实际消费：revenue / cost / sellExp+adminExp+finExp / netProfit。
+   *   其余（taxSur、营业外收支、所得税等）一并标注，便于后续扩展。
+   * 注意：codes 为空的占位行不参与老账套 id 回填（多行同签名无法唯一匹配），
+   *   其 id 目前仅作占位。
    *
    * 'old' 与改造前 Report.js:250-299 逐字等价；'small2013' 把 5xxx 换 6xxx。
    */
   function incomeStatementOld() {
     return [
-      { label: '一、营业收入', codes: ['5001', '5051'] },
-      { label: '减：营业成本', codes: ['5401', '5402'] },
-      { label: '税金及附加', codes: ['5403'] },
-      { label: '销售费用', codes: ['5601'] },
-      { label: '管理费用', codes: ['5602'] },
-      { label: '研发费用', codes: [] },
-      { label: '财务费用', codes: ['5603'] },
-      { label: '加：其他收益', codes: [] },
-      { label: '投资收益（损失以“-”填列）', codes: ['5111'] },
-      { label: '净敞口套期收益（损失以“-”填列）', codes: [] },
-      { label: '公允价值变动收益（损失以“-”填列）', codes: [] },
-      { label: '信用减值损失（损失以“-”填列）', codes: [] },
-      { label: '资产减值损失（损失以“-”填列）', codes: [] },
-      { label: '资产处置收益（损失以“-”填列）', codes: [] },
+      { id: 'revenue', label: '一、营业收入', codes: ['5001', '5051'] },
+      { id: 'cost', label: '减：营业成本', codes: ['5401', '5402'] },
+      { id: 'taxSur', label: '税金及附加', codes: ['5403'] },
+      { id: 'sellExp', label: '销售费用', codes: ['5601'] },
+      { id: 'adminExp', label: '管理费用', codes: ['5602'] },
+      { id: 'rdExp', label: '研发费用', codes: [] },
+      { id: 'finExp', label: '财务费用', codes: ['5603'] },
+      { id: 'otherIncome', label: '加：其他收益', codes: [] },
+      { id: 'investIncome', label: '投资收益（损失以“-”填列）', codes: ['5111'] },
+      { id: 'hedgeIncome', label: '净敞口套期收益（损失以“-”填列）', codes: [] },
+      { id: 'fvIncome', label: '公允价值变动收益（损失以“-”填列）', codes: [] },
+      { id: 'creditLoss', label: '信用减值损失（损失以“-”填列）', codes: [] },
+      { id: 'assetLoss', label: '资产减值损失（损失以“-”填列）', codes: [] },
+      { id: 'disposalIncome', label: '资产处置收益（损失以“-”填列）', codes: [] },
+      // 期间费用合计 = 销售费用 + 管理费用 + 财务费用（可选含研发费用）
+      // subtotal 行，让首页费用卡直接取这个合计值，而非硬编码三行相加。
+      // 好处：用户改利润表规则时（如给 rdExp 填 codes），费用卡自动跟随，不会漂移。
+      { type: 'subtotal', id: 'periodExpenseTotal', label: '期间费用合计',
+        formula: [
+          { codes: ['5601'], sign: '+' },
+          { codes: ['5602'], sign: '+' },
+          { codes: ['5603'], sign: '+' }
+        ] },
       { type: 'subtotal', id: 'opProfit', label: '二、营业利润（亏损以“-”填列）',
         formula: [
           { codes: ['5001', '5051'], sign: '+' },
@@ -237,15 +254,15 @@
           { codes: ['5603'], sign: '-' },
           { codes: ['5111'], sign: '+' }
         ] },
-      { label: '加：营业外收入', codes: ['5301'] },
-      { label: '减：营业外支出', codes: ['5711'] },
+      { id: 'nonOpRev', label: '加：营业外收入', codes: ['5301'] },
+      { id: 'nonOpExp', label: '减：营业外支出', codes: ['5711'] },
       { type: 'subtotal', id: 'totalProfit', label: '三、利润总额（亏损以“-”填列）',
         formula: [
           { ref: 'opProfit', sign: '+' },
           { codes: ['5301'], sign: '+' },
           { codes: ['5711'], sign: '-' }
         ] },
-      { label: '减：所得税费用', codes: ['5801'] },
+      { id: 'incomeTax', label: '减：所得税费用', codes: ['5801'] },
       { type: 'subtotal', id: 'netProfit', label: '四、净利润（亏损以“-”填列）',
         formula: [
           { ref: 'totalProfit', sign: '+' },
@@ -256,20 +273,28 @@
 
   function incomeStatementSmall2013() {
     return [
-      { label: '一、营业收入', codes: ['6001', '6051'] },
-      { label: '减：营业成本', codes: ['6401', '6402'] },
-      { label: '税金及附加', codes: ['6403'] },
-      { label: '销售费用', codes: ['6601'] },
-      { label: '管理费用', codes: ['6602'] },
-      { label: '研发费用', codes: [] },
-      { label: '财务费用', codes: ['6603'] },
-      { label: '加：其他收益', codes: [] },
-      { label: '投资收益（损失以“-”填列）', codes: ['6111'] },
-      { label: '净敞口套期收益（损失以“-”填列）', codes: [] },
-      { label: '公允价值变动收益（损失以“-”填列）', codes: [] },
-      { label: '信用减值损失（损失以“-”填列）', codes: [] },
-      { label: '资产减值损失（损失以“-”填列）', codes: [] },
-      { label: '资产处置收益（损失以“-”填列）', codes: [] },
+      { id: 'revenue', label: '一、营业收入', codes: ['6001', '6051'] },
+      { id: 'cost', label: '减：营业成本', codes: ['6401', '6402'] },
+      { id: 'taxSur', label: '税金及附加', codes: ['6403'] },
+      { id: 'sellExp', label: '销售费用', codes: ['6601'] },
+      { id: 'adminExp', label: '管理费用', codes: ['6602'] },
+      { id: 'rdExp', label: '研发费用', codes: [] },
+      { id: 'finExp', label: '财务费用', codes: ['6603'] },
+      { id: 'otherIncome', label: '加：其他收益', codes: [] },
+      { id: 'investIncome', label: '投资收益（损失以“-”填列）', codes: ['6111'] },
+      { id: 'hedgeIncome', label: '净敞口套期收益（损失以“-”填列）', codes: [] },
+      { id: 'fvIncome', label: '公允价值变动收益（损失以“-”填列）', codes: [] },
+      { id: 'creditLoss', label: '信用减值损失（损失以“-”填列）', codes: [] },
+      { id: 'assetLoss', label: '资产减值损失（损失以“-”填列）', codes: [] },
+      { id: 'disposalIncome', label: '资产处置收益（损失以“-”填列）', codes: [] },
+      // 期间费用合计 = 销售费用 + 管理费用 + 财务费用（可选含研发费用）
+      // subtotal 行，让首页费用卡直接取这个合计值，而非硬编码三行相加。
+      { type: 'subtotal', id: 'periodExpenseTotal', label: '期间费用合计',
+        formula: [
+          { codes: ['6601'], sign: '+' },
+          { codes: ['6602'], sign: '+' },
+          { codes: ['6603'], sign: '+' }
+        ] },
       { type: 'subtotal', id: 'opProfit', label: '二、营业利润（亏损以“-”填列）',
         formula: [
           { codes: ['6001', '6051'], sign: '+' },
@@ -280,15 +305,15 @@
           { codes: ['6603'], sign: '-' },
           { codes: ['6111'], sign: '+' }
         ] },
-      { label: '加：营业外收入', codes: ['6301'] },
-      { label: '减：营业外支出', codes: ['6711'] },
+      { id: 'nonOpRev', label: '加：营业外收入', codes: ['6301'] },
+      { id: 'nonOpExp', label: '减：营业外支出', codes: ['6711'] },
       { type: 'subtotal', id: 'totalProfit', label: '三、利润总额（亏损以“-”填列）',
         formula: [
           { ref: 'opProfit', sign: '+' },
           { codes: ['6301'], sign: '+' },
           { codes: ['6711'], sign: '-' }
         ] },
-      { label: '减：所得税费用', codes: ['6801'] },
+      { id: 'incomeTax', label: '减：所得税费用', codes: ['6801'] },
       { type: 'subtotal', id: 'netProfit', label: '四、净利润（亏损以“-”填列）',
         formula: [
           { ref: 'totalProfit', sign: '+' },

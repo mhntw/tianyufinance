@@ -1,35 +1,33 @@
 // ESM 入口：把各页面模块的渲染函数挂载到全局 globalThis.__renderXxx。
 // app.js 持有路由字典 PAGE_REFRESHERS，统一经 renderVia(name) 转发到这些全局引用；
 // 链路：goPage → PAGE_REFRESHERS → renderVia(name) → __renderXxx。单一桥接点，无双重逻辑。
-import { renderTrialBalance } from './pages/ledger/TrialBalance.js?v=2026090923';
-import { refreshBs, refreshPl, refreshCf, refreshTx } from './pages/report/Report.js?v=2026082730';
+import { renderTrialBalance } from './pages/ledger/TrialBalance.js?v=dev';
+import { refreshBs, refreshPl, refreshCf, refreshTx } from './pages/report/Report.js?v=dev';
 import {
-  refreshGl, refreshDl, refreshMl, refreshQg, refreshQd, refreshAx, refreshAb, refreshAc
-} from './pages/ledger/Ledger.js?v=2026090911';
-import { refreshSubjects } from './pages/subject/Subject.js?v=2026090912';
-import { renderProjectProfit } from './pages/report/ProjectProfit.js?v=2026082730';
-import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=2026090823';
-import { renderOriginal } from './pages/report/Original.js?v=2026090824';
-import { renderReportCenter } from './pages/report/ReportCenter.js?v=2026083111';
+  refreshGl, refreshDl, refreshMl
+} from './pages/ledger/Ledger.js?v=dev';
+import { refreshSubjects } from './pages/subject/Subject.js?v=dev';
+import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=dev';
+import { renderOriginal } from './pages/report/Original.js?v=dev';
+import { renderReportCenter } from './pages/report/ReportCenter.js?v=dev';
 import {
-  refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher,
-  refreshAssetDeprHost
-} from './pages/asset/Asset.js?v=2026083118';
+  refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher
+} from './pages/asset/Asset.js?v=dev';
 import {
-  refreshVoucherWord, refreshAuxSetting, refreshCashflowInit, refreshCashflowProject,
+  refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
   refreshBackup, refreshLogs, refreshBookManage, refreshSysEvents,
   refreshParam, refreshSystemSettings
-} from './pages/settings/Settings.js?v=2026090504';
+} from './pages/settings/Settings.js?v=dev';
 import {
   refreshSalary, refreshSalaryStats, refreshDeptStaff, refreshSalaryTpl
-} from './pages/salary/Salary.js?v=2026083118';
-import './pages/settle/Settle.js?v=2026090506';
-import './pages/settings/Opening.js?v=2026083115';
-import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=2026090916';
-import { refreshHome, resizeAllCharts, setupHome } from './pages/home/Home.js?v=2026090801';
-import { refreshTools } from './pages/settings/Tools.js?v=2026090801';
-import { refreshCloudSync } from './pages/settings/CloudSync.js?v=2026090801';
-import { initPeriodRangePicker, updatePeriodRangeTrigger } from './components/PeriodRangePicker.js?v=2026082730';
+} from './pages/salary/Salary.js?v=dev';
+import './pages/settle/Settle.js?v=dev';
+import './pages/settings/Opening.js?v=dev';
+import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=dev';
+import { refreshHome, setupHome } from './pages/home/Home.js?v=dev';
+import { refreshTools } from './pages/settings/Tools.js?v=dev';
+import { refreshCloudSync } from './pages/settings/CloudSync.js?v=dev';
+import { initPeriodRangePicker, updatePeriodRangeTrigger } from './components/PeriodRangePicker.js?v=dev';
 
 // —— 通用起止期间选择器（总账/明细账/项目利润表/费用明细表等） ——
 initPeriodRangePicker();
@@ -45,35 +43,26 @@ globalThis.__renderPl = refreshPl;
 globalThis.__renderCf = refreshCf;
 globalThis.__renderTx = refreshTx;
 
-// —— 账簿域：总账 / 明细账 / 多栏账 / 数量总账 / 数量明细账 / 辅助核算明细 / 辅助核算余额 / 辅助核算组合 ——
+// —— 账簿域：总账 / 明细账 / 多栏账 ——
 globalThis.__renderGl = refreshGl;
 globalThis.__renderDl = refreshDl;
 globalThis.__renderMl = refreshMl;
-globalThis.__renderQg = refreshQg;
-globalThis.__renderQd = refreshQd;
-globalThis.__renderAx = refreshAx;
-globalThis.__renderAb = refreshAb;
-globalThis.__renderAc = refreshAc;
 globalThis.__renderSubjects = refreshSubjects;
 
-// —— report 尾巴域：原始凭证 / 项目利润 / 费用明细 / 报表中心 ——
+// —— report 尾巴域：原始凭证 / 费用明细 / 报表中心 ——
 globalThis.__renderOriginal = renderOriginal;
-globalThis.__renderProjectProfit = renderProjectProfit;
 globalThis.__renderExpenseDetail = renderExpenseDetail;
 globalThis.__renderReportCenter = renderReportCenter;
 
-// —— 固定资产域：资产清单 / 折旧清单 / 折旧明细 / 资产类别 / 资产变动 / 折旧凭证 ——
+// —— 固定资产域：资产清单 / 折旧汇总表 / 折旧明细表 / 资产类别 / 资产变动记录 / 折旧凭证（独立分页） ——
 globalThis.__renderAssets = refreshAssets;
 globalThis.__renderDas = refreshDas;
 globalThis.__renderDad = refreshDad;
 globalThis.__renderAssetCategory = refreshAssetCategory;
 globalThis.__renderAssetChangeLog = refreshAssetChangeLog;
 globalThis.__renderAssetDeprVoucher = refreshAssetDeprVoucher;
-// 折旧宿主（page-asset-depr）：页内 Tab 收敛，进入/刷新宿主调用
-globalThis.__renderAssetDeprHost = refreshAssetDeprHost;
 
-// —— 设置域：辅助核算 / 现金流量初始 / 现金流量项目 / 备份 / 操作日志 / 系统参数 / 系统设置 ——
-globalThis.__renderAuxSetting = refreshAuxSetting;
+// —— 设置域：现金流量初始 / 现金流量项目 / 备份 / 操作日志 / 系统参数 / 系统设置 ——
 globalThis.__renderCashflowInit = refreshCashflowInit;
 globalThis.__renderCashflowProject = refreshCashflowProject;
 globalThis.__renderBackup = refreshBackup;
@@ -93,9 +82,8 @@ globalThis.__renderVoucher = refreshVoucher;
 globalThis.__renderSum = refreshSum;
 globalThis.__renderQuery = refreshQuery;
 
-// —— 首页工作台域：仪表盘 / 指标卡片 / ECharts 图表 ——
+// —— 首页工作台域：仪表盘 / 指标卡片 ——
 globalThis.__renderHome = refreshHome;
-globalThis.resizeAllCharts = resizeAllCharts;
 // 首页初始化事件绑定（仅在 DOM ready 后调用一次）
 setupHome();
 
@@ -111,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var activePage = activeSec ? activeSec.id.replace('page-', '') : 'home';
   var h = (location.hash || '').replace(/^#/, '');
   var keys = globalThis.__PAGE_REFRESHERS__ ? Object.keys(globalThis.__PAGE_REFRESHERS__) : [];
-  var extraPages = ['original', 'project-profit', 'expense-detail', 'report-center'];
+  var extraPages = ['original', 'expense-detail', 'report-center'];
   var directable = !!h && (keys.indexOf(h) >= 0 || extraPages.indexOf(h) >= 0);
 
   // 兜底 1：hash 直达已迁移页。app.js（传统脚本）早于 ESM 执行，初始化期委托桩

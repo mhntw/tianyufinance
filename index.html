@@ -2,12 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>添钰财务管理系统</title>
-  <link rel="stylesheet" href="css/style.css?v=2026091013">
+  <link rel="stylesheet" href="css/style.css?v=dev">
 </head>
 <body>
   <div class="layout">
@@ -16,7 +15,7 @@
           <!-- 顶栏品牌：图标 + 完整标题（品牌统一在顶栏，侧栏不再单独放 logo，消除两处割裂） -->
           <div class="topbar-brand" id="topbarBrand" title="返回首页">
             <span class="topbar-brand-ico" aria-hidden="true">
-              <img src="css/logo-icon.svg?v=1" width="30" height="30" alt="">
+              <img src="css/logo-icon.svg?v=dev" width="30" height="30" alt="">
             </span>
             <span class="topbar-brand-text-wrap">
               <span class="topbar-brand-text">添钰财务管理系统</span>
@@ -145,15 +144,16 @@
               <div class="fund-balance-card">
                 <div class="drag-header">
                   <div class="title">资金余额</div>
+                  <span class="card-period" id="periodFund">--</span>
                 </div>
                 <div class="padding">
-                  <div class="fv1 money-line-jump">
+                  <div class="fv1">
                     <div class="fv1-f">资金余额</div>
                     <div class="fv1-v" id="mFundBalance">--</div>
                   </div>
-                  <div class="fv2 money-line money-line-jump"><div class="fv2-f">银行存款</div><div class="fv2-v" id="mBank">--</div></div>
-                  <div class="fv2 money-line money-line-jump"><div class="fv2-f">库存现金</div><div class="fv2-v" id="mCash">--</div></div>
-                  <div class="fv2 money-line"><div class="fv2-f">其他货币资金</div><div class="fv2-v" id="mOtherCash">--</div></div>
+                  <div class="fv2"><div class="fv2-f">银行存款</div><div class="fv2-v" id="mBank">--</div></div>
+                  <div class="fv2"><div class="fv2-f">库存现金</div><div class="fv2-v" id="mCash">--</div></div>
+                  <div class="fv2"><div class="fv2-f">其他货币资金</div><div class="fv2-v" id="mOtherCash">--</div></div>
                   <div class="fv3 marginT24">
                     <div class="fv3-f">资金净收入</div>
                     <div class="fv3-v" id="mFundNet">--</div>
@@ -168,6 +168,7 @@
               <div class="arap-card">
                 <div class="drag-header">
                   <div class="tab-wrapper"><ul><li class="active" data-arap="ar">应收</li><li data-arap="ap">应付</li></ul></div>
+                  <span class="card-period" id="periodArap">--</span>
                 </div>
                 <div style="height:100%;">
                   <div class="padding">
@@ -190,15 +191,15 @@
               <div class="estimated-balance-card">
                 <div class="drag-header">
                   <div class="title">预计可用资金</div>
+                  <span class="card-period" id="periodAvail">--</span>
                 </div>
                 <div>
                   <div class="padding">
                     <div class="fv1"><div class="fv1-f">预计可用资金</div><div class="fv1-v" id="mAvailCash">--</div></div>
-                    <div class="fv2 money-line"><div class="fv2-f">现有资金</div><div class="fv2-v" id="mAvailFund">--</div></div>
-                    <div class="fv2 money-line"><div class="fv2-f">短期应收款</div><div class="fv2-v" id="mAvailAr">--</div></div>
-                    <div class="fv2 money-line"><div class="fv2-f">短期应付款</div><div class="fv2-v" id="mAvailAp">--</div></div>
+                    <div class="fv2"><div class="fv2-f">现有资金</div><div class="fv2-v" id="mAvailFund">--</div></div>
+                    <div class="fv2"><div class="fv2-f">短期应收款</div><div class="fv2-v" id="mAvailAr">--</div></div>
+                    <div class="fv2"><div class="fv2-f">短期应付款</div><div class="fv2-v" id="mAvailAp">--</div></div>
                   </div>
-                  <div class="details"></div>
                 </div>
               </div>
             </div>
@@ -208,14 +209,15 @@
             <div class="drag-rect grid-square netProfit-drag-rect">
               <div class="net-profit-card">
                 <div class="drag-header">
-                  <div class="title">净利润<span class="title-tag">（全年）</span></div>
+                  <div class="title">净利润</div>
+                  <span class="card-period-select"><select id="selPeriodProfit"></select></span>
                 </div>
                 <div class="padding">
                   <div class="detail">
                     <div class="fv7"><div class="fv7-f">净利润</div><div class="fv7-v" id="mNetProfit">--</div></div>
                   </div>
                   <div class="detail" style="margin-top:24px;">
-                    <div class="fv7"><div class="fv7-f">净利润率</div><div class="fv7-v" id="mProfitRate">--%</div></div>
+                    <div class="fv7"><div class="fv7-f">净利润率</div><div class="fv7-v is-rate" id="mProfitRate">--%</div></div>
                   </div>
                 </div>
               </div>
@@ -226,19 +228,18 @@
             <div class="drag-rect grid-square revenueCost-drag-rect">
               <div class="revenue-cost-card">
                 <div class="drag-header">
-                  <div class="title">收入成本<span class="title-tag">（全年）</span></div>
+                  <div class="title">收入成本</div>
+                  <span class="card-period-select"><select id="selPeriodRevCost"></select></span>
                 </div>
                 <div class="padding">
                   <div class="detail">
-                    <div class="fv7" style="width:57%;">
+                    <div class="fv7">
                       <div class="fv7-f">收入</div><div class="fv7-v" id="bIncome">--</div>
                     </div>
                   </div>
                   <div class="detail" style="margin-top:24px;">
-                    <div style="width:57%;">
-                      <div class="fv7"><div class="fv7-f">成本</div><div class="fv7-v" id="bCost">--</div></div>
-                      <div class="fv8"><div class="fv8-f">毛利率</div><div class="fv8-v" id="bGrossMargin">：--%</div></div>
-                    </div>
+                    <div class="fv7"><div class="fv7-f">成本</div><div class="fv7-v" id="bCost">--</div></div>
+                    <div class="fv8"><div class="fv8-f">毛利率</div><div class="fv8-v" id="bGrossMargin">--%</div></div>
                   </div>
                 </div>
               </div>
@@ -249,12 +250,14 @@
             <div class="drag-rect grid-square fee-drag-rect">
               <div class="cost-card">
                 <div class="drag-header">
-                  <div class="title">费用<span class="title-tag">（全年）</span></div>
+                  <div class="title">费用</div>
+                  <span class="card-period-select"><select id="selPeriodFee"></select></span>
                 </div>
                 <div class="fee-body">
                   <div class="padding">
                     <div class="detail">
                       <div class="fv7"><div class="fv7-f">费用</div><div class="fv7-v" id="bExpense">--</div></div>
+                      <div class="formula-row" id="feeFormula"></div>
                     </div>
                   </div>
                   <div class="detail-split-wrapper">
@@ -341,7 +344,10 @@
             <tbody id="vRows"></tbody>
             <tfoot>
               <tr>
-                <td colspan="3" class="ta-r total-label">合计：</td>
+                <td colspan="3" class="total-label">
+                  <span class="total-label-num">合计：</span>
+                  <span class="total-label-cn" id="vTotalCn"></span>
+                </td>
                 <td class="ta-r mono col-amount" id="vDrTotal">0.00</td>
                 <td class="ta-r mono col-amount" id="vCrTotal">0.00</td>
               </tr>
@@ -419,7 +425,7 @@
             </div>
             <div class="modal-tip">
               说明：差异来源于金蝶年结时未达账、折旧未生成凭证、手动调整期初等。
-              xzys 如实呈现账套原貌，不做掩盖；如需修正请回金蝶规范后重新导出。
+              ty 如实呈现账套原貌，不做掩盖；如需修正请回金蝶规范后重新导出。
             </div>
           </div>
           <div class="modal-actions">
@@ -513,7 +519,7 @@
               <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
                 <div class="ty-subject-range" id="qCodeWrap">
-                  <input type="text" id="qCode" placeholder="科目编码，可填范围" title="留空=全部科目；支持 1001 或 1001,1009 或 2121-2131">
+                  <input type="text" id="qCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
                   <button type="button" class="ty-subject-trigger" id="qCodeBtn" title="从科目表选择" tabindex="-1"></button>
                 </div>
               </div>
@@ -555,7 +561,7 @@
       <section class="page" id="page-general-ledger">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="glPeriodStart" data-end-id="glPeriodEnd" data-on-change="__renderGl">
+            <div class="ty-period-range" data-single-period="1" data-start-id="glPeriodStart" data-end-id="glPeriodEnd" data-on-change="__renderGl">
               <div class="ty-period-trigger" id="glPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="glPeriodText">请选择期间</span>
@@ -563,6 +569,16 @@
               <input type="hidden" id="glPeriodStart" />
               <input type="hidden" id="glPeriodEnd" />
             </div>
+            <div class="ykj-filter-item-box">
+              <label class="ykj-filter-item-box-label">科目</label>
+              <div class="ykj-filter-item-box-content">
+                <div class="ty-subject-range" id="glCodeWrap">
+                  <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
+                  <button type="button" class="ty-subject-trigger" id="glCodeBtn" title="从科目表选择" tabindex="-1"></button>
+                </div>
+              </div>
+            </div>
+            <span id="glFilterHint" class="gl-filter-hint" hidden></span>
             <button class="btn" data-print>打印</button>
           </div>
         </div>
@@ -592,7 +608,7 @@
       <section class="page" id="page-detail-ledger">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="dlPeriodStart" data-end-id="dlPeriodEnd" data-on-change="__renderDl">
+            <div class="ty-period-range" data-single-period="1" data-start-id="dlPeriodStart" data-end-id="dlPeriodEnd" data-on-change="__renderDl">
               <div class="ty-period-trigger" id="dlPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="dlPeriodText">请选择期间</span>
@@ -633,7 +649,7 @@
                 </div>
               </div>
             </div>
-            <div class="ty-period-range" data-start-id="mlPeriodStart" data-end-id="mlPeriodEnd" data-on-change="__renderMl">
+            <div class="ty-period-range" data-single-period="1" data-start-id="mlPeriodStart" data-end-id="mlPeriodEnd" data-on-change="__renderMl">
               <div class="ty-period-trigger" id="mlPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="mlPeriodText">请选择期间</span>
@@ -651,203 +667,15 @@
         </table>
       </section>
 
-      <section class="page" id="page-qty-general">
-        <div class="page-head">
-          <div class="page-actions">
-            <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
-              <div class="ykj-filter-item-box-content">
-                <div class="ty-subject-range" id="qgCodeWrap">
-                  <input type="text" id="qgCode" placeholder="请选择数量核算科目">
-                  <button type="button" class="ty-subject-trigger" id="qgCodeBtn" title="从科目表选择" tabindex="-1"></button>
-                </div>
-              </div>
-            </div>
-            <div class="ty-period-range" data-start-id="qgPeriodStart" data-end-id="qgPeriodEnd" data-on-change="__renderQg">
-              <div class="ty-period-trigger" id="qgPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="qgPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="qgPeriodStart" />
-              <input type="hidden" id="qgPeriodEnd" />
-            </div>
-            <button class="btn" data-print>打印</button>
-          </div>
-        </div>
-        <table class="grid" id="qgGrid">
-          <colgroup>
-            <col style="width:96px">
-            <col>
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-            <col style="width:56px">
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowspan="2">期间</th><th rowspan="2">摘要</th>
-              <th colspan="3">借方</th><th colspan="3">贷方</th>
-              <th rowspan="2">方向</th><th colspan="3">余额</th>
-            </tr>
-            <tr>
-              <th>数量</th><th>单价</th><th>金额</th>
-              <th>数量</th><th>单价</th><th>金额</th>
-              <th>数量</th><th>单价</th><th>金额</th>
-            </tr>
-          </thead>
-          <tbody id="qgBody"></tbody>
-        </table>
-      </section>
 
-      <section class="page" id="page-qty-ledger">
-        <div class="page-head">
-          <div class="page-actions">
-            <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
-              <div class="ykj-filter-item-box-content">
-                <div class="ty-subject-range" id="qdCodeWrap">
-                  <input type="text" id="qdCode" placeholder="请选择数量核算科目">
-                  <button type="button" class="ty-subject-trigger" id="qdCodeBtn" title="从科目表选择" tabindex="-1"></button>
-                </div>
-              </div>
-            </div>
-            <div class="ty-period-range" data-start-id="qdPeriodStart" data-end-id="qdPeriodEnd" data-on-change="__renderQd">
-              <div class="ty-period-trigger" id="qdPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="qdPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="qdPeriodStart" />
-              <input type="hidden" id="qdPeriodEnd" />
-            </div>
-            <button class="btn" data-print>打印</button>
-          </div>
-        </div>
-        <table class="grid" id="qdGrid">
-          <colgroup>
-            <col style="width:100px"><col style="width:104px">
-            <col>
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-            <col style="width:56px">
-            <col style="width:96px"><col style="width:104px"><col style="width:124px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowspan="2">日期</th><th rowspan="2">凭证字号</th><th rowspan="2">摘要</th>
-              <th colspan="3">借方</th><th colspan="3">贷方</th>
-              <th rowspan="2">方向</th><th colspan="3">余额</th>
-            </tr>
-            <tr>
-              <th>数量</th><th>单价</th><th>金额</th>
-              <th>数量</th><th>单价</th><th>金额</th>
-              <th>数量</th><th>单价</th><th>金额</th>
-            </tr>
-          </thead>
-          <tbody id="qdBody"></tbody>
-        </table>
-      </section>
 
-      <section class="page" id="page-aux-ledger">
-        <div class="page-head">
-          <div class="page-actions">
-            <select id="axType"></select>
-            <select id="axItem"></select>
-            <div class="ty-period-range" data-start-id="axPeriodStart" data-end-id="axPeriodEnd" data-on-change="__renderAx">
-              <div class="ty-period-trigger" id="axPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="axPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="axPeriodStart" />
-              <input type="hidden" id="axPeriodEnd" />
-            </div>
-            <button class="btn" data-print>打印</button>
-          </div>
-        </div>
-        <table class="grid" id="axGrid">
-          <colgroup>
-            <col style="width:100px"><col style="width:104px">
-            <col><col style="width:180px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:56px"><col style="width:124px">
-          </colgroup>
-          <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>科目</th><th>借方</th><th>贷方</th><th>方向</th><th>余额</th></tr></thead>
-          <tbody id="axBody"></tbody>
-        </table>
-      </section>
 
-      <section class="page" id="page-aux-balance">
-        <div class="page-head">
-          <div class="page-actions">
-            <select id="abType"></select>
-            <div class="ty-period-range" data-start-id="abPeriodStart" data-end-id="abPeriodEnd" data-on-change="__renderAb">
-              <div class="ty-period-trigger" id="abPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="abPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="abPeriodStart" />
-              <input type="hidden" id="abPeriodEnd" />
-            </div>
-            <button class="btn" data-print>打印</button>
-          </div>
-        </div>
-        <table class="grid" id="abGrid">
-          <colgroup>
-            <col style="width:180px"><col style="width:180px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowspan="2">核算项目</th><th rowspan="2">科目</th>
-              <th colspan="2">期初余额</th><th colspan="2">本期发生额</th><th colspan="2">期末余额</th>
-            </tr>
-            <tr><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th></tr>
-          </thead>
-          <tbody id="abBody"></tbody>
-        </table>
-      </section>
 
-      <section class="page" id="page-aux-combine">
-        <div class="page-head">
-          <div class="page-actions">
-            <select id="acMode">
-              <option value="subject-aux">科目-辅助核算组合</option>
-              <option value="aux-aux">双辅助核算组合</option>
-            </select>
-            <div class="ty-period-range" data-start-id="acPeriodStart" data-end-id="acPeriodEnd" data-on-change="__renderAc">
-              <div class="ty-period-trigger" id="acPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="acPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="acPeriodStart" />
-              <input type="hidden" id="acPeriodEnd" />
-            </div>
-            <button class="btn" data-print>打印</button>
-          </div>
-        </div>
-        <table class="grid" id="acGrid">
-          <colgroup>
-            <col>
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowspan="2">组合</th>
-              <th colspan="2">期初余额</th><th colspan="2">本期发生额</th><th colspan="2">期末余额</th>
-            </tr>
-            <tr><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th></tr>
-          </thead>
-          <tbody id="acBody"></tbody>
-        </table>
-      </section>
 
       <section class="page" id="page-trial-balance">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="tbPeriodStart" data-end-id="tbPeriodEnd" data-on-change="__renderTrialBalance">
+            <div class="ty-period-range" data-single-period="1" data-start-id="tbPeriodStart" data-end-id="tbPeriodEnd" data-on-change="__renderTrialBalance">
               <div class="ty-period-trigger" id="tbPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="tbPeriodText">请选择期间</span>
@@ -887,7 +715,7 @@
       <section class="page" id="page-report-balance">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="bsPeriodStart" data-end-id="bsPeriodEnd" data-on-change="__renderBs">
+            <div class="ty-period-range" data-single-period="1" data-start-id="bsPeriodStart" data-end-id="bsPeriodEnd" data-on-change="__renderBs">
               <div class="ty-period-trigger" id="bsPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="bsPeriodText">请选择期间</span>
@@ -913,7 +741,7 @@
       <section class="page" id="page-report-profit">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="plPeriodStart" data-end-id="plPeriodEnd" data-on-change="__renderPl">
+            <div class="ty-period-range" data-single-period="1" data-start-id="plPeriodStart" data-end-id="plPeriodEnd" data-on-change="__renderPl">
               <div class="ty-period-trigger" id="plPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="plPeriodText">请选择期间</span>
@@ -937,7 +765,7 @@
       <section class="page" id="page-report-cashflow">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="cfPeriodStart" data-end-id="cfPeriodEnd" data-on-change="__renderCf">
+            <div class="ty-period-range" data-single-period="1" data-start-id="cfPeriodStart" data-end-id="cfPeriodEnd" data-on-change="__renderCf">
               <div class="ty-period-trigger" id="cfPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="cfPeriodText">请选择期间</span>
@@ -961,7 +789,7 @@
       <section class="page" id="page-report-tax">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="txPeriodStart" data-end-id="txPeriodEnd" data-on-change="__renderTx">
+            <div class="ty-period-range" data-single-period="1" data-start-id="txPeriodStart" data-end-id="txPeriodEnd" data-on-change="__renderTx">
               <div class="ty-period-trigger" id="txPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="txPeriodText">请选择期间</span>
@@ -1119,20 +947,12 @@
         </div>
       </section>
 
-      <section class="page" id="page-asset-depr">
-
-        <!-- 页内 Tab：折旧凭证 / 折旧汇总表 / 折旧明细表 / 变动记录（外观简化收敛宿主） -->
-        <div class="asset-subtabs" id="assetDeprTabs">
-          <button type="button" class="asset-subtab active" data-sub="voucher">折旧凭证</button>
-          <button type="button" class="asset-subtab" data-sub="sum">折旧汇总表</button>
-          <button type="button" class="asset-subtab" data-sub="detail">折旧明细表</button>
-          <button type="button" class="asset-subtab" data-sub="change">变动记录</button>
-        </div>
-
-        <div class="asset-sub" data-sub="sum" data-name="折旧汇总表">
+      <!-- 资产板块独立分页（原 page-asset-depr 宿主内页 Tab 拆出）：
+           折旧凭证 / 折旧汇总表 / 折旧明细表 / 资产变动记录 -->
+      <section class="page" id="page-asset-depr-sum" data-name="折旧汇总表">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="dasPeriodStart" data-end-id="dasPeriodEnd" data-on-change="__renderDas">
+            <div class="ty-period-range" data-single-period="1" data-start-id="dasPeriodStart" data-end-id="dasPeriodEnd" data-on-change="__renderDas">
               <div class="ty-period-trigger" id="dasPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="dasPeriodText">请选择期间</span>
@@ -1159,12 +979,12 @@
           <tbody id="dasBody"></tbody>
           <tfoot id="dasFoot"></tfoot>
         </table>
-        </div>
+      </section>
 
-        <div class="asset-sub" data-sub="detail" data-name="折旧明细表">
+      <section class="page" id="page-asset-depr-detail" data-name="折旧明细表">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="dadPeriodStart" data-end-id="dadPeriodEnd" data-on-change="__renderDad">
+            <div class="ty-period-range" data-single-period="1" data-start-id="dadPeriodStart" data-end-id="dadPeriodEnd" data-on-change="__renderDad">
               <div class="ty-period-trigger" id="dadPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="dadPeriodText">请选择期间</span>
@@ -1190,12 +1010,12 @@
           <tbody id="dadBody"></tbody>
           <tfoot id="dadFoot"></tfoot>
         </table>
-        </div>
+      </section>
 
-        <div class="asset-sub" data-sub="change" data-name="资产变动记录">
+      <section class="page" id="page-asset-change-log" data-name="资产变动记录">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="aclPeriodStart" data-end-id="aclPeriodEnd" data-on-change="__renderAssetChangeLog">
+            <div class="ty-period-range" data-single-period="1" data-start-id="aclPeriodStart" data-end-id="aclPeriodEnd" data-on-change="__renderAssetChangeLog">
               <div class="ty-period-trigger" id="aclPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="aclPeriodText">请选择期间</span>
@@ -1220,9 +1040,9 @@
           </thead>
           <tbody id="aclBody"></tbody>
         </table>
-        </div>
+      </section>
 
-        <div class="asset-sub" data-sub="voucher" data-name="折旧凭证">
+      <section class="page" id="page-asset-depr-voucher" data-name="折旧凭证">
         <div class="page-head">
           <div class="page-actions">
             <span class="page-period" id="dvPeriod"></span>
@@ -1261,13 +1081,12 @@
           <tbody id="dvBody"></tbody>
           <tfoot id="dvFoot"></tfoot>
         </table>
-        </div>
       </section>
 
       <section class="page" id="page-salary">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="salPeriodStart" data-end-id="salPeriodEnd" data-on-change="__renderSalary">
+            <div class="ty-period-range" data-single-period="1" data-start-id="salPeriodStart" data-end-id="salPeriodEnd" data-on-change="__renderSalary">
               <div class="ty-period-trigger" id="salPeriodTrigger">
                 <span class="ty-period-trigger-label">期间</span>
                 <span class="ty-period-trigger-text" id="salPeriodText">请选择期间</span>
@@ -1295,7 +1114,7 @@
       <section class="page" id="page-salary-statistics">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="sstPeriodStart" data-end-id="sstPeriodEnd" data-on-change="__renderSalaryStats">
+            <div class="ty-period-range" data-single-period="1" data-start-id="sstPeriodStart" data-end-id="sstPeriodEnd" data-on-change="__renderSalaryStats">
               <div class="ty-period-trigger" id="sstPeriodTrigger">
                 <span class="ty-period-trigger-label">月份</span>
                 <span class="ty-period-trigger-text" id="sstPeriodText">请选择月份</span>
@@ -1698,8 +1517,6 @@
               <th class="col-name">科目名称</th>
               <th>科目类别</th>
               <th>余额方向</th>
-              <th>辅助核算类别</th>
-              <th>数量核算</th>
               <th>是否现金科目</th>
               <th class="col-op">操作</th>
             </tr></thead>
@@ -1733,33 +1550,6 @@
       </section>
 
       <!-- 系统设置聚合页：系统参数 + 凭证模板 + 操作日志 三 Tab 合一 -->
-      <section class="page" id="page-auxiliary-accounting">
-        <div class="aux-layout">
-          <div class="aux-types" id="auxTypes"></div>
-          <div class="aux-main">
-            <div class="page-head">
-              <div class="page-actions">
-                <label class="subj-check"><input type="checkbox" id="auxShowDisabled"> 显示停用档案</label>
-                <button class="btn" id="btnAddAuxItem">新增档案</button>
-                <button class="btn" id="btnAuxImport">导入</button>
-                <button class="btn" id="btnAuxExport">导出</button>
-                <button class="btn btn-danger" id="btnAuxReset">恢复默认</button>
-              </div>
-            </div>
-            <div class="k-tip info">① 档案按账套和类型（客户/供应商/部门/职员/项目）分别保存，各账套独立；② 项目利润表默认按「部门」筛选，部门无档案时自动取第一个有档案的类型；③ 新增档案后到报表页查看或点「刷新」即可生效；需给凭证分录挂上对应辅助核算，报表才有分项目数据。</div>
-            <div class="grid-wrap">
-              <table class="grid" id="auxGrid">
-               <colgroup>
-                 <col style="width:120px"><col><col>
-                 <col style="width:90px"><col style="width:96px">
-               </colgroup>
-               <thead><tr><th>编码</th><th>名称</th><th>备注</th><th>启用状态</th><th>操作</th></tr></thead>
-                <tbody id="auxBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <!-- ============ 原始凭证（电子档案 / 附件管理） ============ -->
       <section class="page" id="page-original">
@@ -1860,59 +1650,6 @@
       </section>
 
       <!-- ============ 项目利润表（行=利润表行项目、列=项目×核算维度；筛选=起止期间+无发生额不显示） ============ -->
-      <section class="page" id="page-project-profit">
-        <div class="page-head">
-          <div class="page-actions pp-page-actions">
-            <div class="ykj-filter-item-box">
-              <div class="ykj-filter-item-box-content">
-                <select id="ppAuxType" class="inp inp-sel"></select>
-              </div>
-            </div>
-            <div class="ykj-filter-item-box">
-              <div class="ykj-filter-item-box-content">
-                <div class="ed-subj-select" id="ppProjectWrap">
-                  <div class="ed-subj-trigger" id="ppProjectTrigger">
-                    <div class="ed-subj-tags" id="ppProjectTags">
-                      <span class="ed-subj-placeholder" id="ppProjectPlaceholder">全部项目</span>
-                    </div>
-                    <div class="ed-subj-countbox" id="ppProjectCountbox">共<span id="ppProjectCount">0</span>项</div>
-                    <span class="ed-subj-caret"></span>
-                  </div>
-                  <div class="ed-subj-pop" id="ppProjectPop" hidden></div>
-                </div>
-              </div>
-            </div>
-            <div class="ykj-filter-item-box">
-              <div class="ykj-filter-item-box-content">
-                <div class="ty-period-range" data-start-id="ppFrom" data-end-id="ppTo" data-on-change="refreshPP">
-                  <div class="ty-period-trigger" id="ppPeriodTrigger">
-                    <span class="ty-period-trigger-label">期间</span>
-                    <span class="ty-period-trigger-text" id="ppPeriodText">2023年01期 ~ 2023年12期</span>
-                  </div>
-                  <input type="hidden" id="ppFrom" />
-                  <input type="hidden" id="ppTo" />
-                </div>
-              </div>
-            </div>
-            <button class="ty-btn ty-btn-primary pp-query" id="btnPpQuery">查询</button>
-            <button class="btn" id="btnPpPrint" data-print>打印</button>
-            <button class="btn" id="btnPpExport">导出</button>
-          </div>
-        </div>
-        <div class="grid-wrap">
-          <table class="grid pp-grid" id="ppGrid">
-            <thead id="ppHead">
-              <tr>
-                <th class="col-name pp-name-col">项目</th>
-                <th class="col-no">行次</th>
-                <th class="col-amt">合计</th>
-              </tr>
-            </thead>
-            <tbody id="ppBody"></tbody>
-          </table>
-          <div class="grid-foot" id="ppFoot"></div>
-        </div>
-      </section>
 
       <!-- ============ 费用明细表（期间范围 + 图表 + 树形多栏表） ============ -->
       <section class="page" id="page-expense-detail">
@@ -2425,22 +2162,6 @@
           <option value="expense">费用</option>
         </select>
       </div>
-      <div class="form-row"><label>辅助核算</label>
-        <div class="chk-group" id="subAux">
-          <label><input type="checkbox" value="customer">客户</label>
-          <label><input type="checkbox" value="supplier">供应商</label>
-          <label><input type="checkbox" value="employee">职员</label>
-          <label><input type="checkbox" value="dept">部门</label>
-          <label><input type="checkbox" value="project">项目</label>
-          <label><input type="checkbox" value="stock">存货</label>
-        </div>
-      </div>
-      <div class="form-row"><label>数量核算</label>
-        <div class="chk-group">
-          <label><input type="checkbox" id="subQty"> 启用数量核算</label>
-          <label>计量单位 <input id="subUnit" class="inp inp-xs" style="margin-left:4px"></label>
-        </div>
-      </div>
       <div class="k-tip info" id="subjNameTip" style="display:none">注意：科目名称修改后，以前期间凭证、报表上的科目名称都会变成新的科目名称。</div>
       <div class="modal-actions">
         <button class="btn" id="btnSaveSubject">保存</button>
@@ -2581,20 +2302,20 @@
 
   <!-- Tauri 桌面存储引擎：经 window.__TAURI__.core.invoke 调用 Rust 端读写
        <应用数据目录>/添钰财务/books/ 真实文件，彻底去除 Python 服务端依赖。 -->
-  <script src="js/storage.js?v=2026083002"></script>
-  <script src="js/standards.js?v=2026091011"></script>
-  <script src="js/store.js?v=2026091007"></script>
-  <script src="js/pinyin-abbr.js?v=2026090801"></script>
-  <script src="js/xlsx.full.min.js?v=2026082131"></script>
-  <script src="js/ty-io.js?v=2026082131"></script>
-  <script src="js/ty-menu-icons.js?v=2026082131"></script>
-  <script src="js/buffer.js?v=2026082131"></script>
-  <script src="js/mdb-reader.js?v=2026082131"></script>
-  <script src="js/kis-import.js?v=2026091011"></script>
-  <script src="js/dialog-bridge.js?v=2026082727"></script>
-  <script src="js/file-save-bridge.js?v=2026090902"></script>
-  <script src="js/app.js?v=2026091012"></script>
-  <script type="module" src="js/main.js?v=2026091013"></script>
+  <script src="js/storage.js?v=dev"></script>
+  <script src="js/standards.js?v=dev"></script>
+  <script src="js/store.js?v=dev"></script>
+  <script src="js/pinyin-abbr.js?v=dev"></script>
+  <script src="js/xlsx.full.min.js?v=dev"></script>
+  <script src="js/ty-io.js?v=dev"></script>
+  <script src="js/ty-menu-icons.js?v=dev"></script>
+  <script src="js/buffer.js?v=dev"></script>
+  <script src="js/mdb-reader.js?v=dev"></script>
+  <script src="js/kis-import.js?v=dev"></script>
+  <script src="js/dialog-bridge.js?v=dev"></script>
+  <script src="js/file-save-bridge.js?v=dev"></script>
+  <script src="js/app.js?v=dev"></script>
+  <script type="module" src="js/main.js?v=dev"></script>
 
   <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
     <div class="quick-settings-modal" id="quickSettingsModal">

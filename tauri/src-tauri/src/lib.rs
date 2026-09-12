@@ -38,7 +38,7 @@ const APP_DATA_DIR_NAME: &str = "添钰财务";
 //
 // ⚠️ 重要契约：本函数必须只依赖「系统应用数据目录 + 固定的目录名」，
 // 绝不可改用 Tauri 的 app_data_dir() / identifier 派生路径。
-// 原因：identifier（com.chen.xzys 等）是可以改的，而它一变，
+// 原因：identifier（com.chen.ty 等）是可以改的，而它一变，
 // 按它派生的路径也会跟着变 —— 现有账套会全部"消失"（文件还在，但软件找不到了）。
 // 对财务软件来说这是最严重的事故之一。见测试 data_root_ignores_identifier。
 fn data_root() -> Result<PathBuf, String> {
@@ -1000,12 +1000,12 @@ mod tests {
     }
 
     // 守门员：数据路径必须与 identifier 无关。
-    // 若有人把 data_root 改成 Tauri 的 app_data_dir()（按 identifier com.chen.xzys 派生），
-    // 路径里就会出现 "xzys"，本测试立即失败 —— 那意味着改一次 identifier 就会让账套"消失"。
+    // 若有人把 data_root 改成 Tauri 的 app_data_dir()（按 identifier com.chen.ty 派生），
+    // 路径里就会出现 "ty"，本测试立即失败 —— 那意味着改一次 identifier 就会让账套"消失"。
     #[test]
     fn data_root_ignores_identifier() {
         let s = data_root().unwrap().to_string_lossy().to_string();
-        for seg in ["xzys", "com.chen"] {
+        for seg in ["ty", "com.chen"] {
             assert!(
                 !s.to_lowercase().contains(seg),
                 "数据目录不得由 identifier 派生（否则改 identifier 会丢账套），实际: {s}"
@@ -1246,7 +1246,7 @@ mod tests {
     // 已废弃的 .bak 滚动即使是现役账套也清除
     #[test]
     fn prune_keeps_active_book_backups() {
-        let tmp = std::env::temp_dir().join(format!("xzys_prune_active_{}", now_ts()));
+        let tmp = std::env::temp_dir().join(format!("ty_prune_active_{}", now_ts()));
         fs::create_dir_all(tmp.join("books")).unwrap();
         fs::create_dir_all(tmp.join("backups")).unwrap();
         fs::write(tmp.join("books/live.json"), "{}").unwrap();
@@ -1266,7 +1266,7 @@ mod tests {
     // 孤儿账套：Auto 留最新 1 份，pre_restore / .bak 整组删；非产物文件不碰
     #[test]
     fn prune_converges_orphan_book_backups() {
-        let tmp = std::env::temp_dir().join(format!("xzys_prune_orphan_{}", now_ts()));
+        let tmp = std::env::temp_dir().join(format!("ty_prune_orphan_{}", now_ts()));
         fs::create_dir_all(tmp.join("books")).unwrap();
         fs::create_dir_all(tmp.join("backups")).unwrap();
         fs::write(tmp.join("books/live.json"), "{}").unwrap();
@@ -1304,7 +1304,7 @@ mod tests {
     // 无孤儿时无事发生
     #[test]
     fn prune_noop_when_clean() {
-        let tmp = std::env::temp_dir().join(format!("xzys_prune_noop_{}", now_ts()));
+        let tmp = std::env::temp_dir().join(format!("ty_prune_noop_{}", now_ts()));
         fs::create_dir_all(tmp.join("books")).unwrap();
         fs::create_dir_all(tmp.join("backups")).unwrap();
         assert_eq!(prune_backups_in(&tmp), 0);
@@ -1373,7 +1373,7 @@ mod tests {
     // 附件同名不得互相覆盖，且扩展名要保留
     #[test]
     fn unique_path_avoids_overwrite() {
-        let dir = std::env::temp_dir().join(format!("xzys_attach_test_{}", now_ts()));
+        let dir = std::env::temp_dir().join(format!("ty_attach_test_{}", now_ts()));
         fs::create_dir_all(&dir).unwrap();
 
         let first = unique_path(&dir, "发票.pdf");

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * export_statement.js — 从 xzys 账套导出报表为 JSON（供对照工具使用）
+ * export_statement.js — 从 ty 账套导出报表为 JSON（供对照工具使用）
  *
  * 用法：
  *   node tools/export_statement.js <账套JSON路径> <输出目录>

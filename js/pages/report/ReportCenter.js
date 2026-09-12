@@ -8,7 +8,6 @@ export function renderReportCenter() {
   var sys = [
     { name: '资产负债表', no: 'P001', type: '系统报表', fav: '已收藏', note: '反映企业某一特定日期财务状况', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'report-balance' },
     { name: '利润表', no: 'P002', type: '系统报表', fav: '已收藏', note: '反映企业一定会计期间经营成果', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'report-profit' },
-    { name: '项目利润表', no: 'P003', type: '系统报表', fav: '未收藏', note: '按项目辅助核算的利润表', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'project-profit' },
     { name: '费用明细表', no: 'P004', type: '系统报表', fav: '未收藏', note: '按费用科目展开明细', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'expense-detail' },
     { name: '标准现金流量表', no: 'P005', type: '系统报表', fav: '已收藏', note: '反映现金及现金等价物流入流出', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'report-cashflow' },
     { name: '主要应交税金明细表', no: 'P006', type: '系统报表', fav: '未收藏', note: '各税种应交明细', std: '小企业会计准则', creator: '系统', cdate: '—', mod: '系统', mdate: '—', page: 'report-tax' }

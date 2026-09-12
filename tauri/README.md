@@ -2,9 +2,9 @@
 
 本目录是桌面版打包壳（Tauri 2），把仓库根的前端（`index.html` + `css/` + `js/`）打包成可安装的桌面应用。
 
-> **Windows 与 macOS 安装包日常均由 GitHub Actions 自动构建发布**（推 `v*` 标签自动出包，
-> 见仓库根 `README.md` 与 `.github/workflows/build-release.yml`）。本目录内命令仅供本机自测/备选。
-> 需要在 Windows 本机手动打包的完整手册见 **[`WINDOWS_BUILD.md`](WINDOWS_BUILD.md)**。
+> **Windows 与 macOS 安装包均由 GitHub Actions 自动构建发布**（推 `v*` 标签自动出包，
+> 见仓库根 `README.md` 与 `.github/workflows/build-release.yml`）。
+> 本机不参与打包，也不需要 Rust / Xcode 工具链；本目录内命令仅用于开发期 `npm run tauri dev` 调试。
 
 ## 打包机制
 
@@ -29,19 +29,16 @@
   > identifier/productName 变化，改名会让已有账套"全部消失"（有守门单测）。
   > 也绝不使用「文档」目录（云同步会制造冲突副本）。实现集中在 `src-tauri/src/lib.rs`。
 
-## 如何打包（macOS 本机）
+## 如何拿到安装包
 
-```bash
-cd tauri
-npm install        # 首次：安装 @tauri-apps/cli
-npm run tauri build
-```
+本机不打包，安装包一律由 GitHub Actions 云端产出：
 
-产物在 `src-tauri/target/release/bundle/`（macOS：`.app` + `.dmg`）。
+- **正式发布**：推 `v*` 标签（或用仓库根「发布新版.command」）→ Windows / macOS 双平台安装包自动上传到同一个 Release；
+- **只想先试装**：GitHub 仓库 → Actions →「**构建预览包（手动）**」→ Run workflow → 产物在该次运行的 **Artifacts**（不进 Release）。
+
+本机因此不需要安装 Rust / Xcode 工具链。仅开发期调试用 `npm run tauri dev`。
 
 ## 注意事项
 
 - **不要手动改 `dist/`**——它每次由脚本重建，手动改会被覆盖。
-- 开发期验证：`npm run tauri dev`（起本地服务 + 打开调试窗口）。
-- Windows / macOS 安装包：日常均由 GitHub Actions 自动构建（仓库根 `.github/workflows/build-release.yml`，
-  手动触发或推 `v*` 标签即自动发布 Release）；无需本机打包环境。
+- 开发期验证：`npm run tauri dev`（起本地服务 + 打开调试窗口）；安装包见上文，无需本机打包环境。

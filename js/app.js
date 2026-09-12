@@ -267,25 +267,6 @@
     _persistBanner = null;
   };
 
-  /* ============================================================
-   * 手机端只读模式：仅显示首页财务指标 6 卡，不做录入
-   * 判定：移动端 UA 或窄屏触摸设备（触屏宽度 < 900px）
-   * ============================================================ */
-  var IS_MOBILE = /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(navigator.userAgent) ||
-                  ((navigator.maxTouchPoints > 0 || 'ontouchstart' in window) && window.innerWidth < 900);
-  window.__IS_MOBILE = IS_MOBILE;
-  if (IS_MOBILE) document.documentElement.classList.add('is-mobile');
-  // 手机端窗口尺寸变化（旋转/缩放）时，重算首页布局
-  if (IS_MOBILE) {
-    var _mobResize;
-    window.addEventListener('resize', function () {
-      clearTimeout(_mobResize);
-      _mobResize = setTimeout(function () {
-        if (globalThis.resizeAllCharts) globalThis.resizeAllCharts();
-      }, 150);
-    });
-  }
-
   /* 首页右侧「产品公告 / 政策头条」已随本地版改造移除（云端占位，无实际用途），
    * 首页改为左主区单栏全宽。若需在首页展示本地提示，直接在 Home.js 相应区块渲染即可。 */
 
@@ -642,12 +623,10 @@
     }
     // 打印主体：只克隆「数据表格本身」（见 collectPrintBody 契约说明），
     // 期间选择条 / 按钮 / 筛选提示等表格外 UI 从结构上不可能进入打印件。
-    // 宿主页内（资产折旧 Tab 收敛）：按钮在 .asset-sub 面板内，先收窄到当前激活面板，
-    // 避免 collectPrintBody 一次收集宿主内全部 4 张表（CSS display:none 面板仍需在 DOM 中）。
-    var scope = (btn && (btn.closest('.asset-sub') || btn.closest('.page'))) || active;
-    // 报表名优先级：按钮所在子面板真实表名（折旧宿主的 折旧凭证/汇总/明细/变动记录）>
-    // 页面内 h2 标题 > PAGE_NAMES 页面名 > 页面 data-name > 通用兜底。
-    var subName = (scope && scope.getAttribute && scope !== active) ? (scope.getAttribute('data-name') || '').trim() : '';
+    // 折旧四页已独立分页（原 page-asset-depr 页内 Tab 拆出），直接以当前激活页为作用域，一页一张表。
+    var scope = (btn && btn.closest('.page')) || active;
+    // 报表名优先级：页内 h2 标题 > PAGE_NAMES 页面名 > 页面 data-name > 通用兜底。
+    var subName = '';
     var h2 = active && active.querySelector('.page-head h2');
     var reportName = '';
     if (subName) reportName = subName;
@@ -762,8 +741,8 @@
     var btns = document.querySelectorAll('[data-print]');
     var rows = [], fails = 0;
     Array.prototype.forEach.call(btns, function (btn) {
-      // 与 tyPrint 一致：先收窄到按钮所在 .asset-sub 面板（折旧宿主），再回退到 .page
-      var pg = (btn.closest('.asset-sub') || btn.closest('.page'));
+      // 与 tyPrint 一致：以按钮所在 .page 为作用域（折旧四页已独立分页，一页一张表）
+      var pg = btn.closest('.page');
       var hostPage = btn.closest('.page');
       var name = hostPage && hostPage.id ? String(hostPage.id).replace(/^page-/, '') : '(未在任何 .page 内)';
       var label = String((btn.getAttribute('title') || btn.textContent || '').trim()).slice(0, 12);
@@ -871,16 +850,10 @@
       { key: 'general-ledger',  name: '总账',         page: 'general-ledger', color: '#F97316' },
       { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance',  color: '#F59E0B' },
       { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger',  color: '#EC4899' },
-      { key: 'amount-detail',   name: '数量金额明细账',page:'qty-ledger',    color: '#14B8A6' },
-      { key: 'amount-general',  name: '数量金额总账', page:'qty-general',    color: '#84CC16' },
-      { key: 'aux-detail',      name: '核算项目余额表',page:'aux-balance',   color: '#A78BFA' },
-      { key: 'aux-balance',     name: '核算项目明细账',page:'aux-ledger',    color: '#60A5FA' },
-      { key: 'aux-combine',     name: '核算项目组合表',page:'aux-combine',   color: '#34D399' },
     ]},
     { group: '报表', items: [
       { key: 'report-balance',  name: '资产负债表',   page: 'report-balance', color: '#EF4444' },
       { key: 'report-profit',   name: '利润表',       page: 'report-profit',  color: '#EC4899' },
-      { key: 'project-profit',  name: '项目利润表',   page: 'project-profit', color: '#F97316' },
       { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow',color:'#06B6D4' },
       { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',color:'#E11D48' },
       { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',color: '#8B5CF6' },
@@ -891,8 +864,11 @@
       { key: 'settle-close', name: '期末处理', page: 'settle', color: '#0EA5E9' },
     ]},
     { group: '资产', items: [
-      { key: 'asset-card', name: '固定资产卡片', page: 'asset-card', color: '#14B8A6' },
-      { key: 'asset-depr', name: '折旧',         page: 'asset-depr', color: '#F59E0B' },
+      { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card',          color: '#14B8A6' },
+      { key: 'asset-depr-voucher',  name: '折旧凭证',     page: 'asset-depr-voucher',  color: '#F59E0B' },
+      { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',      color: '#0EA5E9' },
+      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',   color: '#6366F1' },
+      { key: 'asset-change-log',    name: '资产变动记录', page: 'asset-change-log',    color: '#EC4899' },
     ]},
     { group: '工资', items: [
       { key: 'salary-table', name: '工资',   page: 'salary',           color: '#E11D48' },
@@ -900,7 +876,6 @@
     ]},
     { group: '设置', items: [
       { key: 'account-setup',       name: '科目',             page: 'subject',             color: '#64748B' },
-      { key: 'auxiliary-accounting',name: '辅助核算',         page: 'auxiliary-accounting',color: '#7C3AED' },
       { key: 'init-balance',        name: '期初余额',     page: 'opening',             color: '#0891B2' },
       { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init',       color: '#0D9488' },
       { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project',    color: '#059669' },
@@ -924,6 +899,8 @@
     try { localStorage.setItem('quick_menu_keys', JSON.stringify(keys)); } catch(e){}
   }
   function findQuickItem(key) {
+    // 旧「折旧」菜单键 → 折旧凭证（资产四页已独立分页，旧快捷图标平滑延续）
+    if (key === 'asset-depr') key = 'asset-depr-voucher';
     for (var i = 0; i < QUICK_MENU_ITEMS.length; i++) {
       for (var j = 0; j < QUICK_MENU_ITEMS[i].items.length; j++) {
         if (QUICK_MENU_ITEMS[i].items[j].key === key) return QUICK_MENU_ITEMS[i].items[j];
@@ -1631,8 +1608,6 @@
   // 并保留用户当前滚动位置（多标签行为：已开的标签切回不重算）。
   function goPage(page, force) {
     if (typeof force !== 'boolean') force = false;
-    // 手机端只读模式：任何跳转一律回到首页（仅展示财务指标 6 卡）
-    if (window.__IS_MOBILE && page !== 'home') page = 'home';
     // 先记录目标页「进入前」是否已激活，用于「切回已打开标签不重渲染」优化。
     // 注意：必须在 remove active 之前判断，否则 remove 后再 add 会使 active 恒为真、永远跳过重渲染。
     var _tgt = document.getElementById('page-' + page);
@@ -1648,15 +1623,13 @@
     else if (page === 'book-manage' || page === 'backup-restore') { page = 'system-settings'; }
     // 导入账套：触发文件选择，不切换页面
     else if (page === 'import-ais') { goPage('system-settings'); return; }
-    /* 折旧宿主收敛：旧独立页键（asset-depr-voucher/sum/detail、变动记录）→ 宿主 + 子面板 */
-    var _assetDeprSubAlias = {
-      'asset-depr-voucher': 'voucher', 'asset-depr-sum': 'sum',
-      'asset-depr-detail': 'detail', 'asset-change-log': 'change'
+    /* 折旧独立分页：旧宿主键（asset-depr）→ 折旧凭证；旧子页键即新页键，保持直达 */
+    var _assetDeprPageAlias = {
+      'asset-depr': 'asset-depr-voucher',
+      'asset-depr-voucher': 'asset-depr-voucher', 'asset-depr-sum': 'asset-depr-sum',
+      'asset-depr-detail': 'asset-depr-detail', 'asset-change-log': 'asset-change-log'
     };
-    if (_assetDeprSubAlias[page]) {
-      globalThis.__assetDeprPending = _assetDeprSubAlias[page];
-      page = 'asset-depr';
-    }
+    if (_assetDeprPageAlias[page]) page = _assetDeprPageAlias[page];
     // 资产类别：收敛为固定资产卡片工具条弹窗，旧直达落到卡片页
     else if (page === 'asset-category') { page = 'asset-card'; }
     // 工资收敛：部门职员 / 凭证模板 / 新手导航 已并入工资表页（弹窗），旧直达落工资表
@@ -1667,11 +1640,8 @@
     if (sec) sec.classList.add('active');
     // 已激活页且非强制刷新：跳过重渲染，仅做高亮/标签栏同步与搜索高亮
     var alreadyActive = wasActive && !force;
-    // 切回首页时，重算首页指标布局
-    if (page === 'home') { setTimeout(function(){ if (globalThis.resizeAllCharts) globalThis.resizeAllCharts(); }, 0); }
-    // 4 个报表/凭证子页面（已真实结构）
+    // 报表/凭证子页面
     if (page === 'original') { if (globalThis.__renderOriginal) globalThis.__renderOriginal(); }
-    else if (page === 'project-profit') { if (globalThis.__renderProjectProfit) globalThis.__renderProjectProfit(); }
     else if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
     else if (page === 'report-center') { if (globalThis.__renderReportCenter) globalThis.__renderReportCenter(); }
 
@@ -1702,19 +1672,18 @@
     'home': '首页',
     'voucher': '录凭证', 'voucher-query': '查凭证', 'voucher-sum': '凭证汇总表',
     'general-ledger': '总账', 'detail-ledger': '明细账', 'multi-ledger': '多栏账',
-    'qty-general': '数量金额总账', 'qty-ledger': '数量金额明细账',
-    'aux-ledger': '核算项目明细账', 'aux-balance': '核算项目余额表', 'aux-combine': '核算项目组合表',
     'trial-balance': '科目余额表', 'report-balance': '资产负债表', 'report-profit': '利润表',
     'report-cashflow': '标准现金流量表', 'report-tax': '主要应交税金明细表',
-    'asset-card': '固定资产卡片', 'asset-depr': '折旧',
-    'auxiliary-accounting': '辅助核算',
+    'asset-card': '固定资产卡片',
+    'asset-depr-voucher': '折旧凭证', 'asset-depr-sum': '折旧汇总表',
+    'asset-depr-detail': '折旧明细表', 'asset-change-log': '资产变动记录',
     'cashflow-init': '现金流量初始余额', 'cashflow-project': '科目现金流量项目',
     'backup-restore': '数据与安全', 'system-settings': '系统设置', 'operation-logs': '操作日志',
     'salary-statistics': '工资统计',
     'salary': '工资', 'settle': '结账', 'subject': '科目', 'opening': '期初余额',
     'param': '账套参数',
-    /* 凭证/报表补充子页（原缺失导致不进标签栏，2026-08-15 补） */
-    'original': '原始凭证', 'project-profit': '项目利润表',
+    /* 凭证/报表补充子页 */
+    'original': '原始凭证',
     'expense-detail': '费用明细表', 'report-center': '报表中心',
     /* 结账（独立页面） */
     'settle-close':'期末处理'
@@ -1851,7 +1820,6 @@
   }
 
   // 账簿域：按钮/下拉刷新
-  $('axType').addEventListener('change', renderVia('Ax'));
   // 科目余额表：查询按钮
   // 报表域：按钮刷新
   // 报表域：导出（四大标准报表）
@@ -1954,22 +1922,22 @@
     'home': renderVia('Home'),
     'voucher': renderVia('Voucher'), 'voucher-sum': renderVia('Sum'), 'voucher-query': renderVia('Query'),
     'general-ledger': renderVia('Gl'), 'detail-ledger': renderVia('Dl'), 'multi-ledger': renderVia('Ml'),
-    'qty-general': renderVia('Qg'), 'qty-ledger': renderVia('Qd'), 'aux-ledger': renderVia('Ax'),
-    'aux-balance': renderVia('Ab'), 'aux-combine': renderVia('Ac'),
     'trial-balance': renderVia('TrialBalance'), 'report-balance': renderVia('Bs'), 'report-profit': renderVia('Pl'),
     'report-cashflow': renderVia('Cf'), 'report-tax': renderVia('Tx'),     'asset-card': renderVia('Assets'),
-    /* 折旧收敛：asset-depr = 宿主（页内 Tab）；旧子页键兼容映射到宿主刷新（已无独立 section） */
-    'asset-depr': renderVia('AssetDeprHost'),
-    'asset-depr-voucher': renderVia('AssetDeprHost'), 'asset-depr-sum': renderVia('AssetDeprHost'),
-    'asset-depr-detail': renderVia('AssetDeprHost'), 'asset-change-log': renderVia('AssetDeprHost'),
+    /* 折旧独立分页：折旧凭证 / 折旧汇总表 / 折旧明细表 / 资产变动记录（原 asset-depr 宿主页内 Tab 拆出）；旧宿主键 asset-depr 兼容映射到折旧凭证 */
+    'asset-depr': renderVia('AssetDeprVoucher'),
+    'asset-depr-voucher': renderVia('AssetDeprVoucher'), 'asset-depr-sum': renderVia('Das'),
+    'asset-depr-detail': renderVia('Dad'), 'asset-change-log': renderVia('AssetChangeLog'),
     'salary': renderVia('Salary'), 'settle': refreshSettle, 'subject': renderVia('Subjects'),
     'opening': refreshOpening, 'param': renderVia('SystemSettings'),
-    'auxiliary-accounting': renderVia('AuxSetting'),
     'salary-statistics': renderVia('SalaryStats'),
     /* 工资收敛：部门职员/凭证模板已并回工资页弹窗，旧键保持可用（渲染到弹窗内表体） */
     'department-staff': renderVia('DeptStaff'), 'salary-tpl': renderVia('SalaryTpl'), 'salary-guide': renderVia('Salary'),
-    'voucher-pattern': renderVia('Pattern'),
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
+    // 报表扩展页：费用明细表 / 报表中心 / 原始凭证
+    'report-expense-detail': renderVia('ExpenseDetail'),
+    'report-center': renderVia('ReportCenter'),
+    'original': renderVia('Original'),
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
     'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
     // 操作日志独立页：当前账套日志 + 跨账套操作日志
@@ -2020,7 +1988,7 @@
       // 设置子菜单页刷新直达时落到首页、section 从未激活而内容"丢失"（2026-08-14）。
       var _h = (location.hash || '').replace(/^#/, '');
       var _direct = PAGE_REFRESHERS[_h] ||
-        _h === 'original' || _h === 'project-profit' || _h === 'expense-detail' || _h === 'report-center';
+        _h === 'original' || _h === 'expense-detail' || _h === 'report-center';
       goPage(_direct ? _h : 'home');
     }
     syncAll();

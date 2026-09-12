@@ -8,7 +8,7 @@ const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const esc = H.esc;
-import { bindSubjectCombo } from '../../components/SubjectCombo.js';
+import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 const showToast = H.showToast;
 const currentPeriod = H.currentPeriod;
 const safeFillPeriod = H.safeFillPeriod;
@@ -16,9 +16,8 @@ const syncAll = H.syncAll;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
 const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES / AUX_TYPES 等）
+// 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
-const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
 
   /* ============================================================
    * 固定资产
@@ -102,6 +101,41 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       return true;
     });
   }
+  // 资产卡片 27 列共用 td 拼接（卡片页 + 折旧凭证页复用）
+  function _assetRowCells(fa) {
+    var md = S.assetMonthlyDepr(fa);
+    return (
+      '<td class="mono">' + (fa.code || '') + '</td>' +
+      '<td>' + (fa.name || '') + '</td>' +
+      '<td>' + _catName(fa.category) + '</td>' +
+      '<td>' + (fa.dept || '') + '</td>' +
+      '<td>' + (fa.acqDate || '') + '</td>' +
+      '<td>' + (fa.entryPeriod || '') + '</td>' +
+      '<td class="ta-r mono">' + money(fa.original) + '</td>' +
+      '<td class="ta-r mono">' + money(fa.accumDeprBegin) + '</td>' +
+      '<td class="ta-r mono">' + money(fa.accumDepr) + '</td>' +
+      '<td class="ta-r mono">' + money(md) + '</td>' +
+      '<td class="ta-c">' + (fa.life ? fa.life + '年' : '') + '</td>' +
+      '<td class="ta-c">' + (fa.periodUsed || '') + '</td>' +
+      '<td class="ta-r mono">' + money(fa.salvage) + '</td>' +
+      '<td class="ta-r mono">' + num(fa.salvageRate).toFixed(2) + '</td>' +
+      '<td class="ta-r mono">' + money(fa.impairment) + '</td>' +
+      '<td class="ta-r mono">' + money(fa.netValueBegin) + '</td>' +
+      '<td class="ta-r mono">' + money(fa.netValueEnd) + '</td>' +
+      '<td>' + (fa.method || '') + '</td>' +
+      '<td>' + (fa.status || '正常') + '</td>' +
+      '<td class="ta-r">' + (fa.qty || '') + '</td>' +
+      '<td>' + (fa.spec || '') + '</td>' +
+      '<td>' + (fa.location || '') + '</td>' +
+      '<td>' + (fa.user || '') + '</td>' +
+      '<td>' + (fa.cleanPeriod || '') + '</td>' +
+      '<td class="mono">' + (fa.addVoucher || '') + '</td>' +
+      '<td class="mono">' + (fa.cleanVoucher || '') + '</td>' +
+      '<td class="mono">' + (fa.impairVoucher || '') + '</td>' +
+      '<td class="mono">' + (fa.otherVoucher || '') + '</td>' +
+      '<td>' + (fa.memo || '') + '</td>'
+    );
+  }
   function renderAssets() {
     _assetFiltered = _assetFilterList();
     var tb = $('assetBody'); tb.innerHTML = '';
@@ -111,7 +145,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     var start = (_assetPage - 1) * _assetPageSize;
     var slice = _assetFiltered.slice(start, start + _assetPageSize);
     slice.forEach(function (fa) {
-      var md = S.assetMonthlyDepr(fa);
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td class="col-check"><input type="checkbox" class="aChk" data-id="' + fa.id + '"></td>' +
@@ -119,35 +152,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         (fa.status === '清理'
           ? '<a class="link-unclean" data-unclean="' + fa.id + '">取消清理</a>'
           : '<a class="link-clean" data-clean="' + fa.id + '">清理</a>') + '</td>' +
-        '<td class="mono">' + (fa.code || '') + '</td>' +
-        '<td>' + (fa.name || '') + '</td>' +
-        '<td>' + _catName(fa.category) + '</td>' +
-        '<td>' + (fa.dept || '') + '</td>' +
-        '<td>' + (fa.acqDate || '') + '</td>' +
-        '<td>' + (fa.entryPeriod || '') + '</td>' +
-        '<td class="ta-r mono">' + money(fa.original) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.accumDeprBegin) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.accumDepr) + '</td>' +
-        '<td class="ta-r mono">' + money(md) + '</td>' +
-        '<td class="ta-c">' + (fa.life ? fa.life + '年' : '') + '</td>' +
-        '<td class="ta-c">' + (fa.periodUsed || '') + '</td>' +
-        '<td class="ta-r mono">' + money(fa.salvage) + '</td>' +
-        '<td class="ta-r mono">' + (num(fa.salvageRate)).toFixed(2) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.impairment) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.netValueBegin) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.netValueEnd) + '</td>' +
-        '<td>' + (fa.method || '') + '</td>' +
-        '<td>' + (fa.status || '正常') + '</td>' +
-        '<td class="ta-r">' + (fa.qty || '') + '</td>' +
-        '<td>' + (fa.spec || '') + '</td>' +
-        '<td>' + (fa.location || '') + '</td>' +
-        '<td>' + (fa.user || '') + '</td>' +
-        '<td>' + (fa.cleanPeriod || '') + '</td>' +
-        '<td class="mono">' + (fa.addVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.cleanVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.impairVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.otherVoucher || '') + '</td>' +
-        '<td>' + (fa.memo || '') + '</td>';
+        _assetRowCells(fa);
       tb.appendChild(tr);
     });
     // 合计行
@@ -218,8 +223,18 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
           var list = TyIo.parseAssetWorkbook(wb);
           if (!list.length) return showToast('未解析到有效卡片（需含编码/名称/原值）', 'error');
           list.forEach(function (fa) { S.addFixedAsset(fa); });
-          renderAssets(); syncAll();
-          showToast('已导入 ' + list.length + ' 张卡片');
+          // 导入后重置筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
+          ['fCode', 'fName', 'fCategory', 'fDept', 'fMethod', 'fStatus', 'fAddVch', 'fCleanVch',
+           'fAcqStart', 'fAcqEnd', 'fEntryStart', 'fEntryEnd', 'fCleanStart', 'fCleanEnd'].forEach(function (id) {
+            var el = $(id); if (el) el.value = '';
+          });
+          _assetCatSel = ''; _assetDeptSel = ''; _assetPage = 1;
+          var hasNonNormal = list.some(function (fa) { return (fa.status || '正常') !== '正常'; });
+          ['fShowCleaned', 'fShowCleanedTop'].forEach(function (id) {
+            var el = $(id); if (el) el.checked = hasNonNormal;
+          });
+          renderAssetTree(); renderAssets(); syncAll();
+          showToast('已导入 ' + list.length + ' 张卡片' + (hasNonNormal ? '（含非「正常」状态，已开启显示）' : ''));
         } catch (err) { showToast('导入失败：' + err.message, 'error'); }
       };
       reader.readAsArrayBuffer(f);
@@ -321,7 +336,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     $('assetModal').setAttribute('data-asset-id', '');
     showToast('已按「' + fa.name + '」预填新卡片，请修改编码后保存');
   }
-  // 固定资产表单的 7 个科目选择：统一用共享组件 SubjectCombo（输入框+联想）。
+  // 固定资产表单的 7 个科目选择：统一用唯一科目选择组件 bindSubjectPicker（输入框+联想）。
   // 每个下拉带各自的前缀过滤（如固定资产只列 16 开头）。首次绑定一次（dataset 守卫），
   // 之后 _openAssetModal 只回填 value，避免每次打开重复挂监听。
   var _acctCombos = {
@@ -332,8 +347,9 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     Object.keys(_acctCombos).forEach(function (id) {
       var inp = $(id); if (!inp || inp.dataset.comboBound) return;
       inp.dataset.comboBound = '1';
-      bindSubjectCombo(inp, {
-        filter: function (s) { return _acctCombos[id].test(s.code); }
+      bindSubjectPicker(inp, {
+        filter: function (s) { return _acctCombos[id].test(s.code); },
+        onPick: function (code) { inp.value = code; } // 选中即写回（与旧 SubjectCombo 行为一致）
       });
     });
   }
@@ -364,7 +380,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
         var o = document.createElement('option'); o.value = c.code; o.textContent = c.name + (c.enabled === false ? '（停用）' : ''); ac.appendChild(o);
       });
     }
-    // 科目选择统一为联想输入（SubjectCombo 组件，带前缀过滤）
+    // 科目选择统一为联想输入（bindSubjectPicker 组件，带前缀过滤）
     _bindAcctCombos();
     var fa = id ? S.state.fixedAssets.filter(function (x) { return x.id === id; })[0] : null;
     $('aCode').value = fa ? (fa.code || '') : '';
@@ -840,35 +856,7 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
       tr.innerHTML =
         '<td class="col-check"><input type="checkbox" class="dvChk"></td>' +
         '<td><a class="link-del" data-dv="' + fa.id + '">生成</a></td>' +
-        '<td class="mono">' + (fa.code || '') + '</td>' +
-        '<td>' + (fa.name || '') + '</td>' +
-        '<td>' + _catName(fa.category) + '</td>' +
-        '<td>' + (fa.dept || '') + '</td>' +
-        '<td>' + (fa.acqDate || '') + '</td>' +
-        '<td>' + (fa.entryPeriod || '') + '</td>' +
-        '<td class="ta-r mono">' + money(fa.original) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.accumDeprBegin) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.accumDepr) + '</td>' +
-        '<td class="ta-r mono">' + money(md) + '</td>' +
-        '<td class="ta-c">' + (fa.life ? fa.life + '年' : '') + '</td>' +
-        '<td class="ta-c">' + (fa.periodUsed || '') + '</td>' +
-        '<td class="ta-r mono">' + money(fa.salvage) + '</td>' +
-        '<td class="ta-r mono">' + num(fa.salvageRate).toFixed(2) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.impairment) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.netValueBegin) + '</td>' +
-        '<td class="ta-r mono">' + money(fa.netValueEnd) + '</td>' +
-        '<td>' + (fa.method || '') + '</td>' +
-        '<td>' + (fa.status || '正常') + '</td>' +
-        '<td class="ta-r">' + (fa.qty || '') + '</td>' +
-        '<td>' + (fa.spec || '') + '</td>' +
-        '<td>' + (fa.location || '') + '</td>' +
-        '<td>' + (fa.user || '') + '</td>' +
-        '<td>' + (fa.cleanPeriod || '') + '</td>' +
-        '<td class="mono">' + (fa.addVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.cleanVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.impairVoucher || '') + '</td>' +
-        '<td class="mono">' + (fa.otherVoucher || '') + '</td>' +
-        '<td>' + (fa.memo || '') + '</td>';
+        _assetRowCells(fa);
       tb.appendChild(tr);
       tot.orig += num(fa.original); tot.ab += num(fa.accumDeprBegin); tot.ae += num(fa.accumDepr);
       tot.md += md; tot.s += num(fa.salvage); tot.im += num(fa.impairment);
@@ -962,53 +950,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
     syncAll();
   });
 
-  /* ============================================================
-   * 折旧宿主（page-asset-depr）：页内 Tab 收敛
-   * 折旧凭证 / 折旧汇总表 / 折旧明细表 / 变动记录
-   * 子面板渲染映射到既有刷新函数，仅切换可见子面板不改变账务逻辑。
-   * ============================================================ */
-  var _deprSubRenders = {
-    voucher: refreshAssetDeprVoucher,
-    sum: refreshDas,
-    detail: refreshDad,
-    change: refreshAssetChangeLog
-  };
-  var _deprSubLabels = { voucher: '折旧凭证', sum: '折旧汇总表', detail: '折旧明细表', change: '变动记录' };
-  // 刷新宿主时保持/回退到当前激活子面板（缺省 voucher）
-  function refreshAssetDeprHost() {
-    var pending = globalThis.__assetDeprPending;
-    globalThis.__assetDeprPending = null;
-    var tabs = $('assetDeprTabs');
-    if (!tabs) return;
-    var active = tabs.querySelector('.asset-subtab.active');
-    var sub = pending || (active ? active.getAttribute('data-sub') : 'voucher');
-    showAssetDeprSub(sub);
-  }
-  // goPage 旧键直达兼容：asset-depr-voucher/sum/detail/change → 宿主指定子面板
-  globalThis.__goAssetDeprSub = function (sub) {
-    globalThis.__assetDeprPending = sub;
-    if (globalThis.goPage) globalThis.goPage('asset-depr', true);
-  };
-  // 切换页内子面板 + 触发对应子视图渲染（幂等）
-  function showAssetDeprSub(sub) {
-    var tabs = $('assetDeprTabs'); if (!tabs) return;
-    var all = [].slice.call(tabs.querySelectorAll('.asset-subtab'));
-    all.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-sub') === sub); });
-    [].slice.call(document.querySelectorAll('#page-asset-depr > .asset-sub')).forEach(function (p) {
-      p.classList.toggle('active', p.getAttribute('data-sub') === sub);
-    });
-    if (_deprSubRenders[sub]) _deprSubRenders[sub]();
-  }
-  // tab 点击切换
-  (function () {
-    var tabs = $('assetDeprTabs');
-    if (!tabs) return;
-    tabs.addEventListener('click', function (e) {
-      var btn = e.target.closest('.asset-subtab');
-      if (btn) showAssetDeprSub(btn.getAttribute('data-sub'));
-    });
-  })();
-
   /* 固定资产卡片页工具条「资产类别」弹窗入口（原独立页收敛为页内弹窗） */
   (function () {
     var opener = $('btnAssetCatMgr');
@@ -1025,7 +966,6 @@ const AUX_TYPES = globalThis.AUX_TYPES || (EX && EX.AUX_TYPES);
   })();
 
 export {
-  refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher,
-  refreshAssetDeprHost, showAssetDeprSub
+  refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher
 };
 

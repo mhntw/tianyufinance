@@ -10,7 +10,7 @@
  *   - 各月科目余额表（从 GLBal 表直接提取，金蝶权威数据）
  *   - 凭证统计
  *
- * 这是对照验证的"金蝶侧基准数据"，不经过 xzys 的任何转换逻辑。
+ * 这是对照验证的"金蝶侧基准数据"，不经过 ty 的任何转换逻辑。
  */
 'use strict';
 
@@ -201,7 +201,7 @@ function main() {
     balanceRowCount: balRows.length,
     periods: periods,
     balanceByPeriod: balanceByPeriod,
-    // 金蝶原始科目方向映射（用于核对 xzys 导入的 cls/normal 是否正确）
+    // 金蝶原始科目方向映射（用于核对 ty 导入的 cls/normal 是否正确）
     subjectDirectionMap: subjects.reduce((acc, s) => {
       acc[s.code] = { name: s.name, dc: s.dc, level: s.level };
       return acc;
@@ -218,7 +218,7 @@ function main() {
   if (s5301) {
     console.log('\n--- 5301 营业外收入 金蝶原始数据 ---');
     console.log('金蝶方向 FDC: ' + s5301.dc + ' (D=借方 C=贷方)');
-    console.log('xzys 导入后 cls: expense (classify 函数将 5301 归为 expense)');
+    console.log('ty 导入后 cls: expense (classify 函数将 5301 归为 expense)');
     console.log('正确应为: revenue (营业外收入是收入类科目)');
   }
 

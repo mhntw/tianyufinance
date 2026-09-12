@@ -1,12 +1,26 @@
 // 起止期间选择器（用于总账/明细账等筛选栏）
 // 依赖全局：$（DOM 查询）、currentPeriod、lastClosedPeriod、periodRangeOptions（可外部注入）
 // 用法：index.html 中 .ty-period-range 容器配置 data-start-id / data-end-id / data-on-change
+//
+// ── 单期模式（data-single-period="1"）─────────────────────────────
+// 背景：本项目多数页面是【单期】口径（只读结束期间），但控件是范围式（左「开始期间」/右「结束期间」，
+//   触发器显示「X期 ~ Y期」），导致用户改左列后点查询「毫无反应」——UI 与真实口径不符，属误导。
+//   （见 Report.js / TrialBalance.js 中「口径保持单期间（用结束期间）」的注释）
+// 现由本属性显式声明口径，控件据此进入单期模式：
+//   · 面板只渲染一列，表头「期间」；
+//   · 触发器只显示单个期间（不再出现「X ~ Y」）；
+//   · 「今年/去年」这类区间语义的快捷按钮隐藏；
+//   · 结束期间与开始期间两个隐藏输入始终同步（右侧写入即同时写左侧），
+//     既避免遗留不一致值，也保证任何读 start 的老代码拿到的是同一个期间。
+// 未加该属性的容器仍是真范围模式（如查凭证、凭证汇总表、费用明细表），行为不变。
+// 口径判定靠 HTML 属性声明，不在本文件里维护页面名单，避免两处漂移。
 
 const $ = globalThis.$ || function (id) { return document.getElementById(id); };
 const H = globalThis.__TY_HELPERS__ || {};
 const currentPeriod = H.currentPeriod || (() => '2023-01');
 const lastClosedPeriod = H.lastClosedPeriod || currentPeriod;
 const periodRangeOptions = H.periodRangeOptions || (typeof window !== 'undefined' ? window.__EXTRA_PERIOD_RANGE_OPTIONS__ : undefined);
+const storeAllMonths = H.allMonths;   // app.js 的 allMonths() — 账套真实可选月列表
 
 const pad2 = n => String(n).padStart(2, '0');
 const PERIOD_RE = /^\d{4}-\d{2}$/;
@@ -43,13 +57,20 @@ function parseYM(ym) {
 }
 
 function allAvailablePeriods() {
+  // 1. 优先用 store 的真实月份（账套启用月 → 有凭证的最后一个月）
+  if (typeof storeAllMonths === 'function') {
+    try {
+      const real = storeAllMonths();
+      if (Array.isArray(real) && real.length) return real;
+    } catch (e) { /* ignore */ }
+  }
+  // 2. 其次用注入的 periodRangeOptions（渲染 <option> 字符串）
   if (typeof periodRangeOptions === 'function') {
-    // 复用 Extra.js 里生成 option 列表的逻辑：近两年 1~12 期
     const div = document.createElement('div');
     div.innerHTML = periodRangeOptions();
     return Array.from(div.querySelectorAll('option')).map(o => o.value);
   }
-  // fallback：从当前期间向前后各扩展一年
+  // 3. fallback：从当前期间向前后各扩展一年
   const cp = resolveDefault();
   const [cy, cm] = cp.split('-').map(Number);
   const list = [];
@@ -71,7 +92,8 @@ const state = {
   end: '',
   startYear: 2023,
   endYear: 2023,
-  onChange: null
+  onChange: null,
+  isSingle: false      // 单期模式：data-single-period="1" 的容器启用
 };
 
 function getPop() { return $('kdPeriodRangePop'); }
@@ -86,7 +108,12 @@ function updateTriggerText(wrap) {
   const eInp = $(wrap.dataset.endId);
   const s = sInp ? sInp.value : '';
   const e = eInp ? eInp.value : '';
-  textEl.textContent = s && e ? `${fmtPeriod(s)} ~ ${fmtPeriod(e)}` : '请选择期间';
+  const isSingle = wrap.dataset.singlePeriod === '1';
+  if (isSingle) {
+    textEl.textContent = e ? fmtPeriod(e) : '请选择期间';
+  } else {
+    textEl.textContent = s && e ? `${fmtPeriod(s)} ~ ${fmtPeriod(e)}` : '请选择期间';
+  }
 }
 
 export function updatePeriodRangeTrigger(startId, endId) {
@@ -105,6 +132,7 @@ function openPop(wrap) {
   const pop = getPop();
   if (!pop || !wrap) return;
   state.wrap = wrap;
+  state.isSingle = wrap.dataset.singlePeriod === '1';
   const sInp = $(wrap.dataset.startId);
   const eInp = $(wrap.dataset.endId);
   state.start = sInp ? sInp.value : '';
@@ -119,6 +147,7 @@ function openPop(wrap) {
   state.endYear = (_ety && _ety.y) || state.startYear;
   state.onChange = wrap.dataset.onChange || null;
   renderPanels();
+  renderShortcuts();
   pop.hidden = false;
   positionPop(wrap);
 }
@@ -146,14 +175,24 @@ function positionPop(wrap) {
 function renderPanels() {
   const pop = getPop();
   if (!pop) return;
+  // 可用集合：账套真实有数据的月份，O(1) 查找
+  const availableSet = new Set(allAvailablePeriods());
   const panels = pop.querySelectorAll('.ty-period-panel');
   panels.forEach(panel => {
     const side = panel.dataset.side;
+    // 单期模式：隐藏 start panel，改 end panel 标题
+    if (state.isSingle) {
+      if (side === 'start') { panel.style.display = 'none'; return; }
+      const head = panel.querySelector('.ty-period-panel-head');
+      if (head) head.textContent = '选择期间';
+    } else {
+      if (side === 'start') { const h = panel.querySelector('.ty-period-panel-head'); if (h) h.textContent = '开始期间'; }
+      if (side === 'end') { const h = panel.querySelector('.ty-period-panel-head'); if (h) h.textContent = '结束期间'; }
+      panel.style.display = '';
+    }
     const year = side === 'start' ? state.startYear : state.endYear;
     panel.querySelector('.ty-period-year-text').textContent = `${year}年`;
     const grid = panel.querySelector('.ty-period-grid');
-    const list = allAvailablePeriods();
-    const maxP = maxAvailablePeriod();
     grid.innerHTML = '';
     for (let m = 1; m <= 12; m++) {
       const ym = `${year}-${pad2(m)}`;
@@ -165,11 +204,24 @@ function renderPanels() {
       // 选中态
       if (side === 'start' && ym === state.start) cell.classList.add('selected');
       if (side === 'end' && ym === state.end) cell.classList.add('selected');
-      // 禁用态：超过账套最大可用期间
-      if (ym > maxP) cell.classList.add('disabled');
-      cell.addEventListener('click', () => onCellClick(side, ym));
+      // 禁用态：不在账套真实可用月份列表里 → 灰色不可选
+      if (!availableSet.has(ym)) {
+        cell.classList.add('disabled');
+        cell.disabled = true;
+      } else {
+        cell.addEventListener('click', () => onCellClick(side, ym));
+      }
       grid.appendChild(cell);
     }
+  });
+}
+
+// 单期模式下隐藏区间语义快捷按钮（今年/去年）
+function renderShortcuts() {
+  const pop = getPop();
+  if (!pop) return;
+  pop.querySelectorAll('[data-shortcut="current-year"], [data-shortcut="last-year"]').forEach(btn => {
+    btn.style.display = state.isSingle ? 'none' : '';
   });
 }
 
@@ -185,6 +237,8 @@ function onCellClick(side, ym) {
 }
 
 function applySelection() {
+  // 单期模式：start 与 end 保持一致（避免遗留不一致值）
+  if (state.isSingle) state.start = state.end;
   const sInp = getStartInput();
   const eInp = getEndInput();
   if (sInp) sInp.value = state.start;
