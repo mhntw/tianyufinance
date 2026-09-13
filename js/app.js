@@ -350,17 +350,24 @@
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
   function round2(n) { return Math.round(U.num(n) * 100) / 100; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  // 起止期间取值（单点实现）：此前 Report/Salary/Ledger/Cashier/CashJournal/CashierExtra
+  // 期间取值（单点实现）：此前 Report/Salary/Ledger/Cashier/CashJournal/CashierExtra
   // 六个页面各存一份逐字相同的拷贝，改一处漏五处。现统一在此，页面经 H.periodRangeValue 引用。
-  // 口径：回填默认期间并同步触发器文本，返回结束期间（取数仍按单期间，用结束期间）。
-  function periodRangeValue(prefix, def) {
+  // 口径：回填默认期间并同步触发器文本，返回该期间。期间控件是单期形态，两端恒等。
+  // 第二参 def 已移除：16 个调用方无一传参，默认值一律取控件 data-default 的声明（见下）。
+  function periodRangeValue(prefix) {
     var sInp = $(prefix + 'Start'), eInp = $(prefix + 'End');
     if (sInp && eInp) {
+      // 默认值取期间控件 data-default 声明的（声明在 index.html、解析在组件）：
+      // 页面不再各自决定"默认期间是什么"，此前 16 个页面里有 8 处是逐字拷贝，属"改一处漏五处"。
+      // 末尾 || '' 是必要的：账套未加载时 currentPeriod() 可能为 null，
+      // 而 input.value = null 会被 WebIDL 转成字符串 "null" 写进输入框。
+      var def = (typeof globalThis.__PERIOD_DEFAULT_OF__ === 'function' ? globalThis.__PERIOD_DEFAULT_OF__(prefix) : '')
+                || currentPeriod() || '';
       sInp.value = sInp.value || def;
       eInp.value = eInp.value || def;
       if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__(prefix + 'Start', prefix + 'End');
     }
-    return eInp ? eInp.value : def;
+    return eInp ? eInp.value : '';
   }
   // 期间格式化：兼容 "YYYY-MM" 与 "YYYYMM" 两种账套月份格式 -> "YYYY年第N期"
   // 注：本账套月份统一为 "YYYY-MM"（见 store.allMonths/currentPeriod），
@@ -389,24 +396,6 @@
   function closeModal(id) { var m = $(id); if (m) m.classList.remove('show'); }
   globalThis.openModal = openModal;
   globalThis.closeModal = closeModal;
-  function allMonths() { // 账套启用期间 ~ 最后一笔凭证期间
-    var months = {};
-    if (S.state && S.state.company && S.state.company.startMonth) months[S.state.company.startMonth] = true;
-    var vs = (S.state && S.state.vouchers) || [];
-    vs.forEach(function (v) { if (U.monthOf(v.date)) months[U.monthOf(v.date)] = true; });
-    return Object.keys(months).sort();
-  }
-  function fillPeriodSelect(sel, def) {
-    var months = allMonths();
-    // 默认选中兜底：def 为空或不在可选月份中时，选最近一期（默认选当期，避免显示占位「期间」）
-    if (!def || months.indexOf(def) < 0) def = months.length ? months[months.length - 1] : '';
-    sel.innerHTML = '<option value="">期间</option>';
-    months.forEach(function (m) {
-      var o = document.createElement('option'); o.value = m; o.textContent = m;
-      if (m === def) o.selected = true;
-      sel.appendChild(o);
-    });
-  }
   function currentPeriod() {
     var closed = (S.state && S.state.closedPeriods) || [];
     var natMonth = todayStr().slice(0, 7);
@@ -446,14 +435,6 @@
   function bookKey() {
     var startMonth = (S.state && S.state.company && S.state.company.startMonth) || '';
     return (S.bookId || '') + '|' + startMonth;
-  }
-  // 期间下拉：带守卫的安全填充（账套不变则跳过重建，保住用户当前选择）
-  function safeFillPeriod(sel, def) {
-    if (!sel) return;
-    var k = bookKey();
-    if (sel.dataset.key === k) return; // 已为当前账套，保留用户选择
-    fillPeriodSelect(sel, def);
-    sel.dataset.key = k;
   }
 
   /* ---------- 高危操作密码（防误删/误清，全局设置） ----------
@@ -498,8 +479,7 @@
       $: pick($), money: pick(money), fmt: pick(fmt), signed: pick(signed),
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
-      closeModal: pick(closeModal),       allMonths: pick(allMonths), fillPeriodSelect: pick(fillPeriodSelect),
-      safeFillPeriod: pick(safeFillPeriod), bookKey: pick(bookKey),
+      closeModal: pick(closeModal), bookKey: pick(bookKey),
       currentPeriod: pick(currentPeriod), lastClosedPeriod: pick(lastClosedPeriod), num: U && U.num,
       // 起止期间取值：此前 6 个页面各存一份逐字相同的实现，改一处漏五处。
       // 统一在此提供单点实现，页面模块直接引用（见 PeriodRangePicker.js 注释）。
@@ -703,10 +683,17 @@
     return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
       + '<title>' + escapeHtml(title) + '</title><style>'
       + 'body{font-family:-apple-system,"Microsoft YaHei",sans-serif;color:#222;padding:24px;}'
-      + 'table{border-collapse:collapse;width:100%;font-size:12px;}'
-      + 'th,td{border:1px solid #ccc;padding:4px 8px;text-align:left;}'
-      + 'th{background:#f5f5f5;font-weight:600;}'
+      // 统一打印基线：table-layout:auto + 保留 colgroup hint（不覆盖）
+      + 'table{border-collapse:collapse;width:100%;table-layout:auto;font-size:11px;}'
+      + 'th,td{border:1px solid #666;padding:3px 6px;text-align:left;}'
+      + 'th{background:#f0f0f0;font-weight:600;}'
       + 'tr:nth-child(even) td{background:#fafafa;}'
+      // 金额/数字/方向/期间列不折行，文本列允许折行
+      + 'td.ta-r, td.mono, td.num, td.col-amt, th.ta-r, th.col-amt, td.gl-dir, td.gl-period{white-space:nowrap;}'
+      // 保留链接文字（科目编码是 <a>），只去样式
+      + 'a{color:inherit;text-decoration:none;}'
+      // 树形折叠三角：打印时隐藏（与 style.css @media print 对齐）
+      + '.tb-arrow,.subj-arrow,.ed-tree-arrow,.subj-arrow-leaf,.tb-arrow-leaf,.ed-tree-spacer{display:none;}'
       // 标准打印抬头（与页面 @media print 版式一致）
       + '.rpt-print-head{margin-bottom:12px;}'
       + '.rpt-print-head .rph-title{font-size:18px;font-weight:700;text-align:center;margin-bottom:6px;}'
@@ -719,7 +706,7 @@
       + '.rpt-period{font-size:12px;color:#666;margin-top:4px;}'
       + 'input[type=checkbox]{display:none;}'
       + '.btn,.ty-btn,button{display:none!important;}'
-      + '@media print{body{padding:0;}a{display:none;}.print-hint{display:none!important;}}'
+      + '@media print{body{padding:0;}.print-hint{display:none!important;}}'
       + '</style></head><body>'
       + leading
       + (bodyHtml || '<p>（无可打印内容）</p>')
@@ -861,7 +848,6 @@
       { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow',color:'#06B6D4' },
       { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',color:'#E11D48' },
       { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',color: '#8B5CF6' },
-      { key: 'report-center',   name: '报表中心',     page: 'report-center', color: '#64748B' },
     ]},
     /* 标准：结账（独立页面，无子菜单，含期末处理/反结账 Tab） */
     { group: '结账', direct: true, page: 'settle', items: [
@@ -1640,7 +1626,6 @@
     // 报表/凭证子页面
     if (page === 'original') { if (globalThis.__renderOriginal) globalThis.__renderOriginal(); }
     else if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
-    else if (page === 'report-center') { if (globalThis.__renderReportCenter) globalThis.__renderReportCenter(); }
 
     // 同步导航 active 状态（nav-group-title / nav-pop-item / home-trigger）
     document.querySelectorAll('.nav-group-title, .nav-pop-item, .home-trigger').forEach(function (el) {
@@ -1681,7 +1666,7 @@
     'param': '账套参数',
     /* 凭证/报表补充子页 */
     'original': '原始凭证',
-    'expense-detail': '费用明细表', 'report-center': '报表中心',
+    'expense-detail': '费用明细表',
     /* 结账（独立页面） */
     'settle-close':'期末处理'
   };
@@ -1933,7 +1918,6 @@
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
     // 报表扩展页：费用明细表 / 报表中心 / 原始凭证
     'report-expense-detail': renderVia('ExpenseDetail'),
-    'report-center': renderVia('ReportCenter'),
     'original': renderVia('Original'),
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
     'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
@@ -1985,7 +1969,7 @@
       // 设置子菜单页刷新直达时落到首页、section 从未激活而内容"丢失"（2026-08-14）。
       var _h = (location.hash || '').replace(/^#/, '');
       var _direct = PAGE_REFRESHERS[_h] ||
-        _h === 'original' || _h === 'expense-detail' || _h === 'report-center';
+        _h === 'original' || _h === 'expense-detail';
       goPage(_direct ? _h : 'home');
     }
     syncAll();

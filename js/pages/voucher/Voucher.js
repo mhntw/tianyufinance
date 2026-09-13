@@ -11,6 +11,8 @@
  * 这里优先取桥接，缺失项做轻量 fallback（不影响既有逻辑）。
  * ============================================================ */
 const H = globalThis.__TY_HELPERS__ || {};
+// 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
+const periodRangeValue = H.periodRangeValue;
 const U = H.U || window.util;
 const S = H.S || window.S;
 const $ = function (id) { return document.getElementById(id); };
@@ -638,7 +640,8 @@ function setupVoucher() {
   var bPref = $('btnVoucherPref'); if (bPref) bPref.addEventListener('click', function () {
     var st = S.settings.voucher || {};
     var pt = $('prefThousand'); if (pt) pt.checked = st.thousand !== false;
-    var pd = $('prefDefaultWord'); if (pd) pd.checked = !!st.defaultWord;
+    var vc = (S.state.param && S.state.param.voucherChecks) || {};
+    var dc = $('prefDeficitCheck'); if (dc) dc.checked = !!vc.deficitCheck;
     var m = $('voucherPrefModal'); if (m) m.classList.add('show');
   });
   var bPrefClose = $('btnVoucherPrefClose'); if (bPrefClose) bPrefClose.addEventListener('click', function () { var m = $('voucherPrefModal'); if (m) m.classList.remove('show'); });
@@ -646,8 +649,13 @@ function setupVoucher() {
   var bPrefSave = $('btnVoucherPrefSave'); if (bPrefSave) bPrefSave.addEventListener('click', function () {
     S.settings.voucher = S.settings.voucher || {};
     var pt = $('prefThousand'); if (pt) S.settings.voucher.thousand = pt.checked;
-    var pd = $('prefDefaultWord'); if (pd) S.settings.voucher.defaultWord = pd.checked;
+    var dc = $('prefDeficitCheck'); if (dc) {
+      S.state.param = S.state.param || {};
+      S.state.param.voucherChecks = S.state.param.voucherChecks || {};
+      S.state.param.voucherChecks.deficitCheck = dc.checked;
+    }
     S.saveSettings();
+    S.persist();
     var m = $('voucherPrefModal'); if (m) m.classList.remove('show');
     showToast('偏好设置已保存');
     syncAll();
@@ -978,42 +986,41 @@ function loadVoucherToEdit(id) {
  * ============================================================ */
 function refreshSum() {
   setupVoucher();
+  // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本。
+  // 本页是区间口径（起止都要用），故兜底后各自读取。
+  periodRangeValue('sumPeriod');
   var sInp = $('sumPeriodStart'), eInp = $('sumPeriodEnd');
-  if (sInp && eInp) {
-    var def = currentPeriod();
-    sInp.value = sInp.value || def;
-    eInp.value = eInp.value || def;
-    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('sumPeriodStart', 'sumPeriodEnd');
-  }
-  renderSum(sInp ? sInp.value : currentPeriod(), eInp ? eInp.value : currentPeriod());
+  renderSum(sInp ? sInp.value : '', eInp ? eInp.value : '');
 }
-// 组件 applySelection 后 hidden input 派发 change 事件，兜底刷新
-['sumPeriodStart', 'sumPeriodEnd'].forEach(function (id) {
-  var el = $(id);
-  if (el) el.addEventListener('change', function () { var s = $('sumPeriodStart'), e = $('sumPeriodEnd'); renderSum(s ? s.value : '', e ? e.value : ''); });
-});
+// 期间变更由期间控件的 data-on-change 直接回调（组件不派发 change 事件），此处无需再绑监听。
 
 function renderSum(start, end) {
   var tb = $('sumBody'); if (!tb) return;
   tb.innerHTML = '';
+  var stat = $('sumStat');
+  if (stat) stat.textContent = '';
   if (!start || !end) return;
   var map = {};
-  // 起止区间内逐月累计（凭证汇总支持跨期）
-  var months = [];
-  if (start === end) months = [start];
-  else months = (U.monthsBetween && (function () {
-    var list = [], y = +start.split('-')[0], m = +start.split('-')[1], ey = +end.split('-')[0], em = +end.split('-')[1];
-    while (y < ey || (y === ey && m <= em)) { list.push(y + '-' + (m < 10 ? '0' + m : m)); if (m === 12) { y++; m = 1; } else m++; }
-    return list;
-  })());
+  // 起止区间内逐月累计（凭证汇总支持跨期）。
+  // 月份列表统一走 store 的 monthList：此前此处内联展开了一份，与 _shared.js 的实现重复
+  // （且 `U.monthsBetween &&` 这个守卫是多余的——括号里的 IIFE 并没有用到它）。
+  // monthList 在 start === end 时返回单元素数组，原「相等就只取一月」的分支已被它覆盖。
+  var months = U.monthList(start, end);
+  // 副标题统计（对齐金蝶「凭证总张数：N张；附件总张数：N张」）：
+  // 张数 = 区间内凭证条数；附件张数 = 各凭证 attach 字段之和（非附件元信息数组长度，
+  // 与凭证上「附件 ___ 张」是同一个值）。
+  var vchCount = 0, attachCount = 0;
   months.forEach(function (month) {
     S.periodVouchers(month).forEach(function (v) {
+      vchCount++;
+      attachCount += num(v.attach);
       v.entries.forEach(function (e) {
         if (!map[e.code]) map[e.code] = { dr: 0, cr: 0 };
         map[e.code].dr += U.num(e.dr); map[e.code].cr += U.num(e.cr);
       });
     });
   });
+  if (stat) stat.textContent = '凭证总张数：' + vchCount + '张；附件总张数：' + attachCount + '张';
   S.subjects().forEach(function (s) {
     var m = map[s.code];
     if (!m || (m.dr === 0 && m.cr === 0)) return;
@@ -1028,15 +1035,12 @@ function renderSum(start, end) {
  * ============================================================ */
 function refreshQuery() {
   setupVoucher();
+  // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本。
+  // 本页是区间口径（起止都要用），故兜底后各自读取。
+  periodRangeValue('qPeriod');
   var sInp = $('qPeriodStart'), eInp = $('qPeriodEnd');
-  if (sInp && eInp) {
-    var def = currentPeriod();
-    sInp.value = sInp.value || def;
-    eInp.value = eInp.value || def;
-    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('qPeriodStart', 'qPeriodEnd');
-  }
   bindQuerySubjectOnce();
-  renderQuery(sInp ? sInp.value : currentPeriod(), eInp ? eInp.value : currentPeriod());
+  renderQuery(sInp ? sInp.value : '', eInp ? eInp.value : '');
 }
 
 // 科目筛选：与总账/多栏账同款「点输入框即弹、点选即生效」的单选组件
@@ -1048,7 +1052,6 @@ function bindQuerySubjectOnce() {
   var inp = $('qCode');
   if (!inp) return null;
   qSubjPicker = bindSubjectPicker(inp, {
-    btnId: 'qCodeBtn',
     onPick: function (code) { inp.value = String(code); qRender(); }
   });
   return qSubjPicker;
@@ -1070,11 +1073,7 @@ function qSubjectCodes() {
 function qRender() { var s = $('qPeriodStart'), e = $('qPeriodEnd'); renderQuery(s ? s.value : '', e ? e.value : ''); }
 // 科目/期间输入均实时自动刷新（期间→__renderQuery、科目→qRender），
 // 「过滤」「刷新」按钮均为冗余，已删除。
-// 组件 applySelection 后 hidden input 派发 change 事件，兜底刷新
-['qPeriodStart', 'qPeriodEnd'].forEach(function (id) {
-  var el = $(id);
-  if (el) el.addEventListener('change', qRender);
-});
+// 期间变更由期间控件的 data-on-change 直接回调（组件不派发 change 事件），此处无需再绑监听。
 var qCodeEl = $('qCode'); if (qCodeEl) qCodeEl.addEventListener('change', qRender);
 var qSortDir = 0;
 var qThNo = $('qThNo');
@@ -1154,15 +1153,12 @@ if (qCheckAll) qCheckAll.addEventListener('change', function () {
 function queryVouchers(start, end, code) {
   if (!start || !end) return [];
   var vs = [];
-  // 起止区间内逐月汇总（查凭证支持跨期）
-  if (start === end) vs = S.periodVouchers(start).slice();
-  else {
-    var list = [], y = +start.split('-')[0], m = +start.split('-')[1], ey = +end.split('-')[0], em = +end.split('-')[1];
-    while (y < ey || (y === ey && m <= em)) { list.push(y + '-' + (m < 10 ? '0' + m : m)); if (m === 12) { y++; m = 1; } else m++; }
-    list.forEach(function (month) {
-      S.periodVouchers(month).forEach(function (v) { vs.push(v); });
-    });
-  }
+  // 起止区间内逐月汇总（查凭证支持跨期）。
+  // 月份列表统一走 store 的 monthList：此前此处**又内联展开了一份**（Phase 1 收敛时漏掉的第 4 份）。
+  // monthList 对 start === end 也返回单元素数组，故原先的「相等则只取一月」分支已被它覆盖。
+  U.monthList(start, end).forEach(function (month) {
+    S.periodVouchers(month).forEach(function (v) { vs.push(v); });
+  });
   // codes 为 null 表示「全部科目」；非空时凭证只要含任一分录即命中
   if (code) {
     vs = vs.filter(function (v) {

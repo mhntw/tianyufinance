@@ -24,57 +24,19 @@ import { exportTable } from '../settings/_shared.js';
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 
   // 科目表：默认只显示一级科目，点行首箭头才逐级展开其子科目。
-  // subjCollapsed: { code: true } = 该科目已收起（隐藏其直接子级；祖先收起时后级递归隐藏）
-  var subjCollapsed = {};
-  function refreshSubjects() { subjCollapseToLevel1(); renderSubjects(); }
-  // 直接父科目映射：在给定集合内取该编码的「最长真前缀」作为父。
-  // 真实账套编码层级不规整（4 位、4+2=6 位、4+3=7 位、更深混合），
-  // 不能用「固定去尾 2 位」推导（会把 1002001 的父错算成 10020）。
-  function subjParentMap(subjects) {
-    var byCode = {};
-    (subjects || []).forEach(function (s) { byCode[String(s.code)] = 1; });
-    var pm = {};
-    (subjects || []).forEach(function (s) {
-      var c = String(s.code), best = '';
-      for (var L = c.length - 1; L > 0; L--) {
-        var pre = c.slice(0, L);
-        if (byCode[pre]) { best = pre; break; } // 最长的存在于集合中的真前缀 = 直接父
-      }
-      pm[c] = best;
-    });
-    return pm;
-  }
-  // 沿父链上溯：任一祖先已收起则该行隐藏
-  function subjAncestorCollapsed(pm, code) {
-    var cur = code, depth = 0;
-    while (cur && depth++ < 40) {
-      var p = pm[cur];
-      if (!p) return false;
-      if (subjCollapsed[p]) return true;
-      cur = p;
-    }
-    return false;
-  }
+  // subjExpanded: Set() = 已展开的科目编码（祖先级联：祖先不在 Set 中 → 子级隐藏）
+  // 空 Set = 默认全收起（只露一级父科目）
+  var subjExpanded = new Set();
+  function refreshSubjects() { subjExpanded = new Set(); renderSubjects(); }
   // 层级深度 = 到根的父链长度（真实缩进依据）
   function subjDepth(pm, code) {
-    var d = 0, c = code, guard = 0;
+    var d = 0, c = String(code), guard = 0;
     while (c && guard++ < 40) {
       var p = pm[c];
       if (!p) break;
       d++; c = p;
     }
     return d;
-  }
-  // 初始态：所有「存在直接子科目」的父级一律收起 → 只露一级
-  function subjCollapseToLevel1() {
-    var subs = S.subjects() || [];
-    var pm = subjParentMap(subs);
-    var parents = {};
-    subs.forEach(function (s) {
-      var p = pm[String(s.code)];
-      if (p) parents[p] = 1;
-    });
-    subjCollapsed = parents;
   }
   /* 科目页：分类 Tab（资产/负债/共同/权益/成本/损益）+ 树形展开 + 勾选计数 */
   var subjTabCls = 'asset';   // 当前分类 Tab（默认选中「资产」）
@@ -156,14 +118,11 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var lv = subjDepth(pmAll, s.code);
       var hidden = searchVisible
         ? !searchVisible[s.code]
-        : (expandAllOn ? false : subjAncestorCollapsed(pmAll, s.code));
-      // 行首箭头：有子科目可展开；末级用等宽占位保证名称对齐
-      var arrow = hasKids[s.code]
-        ? '<span class="subj-arrow' + (subjCollapsed[s.code] ? ' collapsed' : '') + '" data-code="' + s.code
-          + '" title="' + (subjCollapsed[s.code] ? '展开下级科目' : '收起下级科目') + '">'
-          + (subjCollapsed[s.code] ? '▶' : '▼') + '</span>'
-        : '<span class="subj-arrow-leaf"></span>';
-      var indent = '<span class="subj-indent" style="width:' + (lv * 14) + 'px"></span>';
+        : (expandAllOn ? false : !S.subjectVisible(s.code, subjExpanded, pmAll, false));
+      // 行首箭头：用 store 公共函数统一生成 ▶▼ 文字
+      var hasKidsHere = hasKids[s.code];
+      var arrow = S.subjectArrowHTML(s.code, hasKidsHere, subjExpanded.has(s.code));
+      var indent = S.subjectIndentHTML(lv);
       var tr = document.createElement('tr');
       if (hidden) tr.className = 'subj-hidden';
       tr.innerHTML =
@@ -265,9 +224,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (chkE && chkE.checked) {
         // 「展开所有级次」态下点箭头 = 退出全展，只收起该分支，其余保持展开（保留后续逐级操作）
         chkE.checked = false;
-        subjCollapsed = {};
+        subjExpanded = new Set();
       }
-      if (subjCollapsed[aCode]) delete subjCollapsed[aCode]; else subjCollapsed[aCode] = true;
+      if (subjExpanded.has(aCode)) subjExpanded.delete(aCode); else subjExpanded.add(aCode);
       renderSubjects();
       return;
     }
@@ -290,10 +249,18 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   // 搜索框：输入即过滤（含父链路径展示）
   var bSubjSearch = $('subjSearch'); if (bSubjSearch) bSubjSearch.addEventListener('input', function () { renderSubjects(); });
-  // 「展开所有级次」复选（语义）：勾选=显示全部级次；取消=回到一级收拢
+  // 「展开所有级次」复选：勾选=全展开（把所有有子节点的 code 塞进 Set）；取消=回到一级收拢
   var bExpand = $('subjExpandAll'); if (bExpand) bExpand.addEventListener('change', function () {
-    if (bExpand.checked) subjCollapsed = {};
-    else subjCollapseToLevel1();
+    if (bExpand.checked) {
+      // 全展开：把所有有子节点的科目编码加进 expanded Set
+      var allSubs = S.subjects() || [];
+      var pm = S.subjectParentMap(allSubs);
+      var kids = {};
+      allSubs.forEach(function (s) { var p = pm[String(s.code)]; if (p) kids[p] = 1; });
+      subjExpanded = new Set(Object.keys(kids));
+    } else {
+      subjExpanded = new Set();
+    }
     renderSubjects();
   });
   // 工具条（新增/导入/导出/打印）

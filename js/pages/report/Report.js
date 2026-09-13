@@ -3,7 +3,7 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 //
 // 设计要点：
-// - globalThis.__TY_HELPERS__ 由 app.js 注册（$, money, moneyRed, currentPeriod, fillPeriodSelect, S, U ...）
+// - globalThis.__TY_HELPERS__ 由 app.js 注册（$, money, moneyRed, currentPeriod, periodRangeValue, S, U ...）
 // - globalThis.__TY_EXPORT__ 由 store.js 注册（store, util ...）
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
@@ -17,7 +17,6 @@ const moneyRed = H.moneyRed || function (n) {
 };
 const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
-const safeFillPeriod = H.safeFillPeriod;
 const S = H.S || (EX && EX.store);
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
 // 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
@@ -64,15 +63,9 @@ function amtCell(v, extra) {
 
 /* ===================== 资产负债表 ===================== */
 function refreshBs() {
-  var sInp = $('bsPeriodStart'), eInp = $('bsPeriodEnd');
-  var def = lastClosedPeriod();
-  if (sInp && eInp) {
-    sInp.value = sInp.value || def;
-    eInp.value = eInp.value || def;
-    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('bsPeriodStart', 'bsPeriodEnd');
-  }
-  // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
-  renderBs(eInp ? eInp.value : def);
+  // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本
+  // 口径保持单期间（用结束期间）
+  renderBs(periodRangeValue('bsPeriod'));
 }
 function renderBs(month) {
   setRptHead("bsTitleRow", "资产负债表", 8, month);
@@ -208,15 +201,9 @@ function exportBs() {
 
 /* ===================== 利润表 ===================== */
 function refreshPl() {
-  var sInp = $('plPeriodStart'), eInp = $('plPeriodEnd');
-  var def = lastClosedPeriod();
-  if (sInp && eInp) {
-    sInp.value = sInp.value || def;
-    eInp.value = eInp.value || def;
-    if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('plPeriodStart', 'plPeriodEnd');
-  }
-  // 口径保持单期间（用结束期间），仅 UI 对齐参考实现 range picker
-  renderPl(eInp ? eInp.value : def);
+  // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本
+  // 口径保持单期间（用结束期间）
+  renderPl(periodRangeValue('plPeriod'));
 }
 // 利润表行计算：唯一实现已下沉到 store.incomeStatement（首页财务指标共用同一份行计算），
 // 此处仅保留页面侧别名，使 renderPl(DOM) 与 exportPl(Excel) 的调用点保持不变。
@@ -290,15 +277,16 @@ function highlightPlRows(rowIds) {
   }, PL_HL_MS);
 }
 // 首页指标跳利润表入口。rowIds：语义行 id 数组（如费用 = ['sellExp','adminExp','finExp']）
-// fromMonth / toMonth：目标期间范围。单月（本期/上期）时两者相同，
-// 整段（本年/去年）时 from=年初、to=年末，让利润表直接显示正确的区间。
-globalThis.__plJumpToRow = function (rowIds, fromMonth, toMonth) {
+// month：目标期间，一律传区间末月 —— 利润表是单期口径，整段（本年/去年）的累计数落在
+//        「本年累计金额」列，与首页卡片的 ytd 同源同值，故无需传区间。
+// 注：原签名还有第三参 toMonth（旧范围设计残留），已随单期契约收敛为单参，两端写同一个值。
+globalThis.__plJumpToRow = function (rowIds, month) {
   if (typeof rowIds === 'string') rowIds = [rowIds];
   var sInp = $('plPeriodStart'), eInp = $('plPeriodEnd');
   if (sInp && eInp) {
     // refreshPl 仅在期间为空时兜底，故先写入即生效；触发器文案同步刷新。
-    sInp.value = fromMonth || toMonth || '';
-    eInp.value = toMonth || fromMonth || '';
+    sInp.value = month || '';
+    eInp.value = month || '';
     if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__('plPeriodStart', 'plPeriodEnd');
   }
   if (globalThis.goPage) globalThis.goPage('report-profit');
@@ -359,7 +347,7 @@ function cfNameOf(id) {
   return m ? m.name : id;
 }
 function refreshCf() {
-  var month = periodRangeValue('cfPeriod', lastClosedPeriod());
+  var month = periodRangeValue('cfPeriod');
   renderCf(month);
 }
 function renderCf(month) {
@@ -471,7 +459,7 @@ function exportCf() {
 
 /* ===================== 应交税费明细表 ===================== */
 function refreshTx() {
-  var month = periodRangeValue('txPeriod', lastClosedPeriod());
+  var month = periodRangeValue('txPeriod');
   renderTx(month);
 }
 function renderTx(month) {

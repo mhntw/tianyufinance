@@ -68,16 +68,10 @@ function prevMonth(ym) {
   m--; if (m < 1) { m = 12; y--; }
   return y + '-' + (m < 10 ? '0' + m : '' + m);
 }
-// 期间区间 [from, to] 展开为月份数组（含首尾）
+// 期间区间 [from, to] 展开为月份数组（含首尾）。
+// 统一走 store 的 monthList（此前此处内联展开了一份，与 store/_shared/Voucher 三处重复）。
 function monthsOf(p) {
-  var out = [];
-  var y = +p.from.slice(0, 4), m = +p.from.slice(5, 7);
-  var ey = +p.to.slice(0, 4), em = +p.to.slice(5, 7);
-  while (y < ey || (y === ey && m <= em)) {
-    out.push(y + '-' + (m < 10 ? '0' + m : '' + m));
-    m++; if (m > 12) { m = 1; y++; }
-  }
-  return out;
+  return U.monthList(p.from, p.to);
 }
 // 期间文案：与金蝶一致——月粒度显示「2026年08期」，年粒度显示「2026年」
 function ymText(ym) { return ym.slice(0, 4) + '年' + ym.slice(5, 7) + '期'; }
@@ -502,20 +496,21 @@ function bindAmtJump() {
         p = { end: lp, from: lp, to: lp, text: lp ? ymText(lp) : '--' };
       }
     }
-    // ① 损益类 → 利润表并定位行。期间传区间末月：本期=当月、上期=上月、本年=当期、去年=去年12月，
-    //    与取数所用的 p.to 完全一致，保证「跳过去的期」就是「卡片数字的期」。
+    // ① 损益类 → 利润表并定位行。期间一律传区间末月 p.to：
+    //    本期=当月、上期=上月、本年=当期、去年=去年12月 —— 与取数所用的 p.to 完全一致，
+    //    保证「跳过去的期」就是「卡片数字的期」：整段期间（本年/去年）的累计数
+    //    落在利润表「本年累计金额」列，与卡片 ytd 同源同值。
     var plRows = (a.getAttribute('data-pl-rows') || '').split(',').filter(Boolean);
     if (plRows.length) {
-      // 损益类 → 利润表并定位行。传完整的 p.from + p.to：
-      // 单月（本期/上期）时两者相同；整段（本年/去年）时 from=年初、to=年末，
-      // 让利润表直接显示正确的区间，卡片显示的 ytd（累计数）与利润表对齐。
-      if (globalThis.__plJumpToRow) globalThis.__plJumpToRow(plRows, p.from, p.to);
+      // 只传 p.to（不再传 from~to）：利润表是单期口径，refreshPl 只按这一期渲染；
+      // 传区间会让期间控件的 Start/End 出现两个不同的值，违反单期契约。
+      if (globalThis.__plJumpToRow) globalThis.__plJumpToRow(plRows, p.to);
       return;
     }
-    // ② 其余 → 总账明细
+    // ② 其余 → 总账明细（同样只传区间末月：总账是单期口径）
     var codes = (a.getAttribute('data-codes') || '').split(',').filter(Boolean);
     if (!codes.length) return;
-    if (globalThis.__glJumpTo) globalThis.__glJumpTo(codes, p.from, p.to);
+    if (globalThis.__glJumpTo) globalThis.__glJumpTo(codes, p.to);
   });
 }
 

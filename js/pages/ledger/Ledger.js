@@ -8,6 +8,7 @@
 const H = globalThis.__TY_HELPERS__ || {};
 const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
+
 const money = H.money;
 const currentPeriod = H.currentPeriod;
 const S = H.S || (EX && EX.store);
@@ -25,7 +26,8 @@ import { createSubjectTree } from '../../components/SubjectTree.js?v=dev';
 import { updatePeriodRangeTrigger } from '../../components/PeriodRangePicker.js';
 
 /* ===================== 通用：安全填充（带守卫，避免查询时重置用户选择） ===================== */
-// 期间下拉守卫统一走桥接层 H.safeFillPeriod（app.js 内定义，含 bookKey 记忆）
+// bookKey：账套切换标识（app.js 内定义）。下面两个下拉守卫靠它判断「是否已为当前账套」，
+// 账套不变则跳过重填，保住用户在查询前已选的值。
 var bookKey = H.bookKey;
 // 核算类别下拉
 function safeFillAuxType(sel) {
@@ -48,18 +50,18 @@ const periodRangeValue = H.periodRangeValue;
 var glFilterCodes = null;
 
 // 金额点击触发：按科目编码跳总账并定位
-// codes:  科目编码数组（多科目行全部带入）
-// month:  起始期间（利润表传单月）
-// toMonth: 结束期间，可选；不传则与 month 相同（利润表、首页「本期/上期」都是单月；
-//          首页「本年/去年」为区间，传该区间末月）
-globalThis.__glJumpTo = function (codes, month, toMonth) {
+// codes: 科目编码数组（多科目行全部带入）
+// month: 目标期间，一律传区间末月 —— 总账是单期口径，只按这一期取数。
+// 注：原签名还有第三参 toMonth（旧范围设计的残留）。首页「本年/去年」模式曾传 from~to，
+//     使 Start=年初、End=年末两端不等；已随单期契约收敛为单参，两端写同一个值。
+globalThis.__glJumpTo = function (codes, month) {
   var gi = document.getElementById('glCode');
   if (gi) gi.value = (codes || []).join(','); // 同步到筛选框，与手输筛选表现一致
   var sInp = document.getElementById('glPeriodStart');
   var eInp = document.getElementById('glPeriodEnd');
   if (sInp && eInp && month) {
     sInp.value = month;
-    eInp.value = toMonth || month;
+    eInp.value = month;
     updatePeriodRangeTrigger('glPeriodStart', 'glPeriodEnd');
   }
   if (globalThis.goPage) globalThis.goPage('general-ledger');
@@ -104,7 +106,6 @@ function glSubjectPicker() {
   if (!glSubjPicker) {
     glSubjPicker = bindSubjectPicker(document.getElementById('glCode'), {
       getSubjects: function () { return S.subjects(); },
-      btnId: 'glCodeBtn',
       onPick: function (code) {
         if (!code) return;
         var gi = document.getElementById('glCode');
@@ -128,51 +129,63 @@ function glCodesFor(code) {
 }
 
 function refreshGl() {
+  // 同步 glHideZero 勾选（仅在 __refreshAll 场景下有意义：切账套后 checkbox 要跟新账套的 param 对齐）
+  // 不能删：否则用户在账套 A 勾选隐藏零行，切到账套 B 还是 checked 但 param 可能是 false
+  var glHz = document.getElementById('glHideZero');
+  if (glHz) glHz.checked = !!(S.state.param && S.state.param.bookHideZero);
   glSubjectPicker(); // 确保筛选框已绑定（页面 section 常驻 DOM）
-  var month = periodRangeValue('glPeriod', currentPeriod());
+  var month = periodRangeValue('glPeriod');
   renderGl(month);
 }
 function renderGl(month) {
   var tb = $('glBody'); tb.innerHTML = '';
   if (!month) return;
-  // 系统参数开关（账簿显示偏好），纯前端渲染控制，不参与任何取数/计算
-  var p = (S && S.state && S.state.param) || {};
-  var hideZero = p.bookHideZero !== false;   // 默认 true：无期初+本期发生额的科目不显示（默认）
-  // 展开级次：页面内勾选框（与科目余额表、科目页、费用表一致，不读系统参数）
+  var hideZero = !!(document.getElementById('glHideZero') && document.getElementById('glHideZero').checked);
   var glExpand = document.getElementById('glExpandAll');
   var expandAll = !!(glExpand && glExpand.checked);
   S.generalLedger(month).forEach(function (r) {
-    // 利润表跳转来的科目过滤：只显示对应编码（跳转目标强制显示，不受 hideZero 影响）
     if (glFilterCodes && !glFilterCodes.has(r.code)) return;
-    // 折叠：未展开全部级次时，只保留一级科目（编码长度 <=4，4-2-2 段式）
     if (!expandAll && r.code.length > 4) return;
-    // 隐藏零行：期初借贷与本期借贷贷方均为 0 时跳过（受 bookHideZero 控制，但跳转目标强制显示）
     if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
-    // 缩进深度：直接读科目对象的 level（store 在科目入库时已算好）
     var subj = S.subject(r.code);
     var depth = (expandAll && subj && typeof subj.level === 'number') ? subj.level : 0;
-    var indent = '<span style="display:inline-block;width:' + (depth * 14) + 'px"></span>';
-    var tr = document.createElement('tr');
-    tr.className = 'gl-subject';
-    tr.innerHTML = '<td rowspan="3" class="mono">' + indent + '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) + '</td>' +
+    var indent = S.subjectIndentHTML(depth);
+    // 期初方向：obDr - obCr 的符号
+    var obDir = (r.obDr - r.obCr > 0) ? '借' : ((r.obDr - r.obCr < 0) ? '贷' : '平');
+    // Row 1: 期初余额（前两列 rowspan=3；编码列不缩进，名称列缩进——与余额表统一）
+    var tr1 = document.createElement('tr');
+    tr1.className = 'gl-subject';
+    tr1.innerHTML =
+      '<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td>' +
+      '<td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) + '</td>' +
+      '<td class="gl-period">' + escHtml(month) + '</td>' +
       '<td class="gl-seg">期初余额</td>' +
-      '<td class="ta-r mono">' + money(r.obDr) + '</td><td class="ta-r mono">' + money(r.obCr) + '</td>' +
-      '<td class="ta-r mono gl-empty"></td><td class="ta-r mono gl-empty"></td>' +
-      '<td class="ta-r mono">' + money(r.obDr >= r.obCr ? r.obDr - r.obCr : 0) + '</td><td class="ta-r mono">' + money(r.obCr > r.obDr ? r.obCr - r.obDr : 0) + '</td>';
-    tb.appendChild(tr);
+      '<td class="ta-r mono"></td>' +
+      '<td class="ta-r mono"></td>' +
+      '<td class="gl-dir">' + obDir + '</td>' +
+      '<td class="ta-r mono"></td>';
+    tb.appendChild(tr1);
+    // Row 2: 本期合计
     var tr2 = document.createElement('tr');
     tr2.className = 'gl-sub';
-    tr2.innerHTML = '<td class="gl-seg">本期合计</td>' +
-      '<td class="ta-r mono">' + money(r.periodDr) + '</td><td class="ta-r mono">' + money(r.periodCr) + '</td>' +
-      '<td class="ta-r mono">' + money(r.ytdDr) + '</td><td class="ta-r mono">' + money(r.ytdCr) + '</td>' +
-      '<td class="ta-r mono">' + money(r.balance && r.dir === '借' ? r.balance : 0) + '</td><td class="ta-r mono">' + money(r.balance && r.dir === '贷' ? r.balance : 0) + '</td>';
+    tr2.innerHTML =
+      '<td class="gl-period">' + escHtml(month) + '</td>' +
+      '<td class="gl-seg">本期合计</td>' +
+      '<td class="ta-r mono">' + (r.periodDr ? money(r.periodDr) : '') + '</td>' +
+      '<td class="ta-r mono">' + (r.periodCr ? money(r.periodCr) : '') + '</td>' +
+      '<td class="gl-dir">' + (r.dir || '平') + '</td>' +
+      '<td class="ta-r mono">' + (r.balance ? money(r.balance) : '') + '</td>';
     tb.appendChild(tr2);
+    // Row 3: 本年累计
     var tr3 = document.createElement('tr');
     tr3.className = 'gl-sub gl-last';
-    tr3.innerHTML = '<td class="gl-seg">本年累计</td>' +
-      '<td class="ta-r mono">' + money(r.ytdDr) + '</td><td class="ta-r mono">' + money(r.ytdCr) + '</td>' +
-      '<td class="ta-r mono">' + money(r.ytdDr) + '</td><td class="ta-r mono">' + money(r.ytdCr) + '</td>' +
-      '<td class="ta-r mono">' + money(r.ytdBalance && r.ytdDir === '借' ? r.ytdBalance : 0) + '</td><td class="ta-r mono">' + money(r.ytdBalance && r.ytdDir === '贷' ? r.ytdBalance : 0) + '</td>';
+    tr3.innerHTML =
+      '<td class="gl-period">' + escHtml(month) + '</td>' +
+      '<td class="gl-seg">本年累计</td>' +
+      '<td class="ta-r mono">' + (r.ytdDr ? money(r.ytdDr) : '') + '</td>' +
+      '<td class="ta-r mono">' + (r.ytdCr ? money(r.ytdCr) : '') + '</td>' +
+      '<td class="gl-dir">' + (r.dir || '平') + '</td>' +
+      '<td class="ta-r mono">' + (r.balance ? money(r.balance) : '') + '</td>';
     tb.appendChild(tr3);
   });
   updateGlFilterBanner();
@@ -256,7 +269,7 @@ function dlFirstUsedCode() {
   return min;
 }
 function refreshDl() {
-  var month = periodRangeValue('dlPeriod', currentPeriod());
+  var month = periodRangeValue('dlPeriod');
   if (!dlAutoFirstDone) {
     dlAutoFirstDone = true;
     if (dlCurCode == null) {
@@ -378,7 +391,6 @@ function mlSubjectCode() {
     mlSubjPicker = bindSubjectPicker(document.getElementById('mlCode'), {
       getSubjects: function () { return S.subjects(); },
       onlyParent: true,
-      btnId: 'mlCodeBtn',
       onPick: function (code) {
         var gi = document.getElementById('mlCode');
         if (gi) gi.value = code || '';
@@ -390,7 +402,7 @@ function mlSubjectCode() {
   return { code: mlCurCode || '', err: '' };
 }
 function refreshMl() {
-  var month = periodRangeValue('mlPeriod', currentPeriod());
+  var month = periodRangeValue('mlPeriod');
   var r = mlSubjectCode();
   renderMl(r.code, month, r.err);
 }
@@ -443,12 +455,18 @@ function renderMl(code, month, err) {
   }
   tip.className = 'open-check';
   tip.textContent = '多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。';
-  var headRow = '<th>日期</th><th>凭证字号</th><th>摘要</th><th>借方</th><th>贷方</th><th>方向</th><th>余额</th>';
-  // 分栏列头是下级科目名称，长短不一；加 title 保证列宽不足时悬停仍能看到全名
-  cols.forEach(function (c) {
-    headRow += '<th class="ml-col-head" title="' + escAttr(c.name) + '">' + escHtml(c.name) + '</th>';
-  });
-  thead.innerHTML = headRow;
+  // 表头两行（对齐金蝶）：基础 7 列 rowspan 占满两行；第 1 行末是跨全部分栏列的父表头
+  // 「借方」，第 2 行才是各分栏列头（编码 + 名称）。分栏列头长短不一，加 title 保证
+  // 列宽不足时悬停仍能看到全名（CSS .ml-col-head 会截断）。
+  var ML_BASE_HEADS = ['日期', '凭证字号', '摘要', '借方', '贷方', '方向', '余额'];
+  thead.innerHTML = '<tr>'
+    + ML_BASE_HEADS.map(function (h) { return '<th rowspan="2">' + h + '</th>'; }).join('')
+    + '<th class="ml-col-parent" colspan="' + cols.length + '">借方</th></tr>'
+    + '<tr>' + cols.map(function (c) {
+        var label = c.code + (c.name ? ' ' + c.name : '');
+        return '<th class="ml-col-head" title="' + escAttr(label) + '">'
+          + escHtml(c.code) + (c.name ? ' ' + escHtml(c.name) : '') + '</th>';
+      }).join('') + '</tr>';
   // 不再手工计算 minWidth：全局 `.grid { width: max-content }` 会按内容自动得出表格宽度，
   // 多栏账列数动态（7 + 下级科目数）也能正确覆盖，无需 JS 参与。
   var d = S.detailLedger(code, month);
@@ -464,11 +482,22 @@ function renderMl(code, month, err) {
   var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
   var tro = document.createElement('tr');
   tro.className = 'ml-seg';
-  // 期初行：借贷方列强制空，只在方向+余额列显示净额
-  var initCells = '<td></td><td></td><td>期初余额</td>' +
+  // 各分栏列的期初余额（金蝶截图里这一行每个分栏列都有值，此前整行留空）。
+  // 取总账口径：generalLedger 的行已按 rollCodes 上卷（父行 = 自身 + 子目合计），
+  // 与分栏列「命中本列及其下级」的取数范围一致；符号同样「借方为正、贷方为负」。
+  var obByCode = {};
+  S.generalLedger(month).forEach(function (gr) { obByCode[gr.code] = num(gr.obDr) - num(gr.obCr); });
+  // 期初行：借贷方列强制空（金蝶口径——期初是"状态"不是"本期发生额"），
+  // 只在方向+余额列显示净额，分栏列显示各下级科目的期初余额。
+  // 日期列取**区间首月 1 号**（金蝶截图里是 2026-07-01，此前我方留空）——
+  // 期初是"区间首月月初"这个时点，标出日期才看得出锚在哪一天；单期口径下即 month-01。
+  var obDate = /^\d{4}-\d{2}$/.test(String(month)) ? month + '-01' : '';
+  var initCells = '<td>' + obDate + '</td><td></td><td>期初余额</td>' +
     '<td class="ta-r mono"></td><td class="ta-r mono"></td>' +
     '<td class="ta-c">' + obDir + '</td><td class="ta-r mono">' + money(obBal) + '</td>';
-  cols.forEach(function () { initCells += '<td class="ta-r mono"></td>'; });
+  cols.forEach(function (c) {
+    initCells += '<td class="ta-r mono">' + money(obByCode[c.code] || 0) + '</td>';
+  });
   tro.innerHTML = initCells;
   tb.appendChild(tro);
   var runBal = obBal, runDir = obDir;
@@ -488,7 +517,9 @@ function renderMl(code, month, err) {
     cols.forEach(function (c) {
       var amt = '';
       if (entryCode && (entryCode === c.code || entryCode.indexOf(c.code) === 0)) {
-        amt = money(r.dr || r.cr);
+        // 有符号金额：借方为正、贷方为负（金蝶口径）。原实现 money(r.dr || r.cr)
+        // 一律取正数，贷方发生额也显示为正，看表时分不出方向。
+        amt = money(num(r.dr) - num(r.cr));
       }
       rowCells += '<td class="ta-r mono">' + amt + '</td>';
     });
@@ -522,5 +553,67 @@ export {
   refreshGl, refreshDl, refreshMl
 };
 
+// 总账导出：金蝶式 8 列 + 合并单元格（A/B 列按科目纵向合并 3 行）
+function exportGl() {
+  var XLSX = globalThis.XLSX;
+  if (!XLSX) { H.showToast('导出组件未加载', 'error'); return; }
+  var safeExport = globalThis.__safeExportExcel;
+  if (!safeExport) { H.showToast('导出功能不可用', 'error'); return; }
+  var month = periodRangeValue('glPeriod');
+  if (!month) { H.showToast('请先选择期间', 'warn'); return; }
+  var hideZero = !!(document.getElementById('glHideZero') && document.getElementById('glHideZero').checked);
+  var expandAll = !!(document.getElementById('glExpandAll') && document.getElementById('glExpandAll').checked);
+  var rows = [
+    ['科目编码', '科目名称', '期间', '摘要', '借方', '贷方', '方向', '余额']
+  ];
+  // 合并单元格记录：XLSX 用 0-based 行索引
+  var merges = [];
+  S.generalLedger(month).forEach(function (r) {
+    if (glFilterCodes && !glFilterCodes.has(r.code)) return;
+    if (!expandAll && r.code.length > 4) return;
+    if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0 && r.ytdBalance === 0) return;
+    var subj = S.subject(r.code);
+    var depth = (expandAll && subj && typeof subj.level === 'number') ? subj.level : 0;
+    var indent = S.subjectIndentSpaces(depth);
+    var nameCol = indent + (r.name || '');
+    var obDir = (r.obDr - r.obCr > 0) ? '借' : ((r.obDr - r.obCr < 0) ? '贷' : '平');
+    // 记录当前科目起始行（0-based，不含表头）
+    var startRow = rows.length;
+    // Row 1: 期初余额（A/B 列第一行写值，后两行空，靠 merge 合并）
+    rows.push([r.code, nameCol, month, '期初余额', '', '', obDir, '']);
+    // Row 2: 本期合计
+    rows.push(['', '', month, '本期合计', r.periodDr || '', r.periodCr || '', r.dir || '平', r.balance || '']);
+    // Row 3: 本年累计
+    rows.push(['', '', month, '本年累计', r.ytdDr || '', r.ytdCr || '', r.dir || '平', r.balance || '']);
+    // 合并 A 列 (科目编码) 和 B 列 (科目名称)
+    merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + 2, c: 0 } });
+    merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 2, c: 1 } });
+  });
+  if (rows.length <= 1) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!merges'] = merges;
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 22 }, { wch: 8 }, { wch: 10 },
+    { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '总账');
+  safeExport(wb, '总账_' + month);
+  H.showToast('已导出总账_' + month, 'success');
+}
+// 挂到全局 + 绑定按钮
+globalThis.__exportGl = exportGl;
+var bGlExport = document.getElementById('btnGlExport');
+if (bGlExport) bGlExport.addEventListener('click', exportGl);
+
 // 总账页面内展开勾选框 onchange 入口（暴露到全局，HTML 直接调用）
 globalThis.__renderGl = refreshGl;
+
+// glHideZero change → 先写全局 param，再刷新（保证 refreshGl 读到最新值，不会把用户勾选还原）
+document.addEventListener('change', function (e) {
+  if (e.target && e.target.id === 'glHideZero') {
+    S.state.param.bookHideZero = e.target.checked;
+    S.persist();
+    refreshGl();
+  }
+});

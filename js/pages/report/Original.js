@@ -1,6 +1,5 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：原始凭证。只挪窝不改写。
-import { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2,
-  periodRangeOptions, periodRangeOptionsOri, monthsBetween, prevYearMonth, monthLabel, subjectLevel, subjectFilter, getSubjectNameByCode } from './_shared.js';
+import { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2 } from './_shared.js';
 const H = globalThis.__TY_HELPERS__ || {};
 
 var origCheckedIds = [];

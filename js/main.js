@@ -9,7 +9,6 @@ import {
 import { refreshSubjects } from './pages/subject/Subject.js?v=dev';
 import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=dev';
 import { renderOriginal } from './pages/report/Original.js?v=dev';
-import { renderReportCenter } from './pages/report/ReportCenter.js?v=dev';
 import {
   refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher
 } from './pages/asset/Asset.js?v=dev';
@@ -49,10 +48,9 @@ globalThis.__renderDl = refreshDl;
 globalThis.__renderMl = refreshMl;
 globalThis.__renderSubjects = refreshSubjects;
 
-// —— report 尾巴域：原始凭证 / 费用明细 / 报表中心 ——
+// —— report 尾巴域：原始凭证 / 费用明细 ——
 globalThis.__renderOriginal = renderOriginal;
 globalThis.__renderExpenseDetail = renderExpenseDetail;
-globalThis.__renderReportCenter = renderReportCenter;
 
 // —— 固定资产域：资产清单 / 折旧汇总表 / 折旧明细表 / 资产类别 / 资产变动记录 / 折旧凭证（独立分页） ——
 globalThis.__renderAssets = refreshAssets;
@@ -99,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var activePage = activeSec ? activeSec.id.replace('page-', '') : 'home';
   var h = (location.hash || '').replace(/^#/, '');
   var keys = globalThis.__PAGE_REFRESHERS__ ? Object.keys(globalThis.__PAGE_REFRESHERS__) : [];
-  var extraPages = ['original', 'expense-detail', 'report-center'];
+  var extraPages = ['original', 'expense-detail'];
   var directable = !!h && (keys.indexOf(h) >= 0 || extraPages.indexOf(h) >= 0);
 
   // 兜底 1：hash 直达已迁移页。app.js（传统脚本）早于 ESM 执行，初始化期委托桩

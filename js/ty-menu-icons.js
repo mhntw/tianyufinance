@@ -54,7 +54,6 @@ var TY_SUBMENU_GROUPS = {
   ],
   '报表': [
     {title: '报表', icon: 'baobiao3', items: ['资产负债表', '利润表', '标准现金流量表', '主要应交税金明细表', '费用明细表']},
-    {title: '自定义报表', icon: 'zidingyibaobiao', items: ['报表中心']},
   ],
   '资产': [
     {title: '资产', icon: 'zichan3', items: ['固定资产卡片', '折旧']},

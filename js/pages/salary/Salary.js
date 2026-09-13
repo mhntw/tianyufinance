@@ -10,7 +10,6 @@ const money = H.money;
 const esc = H.esc;
 const showToast = H.showToast;
 const currentPeriod = H.currentPeriod;
-const safeFillPeriod = H.safeFillPeriod;
 const syncAll = H.syncAll;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
@@ -26,7 +25,7 @@ const periodRangeValue = H.periodRangeValue;
    * 工资
    * ============================================================ */
   function refreshSalary() {
-    var month = periodRangeValue('salPeriod', currentPeriod());
+    var month = periodRangeValue('salPeriod');
     renderSalary(month);
   }
   function renderSalary(month) {
@@ -75,7 +74,7 @@ const periodRangeValue = H.periodRangeValue;
    * 工资统计 / 部门职员（新手导航静态页已随外观简化移除）
    * ============================================================ */
   function refreshSalaryStats() {
-    var month = periodRangeValue('sstPeriod', currentPeriod());
+    var month = periodRangeValue('sstPeriod');
     renderSalaryStats(month);
   }
   function renderSalaryStats(month) {
@@ -96,33 +95,24 @@ const periodRangeValue = H.periodRangeValue;
       tb.appendChild(tr);
     });
   }
-  // 期间组件兜底：hidden input change（组件 applySelection 已触发 data-on-change，此为幂等双保险）
-  ['salPeriodStart', 'salPeriodEnd', 'sstPeriodStart', 'sstPeriodEnd'].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener('change', function () {
-      if (id.indexOf('salPeriod') === 0) refreshSalary(); else refreshSalaryStats();
-    });
-  });
+  // 期间变更由期间控件的 data-on-change 直接回调（组件不派发 change 事件），此处无需再绑监听。
 
-  var DEFAULT_DEPTS = [
-    { code: '001', name: '前台', type: '部门', parent: '' },
-    { code: '002', name: '客房', type: '部门', parent: '' },
-    { code: '003', name: '餐厅', type: '部门', parent: '' }
-  ];
+  // 默认部门种子已收敛到 store（此前这里另存了一份逐字相同的拷贝，改一处漏一处）；
+  // 本页只经 S.depts() 取用（缺省自动种子，与资产页同源）。
   function refreshDeptStaff() {
-    if (!S.state.depts) S.state.depts = DEFAULT_DEPTS.slice();
+    S.depts();
     renderDeptStaff();
   }
   function renderDeptStaff() {
     var tb = $('dsBody'); tb.innerHTML = '';
-    var depts = S.state.depts || [];
+    var depts = S.depts();
     var staff = {};
     S.state.payrolls.forEach(function (p) { staff[p.name] = true; });
     depts.forEach(function (d, i) {
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td class="mono">' + d.code + '</td><td>' + d.name + '</td><td>' + d.type + '</td>' +
-        '<td>' + (d.parent || '—') + '</td><td><a class="link-toggle" data-i="' + i + '">' + (d.enabled === false ? '启用' : '停用') + '</a></td>';
+        '<td>' + (d.parent || '—') + '</td><td><a class="link-edit" data-edit-dept="' + i + '">编辑</a> <a class="link-toggle" data-i="' + i + '">' + (d.enabled === false ? '启用' : '停用') + '</a></td>';
       tb.appendChild(tr);
     });
     Object.keys(staff).forEach(function (nm, i) {
@@ -146,11 +136,32 @@ const periodRangeValue = H.periodRangeValue;
       });
     });
   }
+  // 编辑部门（改名 / 改编码）。与「新增部门」同款两步 prompt：默认值预填当前值，
+  // 想改哪个改哪个、其余直接回车即保持不变；任一步取消即整体放弃。
+  // 落库与**回写所有引用该部门的资产卡片**都在 store.renameDept 里（两件事不能拆开做）。
+  $('dsBody').addEventListener('click', async function (e) {
+    var a = e.target.closest && e.target.closest('a[data-edit-dept]');
+    if (!a) return;
+    e.preventDefault();
+    var i = +a.getAttribute('data-edit-dept');
+    var d = S.depts()[i];
+    if (!d) return;
+    var name = await H.promptAsync('部门名称：', d.name, { title: '编辑部门' });
+    if (name === null) return;                       // 取消
+    var code = await H.promptAsync('部门编码：', d.code, { title: '编辑部门' });
+    if (code === null) return;                       // 取消
+    var r = S.renameDept(i, name, code);
+    if (!r.ok) return showToast(r.msg, 'error');
+    renderDeptStaff();
+    // 改名时把「顺手同步了几张卡片」明确说出来 —— 否则用户不知道改档案还动了数据
+    showToast('已保存' + (r.renamed ? '，并同步了 ' + r.touched + ' 张资产卡片的部门' : ''), 'success');
+  });
   $('btnAddDept').addEventListener('click', async function () {
     var name = await H.promptAsync('部门名称：', '', { title: '新增部门' }); if (!name) return;
-    var code = await H.promptAsync('部门编码：', String((S.state.depts || []).length + 1).padStart(3, '0'), { title: '部门编码' }); if (!code) return;
-    S.state.depts = S.state.depts || [];
-    S.state.depts.push({ code: code.trim(), name: name.trim(), type: '部门', parent: '', enabled: true });
+    var list = S.depts();
+    var code = await H.promptAsync('部门编码：', String(list.length + 1).padStart(3, '0'), { title: '部门编码' }); if (!code) return;
+    list.push({ code: code.trim(), name: name.trim(), type: '部门', parent: '', enabled: true });
+    S.state.depts = list;
     S.persist(); renderDeptStaff(); showToast('已新增部门');
   });
 

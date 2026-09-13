@@ -1,11 +1,13 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
-import { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2,
-  periodRangeOptions, monthsBetween, prevYearMonth, monthLabel, subjectLevel, subjectFilter, getSubjectNameByCode } from './_shared.js';
+import { $, S, money, fmt, goPage, currentPeriod, esc, num, showToast, nowTimeStr, round2,
+  monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter } from './_shared.js';
 const edState = {
   page: 1,
   pageSize: 500,
   expanded: new Set()           // 手动展开/折叠的 code（与“展开所有级次”互不干扰）
 };
+// 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
+const periodRangeValue = (globalThis.__TY_HELPERS__ || {}).periodRangeValue;
 
 export function renderExpenseDetail() {
   try {
@@ -32,21 +34,8 @@ function bindED() {
 
 
 
-  $('edPeriodStart') && $('edPeriodStart').addEventListener('change', () => {
-    // 保证 start <= end
-    const s = $('edPeriodStart').value;
-    const e = $('edPeriodEnd').value;
-    if (s > e) $('edPeriodEnd').value = s;
-    edState.page = 1;
-    refreshExpenseDetail();
-  });
-  $('edPeriodEnd') && $('edPeriodEnd').addEventListener('change', () => {
-    const s = $('edPeriodStart').value;
-    const e = $('edPeriodEnd').value;
-    if (e < s) $('edPeriodStart').value = e;
-    edState.page = 1;
-    refreshExpenseDetail();
-  });
+  // 期间变更由期间控件的 data-on-change 直接回调（组件不再派发 change 事件），此处无需再绑监听。
+  // （原先这里还负责保证 start <= end，但单期控件起止恒等，该校正已无意义）
 
   $('edPageSize') && $('edPageSize').addEventListener('change', e => {
     edState.pageSize = parseInt(e.target.value, 10) || 500;
@@ -284,25 +273,12 @@ function edSelectedSubjectCodes() {
 }
 
 function initEDFilters() {
-  const startSel = $('edPeriodStart');
-  const endSel = $('edPeriodEnd');
-  if (startSel && endSel) {
-    const opts = periodRangeOptions();
-    startSel.innerHTML = opts;
-    endSel.innerHTML = opts;
-    // 默认期间 = 本期（最近一个已结账期间，如已结账到 7 月即取 7 月；尚未结账则回退最近有凭证的期间）
-    const cp = lastClosedPeriod();
-    startSel.value = cp;
-    endSel.value = cp;
-  }
-  // 同步起止期间选择器触发器文本
-  if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) {
-    window.__EXTRA_UPDATE_PERIOD_TRIGGER__('edPeriodStart', 'edPeriodEnd');
-  }
+  // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本。
+  // （此前这里手写「无条件赋值」把用户选的期间重置回默认期，表现为「选了期间但表格毫无变化」）
+  periodRangeValue('edPeriod');
 
-  // 默认勾选：年度合计 + 展开所有级次（与 HTML 中 checked 双保险，防止重渲染丢失）
+  // 默认勾选：年度合计；展开所有级次默认不勾选（与科目设置/余额表一致，只露一级）
   if ($('edOptYearTotal')) $('edOptYearTotal').checked = true;
-  if ($('edOptExpand')) $('edOptExpand').checked = true;
 
   // 科目多选（科目 下拉勾选）：构建复选项浮层
   buildEDSubjectPop();
@@ -319,9 +295,8 @@ function refreshExpenseDetail() {
   if (endRaw > cap) endRaw = cap;
   const start = startRaw < cap ? startRaw : cap;
   const end = endRaw;
-  const months = monthsBetween(start, end);
+  const months = monthList(start, end);
   const showZero = $('edOptZero') && $('edOptZero').checked;
-  const showFullName = $('edOptFullName') && $('edOptFullName').checked;
   const showRatio = $('edOptRatio') && $('edOptRatio').checked;
   const expandAll = $('edOptExpand') && $('edOptExpand').checked;
   const showYearTotal = !($('edOptYearTotal')) || $('edOptYearTotal').checked;
@@ -353,7 +328,7 @@ function refreshExpenseDetail() {
 
   // 去年同期（用于「较同期」），与本期口径一致：去年同月逐月对应
   const yStart = prevYearMonth(start), yEnd = prevYearMonth(end);
-  const yearMonths = monthsBetween(yStart, yEnd);
+  const yearMonths = monthList(yStart, yEnd);
   const yearGlByMonth = {};
   yearMonths.forEach(m => {
     const gl = S.generalLedger(m) || [];
@@ -445,7 +420,7 @@ function refreshExpenseDetail() {
   };
   sumToTotals(displayRoots, true);
 
-  renderEDGrid(months, displayRoots, totals, { showYearTotal, showRatio, showFullName, expandAll, yearTotalsByCode, start, end });
+  renderEDGrid(months, displayRoots, totals, { showYearTotal, showRatio, expandAll, yearTotalsByCode, start, end });
   renderEDPagination(displayRoots.length);
 }
 
@@ -476,13 +451,17 @@ function renderEDGrid(months, roots, totals, opts) {
     nodes.forEach(n => {
       const expanded = opts.expandAll || edState.expanded.has(n.code);
       const hasChildren = n.children && n.children.length;
-      const arrow = hasChildren
-        ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${n.code}"></span>`
-        : '<span class="ed-tree-spacer"></span>';
-      const name = opts.showFullName && depth > 0
-        ? getSubjectNameByCode(parentOfCodeInTree(roots, n.code)) + ' / ' + n.name
-        : n.name;
-      const indent = depth * 18;
+      // 箭头：用 store 公共函数统一生成文字 ▶▼（打印友好）
+      const arrow = (globalThis.S && globalThis.S.subjectArrowHTML)
+        ? globalThis.S.subjectArrowHTML(n.code, !!hasChildren, expanded, 'ed-tree-arrow')
+        : (hasChildren
+            ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${n.code}">${expanded ? '▼' : '▶'}</span>`
+            : '<span class="ed-tree-spacer"></span>');
+      const name = n.name;
+      // 用节点自带的 level（store 已预计算），统一走 subjectIndentHTML
+      const indent = (globalThis.S && globalThis.S.subjectIndentHTML)
+        ? globalThis.S.subjectIndentHTML(n.level || 0)
+        : `<span style="display:inline-block;width:${(n.level || 0) * 14}px"></span>`;
       const amountCells = n.amounts.map(v => `<td class="col-amt">${money(v)}</td>`).join('');
       const yearCell = opts.showYearTotal ? `<td class="col-amt">${money(n.total)}</td>` : '';
       let ratioCells = '';
@@ -497,7 +476,7 @@ function renderEDGrid(months, roots, totals, opts) {
       }
       rows.push(`<tr class="ed-tree-row" data-level="${n.level}">
         <td class="col-code">${n.code ? `<a href="#" class="link-gl-subject" data-code="${n.code}">${n.code}</a>` : ''}</td>
-        <td class="col-name"><span class="ed-tree-indent" style="width:${12 + indent}px"></span>${arrow}<span class="ed-tree-text">${name}</span></td>
+        <td class="col-name">${indent}${arrow}<span class="ed-tree-text">${name}</span></td>
         ${amountCells}${yearCell}${ratioCells}
       </tr>`);
       if (expanded && hasChildren) pushRows(n.children, depth + 1);
@@ -521,22 +500,6 @@ function pct(diff, base) {
   return (v > 0 ? '+' : '') + v + '%';
 }
 
-function parentOfCodeInTree(roots, code) {
-  for (const r of roots) {
-    if (code === r.code) return null;
-    const found = findParent(r, code);
-    if (found) return found;
-  }
-  return null;
-}
-function findParent(node, code) {
-  for (const c of node.children || []) {
-    if (c.code === code) return node.code;
-    const p = findParent(c, code);
-    if (p) return p;
-  }
-  return null;
-}
 
 function renderEDPagination(totalRoots) {
   const totalEl = $('edTotal');
@@ -584,4 +547,4 @@ function exportED() {
 /* ============================================================
  * 原始凭证（电子档案 / 发票单据管理）
  * ============================================================ */
-// 原始凭证/报表中心共用的期间范围下拉（DOM 填充版，区别于费用明细表的 periodRangeOptions 字符串版）
+// 原始凭证/报表中心共用的期间范围下拉（DOM 填充版，填入真实 <select> 元素）

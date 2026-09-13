@@ -16,32 +16,75 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
    * ============================================================ */
   function refreshVoucherWord() {
     var tb = $('vwBody'); tb.innerHTML = '';
+    var curDef = (S.state.param && S.state.param.voucherWord) || '';
+    // 预计算每个凭证字被引用次数（已删除凭证不计入）
+    var refCount = {};
+    (S.state.vouchers || []).forEach(function (v) {
+      if (v.deleted === 'y') return;
+      var w = v.word || '记';
+      refCount[w] = (refCount[w] || 0) + 1;
+    });
     (S.state.voucherWords || []).forEach(function (w, i) {
       var tr = document.createElement('tr');
-      var protect = (w.name === '记');
+      var isDef = (w.name === curDef);
+      var refs = refCount[w.name] || 0;
       tr.innerHTML =
-        '<td>' + w.name + (protect ? ' <span class="ok-tag">默认</span>' : '') + '</td>' +
+        '<td class="' + (isDef ? 'vw-default' : '') + '">' + w.name + (isDef ? ' <span class="ok-tag">默认</span>' : '') + '</td>' +
         '<td>' + w.title + '</td>' +
-        '<td class="col-op">' + (protect
-          ? '<a class="link-del disabled" data-i="' + i + '">—</a>'
-          : '<a class="link-toggle" data-i="' + i + '">' + (w.enabled === false ? '启用' : '停用') + '</a>') + '</td>';
+        '<td class="col-op">' +
+          (isDef
+            ? '<a class="link-del disabled">—</a>'
+            : '<a class="link-make-def" data-i="' + i + '">设为默认</a>') +
+          (isDef
+            ? ''
+            : '<a class="link-toggle" data-i="' + i + '">' + (w.enabled === false ? '启用' : '停用') + '</a>') +
+          (isDef || refs > 0
+            ? ''
+            : '<a class="link-del link-vw-del" data-i="' + i + '">删除</a>') +
+        '</td>';
       tb.appendChild(tr);
+    });
+    tb.querySelectorAll('.link-make-def').forEach(function (a) {
+      a.addEventListener('click', function () {
+        var i = +this.getAttribute('data-i');
+        var row = S.state.voucherWords[i];
+        if (!row || row.enabled === false) return showToast('默认凭证字必须启用', 'warn');
+        S.state.param = S.state.param || {};
+        S.state.param.voucherWord = row.name;
+        S.persist(); refreshVoucherWord(); showToast('已将「' + row.name + '」设为默认凭证字');
+      });
     });
     tb.querySelectorAll('.link-toggle').forEach(function (a) {
       a.addEventListener('click', async function () {
         var i = +this.getAttribute('data-i');
         var row = S.state.voucherWords[i];
-        if (row && row.name === '记') { showToast('“记”为默认凭证字，不可停用'); return; }
-        var disabling = !(row && row.enabled === false);
+        if (!row) return;
+        if (row.name === curDef) { showToast('默认凭证字不可停用，请先将其他凭证字设为默认'); return; }
+        var disabling = !(row.enabled === false);
         if (disabling) {
-          if (!(await H.confirmAsync('确定停用凭证字「' + (row ? row.title || row.name : '') + '」？\n停用后新增凭证不能再选该凭证字，历史凭证保留。', { title: '停用凭证字' }))) return;
+          if (!(await H.confirmAsync('确定停用凭证字「' + (row.title || row.name) + '」？\n停用后新增凭证不能再选该凭证字，历史凭证保留。', { title: '停用凭证字' }))) return;
         }
         row.enabled = disabling ? false : true;
-        S.persist(); renderVoucherWordBody();
+        S.persist(); refreshVoucherWord();
+      });
+    });
+    tb.querySelectorAll('.link-vw-del').forEach(function (a) {
+      a.addEventListener('click', async function () {
+        var i = +this.getAttribute('data-i');
+        var row = S.state.voucherWords[i];
+        if (!row) return;
+        // 二次确认
+        if (!(await H.confirmAsync('确定删除凭证字「' + row.name + '」？\n未被任何凭证使用，可安全删除。', { title: '删除凭证字' }))) return;
+        S.state.voucherWords.splice(i, 1);
+        // 删的是默认字 → 回退到第一个启用项
+        if (row.name === curDef) {
+          var firstEn = S.state.voucherWords.find(function (x) { return x.enabled !== false; });
+          S.state.param.voucherWord = firstEn ? firstEn.name : (S.state.voucherWords[0] ? S.state.voucherWords[0].name : '记');
+        }
+        S.persist(); refreshVoucherWord(); showToast('已删除凭证字「' + row.name + '」');
       });
     });
   }
-  function renderVoucherWordBody() { refreshVoucherWord(); }
   $('btnAddWord').addEventListener('click', async function () {
     var name = await H.promptAsync('凭证字（如 记 / 转 / 收）：', '', { title: '新增凭证字' });
     if (!name) return;
@@ -740,23 +783,14 @@ function refreshParam() {
       verEl.textContent = '--';
     }
   }
-  var vc = p.voucherChecks || {};
-  $('pChkDeficit').checked = !!vc.deficitCheck;
-  $('pBookHideZero').checked = !!p.bookHideZero;
-  $('pChkSettle').checked = !!p.checkBeforeSettle;
-  // 事件绑定（一次性）
+  // 赤字检查已迁至凭证页面「偏好设置」弹窗，凭证审核后才允许结账已迁至结账页面 close tab
+  // 默认密码 admin 提示：改过就不再提示
+  var opHint = $('opPwHint');
+  if (opHint) opHint.style.display = (S.state.op && S.state.op.opOverridden) ? 'none' : '';
+  // 事件绑定（一次性）——参数改了自动存，不需要保存按钮
   if (!globalThis.__paramBound) {
-    $('btnSaveParam').addEventListener('click', function () {
-      var p = S.state.param;
-      // 仅保存凭证/账簿/结账行为选项；公司名称/启用期间/会计制度均不在此保存
-      p.voucherChecks = {
-        deficitCheck: $('pChkDeficit').checked
-      };
-      p.bookHideZero = $('pBookHideZero').checked;
-      p.checkBeforeSettle = $('pChkSettle').checked;
-      S.persist();
-      showToast('参数已保存');
-    });
+    // 系统参数相关开关已迁移至各功能页面，此处不再有独立参数需绑定
+    globalThis.__paramBound = true;
     // 启用期间：只读展示 + 受控「修改」弹窗。空账套直接改；已有凭证/期初/结账时保存前确认提示
     var bEditStart = $('btnEditStart');
     if (bEditStart) bEditStart.addEventListener('click', function () {
@@ -888,6 +922,9 @@ function refreshParam() {
       if ($('opPwCur')) $('opPwCur').value = '';
       if ($('opPwInput')) $('opPwInput').value = '';
       refreshParam();
+      // 存过密码后更新 hint 显隐
+      var opHint = $('opPwHint');
+      if (opHint) opHint.style.display = (stg.opOverridden) ? 'none' : '';
       showToast('操作密码已保存' + (v ? '' : '（已恢复默认密码）'), 'success');
     });
     globalThis.__paramBound = true;

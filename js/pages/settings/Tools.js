@@ -90,11 +90,11 @@ function refreshTools() {
     tr.innerHTML = '<td>' + b.name + '</td><td class="mono">' + b.period + '</td><td>' + b.vouchers + '</td>'
       + '<td>' + (isCur ? '<span class="tag tag-current">当前</span>' : (enabled ? '<span class="tag">启用</span>' : '<span class="tag tag-stop">停用</span>')) + '</td>'
       + '<td class="book-ops">'
-      + '<button class="btn btn-xs" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
-      + (isCur ? '<span class="muted">已在使用</span>'
-          : '<button class="btn btn-xs" data-switch="' + b.id + '">切换</button>'
-          + '<button class="btn btn-xs" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>'
-          + '<button class="btn btn-danger-xs" data-del="' + b.id + '">删除</button>')
+      + '<button class="btn-link" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
+      + (isCur ? ''
+          : '<button class="btn-link" data-switch="' + b.id + '">切换</button>'
+          + '<button class="btn-link" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>'
+          + '<button class="btn-link btn-link-danger" data-del="' + b.id + '">删除</button>')
       + '</td>';
     tb.appendChild(tr);
   });

@@ -75,6 +75,8 @@
  * 固定资产
  *   addFixedAsset L3212, updateFixedAsset L3259, removeFixedAsset L3267
  *   depreciateMonth L3366, assetMonthlyDepr L3351, genCleanVoucher L3299
+ *   资产类别 assetCats / normalizeAssetCategory（默认档案 + 「编码↔名称」归一的唯一事实源）
+ *   新增资产凭证 = 关联已有凭证 linkAssetAcquisitions / unlinkAssetAcquisitions（**绝不生成凭证**）
  *
  * 工资 / 薪酬
  *   addPayroll L3484, removePayroll L3490, payrollSummary L3516
@@ -90,10 +92,12 @@
  *   getParam L3207 / setParam L3201 ← 全局参数（bookHideZero / thousand 等）
  *
  * 内部工具函数（IIFE 私有，不暴露到 global S）
- *   pad2 L54, fmtDate L55, monthOf L57, voucherMonth L61, voucherOrderCmp L81
- *   prevMonth L94, round2 L101, monthsBetween L104, normMonth L111
- *   num L115, money L122, lastDay L88, EPS L102（金额容差半分）
- *   emptyState L178, detectStandardBySubjects L252, backfillIncomeRowIds L285
+ *   注：本行号索引为手工维护，易随编辑漂移（本次核对时全块已偏离约 80~100 行）。
+ *   要么定期校准，要么改为只列名字、不写行号，避免出现「按索引跳过去是别的东西」。
+ *   pad2 L137, fmtDate L138, monthOf L140, voucherMonth L144, voucherOrderCmp L164
+ *   prevMonth L177, round2 L184, monthsBetween L190, monthList L197, normMonth L212
+ *   num L216, money L223, lastDay L171, EPS L185（金额容差半分）
+ *   emptyState L279, detectStandardBySubjects L354, backfillIncomeRowIds L387
  * ======================================================================= */
 (function (global) {
   'use strict';
@@ -183,10 +187,31 @@
   // 金额统一按 decimal 分位精度处理。用于新生成金额（调汇/结转）及对外输出金额。
   function round2(n) { var v = Number(n); if (isNaN(v)) v = 0; return Math.round(v * 100) / 100; }
   var EPS = 0.005; // 金额相等容差（半分），用于借贷平衡/结转阈值/零值判定，全局统一避免散落硬编码
-  // 全部可选期间：从启用月起至当前月（含已结账月），用于顶部期间切换
-  function monthsBetween(a, b) { // 相差整月（b - a），a/b 均为 'YYYY-MM'
+  // 相差整月数（b - a），a/b 均为 'YYYY-MM' → 返回 number。
+  // 注意与紧随其后的 monthList 区分：那个返回「月份列表」(array)。
+  // 此前两者同名 monthsBetween 却有三种语义并存（本文件差月数 / report._shared.js 列表 /
+  // Voucher.renderSum 内联列表），属最易踩的坑；现统一为「差月数=monthsBetween、列表=monthList」。
+  function monthsBetween(a, b) {
     var pa = a.split('-'), pb = b.split('-');
     return (pb[0] - pa[0]) * 12 + (pb[1] - pa[1]);
+  }
+  // 月份区间展开为月份列表（含首尾）：'2026-01' + '2026-03' → ['2026-01','2026-02','2026-03']。
+  // start === end 时返回单元素数组 —— 区间与单期是同一实现，调用方无需分情况处理。
+  // 非法/空输入返回空数组（不抛错），与 normMonth 的「空值不炸页面」口径一致。
+  // 月份范围刻意校验到 01~12：被收敛掉的三份旧实现都放行 '2026-13' 这类值（会原样返回，
+  // 再喂给 periodVouchers 得到一个不存在的月份），现收紧为直接返回空数组。全部真实调用方
+  // （Voucher.renderSum / ExpenseDetail）传的都是 currentPeriod() 或控件值，不涉及该边界。
+  function monthList(start, end) {
+    var out = [];
+    var s = String(start == null ? '' : start), e = String(end == null ? '' : end);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(s) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(e)) return out;
+    var y = +s.slice(0, 4), m = +s.slice(5, 7);
+    var ey = +e.slice(0, 4), em = +e.slice(5, 7);
+    while (y < ey || (y === ey && m <= em)) {
+      out.push(y + '-' + pad2(m));
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return out;
   }
   // 期间归一化：非法/空期间统一为 '0000-00'（早于任何真实期间 ⇒ 命中「只有期初、无发生额」空快照）。
   // 用途：新账套尚未录入凭证、或用户清空了期间选择器时，报表/账簿接口若直接对 undefined
@@ -253,6 +278,22 @@
     { code: '003', name: '餐厅', type: '部门', parent: '' }
   ];
 
+  /* ---------- 默认资产类别（6 类，平均年限法） ----------
+   * 【为什么从 Asset.js 搬到这里】这份预置原先只写在前端 Asset.js 的 assetCats() 里（懒创建），
+   * 而「category 存类别**编码**」这条契约只写在 addFixedAsset 的注释里。结果是：Excel/金蝶导入
+   * 把「类别**名称**」直接写进了 category 字段 —— 显示看不出问题（_catName 查不到编码就原样返回），
+   * 但按类别筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。
+   * 归一（编码↔名称）与老账套回填都必须在**数据层**做，故把默认档案移到 store，前端只引用。
+   * 浅拷贝避免账套间共享同一数组引用。 */
+  var DEFAULT_ASSET_CATS = [
+    { code: '001', name: '房屋、建筑物',     method: '平均年限法', life: 30, salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
+    { code: '002', name: '机器机械生产设备', method: '平均年限法', life: 10, salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
+    { code: '003', name: '器具、工具、家具', method: '平均年限法', life: 5,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
+    { code: '004', name: '运输工具',         method: '平均年限法', life: 4,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
+    { code: '005', name: '电子设备',         method: '平均年限法', life: 3,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
+    { code: '006', name: '其他固定资产',     method: '平均年限法', life: 5,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true }
+  ];
+
   /* ---------- 空状态（单一账套） ----------
    * standard: 会计准则机器键（'old'|'small2013'），建账时由 newBook(key) 传入
    * reportRules: 该账套的报表规则快照（balanceSheet + incomeStatement），深拷贝自
@@ -275,6 +316,7 @@
       salaryVchTpls: [],     // 工资凭证模板（计提/发放）
       vchTemplates: [],      // 日常凭证模板（常用业务结构，按账套保存）
       depts: DEFAULT_DEPTS.map(function (s) { return Object.assign({}, s); }), // 部门职员种子（酒店三部门）
+      assetCats: DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); }), // 资产类别档案（默认 6 类）
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
       operationLogs: [],      // 操作日志 [{ time, user, action, detail }]
@@ -282,6 +324,7 @@
                                // {id,name,remark,smallType,amount,voucherTpl,group,isInvoice,uploadTime,uploader,fileSize,checkStatus,auditTime,voucherNo,period,vouchered,audited,voucherId}
                                // 数据来自用户导入/拍照，新账套为空表（不预置假数据）
       closedPeriods: [],     // 已结账月份列表 ['YYYY-MM', ...]
+      voucherWords: [{ name: '记', title: '记账凭证', enabled: true }],
       param: {
         standard: stdMeta.label,
         voucherWord: '记',
@@ -774,14 +817,8 @@
       // 否则折线图/趋势图末尾会多出一个全 0 的平直点（如系统月2026-08但数据只到2026-07）。
       var lastV = this.lastVoucherMonth();
       if (lastV && lastV < end) end = lastV;
-      var list = [];
-      var y = +start.split('-')[0], m = +start.split('-')[1];
-      var ey = +end.split('-')[0], em = +end.split('-')[1];
-      while (y < ey || (y === ey && m <= em)) {
-        list.push(y + '-' + ('0' + m).slice(-2));
-        if (m === 12) { y++; m = 1; } else { m++; }
-      }
-      return list;
+      // 月份区间展开统一走 monthList（此前此处内联展开了一份，属重复实现）
+      return monthList(start, end);
     },
     // 账套中最后一笔凭证的月份（数据实际边界）。无凭证返回 ''。
     lastVoucherMonth: function () {
@@ -1127,6 +1164,85 @@
     },
     subject: function (code) {
       return this.state.subjects.filter(function (s) { return s.code === code; })[0] || null;
+    },
+    // 科目层级缩进：所有科目相关页面（总账/余额表/科目设置/费用明细表）统一用这个函数。
+    // 缩进单位 14px/level，只缩进名称列（编码列锚定不动）。
+    // 用法：S.subjectIndentHTML(level) 返回 <span> 缩进占位 HTML，拼到名称前面。
+    subjectIndentHTML: function (level) {
+      var lv = Math.max(0, Math.floor(level) || 0);
+      return '<span style="display:inline-block;width:' + (lv * 14) + 'px"></span>';
+    },
+    // 导出 XLSX 时的空格缩进（HTML  span 在 Excel 里无效，用空格模拟层级）。
+    subjectIndentSpaces: function (level) {
+      var lv = Math.max(0, Math.floor(level) || 0);
+      var s = '';
+      for (var i = 0; i < lv; i++) s += '  ';
+      return s;
+    },
+
+    /* =========================
+     * 树形折叠公共工具（科目设置/余额表/费用明细表/总账共用）
+     * 状态语义统一：expanded = Set() — 存"已展开"的科目编码
+     *   - 空 Set → 默认全收起（只露一级父科目）
+     *   - Set.has(code) = true → 该科目已展开（可见其直接子级）
+     *   - 祖先级联：祖先链上任一不在 expanded 中 → 子级隐藏
+     * ========================= */
+
+    // 直接父科目映射：在给定集合内取该编码的「最长真前缀」作为父。
+    // 真实账套编码层级不规整（4 位、4+2=6 位、4+3=7 位、更深混合），
+    // 不能用「固定去尾 2 位」推导（会把 1002001 的父错算成 10020）。
+    subjectParentMap: function (subjects) {
+      var subs = subjects || this.state.subjects || [];
+      var byCode = {};
+      subs.forEach(function (s) { byCode[String(s.code)] = 1; });
+      var pm = {};
+      subs.forEach(function (s) {
+        var c = String(s.code), best = '';
+        for (var L = c.length - 1; L > 0; L--) {
+          var pre = c.slice(0, L);
+          if (byCode[pre]) { best = pre; break; }
+        }
+        pm[c] = best;
+      });
+      return pm;
+    },
+
+    // 某编码是否可见：在展开 Set 中 OR 所有祖先都在展开 Set 中。
+    // 祖先级联隐藏规则：父级不在 expanded 中 → 子级递归隐藏。
+    subjectVisible: function (code, expanded, parentMap, expandAll) {
+      if (expandAll) return true;
+      if (expanded && expanded.has && expanded.has(code)) return true;
+      var cur = String(code);
+      var guard = 0;
+      while (cur && guard++ < 40) {
+        var p = parentMap[cur];
+        if (!p) return true; // 一级科目，父为空，始终可见
+        if (!expanded || !expanded.has(p)) return false; // 祖先没展开 → 隐藏
+        cur = p;
+      }
+      return true;
+    },
+
+    // 某编码是否有子科目（有子节点 → 可展开）
+    subjectHasChildren: function (code, parentMap) {
+      // parentMap 的每个 value 是直接父 → 统计 parentMap[child] === code 的 child 数
+      var count = 0;
+      for (var c in parentMap) {
+        if (parentMap[c] === String(code)) count++;
+      }
+      return count > 0;
+    },
+
+    // 展开/折叠箭头 HTML（统一用文字 ▶▼，打印友好）
+    // hasKids: 是否有子科目；isOpen: 当前展开态（true=▼展开 / false=▶收起）
+    // 返回：<span> 可点击三角 HTML，或占位 span（叶节点）
+    subjectArrowHTML: function (code, hasKids, isOpen, extraCls) {
+      if (!hasKids) return '<span class="subj-arrow-leaf"></span>';
+      var cls = extraCls ? extraCls : 'subj-arrow';
+      cls += isOpen ? '' : ' collapsed';
+      var title = isOpen ? '收起下级科目' : '展开下级科目';
+      return '<span class="' + cls + '" data-code="' + code + '" title="' + title + '">' +
+        (isOpen ? '▼' : '▶') + '</span>';
     },
     // 科目编码 → 当前名称（显示层唯一入口）。
     // 口径对齐参考实现：凭证/报表显示的是科目表「实时名称」，科目改名后历史单据显示同步更新；
@@ -3292,13 +3408,106 @@
     },
 
     /* ===================== 固定资产 ===================== */
+    // 资产类别档案（单一事实源）。缺省/为空时用默认 6 类补齐（老账套首次打开资产页时也会走到这里）。
+    assetCats: function () {
+      if (!Array.isArray(this.state.assetCats) || !this.state.assetCats.length) {
+        this.state.assetCats = DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); });
+      }
+      return this.state.assetCats;
+    },
+    /* 把外来的「类别」值归一为**类别编码**（本系统唯一契约）。
+     * 顺序：空 → ''；命中编码 → 原值；命中名称 → 对应编码；都命中不了 → 按该名称**新建**一条档案。
+     * 「新建」是为了迁移不丢信息：金蝶的资产类别未必正好是我们预置的 6 类，
+     * 若不新建，那张卡片的类别就永远筛不到、且编辑时会被清空（正是本次要修的病）。
+     * 幂等：归一后的值是编码，再次调用在第一步就返回。 */
+    normalizeAssetCategory: function (v) {
+      var raw = String(v == null ? '' : v).trim();
+      if (!raw) return '';
+      var list = this.assetCats(), i;
+      for (i = 0; i < list.length; i++) { if (String(list[i].code) === raw) return raw; }
+      for (i = 0; i < list.length; i++) { if (String(list[i].name) === raw) return String(list[i].code); }
+      var max = 0;
+      list.forEach(function (c) { var n = parseInt(c.code, 10); if (!isNaN(n) && n > max) max = n; });
+      var code = String(max + 1);
+      while (code.length < 3) code = '0' + code;
+      list.push({ code: code, name: raw, method: '平均年限法', life: '', salvage: '',
+        asset: '', depr: '', memo: '导入资产时自动建立', enabled: true });
+      this.state.assetCats = list;
+      return code;
+    },
+    /* ---------- 部门（基础资料）：单一事实源 + 名称归一 ----------
+     * ⚠️ 与「资产类别」**方向相反**，别照抄：
+     *   类别字段存**编码**（卡片表单是下拉、store 注释里写明「类别编码」）；
+     *   部门字段存**名称** —— 卡片表单的「使用部门」是**自由文本输入**，addFixedAsset 也没有
+     *   「部门编码」的契约，且全库消费方（卡片左树 / fDept 筛选 / 折旧汇总表「按部门汇总」）
+     *   都是按**名称**比对。故这里归一为**名称**，code 只作档案内部标识。
+     * 【为什么要归一】和类别同一个病根：KIS .ais 导入**不带部门档案**（kis-import.js 全库 0 处提及），
+     *   本系统的 depts 一直是内置默认种子（前台/客房/餐厅）；而金蝶卡片表里的部门是
+     *   厨房/客房/酒店/酒店洗衣房 —— 于是「资产左树的部门」跟金蝶对不上、按部门筛选也筛不到。 */
+    depts: function () {
+      if (!Array.isArray(this.state.depts) || !this.state.depts.length) {
+        this.state.depts = DEFAULT_DEPTS.map(function (d) { return Object.assign({}, d); });
+      }
+      return this.state.depts;
+    },
+    // 把外来的「部门」值归一为**部门名称**：空 → ''；命中名称 → 原值；命中编码 → 对应名称；
+    // 都命中不了 → 按该名称**新建**一条档案（金蝶的部门未必在我们默认种子里，不新建就永远选不到）。
+    // 幂等：归一后是名称，再次调用在第一步返回。
+    normalizeDept: function (v) {
+      var raw = String(v == null ? '' : v).trim();
+      if (!raw) return '';
+      var list = this.depts(), i;
+      for (i = 0; i < list.length; i++) { if (String(list[i].name) === raw) return raw; }
+      for (i = 0; i < list.length; i++) { if (String(list[i].code) === raw) return String(list[i].name); }
+      var max = 0;
+      list.forEach(function (d) { var n = parseInt(d.code, 10); if (!isNaN(n) && n > max) max = n; });
+      var code = String(max + 1);
+      while (code.length < 3) code = '0' + code;
+      list.push({ code: code, name: raw, type: '部门', parent: '', enabled: true });
+      this.state.depts = list;
+      return raw;
+    },
+    /* 部门改名 / 改编码（基础资料编辑的**唯一入口**：把「改档案」与「回写卡片」绑在一起做）。
+     * ⚠️ 为什么必须回写：部门是按**名称**存的（与类别存编码相反，理由见 normalizeDept），
+     * 只改档案名而不动 fa.dept，历史卡片就变成「档案里查无此部门」—— 按部门筛选掉出去、
+     * 编辑卡片时下拉回落成「请选择」。那正是本次要修的那个病的翻版，所以两件事不能拆开。
+     * 返回 { ok, renamed, touched }（touched = 被改写的卡片数）。 */
+    renameDept: function (idx, name, code) {
+      var list = this.depts();
+      var d = list[idx];
+      if (!d) return { ok: false, msg: '部门不存在' };
+      name = String(name == null ? '' : name).trim();
+      code = String(code == null ? '' : code).trim();
+      if (!name) return { ok: false, msg: '部门名称不能为空' };
+      if (!code) return { ok: false, msg: '部门编码不能为空' };
+      for (var i = 0; i < list.length; i++) {
+        if (i !== idx && String(list[i].code) === code) return { ok: false, msg: '部门编码「' + code + '」已被占用' };
+      }
+      var oldName = String(d.name == null ? '' : d.name);
+      var renamed = oldName !== name;
+      d.name = name;
+      d.code = code;
+      var touched = 0;
+      if (renamed) {
+        (this.state.fixedAssets || []).forEach(function (fa) {
+          if (String(fa.dept == null ? '' : fa.dept) === oldName) { fa.dept = name; touched++; }
+        });
+      }
+      this.state.depts = list;
+      this.persist();
+      return { ok: true, renamed: renamed, touched: touched };
+    },
     addFixedAsset: function (fa) {
       fa.id = 'A' + Date.now() + Math.floor(Math.random() * 1000);
       // 数值字段初始化（严格对齐卡片列）
       fa.code = fa.code || '';                       // 编码
       fa.name = fa.name || '';                       // 名称
-      fa.category = fa.category || '';               // 类别（类别编码）
-      fa.dept = fa.dept || '';                        // 部门
+      // 类别：唯一契约是**类别编码**。导入（Excel/金蝶）给的多是类别名称，此处归一 ——
+      // 否则按类别筛选筛不到、编辑卡片时下拉选不中（保存会把类别清空）。见 normalizeAssetCategory。
+      fa.category = this.normalizeAssetCategory(fa.category);
+      // 部门：契约是**部门名称**。导入（Excel/金蝶卡片表）给的是名称，此处归一 ——
+      // 档案里没有的部门会按名称补进 depts，否则资产左树/按部门筛选永远对不上。见 normalizeDept。
+      fa.dept = this.normalizeDept(fa.dept);
       fa.acqDate = fa.acqDate || '';                  // 开始使用日期
       fa.entryPeriod = fa.entryPeriod || '';          // 录入期间
       fa.original = num(fa.original);                 // 原值
@@ -3335,6 +3544,7 @@
       fa.taxAcct = fa.taxAcct || '';                  // 税金科目
       fa.impairAcct = fa.impairAcct || '';            // 减值准备对方科目
       fa.yearDepr = num(fa.yearDepr);                 // 本年已折旧
+      fa.addVoucherId = fa.addVoucherId || '';        // 新增资产凭证的**凭证 id**（唯一、含月份）
       this.state.fixedAssets.push(fa);
       this.persist();
       return fa;
@@ -3343,20 +3553,103 @@
       var idx = -1;
       this.state.fixedAssets.forEach(function (x, i) { if (x.id === id) idx = i; });
       if (idx < 0) return { ok: false, msg: '卡片不存在' };
+      // 与 addFixedAsset 同口径：编辑保存进来的类别/部门也过一遍归一（下拉/输入给的本就合规，此处是防呆，
+      // 并保证手填的新部门会被补进部门档案）
+      if (fa && fa.category !== undefined) fa.category = this.normalizeAssetCategory(fa.category);
+      if (fa && fa.dept !== undefined) fa.dept = this.normalizeDept(fa.dept);
       Object.assign(this.state.fixedAssets[idx], fa, { id: id });
       this.persist();
       return { ok: true };
     },
     removeFixedAsset: function (id) {
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-      // 财务严谨：本系统已为该卡片生成过凭证（新增/折旧/清理）的，禁止删除（避免账实不符），只能「清理」。
+      // 财务严谨：本系统**自己生成过**凭证的卡片禁止删除（避免账实不符），只能「清理」。
+      // ⚠️ addVoucher 不在拦截之列：它存的是「卡片 ↔ 购入凭证」的**关联**——凭证本来就在账里
+      // （迁移账套里是金蝶导过来的），既不是本系统生成的，也不会因删掉卡片而消失，故不构成删除障碍。
+      // （若把它也算作「已生成凭证」，则导入卡片一经关联就再也删不掉，与「外部导入的卡片可删」相悖。）
       // 仅外部导入、尚未在本系统生成任何凭证的卡片（累计折旧只是导入数值、无实际过账）允许删除。
-      if (fa && (fa.deprMonth || fa.addVoucher || fa.cleanVoucher)) {
-        return { ok: false, msg: '该资产已在本系统生成凭证' + (fa.cleanVoucher ? '（含清理凭证）' : '') + '，不可删除；请使用「清理」处理' };
+      if (fa && (fa.deprMonth || fa.cleanVoucher)) {
+        return { ok: false, msg: '该资产已在本系统生成凭证' + (fa.cleanVoucher ? '（含清理凭证）' : '（含折旧凭证）') + '，不可删除；请使用「清理」处理' };
       }
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
       this.persist();
       return { ok: true };
+    },
+    /* ===================== 「新增资产凭证」= 关联已有凭证（绝不生成） =====================
+     * 【为什么是「关联」而不是「生成」】
+     * 迁移账套的购入凭证**本来就在凭证表里** —— 实测添钰来客账套 10 张卡片，10/10 都能在 1037 张
+     * 凭证里按「借 固定资产 = 卡片原值」精确命中（记-48/49/…）。若这里再「生成」一张，就是
+     * **固定资产重复入账（翻倍）**，属本项目最忌讳的错误。故本函数只把已存在的凭证挂到卡片上。
+     * 【匹配规则】（需同时满足）
+     *   ① 凭证未删除；
+     *   ② 含一条分录：科目 == 卡片固定资产科目(faAcctId) 且 借方 == 卡片原值(original)；
+     *   ③ 该凭证的贷方含「卡片购入对方科目」(purchaseAcct) —— 与卡片配置互证，避免同额错配；
+     *      purchaseAcct 为空时只按 ② 判（不强求 ③）。
+     * 【多重命中择优】先排除已被其它卡片占用的凭证；再按凭证日期离「开始使用日期」最近；最后按凭证字号升序。
+     * 【幂等】已有 addVoucher 的卡片直接跳过，可反复点。**不新增任何凭证**。
+     * ids：可选。给定（非空）时只处理这些卡片 id —— 「批量操作 → 关联凭证」勾了就传勾选的，没勾就传空 = 全部。
+     * 返回 { ok, linked:[{code,name,no,date}], unmatched:[{code,name,reason}] } */
+    linkAssetAcquisitions: function (ids) {
+      var self = this;
+      var only = null;
+      if (ids && ids.length) { only = {}; ids.forEach(function (id) { only[id] = 1; }); }
+      var list = this.state.fixedAssets || [];
+      var vs = (this.state.vouchers || []).filter(function (v) { return v.deleted !== 'y'; });
+      var used = {};                                    // 凭证 id → 已挂它的卡片编码
+      list.forEach(function (fa) { if (fa.addVoucherId) used[fa.addVoucherId] = fa.code; });
+      var linked = [], unmatched = [];
+      list.forEach(function (fa) {
+        if (only && !only[fa.id]) return;               // 只处理指定的那些卡片
+        if (fa.addVoucher) return;                      // 已关联 → 幂等跳过
+        var faCode = String(fa.faAcctId || '');
+        var orig = num(fa.original);
+        var opp = String(fa.purchaseAcct || '');
+        if (!orig) { unmatched.push({ code: fa.code, name: fa.name, reason: '原值为 0，无从匹配' }); return; }
+        var cands = vs.filter(function (v) {
+          var okDr = (v.entries || []).some(function (e) {
+            return String(e.code) === faCode && Math.abs(num(e.dr) - orig) < 0.005;
+          });
+          if (!okDr) return false;
+          if (!opp) return true;
+          return (v.entries || []).some(function (e) { return String(e.code) === opp && num(e.cr) > 0; });
+        });
+        if (!cands.length) {
+          unmatched.push({ code: fa.code, name: fa.name,
+            reason: '凭证表里找不到「借 ' + (faCode || '固定资产') + ' = ' + orig + (opp ? ' 且 贷 ' + opp : '') + '」的凭证' });
+          return;
+        }
+        // 择优：优先未被占用；全被占用时允许复用（一张凭证买多张同额资产是合法的）
+        var pool = cands.filter(function (v) { return !used[v.id]; });
+        if (!pool.length) pool = cands;
+        var acq = String(fa.acqDate || '');
+        var acqTs = acq ? Date.parse(acq) : NaN;
+        pool.slice().sort(function (a, b) {
+          var da = isNaN(acqTs) ? 0 : Math.abs(Date.parse(a.date) - acqTs);
+          var db = isNaN(acqTs) ? 0 : Math.abs(Date.parse(b.date) - acqTs);
+          if (da !== db) return da - db;
+          var ka = (a.word || '记') + '-' + a.no, kb = (b.word || '记') + '-' + b.no;
+          return ka < kb ? -1 : (ka > kb ? 1 : 0);
+        });
+        var pick = pool[0];
+        fa.addVoucher = (pick.word || '记') + '-' + pick.no;   // 显示用（列/导出/筛选读它）
+        fa.addVoucherId = pick.id;                             // 跳转用（id 含月份，唯一）
+        used[pick.id] = fa.code;
+        linked.push({ code: fa.code, name: fa.name, no: fa.addVoucher, date: pick.date || '' });
+      });
+      if (linked.length) this.persist();
+      return { ok: true, linked: linked, unmatched: unmatched };
+    },
+    // 解除关联（错配回退）：只清卡片的 addVoucher/addVoucherId —— **绝不碰凭证本身**
+    // （凭证是账，不能因为解关联而消失或改动）。
+    unlinkAssetAcquisitions: function (ids) {
+      var map = {}; (ids || []).forEach(function (id) { map[id] = 1; });
+      var n = 0;
+      (this.state.fixedAssets || []).forEach(function (fa) {
+        if (!map[fa.id]) return;
+        if (fa.addVoucher || fa.addVoucherId) { fa.addVoucher = ''; fa.addVoucherId = ''; n++; }
+      });
+      if (n) this.persist();
+      return { ok: true, n: n };
     },
     // 清理（报废/处置业务，卡片保留、状态=已清理、记清理期间）
     cleanFixedAsset: function (id, month) {
@@ -3855,6 +4148,34 @@
       for (var k in def) {
         if (this.state[k] === undefined) this.state[k] = def[k];
       }
+      // 资产类别回填（老账套迁移，幂等）：早期导入把「类别**名称**」直接写进了 fa.category，
+      // 与类别档案的**编码**错配 —— 显示看不出问题（_catName 查不到编码就原样返回），但按类别
+      // 筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。此处统一归一为编码。
+      // 必须在上面 def 填充【之后】做：normalizeAssetCategory 要用 this.state.assetCats。
+      // 只改内存，随下一次正常写盘落库（与 backfillIncomeRowIds 的只读语义一致）。
+      (function (self) {
+        var fixed = 0;
+        (self.state.fixedAssets || []).forEach(function (fa) {
+          var before = String(fa.category == null ? '' : fa.category);
+          var after = self.normalizeAssetCategory(before);
+          if (before !== after) { fa.category = after; fixed++; }
+        });
+        // 供自检/回归脚本读取（瞬态字段，不落盘）
+        self._assetCatBackfilledN = fixed;
+      })(this);
+      // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— KIS 导入不带部门档案，
+      // 本系统 depts 只有默认种子（前台/客房/餐厅），而卡片里写的是厨房/酒店/酒店洗衣房，
+      // 于是资产左树与「按部门筛选」对不上（筛选比的是 d.code，卡片存的是名称）。
+      // 归一为**名称**并把档案里缺的部门补进去（值本身不变，只是让档案认得它）。
+      (function (self) {
+        var fixed = 0;
+        (self.state.fixedAssets || []).forEach(function (fa) {
+          var before = String(fa.dept == null ? '' : fa.dept);
+          var after = self.normalizeDept(before);
+          if (before !== after) { fa.dept = after; fixed++; }
+        });
+        self._assetDeptBackfilledN = fixed;
+      })(this);
       // reportRules 必须是独立深拷贝（cloneStandard 已深拷），不可与模板/他账套共享引用。
       if (!this.state.reportRules || typeof this.state.reportRules !== 'object') {
         this.state.reportRules = (global.cloneStandard ? global.cloneStandard(this.state.standard).reportRules : def.reportRules);
@@ -3883,6 +4204,22 @@
       if (!this.state.param.voucherChecks) this.state.param.voucherChecks = def.param.voucherChecks;
       for (var vk in def.param.voucherChecks) {
         if (this.state.param.voucherChecks[vk] === undefined) this.state.param.voucherChecks[vk] = def.param.voucherChecks[vk];
+      }
+      if (!this.state.voucherWords) this.state.voucherWords = def.voucherWords;
+      // 凭证字迁移：老账套 voucherWords 未预置 → 按 param.voucherWord 补一条
+      // （保证默认凭证字在列表中存在，否则设置页空表且 fillVoucherWord 硬兜底看不到）
+      if (!this.state.voucherWords.length) {
+        var defName = (this.state.param && this.state.param.voucherWord) || '记';
+        var defTitle = defName + '账凭证';
+        this.state.voucherWords = [{ name: defName, title: defTitle, enabled: true }];
+      }
+      // param.voucherWord 必须指向列表中存在且启用的条目；否则回退到第一个启用项
+      var curVW = this.state.param && this.state.param.voucherWord;
+      var vwMatch = this.state.voucherWords.find(function (x) { return x.enabled !== false && x.name === curVW; });
+      if (!vwMatch) {
+        var firstEnabled = this.state.voucherWords.find(function (x) { return x.enabled !== false; });
+        if (firstEnabled) this.state.param.voucherWord = firstEnabled.name;
+        else this.state.param.voucherWord = this.state.voucherWords[0].name;
       }
       // 科目层级统一（存量校正）：父子一律按「表内最长真前缀」实算，level=1 基（一级=1）。
       // 兼容 4+2、7 位、9 位与混长账套——旧式按 (长度-4)/2 推导在 7 位账会偏，此处强制幂等收敛。
@@ -3997,7 +4334,7 @@
   global.ACCOUNT_CLASSES = ACCOUNT_CLASSES;
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
-    prevMonth: prevMonth, monthsBetween: monthsBetween, num: num, money: money
+    prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money
   };
 
   // B 方案迁移：新增 ESM 导出（不破坏旧全局）。后续页面模块通过 import 使用。
@@ -4006,7 +4343,7 @@
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
-      prevMonth: prevMonth, monthsBetween: monthsBetween, num: num, money: money
+      prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money
     }
   };
   // 支持 <script type="module"> 的 import；旧 <script src> 走上面的 global。

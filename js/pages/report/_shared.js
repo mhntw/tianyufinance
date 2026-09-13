@@ -18,44 +18,20 @@ const nowTimeStr = H.nowTimeStr || (() => {
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
-function periodRangeOptions() {
-  const cp = currentPeriod();
-  const [y, m] = cp.split('-').map(Number);
-  const opts = [];
-  for (let yy = y - 1; yy <= y; yy++) {
-    for (let mm = 1; mm <= 12; mm++) {
-      const val = `${yy}-${String(mm).padStart(2, '0')}`;
-      opts.push(`<option value="${val}" ${val === cp ? 'selected' : ''}>${yy}年${mm}期</option>`);
-    }
-  }
-  return opts.join('');
-}
-
-function allBookedMonthsOri() {
-  const set = {};
-  (S.state.vouchers || []).forEach(v => { if (v.date) set[v.date.substring(0, 7)] = 1; });
-  return Object.keys(set).sort();
-}
-
-function periodRangeOptionsOri(sel, cur) {
-  if (!sel) return;
-  sel.innerHTML = '';
-  const months = allBookedMonthsOri();
-  if (!months.length) months.push(cur);
-  months.forEach(m => {
-    const y = m.substring(0, 4), mon = parseInt(m.substring(5, 7), 10);
-    const op = document.createElement('option');
-    op.value = m;
-    op.textContent = y + '年第' + mon + '期';
-    sel.appendChild(op);
-  });
-  sel.value = cur;
-}
-
-function monthsBetween(start, end) {
-  const [sy, sm] = start.split('-').map(Number);
-  const [ey, em] = end.split('-').map(Number);
+// 月份区间展开为月份列表（含首尾）。实现已下沉到 store（见 store.js 的 monthList），此处仅转发。
+// 改名理由：本函数原本叫 monthsBetween 且返回「列表」，而 store.monthsBetween 返回「相差整月数」——
+// 同名却语义相反，是最容易踩错的坑；现统一为「差月数=monthsBetween、列表=monthList」。
+// 同时删掉三个从未被调用的旧实现：periodRangeOptions / periodRangeOptionsOri / allBookedMonthsOri
+// （它们只在 Original.js 的 import 里出现过，全库零调用点；其中 allBookedMonthsOri 还是 store.allMonths 的重复实现）。
+function monthList(start, end) {
+  const U = (typeof window !== 'undefined' && window.util) || {};
+  if (typeof U.monthList === 'function') return U.monthList(start, end);
+  // 兜底：store 尚未注册时本地展开，口径与 store 保持一致（含 01~12 的月份校验）
   const res = [];
+  const ok = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m == null ? '' : m));
+  if (!ok(start) || !ok(end)) return res;
+  const [sy, sm] = String(start).split('-').map(Number);
+  const [ey, em] = String(end).split('-').map(Number);
   let yy = sy, mm = sm;
   while (yy < ey || (yy === ey && mm <= em)) {
     res.push(`${yy}-${String(mm).padStart(2, '0')}`);
@@ -87,10 +63,4 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-function getSubjectNameByCode(code) {
-  const s = (S.subjects() || []).find(x => x.code === code);
-  return s ? s.name : code;
-}
-
-
-export { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, periodRangeOptions, allBookedMonthsOri, periodRangeOptionsOri, monthsBetween, prevYearMonth, monthLabel, subjectLevel, subjectFilter, getSubjectNameByCode };
+export { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };

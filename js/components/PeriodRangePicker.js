@@ -1,11 +1,18 @@
 /**
  * PeriodRangePicker —— 单期期间选择 popover
  *
- * 设计原则：极简。只做一件事——点 trigger，弹出 12 月 grid，选一个期间，调 on-change。
- * 范围模式：2 个页面用原生 <select> 处理，不在这里。
+ * 设计原则：极简、且只做一件事——点 trigger，弹出 12 月 grid，选一个期间，调 on-change。
+ *
+ * 契约（已冻结，见 CHANGELOG 2026-09-13）：控件只产出一个「报告期」(YYYY-MM)，永不产出起止区间；
+ * 两端 hidden input 恒等（由 tools/check-period-contract.js 机器校验）。理由：
+ *   ① 报表已用「本期 + 本年累计」两列表达了区间，控件不需要第二个自由度；
+ *   ② 13/16 个页面只读结束期间，多一个用户可改的端点会让「改了没反应」这类问题反复出现；
+ *   ③ 将来若要跨期，方向是加「粒度」（月/季/年，对齐金蝶 periodType）由粒度派生区间，
+ *      而不是把起止两个端点加回来 —— 后者在资产负债表（时点报表）上无法给出有意义的起点。
+ * 两端 input 仍保留：页面取数统一读 End（历史调用方众多），Start 作为契约校验的对照项。
  *
  * index.html 占位符写法：
- *   <div data-period="gl" data-single="1" data-on-change="__renderGl"></div>
+ *   <div data-period="gl" data-default="currentPeriod" data-on-change="__renderGl"></div>
  *   generatePeriodRanges() 启动时自动展开为完整 DOM。
  */
 
@@ -17,13 +24,12 @@ function generatePeriodRanges() {
     if (host.classList.contains('ty-period-range')) return;
 
     var id = host.dataset.period;
-    var single = host.dataset.single || '1';
     var onChange = host.dataset.onChange || '';
     var startId = id + 'PeriodStart';
     var endId = id + 'PeriodEnd';
 
     host.outerHTML =
-      '<div class="ty-period-range" data-period="' + id + '" data-single-period="' + single + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '">' +
+      '<div class="ty-period-range" data-period="' + id + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '">' +
       '  <div class="ty-period-trigger" id="' + id + 'Trigger">' +
       '    <span class="ty-period-trigger-label">期间</span>' +
       '    <span class="ty-period-trigger-text is-placeholder" id="' + id + 'Text">请选择期间</span>' +
@@ -43,7 +49,9 @@ function pad2(n) { return (n < 10 ? '0' : '') + n; }
 function fmtPeriod(ym) {
   if (!ym) return '';
   var parts = ym.split('-');
-  return parts[0] + '年' + parseInt(parts[1], 10) + '期';
+  // 期数补零（2026年08期）：与报表抬头 setRptHead 的 "YYYY年MM期" 保持一致，
+  // 否则同一屏里触发器写「2026年8期」、报表标题写「2026年08期」两种写法。
+  return parts[0] + '年' + pad2(parseInt(parts[1], 10)) + '期';
 }
 
 function currentPeriod() {
@@ -57,6 +65,35 @@ function currentPeriod() {
   return now.getFullYear() + '-' + pad2(now.getMonth() + 1);
 }
 
+/* ---------------- 默认期间（由 data-default 声明，组件单点解析） ---------------- */
+// 背景：此前"默认期间是什么"由每个页面各自决定（currentPeriod 还是 lastClosedPeriod），
+//   16 个页面里 8 个是逐字拷贝 —— 正是「改一处漏五处」的典型。现统一由 index.html 的
+//   data-default 声明，组件单点解析；页面调用 periodRangeValue(prefix) 时不再传 def。
+// 解析时机刻意放在「页面读取时」而非「DOM 展开时」：展开发生在 main.js 早期，此时账套可能
+//   尚未加载完成，currentPeriod() 会拿到空值；放在读取时与页面渲染同步，取值才可靠。
+function wrapOfPrefix(prefix) {
+  var sInp = $(prefix + 'Start');
+  return sInp ? sInp.closest('.ty-period-range') : null;
+}
+function periodDefaultOf(prefix) {
+  var wrap = wrapOfPrefix(prefix);
+  var kind = (wrap && wrap.dataset.default) || 'currentPeriod';
+  var H = globalThis.__TY_HELPERS__ || {};
+  if (kind === 'lastClosedPeriod' && typeof H.lastClosedPeriod === 'function') {
+    var lc = H.lastClosedPeriod();
+    if (lc) return lc;
+  }
+  if (typeof H.currentPeriod === 'function') {
+    var cp = H.currentPeriod();
+    if (cp) return cp;
+  }
+  // 兜底一律返回字符串：账套尚未加载时 currentPeriod() 可能为 null，
+  // 而 input.value = null 会被 WebIDL 转成字符串 "null" 写进输入框，属脏值。
+  return currentPeriod() || '';
+}
+// 供 app.js 的 periodRangeValue(prefix) 在未显式传 def 时回查声明的默认值
+globalThis.__PERIOD_DEFAULT_OF__ = periodDefaultOf;
+
 function allAvailablePeriods() {
   var S = globalThis.S;
   if (!S || !S.state) return [];
@@ -64,25 +101,20 @@ function allAvailablePeriods() {
   if (typeof S.allMonths === 'function') {
     return S.allMonths();
   }
-  // fallback：从 startYear 到 currentPeriod 所在年
+  // fallback：从启用年 1 月展开到 currentPeriod 所在月（无 currentPeriod 时取启用年整年）。
+  // 月份展开统一走 store 暴露的 util.monthList —— 此处原本也内联了一份重复实现。
+  var U = globalThis.util || {};
+  if (typeof U.monthList !== 'function') return [];
   var startY = (S.state.company && S.state.company.startYear) || new Date().getFullYear();
   var cur = currentPeriod();
-  var curY = cur ? parseInt(cur.split('-')[0], 10) : startY;
-  var list = [];
-  for (var y = startY; y <= curY; y++) {
-    var maxM = (y === curY && cur) ? parseInt(cur.split('-')[1], 10) : 12;
-    for (var m = 1; m <= maxM; m++) {
-      list.push(y + '-' + pad2(m));
-    }
-  }
-  return list;
+  return U.monthList(startY + '-01', cur || (startY + '-12'));
 }
 
 /* ---------------- state ---------------- */
 
 var state = {
   wrap: null,          // 当前打开的 .ty-period-range
-  startYear: 0,
+  year: 0,             // 当前显示的年份（单面板，已无起止两列）
   selected: null,      // 当前选中的 yyyy-mm
   onChange: ''         // data-on-change 回调字符串
 };
@@ -95,7 +127,7 @@ function renderGrid() {
   var pop = getPop();
   if (!pop || !state.wrap) return;
   var yearText = pop.querySelector('.ty-period-year-text');
-  if (yearText) yearText.textContent = state.startYear + '年';
+  if (yearText) yearText.textContent = state.year + '年';
   var grid = pop.querySelector('.ty-period-grid');
   if (!grid) return;
 
@@ -106,7 +138,7 @@ function renderGrid() {
   grid.innerHTML = '';
   for (var m = 1; m <= 12; m++) {
     (function (month) {
-      var ym = state.startYear + '-' + pad2(month);
+      var ym = state.year + '-' + pad2(month);
       var cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'ty-period-cell';
@@ -139,7 +171,7 @@ function openPop(wrap) {
   var startInput = $(wrap.dataset.startId);
   var cur = (startInput && startInput.value) || currentPeriod();
   state.selected = cur;
-  state.startYear = cur ? parseInt(cur.split('-')[0], 10) : new Date().getFullYear();
+  state.year = cur ? parseInt(cur.split('-')[0], 10) : new Date().getFullYear();
 
   renderGrid();
 
@@ -177,15 +209,22 @@ function applySelection() {
     textEl.classList.remove('is-placeholder');
   }
   closePop();
+  // 回调按全局函数名查找（不用 eval）：eval 有 CSP unsafe-eval 限制、字符串注入面、
+  // 以及严格模式下的作用域差异，而 data-on-change 一律是 __renderXxx 这类全局函数名。
   if (state.onChange) {
-    try { eval(state.onChange + '()'); } catch (e) { console.warn('[PeriodRangePicker] onChange eval failed:', e); }
+    var fn = globalThis[state.onChange];
+    if (typeof fn !== 'function') {
+      console.warn('[PeriodRangePicker] data-on-change 未找到对应全局函数：' + state.onChange);
+    } else {
+      try { fn(); } catch (e) { console.warn('[PeriodRangePicker] onChange 执行失败：', e); }
+    }
   }
 }
 
 /* ---------------- 事件 ---------------- */
 
 function onYearNav(step) {
-  state.startYear += step;
+  state.year += step;
   renderGrid();
 }
 
@@ -233,8 +272,10 @@ export function updatePeriodRangeTrigger(startId, endId) {
   var textEl = $(wrap.dataset.period + 'Text');
   var s = startEl.value;
   var e = endEl ? endEl.value : s;
-  if (!s) return;
-  textEl.textContent = (s === e) ? fmtPeriod(s) : fmtPeriod(s) + ' ~ ' + fmtPeriod(e);
+  if (!s || !textEl) return;   // textEl 缺失只影响文案，不该抛错打断调用方
+  // 单期控件两端恒等（契约），只显示一个期间。
+  // 取 end 值：页面取数一律读 End，万一两者不一致（违反契约）时显示与实际取数保持一致。
+  textEl.textContent = fmtPeriod(e || s);
   textEl.classList.remove('is-placeholder');
 }
 

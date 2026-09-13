@@ -32,7 +32,7 @@ function closeSubjectPop() {
 document.addEventListener('mousedown', function (e) {
   if (!openPop) return;
   // 点浮层内部或触发按钮都不关闭（按钮自己处理 toggle）
-  if (openPop.contains(e.target) || e.target.closest('.subj-range-btn')) return;
+  if (openPop.contains(e.target) || e.target.classList.contains('subj-range-btn')) return;
   closeSubjectPop();
 });
 
@@ -121,7 +121,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
     applyHighlight();
   }
 
-  render(bareInput && filterInput ? filterInput.value : '');
+  render(''); // 打开弹层时始终显示全部，搜索靠 input 事件实时过滤（避免选完科目后再次打开被旧值锁死）
   if (search) search.addEventListener('input', function () { render(search.value); });
   if (filterInput) {
     // 外部输入框驱动过滤 + 键盘导航：↑↓ 移动高亮、Enter 选中、Esc 关闭
@@ -174,12 +174,8 @@ export function bindSubjectPicker(input, opts) {
   const onlyParent = !!opts.onlyParent;
   const limit = opts.limit | 0;
   const filterFn = (typeof opts.filter === 'function') ? opts.filter : null;
-  const btn = opts.btnId ? document.getElementById(opts.btnId) : null;
-  // 输入框与触发按钮都算「触发器」：外部点击判定遇到它们不关闭弹层。
-  // 关键修复——此前只有 btn 加了该类，录凭证的科目输入框没加，导致「点一下输入框本身」
-  // 就被全局 mousedown 判为「点到外面」而关闭弹层，随后被 isOpen 逻辑挡住再也打不开。
+  // 输入框算「触发器」：外部点击判定遇到它不关闭弹层。
   input.classList.add('subj-range-btn');
-  if (btn) btn.classList.add('subj-range-btn');
 
   // 科目预处理：自定义过滤 + 仅非明细科目（多栏账需要父科目分栏）
   function pickSubjects() {
@@ -214,11 +210,6 @@ export function bindSubjectPicker(input, opts) {
 
   input.addEventListener('focus', doOpen);
   input.addEventListener('click', doOpen);
-  // 触发按钮：再次点击切换关闭（输入框点击/聚焦只打开，不关闭，便于继续输入）
-  if (btn) btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (isMine()) doClose(); else doOpen();
-  });
   input.addEventListener('input', function () {
     // 已打开 → 仅按当前内容过滤；已关闭（例如刚点过外部）→ 重新打开并过滤。
     // 修复「输入科目编码不显示科目」：此前只渲染已存在弹层，弹层被关后就写进了脱离 DOM 的列表。

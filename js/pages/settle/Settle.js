@@ -553,6 +553,20 @@ function refreshSettle() {
     }
   }
   // ===== 结账面板（所选期 month） =====
+  // 回填「凭证审核后才允许结账」开关状态（从 store 读取账套级参数）
+  var chkAudit = $('settleChkAudit');
+  if (chkAudit) {
+    chkAudit.checked = !!(S.state.param && S.state.param.checkBeforeSettle);
+    if (!chkAudit._bound) {
+      chkAudit._bound = true;
+      chkAudit.addEventListener('change', function () {
+        S.state.param = S.state.param || {};
+        S.state.param.checkBeforeSettle = chkAudit.checked;
+        S.persist();
+        refreshSettle();
+      });
+    }
+  }
   var btnClose = $('btnClosePeriod');
   if (btnClose) {
     // 与 btnClosePeriod 同一口径：仅当开启「凭证审核后才允许结账」时才要求本期全部审核
