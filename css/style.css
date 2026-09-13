@@ -5529,18 +5529,13 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   border-top: 5px solid #888; transform: translateY(-50%); pointer-events: none;
 }
 
-.ty-period-range-pop { position: fixed; inset: 0; z-index: 1200; }
-.ty-period-range-pop[hidden] { display: none; }
-.ty-period-range-mask { position: absolute; inset: 0; background: rgba(2,36,51,.35); }
-.ty-period-range-box {
-  position: absolute;
-  width: 540px; max-width: calc(100vw - 24px);
+/* popover：position:fixed 定位到 trigger 下方，无遮罩 */
+.ty-period-range-pop {
+  position: fixed; z-index: 1200;
   background: #fff; border: 1px solid var(--ty-border-2); border-radius: 4px;
-  box-shadow: 0 8px 28px rgba(2,36,51,.22);
+  box-shadow: 0 8px 28px rgba(2,36,51,.22); padding: 10px; width: auto;
 }
-.ty-period-range-panels { display: flex; gap: 12px; padding: 14px 14px 0; }
-.ty-period-panel { flex: 1; min-width: 0; border: 1px solid var(--ty-border-2); border-radius: 3px; padding: 10px; }
-.ty-period-panel-head { font-size: 13px; font-weight: 400; color: var(--ty-text); margin-bottom: 10px; }
+.ty-period-range-pop[hidden] { display: none; }
 .ty-period-year-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .ty-period-year-nav button {
   width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
@@ -5559,13 +5554,6 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-cell.selected { background: var(--ty-blue); border-color: var(--ty-blue); color: #fff; }
 .ty-period-cell.disabled { color: #c3cad2; background: #f5f6f8; cursor: not-allowed; }
 .ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: #c3cad2; }
-.ty-period-range-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
-.ty-period-range-shortcuts button {
-  height: 26px; padding: 0 10px; font-size: 12px; color: var(--ty-text-2);
-  background: #fff; border: 1px solid var(--ty-border-2); border-radius: 3px; cursor: pointer;
-}
-.ty-period-range-shortcuts button:hover { color: var(--ty-blue); border-color: var(--ty-blue); }
-.ty-period-range-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px 14px; }
 
 /* ============ 浏览器存储模式横幅（防丢数据告警） ============ */
 .server-banner {

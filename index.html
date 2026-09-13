@@ -485,7 +485,7 @@
       <section class="page" id="page-voucher-sum">
         <div class="page-head">
           <div class="page-actions">
-            <div data-period="sum" data-single="0" data-on-change="__renderSum"></div>
+            <div data-period="sum" data-single="1" data-on-change="__renderSum"></div>
           </div>
         </div>
         <div class="grid-wrap">
@@ -500,7 +500,7 @@
 
         <div class="vq-filter">
           <div class="vq-filter-left">
-            <div data-period="q" data-single="0" data-on-change="__renderQuery"></div>
+            <div data-period="q" data-single="1" data-on-change="__renderQuery"></div>
             <div class="ykj-filter-item-box">
               <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
@@ -2240,39 +2240,13 @@
   </div>
 
   <div class="ty-period-range-pop" id="kdPeriodRangePop" hidden>
-    <div class="ty-period-range-mask" data-close="kdPeriodRangePop"></div>
-    <div class="ty-period-range-box">
-      <div class="ty-period-range-panels">
-        <div class="ty-period-panel" data-side="start">
-          <div class="ty-period-panel-head">开始期间</div>
-          <div class="ty-period-year-nav">
-            <button type="button" class="ty-period-year-prev" data-step="-1">«</button>
-            <span class="ty-period-year-text">2023年</span>
-            <button type="button" class="ty-period-year-next" data-step="1">»</button>
-          </div>
-          <div class="ty-period-grid"></div>
-        </div>
-        <div class="ty-period-panel" data-side="end">
-          <div class="ty-period-panel-head">结束期间</div>
-          <div class="ty-period-year-nav">
-            <button type="button" class="ty-period-year-prev" data-step="-1">«</button>
-            <span class="ty-period-year-text">2023年</span>
-            <button type="button" class="ty-period-year-next" data-step="1">»</button>
-          </div>
-          <div class="ty-period-grid"></div>
-        </div>
+    <div class="ty-period-panel">
+      <div class="ty-period-year-nav">
+        <button type="button" class="ty-period-year-prev" data-step="-1">‹</button>
+        <span class="ty-period-year-text">2023年</span>
+        <button type="button" class="ty-period-year-next" data-step="1">›</button>
       </div>
-      <div class="ty-period-range-shortcuts">
-        <button type="button" data-shortcut="current-period">本期</button>
-        <button type="button" data-shortcut="last-period">上期</button>
-        <button type="button" data-shortcut="current-month">本月</button>
-        <button type="button" data-shortcut="last-month">上月</button>
-        <button type="button" data-shortcut="current-year">今年</button>
-        <button type="button" data-shortcut="last-year">去年</button>
-      </div>
-      <div class="ty-period-range-footer">
-        <button type="button" class="ty-btn ty-btn-primary" data-act="periodRangeConfirm">查询</button>
-      </div>
+      <div class="ty-period-grid"></div>
     </div>
   </div>
 </body>
