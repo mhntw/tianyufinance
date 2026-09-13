@@ -796,6 +796,31 @@ fn save_export_file(name: String, base64: String) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+// 把 GitHub Release 的安装包（dmg/exe）保存到系统 Downloads/ty-update/，返回落盘路径。
+// 前端 fetch asset URL 拿到二进制后转 base64 传进来，Rust 解码写盘。
+// 用 base64 而非 Vec<u8> 是 Tauri IPC 对大二进制最稳的传递方式。
+#[tauri::command]
+fn save_update_file(name: String, base64: String) -> Result<String, String> {
+    let name = sanitize_filename(&name);
+    if name.is_empty() {
+        return Err("文件名无效".to_string());
+    }
+    let bytes = decode_base64_lenient(&base64)
+        .map_err(|e| format!("安装包解码失败: {e}"))?;
+    if bytes.is_empty() {
+        return Err("安装包内容为空".to_string());
+    }
+    // 放系统 Downloads 目录的子文件夹，用户容易找到
+    let dl_dir = dirs::download_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")));
+    let update_dir = dl_dir.join("ty-update");
+    fs::create_dir_all(&update_dir).map_err(|e| format!("创建更新目录失败: {e}"))?;
+    // 文件名加版本号前缀避免覆盖之前的版本
+    let path = update_dir.join(&name);
+    fs::write(&path, &bytes).map_err(|e| format!("写入安装包失败: {e}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 // 保存凭证附件（图片 / PDF 等）到 attachments/，返回落盘绝对路径。
 // 与 save_export_file 同样以 base64 传参，并复用 decode_base64_lenient 保持容错一致。
 #[tauri::command]
@@ -943,6 +968,7 @@ pub fn run() {
             open_in_explorer,
             open_url,
             app_version,
+            save_update_file,
             save_export_file,
             save_attachment,
             // 云同步（WebDAV，手动触发）

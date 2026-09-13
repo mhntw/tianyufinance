@@ -1,14 +1,15 @@
 /* ============================================================
- * 更新检查（方案 B 极简版）
+ * 更新检查 + 应用内下载（方案 B 极简版 v2）
  *
  * 设计：
  *   - 启动时静默检查一次（不阻塞主流程、网络不通/API 挂了直接忽略）
  *   - 设置页手动「检查更新」按钮
- *   - 发现新版 → toast + 可点链接去 GitHub Release
+ *   - 发现新版 → toast 提示 → 应用内下载 GitHub Release asset
+ *   - 下载完自动打开 Downloads/ty-update/ 文件夹 → 用户双击 dmg/exe 安装
  *   - 零服务器、零签名、零 diff，纯靠 GitHub 免费 API
  *
  * 依赖：
- *   - window.__TAURI__.core.invoke → 调 Rust app_version / open_url
+ *   - window.__TAURI__.core.invoke → Rust app_version / save_update_file / open_in_explorer / open_url
  *   - window.showToast → app.js 已注册的全局 toast
  * ============================================================ */
 
@@ -25,7 +26,7 @@
   var NOTIFIED_KEY = 'ty_update_notified';
   var NOTIFIED_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天内同版本不重复提示
 
-  // 本地版本号：优先从 Rust 编译时注入，fallback 到硬编码（dev 模式下没编译 Rust）
+  // 本地版本号：优先从 Rust 编译时注入
   function getLocalVersion() {
     var tauri = window.__TAURI__ && window.__TAURI__.core;
     if (tauri && tauri.invoke) {
@@ -34,11 +35,10 @@
     return Promise.resolve(null);
   }
 
-  // 获取最新 Release 信息
+  // 获取最新 Release 信息（含 assets 列表）
   function getLatestRelease() {
     return fetch(REPO_API, {
       headers: { 'Accept': 'application/vnd.github+json' },
-      // 6 秒超时，避免网络慢卡住启动
       signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -48,12 +48,45 @@
         tag: (data.tag_name || '').replace(/^v/, ''),
         url: data.html_url || REPO_RELEASE,
         name: data.name || data.tag_name || '',
-        body: (data.body || '').slice(0, 300)
+        body: (data.body || '').slice(0, 300),
+        assets: (data.assets || []).map(function (a) {
+          return {
+            name: a.name,
+            url: a.browser_download_url,
+            size: a.size
+          };
+        })
       };
     }).catch(function (e) {
       console.warn('[update] 获取最新版本失败：', e && e.message || e);
       return null;
     });
+  }
+
+  // 根据当前平台从 assets 列表里挑对的安装包
+  function pickAsset(assets) {
+    if (!assets || !assets.length) return null;
+    var isMac = /darwin/i.test(navigator.platform) || /mac/i.test(navigator.userAgent);
+    var isWin = /win/i.test(navigator.platform) || /windows/i.test(navigator.userAgent);
+    var isArmMac = isMac && /arm|aarch64|Apple Silicon/i.test(navigator.userAgent);
+
+    // 精确匹配优先级
+    var patterns = [];
+    if (isMac) {
+      // ARM Mac → 先找 aarch64 dmg，再 arm64，再普通 dmg
+      if (isArmMac) patterns = [/aarch64.*\.dmg$/i, /arm64.*\.dmg$/i, /_macos_.*\.dmg$/i, /\.dmg$/i];
+      else patterns = [/x64.*\.dmg$/i, /amd64.*\.dmg$/i, /_macos_.*\.dmg$/i, /\.dmg$/i];
+    } else if (isWin) {
+      patterns = [/x64.*\.exe$/i, /amd64.*\.exe$/i, /_windows_.*\.exe$/i, /\.exe$/i];
+    }
+
+    for (var i = 0; i < patterns.length; i++) {
+      for (var j = 0; j < assets.length; j++) {
+        if (patterns[i].test(assets[j].name)) return assets[j];
+      }
+    }
+    // 兜底：返回第一个 asset
+    return assets[0];
   }
 
   // 比较 semver，返回正数 a>b，负数 a<b，0 相等
@@ -67,7 +100,7 @@
     return 0;
   }
 
-  // 调 Rust 打开浏览器（有 Tauri 时），没 Tauri 时 fallback 到 window.open
+  // 调 Rust 打开浏览器（fallback 路径：下载失败时让用户去 GitHub 手动下）
   function openUrl(url) {
     var tauri = window.__TAURI__ && window.__TAURI__.core;
     if (tauri && tauri.invoke) {
@@ -79,7 +112,99 @@
     }
   }
 
-  // 解析 Tauri 返回的版本号：可能是字符串 "0.5.0" 或对象 { version: "0.5.0" }
+  // 打开文件夹（下载完后让用户直接看到安装包）
+  function openFolder(path) {
+    var tauri = window.__TAURI__ && window.__TAURI__.core;
+    if (tauri && tauri.invoke) {
+      tauri.invoke('open_in_explorer', { path: path }).catch(function () {
+        // 没 Rust 时只能打开包含该文件的目录
+        var folder = path.replace(/[\\/][^\\/]+$/, '');
+        openUrl(folder);
+      });
+    }
+  }
+
+  // Blob → base64（readAsDataURL 自带 data: 前缀，要去掉）
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        // result = "data:application/octet-stream;base64,AAAA..."
+        var r = fr.result;
+        var comma = r.indexOf(',');
+        resolve(comma >= 0 ? r.slice(comma + 1) : r);
+      };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * 从 GitHub Release 下载 asset 到本地 Downloads/ty-update/
+   * @param {object} asset { name, url, size }
+   * @returns {Promise<string>} 落盘后的完整路径
+   */
+  function downloadAsset(asset) {
+    var toast = window.showToast;
+    var tauri = window.__TAURI__ && window.__TAURI__.core;
+    if (!tauri || !tauri.invoke) {
+      // dev 模式没 Rust，降级打开浏览器
+      openUrl(asset.url);
+      return Promise.reject(new Error('no_tauri'));
+    }
+
+    if (toast) toast('正在下载 ' + asset.name + '…', '', 0);
+
+    // 8 分钟超时，大文件够了
+    var fetchOpts = { signal: AbortSignal.timeout ? AbortSignal.timeout(8 * 60 * 1000) : undefined };
+
+    return fetch(asset.url, fetchOpts)
+      .then(function (r) {
+        if (!r.ok) throw new Error('下载失败 HTTP ' + r.status);
+        return r.blob();
+      })
+      .then(function (blob) {
+        if (toast) toast('正在处理安装包…', '', 0);
+        return blobToBase64(blob);
+      })
+      .then(function (base64) {
+        return tauri.invoke('save_update_file', { name: asset.name, base64: base64 });
+      })
+      .then(function (path) {
+        if (toast) toast('下载完成 ✓ 点击打开文件夹', 'success', 0);
+        // toast 可点击 → 打开文件夹
+        var tEl = document.getElementById('toast');
+        if (tEl) {
+          tEl.style.cursor = 'pointer';
+          tEl.onclick = function () {
+            openFolder(path);
+            tEl.onclick = null;
+            tEl.style.cursor = '';
+            tEl.className = 'toast';
+          };
+        }
+        // 2s 后自动打开文件夹（用户也能手动点 toast）
+        setTimeout(function () { openFolder(path); }, 2000);
+        return path;
+      })
+      .catch(function (e) {
+        console.warn('[update] 下载失败：', e && e.message || e);
+        if (toast) toast('下载失败：' + (e && e.message || '未知错误') + '，点击去官网手动下载', 'error', 0);
+        var tEl = document.getElementById('toast');
+        if (tEl) {
+          tEl.style.cursor = 'pointer';
+          tEl.onclick = function () {
+            openUrl(REPO_RELEASE);
+            tEl.onclick = null;
+            tEl.style.cursor = '';
+            tEl.className = 'toast';
+          };
+        }
+        throw e;
+      });
+  }
+
+  // 解析 Tauri 返回的版本号
   function parseVersion(raw) {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
@@ -114,21 +239,24 @@
           if (toast) toast('已是最新版本 ✓（v' + local + '）', 'success');
           if (onDone) onDone({ ok: true, upToDate: true, local: local });
         } else {
-          if (toast) toast('发现新版本 v' + latest.tag + '！点击查看 →', 'success', 0);
-          // 让 toast 可点击 → 用 toast 元素绑定
-          var tEl = document.getElementById('toast');
-          if (tEl) {
-            tEl.style.cursor = 'pointer';
-            tEl.onclick = function () {
-              openUrl(latest.url);
-              tEl.onclick = null;
-              tEl.style.cursor = '';
-              tEl.className = 'toast';
-            };
+          // 有新版 → 直接挑 asset 开始下载
+          var asset = pickAsset(latest.assets);
+          if (!asset) {
+            // 没 asset → fallback 到打开浏览器
+            if (toast) toast('发现新版本 v' + latest.tag + '，点击去官网下载', 'success', 0);
+            var tEl = document.getElementById('toast');
+            if (tEl) {
+              tEl.style.cursor = 'pointer';
+              tEl.onclick = function () { openUrl(latest.url); };
+            }
+            if (onDone) onDone({ ok: true, upToDate: false, local: local, latest: latest.tag, noAsset: true });
+            return;
           }
-          if (onDone) onDone({
-            ok: true, upToDate: false,
-            local: local, latest: latest.tag, url: latest.url, name: latest.name, body: latest.body
+          // 开始下载
+          downloadAsset(asset).then(function (path) {
+            if (onDone) onDone({ ok: true, upToDate: false, local: local, latest: latest.tag, asset: asset, path: path });
+          }).catch(function () {
+            if (onDone) onDone({ ok: true, upToDate: false, local: local, latest: latest.tag, asset: asset, downloadFailed: true });
           });
         }
       });
@@ -165,18 +293,23 @@
           if (notif && notif.version === latest.tag && (Date.now() - notif.t) < NOTIFIED_TTL_MS) return;
         } catch (e) {}
 
-        // 没提示过 → toast
+        // 没提示过 → toast，点击触发下载
+        var asset = pickAsset(latest.assets);
         var toast = window.showToast;
         if (toast) {
-          toast('发现新版本 v' + latest.tag + '，点击查看更新 →', 'success', 0);
           var tEl = document.getElementById('toast');
           if (tEl) {
+            toast('发现新版本 v' + latest.tag + (asset ? '，点击下载安装包 →' : '，点击去官网 →'), 'success', 0);
             tEl.style.cursor = 'pointer';
             tEl.onclick = function () {
-              openUrl(latest.url);
               tEl.onclick = null;
               tEl.style.cursor = '';
               tEl.className = 'toast';
+              if (asset) {
+                downloadAsset(asset);
+              } else {
+                openUrl(latest.url);
+              }
             };
           }
         }
