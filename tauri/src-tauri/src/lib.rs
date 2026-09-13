@@ -777,66 +777,44 @@ fn decode_base64_lenient(input: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-// 保存前端生成的导出文件（Excel/CSV 等）到 exports/ 目录。
-// 前端用 XLSX.write(wb, {type:'array'}) 或 Blob 得到二进制后，编码为 base64 字符串 invoke 本命令，
-// 由 Rust 解码写盘。改用 base64 而非 Vec<u8> 是为了绕开 Tauri IPC 对 Vec<u8> 的序列化限制，最稳。
-#[tauri::command]
-fn save_export_file(name: String, base64: String) -> Result<String, String> {
-    let name = sanitize_filename(&name);
-    if name.is_empty() {
-        return Err("文件名无效".to_string());
-    }
-    let bytes = decode_base64_lenient(&base64)
-        .map_err(|e| format!("文件内容解码失败: {e}"))?;
+// base64 → 写盘的通用 helper：decode → sanitize → 可选 unique → 写入指定目录。
+// save_export_file / save_update_file / save_attachment 都走这里，避免三段重复逻辑。
+fn save_base64_to_dir(name: &str, base64: &str, dir: &Path, unique: bool) -> Result<String, String> {
+    let bytes = decode_base64_lenient(base64).map_err(|e| format!("解码失败: {e}"))?;
     if bytes.is_empty() {
         return Err("文件内容为空".to_string());
     }
-    let path = exports_dir()?.join(&name);
-    fs::write(&path, &bytes).map_err(|e| format!("写入导出文件失败: {e}"))?;
+    let safe = sanitize_filename(name);
+    if safe.is_empty() {
+        return Err("文件名无效".to_string());
+    }
+    fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {e}"))?;
+    let path = if unique { unique_path(dir, &safe) } else { dir.join(&safe) };
+    fs::write(&path, &bytes).map_err(|e| format!("写入文件失败: {e}"))?;
     Ok(path.to_string_lossy().to_string())
 }
 
-// 把 GitHub Release 的安装包（dmg/exe）保存到系统 Downloads/ty-update/，返回落盘路径。
-// 前端 fetch asset URL 拿到二进制后转 base64 传进来，Rust 解码写盘。
-// 用 base64 而非 Vec<u8> 是 Tauri IPC 对大二进制最稳的传递方式。
+// 保存前端生成的导出文件（Excel/CSV 等）到 exports/ 目录。
+#[tauri::command]
+fn save_export_file(name: String, base64: String) -> Result<String, String> {
+    let dir = exports_dir()?;
+    save_base64_to_dir(&name, &base64, &dir, false)
+}
+
+// 把 GitHub Release 的安装包（dmg/exe）保存到系统 Downloads/ty-update/。
 #[tauri::command]
 fn save_update_file(name: String, base64: String) -> Result<String, String> {
-    let name = sanitize_filename(&name);
-    if name.is_empty() {
-        return Err("文件名无效".to_string());
-    }
-    let bytes = decode_base64_lenient(&base64)
-        .map_err(|e| format!("安装包解码失败: {e}"))?;
-    if bytes.is_empty() {
-        return Err("安装包内容为空".to_string());
-    }
-    // 放系统 Downloads 目录的子文件夹，用户容易找到
     let dl_dir = dirs::download_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")));
     let update_dir = dl_dir.join("ty-update");
-    fs::create_dir_all(&update_dir).map_err(|e| format!("创建更新目录失败: {e}"))?;
-    // 文件名加版本号前缀避免覆盖之前的版本
-    let path = update_dir.join(&name);
-    fs::write(&path, &bytes).map_err(|e| format!("写入安装包失败: {e}"))?;
-    Ok(path.to_string_lossy().to_string())
+    save_base64_to_dir(&name, &base64, &update_dir, false)
 }
 
-// 保存凭证附件（图片 / PDF 等）到 attachments/，返回落盘绝对路径。
-// 与 save_export_file 同样以 base64 传参，并复用 decode_base64_lenient 保持容错一致。
+// 保存凭证附件（图片 / PDF 等）到 attachments/，自动去重避免覆盖同名附件。
 #[tauri::command]
 fn save_attachment(name: String, base64: String) -> Result<String, String> {
-    let bytes = decode_base64_lenient(&base64).map_err(|e| format!("附件内容解码失败: {e}"))?;
-    if bytes.is_empty() {
-        return Err("附件内容为空".to_string());
-    }
-    let safe = sanitize_filename(&name);
-    if safe.is_empty() {
-        return Err("附件名无效".to_string());
-    }
     let dir = attachments_dir()?;
-    let path = unique_path(&dir, &safe);
-    fs::write(&path, &bytes).map_err(|e| format!("写入附件失败: {e}"))?;
-    Ok(path.to_string_lossy().to_string())
+    save_base64_to_dir(&name, &base64, &dir, true)
 }
 
 #[tauri::command]

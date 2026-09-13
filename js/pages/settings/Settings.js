@@ -799,24 +799,12 @@ function refreshParam() {
     });
     var bCancelEditStart = $('btnCancelEditStart');
     if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
-    // 软件更新：手动检查 + 查看所有版本
+    // 软件更新：手动检查（发现新版直接应用内下载，不用外部链接）
     var bChkUpd = $('btnCheckUpdate');
     if (bChkUpd) bChkUpd.addEventListener('click', function () {
       var upd = window.__TY_UPDATE__;
       if (!upd || !upd.check) { showToast('更新模块未加载'); return; }
-      upd.check(function (result) {
-        // 不管结果如何，都显示「查看所有版本」链接
-        var rel = $('btnOpenRelease');
-        if (rel) {
-          rel.style.display = '';
-          rel.href = upd.REPO_RELEASE;
-        }
-      });
-    });
-    var bOpenRel = $('btnOpenRelease');
-    if (bOpenRel) bOpenRel.addEventListener('click', function () {
-      var upd = window.__TY_UPDATE__;
-      if (upd && upd.openUrl) upd.openUrl(upd.REPO_RELEASE);
+      upd.check();
     });
     // 会计制度变更（高危不可逆）：入口收敛为「变更准则…」按钮 → 选择目标准则 → 操作密码 → 二次确认
     var bStdOpen = $('btnChangeStandard');
