@@ -18,6 +18,13 @@
 
   var REPO_API = 'https://api.github.com/repos/mhntw/tianyufinance/releases/latest';
   var REPO_RELEASE = 'https://github.com/mhntw/tianyufinance/releases';
+  // 备选 URL：GitHub API 被内网屏蔽时，走公共 mirror
+  // mirror.ghproxy.com 是社区维护的 GitHub 加速镜像，不稳定时可换其他
+  var MIRROR_API_LIST = [
+    function (url) { return 'https://mirror.ghproxy.com/' + url; },
+    function (url) { return 'https://gh-proxy.com/' + url; },
+    function (url) { return 'https://gh.api.99988866.xyz/' + url; }
+  ];
 
   // 本地缓存检查结果，避免频繁请求
   var CACHE_KEY = 'ty_update_check';
@@ -35,32 +42,54 @@
     return Promise.resolve(null);
   }
 
-  // 获取最新 Release 信息（含 assets 列表）
-  function getLatestRelease() {
-    return fetch(REPO_API, {
+  // 单次 fetch（内部函数，被 fetchWithFallback 调用）
+  function tryFetch(url) {
+    return fetch(url, {
       headers: { 'Accept': 'application/vnd.github+json' },
-      signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    }).then(function (data) {
-      return {
-        tag: (data.tag_name || '').replace(/^v/, ''),
-        url: data.html_url || REPO_RELEASE,
-        name: data.name || data.tag_name || '',
-        body: (data.body || '').slice(0, 300),
-        assets: (data.assets || []).map(function (a) {
-          return {
-            name: a.name,
-            url: a.browser_download_url,
-            size: a.size
-          };
-        })
-      };
-    }).catch(function (e) {
-      console.warn('[update] 获取最新版本失败：', e && e.message || e);
-      return null;
     });
+  }
+
+  // 主 URL 失败后自动依次试 mirror（最多 1 次 mirror，避免太慢）
+  function fetchWithFallback(primaryUrl) {
+    return tryFetch(primaryUrl).catch(function (err) {
+      console.warn('[update] 主 API 失败，试 mirror:', err && err.message);
+      // 只试前两个 mirror，不循环太多
+      for (var i = 0; i < Math.min(2, MIRROR_API_LIST.length); i++) {
+        try {
+          var mirrorUrl = MIRROR_API_LIST[i](primaryUrl);
+          return tryFetch(mirrorUrl);
+        } catch (e) { /* continue */ }
+      }
+      throw err; // 全部失败，抛出原始错误
+    });
+  }
+
+  // 获取最新 Release 信息（含 assets 列表）
+  function getLatestRelease() {
+    return fetchWithFallback(REPO_API)
+      .then(function (data) {
+        return {
+          tag: (data.tag_name || '').replace(/^v/, ''),
+          url: data.html_url || REPO_RELEASE,
+          name: data.name || data.tag_name || '',
+          body: (data.body || '').slice(0, 300),
+          assets: (data.assets || []).map(function (a) {
+            return {
+              name: a.name,
+              // download_url 也走 mirror（如果主 URL 挂了的话）
+              url: a.browser_download_url,
+              size: a.size
+            };
+          })
+        };
+      }).catch(function (e) {
+        console.warn('[update] 获取最新版本失败：', e && e.message || e);
+        return null;
+      });
   }
 
   // 根据当前平台从 assets 列表里挑对的安装包
@@ -139,6 +168,25 @@
     });
   }
 
+  // fetch asset 二进制（主 URL 失败后自动试 mirror）
+  function fetchBlobWithFallback(primaryUrl, fetchOpts) {
+    var tryOne = function (url) {
+      return fetch(url, fetchOpts).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.blob();
+      });
+    };
+    return tryOne(primaryUrl).catch(function (err) {
+      // 只试第一个 mirror（asset 文件大，多试会等太久）
+      if (MIRROR_API_LIST.length > 0) {
+        var mirrorUrl = MIRROR_API_LIST[0](primaryUrl);
+        console.warn('[update] asset 主下载失败，试 mirror:', err && err.message);
+        return tryOne(mirrorUrl);
+      }
+      throw err;
+    });
+  }
+
   /**
    * 从 GitHub Release 下载 asset 到本地 Downloads/ty-update/
    * @param {object} asset { name, url, size }
@@ -148,21 +196,15 @@
     var toast = window.showToast;
     var tauri = window.__TAURI__ && window.__TAURI__.core;
     if (!tauri || !tauri.invoke) {
-      // dev 模式没 Rust，降级打开浏览器
       openUrl(asset.url);
       return Promise.reject(new Error('no_tauri'));
     }
 
     if (toast) toast('正在下载 ' + asset.name + '…', '', 0);
 
-    // 8 分钟超时，大文件够了
     var fetchOpts = { signal: AbortSignal.timeout ? AbortSignal.timeout(8 * 60 * 1000) : undefined };
 
-    return fetch(asset.url, fetchOpts)
-      .then(function (r) {
-        if (!r.ok) throw new Error('下载失败 HTTP ' + r.status);
-        return r.blob();
-      })
+    return fetchBlobWithFallback(asset.url, fetchOpts)
       .then(function (blob) {
         if (toast) toast('正在处理安装包…', '', 0);
         return blobToBase64(blob);
