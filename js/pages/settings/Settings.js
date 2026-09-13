@@ -727,8 +727,8 @@ function refreshParam() {
   var curStdKey = S.state.standard || 'old';
   var curLabel = (globalThis.STANDARDS && globalThis.STANDARDS[curStdKey] && globalThis.STANDARDS[curStdKey].label) || curStdKey;
   var stdLab = $('sysStdLabel'); if (stdLab) stdLab.textContent = curLabel;
-  // 软件版本号：从 Rust 编译时读，没拿到就显示 "--"
-  var verEl = $('sysVersion');
+  // 软件版本号：在「关于」卡显示，从 Rust 编译时读，没拿到就显示 "--"
+  var verEl = $('aboutVersion');
   if (verEl) {
     var upd = window.__TY_UPDATE__;
     if (upd && upd.getVersion) {
@@ -799,12 +799,30 @@ function refreshParam() {
     });
     var bCancelEditStart = $('btnCancelEditStart');
     if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
-    // 软件更新：手动检查（发现新版直接应用内下载，不用外部链接）
-    var bChkUpd = $('btnCheckUpdate');
+    // 关于卡：检查更新 + GitHub 链接 + 邮箱复制
+    var bChkUpd = $('aboutCheckUpdate');
     if (bChkUpd) bChkUpd.addEventListener('click', function () {
       var upd = window.__TY_UPDATE__;
       if (!upd || !upd.check) { showToast('更新模块未加载'); return; }
       upd.check();
+    });
+    var ghLink = $('aboutGitHub');
+    if (ghLink && window.__TY_UPDATE__ && window.__TY_UPDATE__.REPO_RELEASE) {
+      ghLink.href = window.__TY_UPDATE__.REPO_RELEASE;
+    }
+    var mailEl = $('aboutMail');
+    if (mailEl) mailEl.addEventListener('click', function () {
+      var txt = mailEl.textContent || '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(function () { showToast('邮箱已复制'); });
+        } else {
+          // macOS 兼容兜底
+          var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          showToast('邮箱已复制');
+        }
+      } catch (e) { showToast('复制失败，请手动选中'); }
     });
     // 会计制度变更（高危不可逆）：入口收敛为「变更准则…」按钮 → 选择目标准则 → 操作密码 → 二次确认
     var bStdOpen = $('btnChangeStandard');

@@ -1080,17 +1080,10 @@
       '<div class="nav-op-btn" id="navCollapseBtn" title="收起导航">' +
         '<svg class="nav-op-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="12" x2="3" y2="12"/><polyline points="8,7 3,12 8,17"/></svg>' +
       '</div>';
-    // 侧栏底部作者信息（切换图标横向上方，深色小字常驻；收起导航后隐藏）
-    // 邮箱一行可点击自动复制（见 copyAuthorMail）
+    // 侧栏底部版权署名：极简灰色小字，任何页面可见；邮箱/版本号等详细信息统一在设置页「关于」卡。
     var author = document.createElement('div');
     author.className = 'nav-author';
-    author.innerHTML = '<div class="nav-author-name">©诗和远方</div>'
-      + '<div class="nav-author-mail" title="点击复制邮箱">tsmjg@icloud.com</div>';
-    var mailEl = author.querySelector('.nav-author-mail');
-    if (mailEl) mailEl.addEventListener('click', function (e) {
-      e.stopPropagation();
-      copyAuthorMail('tsmjg@icloud.com');
-    });
+    author.innerHTML = '<div class="nav-author-line">©诗和远方</div>';
     nav.appendChild(op);
     nav.insertBefore(author, op);
     // hover 绑定：进入标题即把该组数据交给单例浮层渲染显示，离开再延时隐藏。

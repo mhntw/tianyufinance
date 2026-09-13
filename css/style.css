@@ -327,18 +327,19 @@ img, svg { display: block; max-width: 100%; }
 
 /* 侧栏底部作者信息（切换图标横向上方一行小字；收起导航后仅 50px 宽，隐藏文字） */
 .nav-author {
-  margin-top: auto;          /* 与 .nav-op-wrapper 一起吸底固定，不随菜单滚动 */
-  padding: 2px 0 6px;
+  margin-top: auto;
+  padding: 8px 0 4px;
   font-size: 11px;
   color: #9aa3b5;
   text-align: center;
   white-space: nowrap;
   user-select: none;
+  border-top: 1px solid rgba(2,36,51,.08);   /* 与导航区视觉分隔 */
+  line-height: 1;
 }
 .sidenav.collapsed .nav-author { display: none; }
-/* 作者邮箱：可点击复制（hover 提示 + 链接色） */
-.nav-author-mail { margin-top: 1px; color: var(--ty-blue); cursor: pointer; }
-.nav-author-mail:hover { text-decoration: underline; }
+/* 极简版权署名（无交互、无邮箱） */
+.nav-author-line { letter-spacing: .3px; }
 
 /* 侧栏底部操作区（.opWrapper--1HuXG：含「浅色模式」+「收起导航」两个 bottomMenuBtn） */
 .nav-op-wrapper {
@@ -5818,5 +5819,37 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 /* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加。
    统一为字符三角（border 画法作废）；不设 color，避免覆盖「选中行白色三角」规则。 */
 .orig-tree .tree-parent .tree-arrow { border: none; margin-right: 2px; }
+
+/* ===== 关于卡（设置页最后一张）===== */
+.about-box { padding: 4px 16px 12px; }
+.about-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--ty-border);
+}
+.about-line:last-of-type { border-bottom: none; }
+.about-label {
+  width: 56px;
+  flex: 0 0 56px;
+  font-size: 13px;
+  color: var(--ty-text-2);
+  text-align: right;
+}
+.about-val {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ty-text);
+}
+.about-line .btn { margin-left: 8px; }
+.about-link { color: var(--ty-blue); cursor: pointer; }
+.about-link:hover { text-decoration: underline; }
+.about-copy {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ty-text-3);
+}
 
 

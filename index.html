@@ -1852,18 +1852,6 @@
               <button class="btn btn-sm" id="btnChangeStandard" title="切换会计准则将迁移损益类科目编码（5xxx↔6xxx）并重灌报表规则，不可逆，需验证操作密码">切换</button>
             </div>
           </div>
-          <div class="form-row">
-            <label>软件版本</label>
-            <div class="form-ctrl-row">
-              <span class="info-value" id="sysVersion">--</span>
-              <button class="btn btn-sm" id="btnCheckUpdate">检查更新</button>
-            </div>
-            <div class="form-hint" style="margin-left:0;margin-top:2px">
-              最新版本请关注
-              <a href="https://github.com/mhntw/tianyufinance/releases" target="_blank" style="color:#3b82f6">GitHub Release</a>
-              ；自动检查不到时可手动下载。
-            </div>
-          </div>
         </div>
 
         <div class="card" id="cardSysVch">
@@ -2062,6 +2050,34 @@
               </tr></thead>
               <tbody id="sysEventsBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <div class="card" id="cardAbout">
+          <div class="card-head"><span>关于</span></div>
+          <div class="about-box">
+            <div class="about-line">
+              <span class="about-label">产品</span>
+              <span class="about-val">添钰财务管理系统</span>
+            </div>
+            <div class="about-line">
+              <span class="about-label">版本</span>
+              <span class="about-val" id="aboutVersion">--</span>
+              <button class="btn btn-sm" id="aboutCheckUpdate">检查更新</button>
+            </div>
+            <div class="about-line">
+              <span class="about-label">作者</span>
+              <span class="about-val">诗和远方</span>
+            </div>
+            <div class="about-line">
+              <span class="about-label">联系</span>
+              <span class="about-val about-link" id="aboutMail" title="点击复制邮箱">tsmjg@icloud.com</span>
+            </div>
+            <div class="about-line">
+              <span class="about-label">源码</span>
+              <a class="about-val about-link" id="aboutGitHub" target="_blank">GitHub · 查看所有版本</a>
+            </div>
+            <div class="about-copy">© 2024-2026 诗和远方 · 小微企业专属财务引擎</div>
           </div>
         </div>
       </section>
