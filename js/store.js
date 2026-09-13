@@ -12,6 +12,89 @@
  *         <应用数据目录>/添钰财务/books/<id>.json；localStorage 仅存当前账套指针。
  * 产品来源说明见 README「关于产品来源」。
  * ============================================================ */
+
+/* ----------【功能索引】（按职责分组，行号随代码变动可能需手动更新）----------
+ *
+ * 初始化 / 持久化
+ *   init L329, persist L610, normalizeState L3760, saveSettings L512
+ *   _initStorageEngine L359, _migrateOldData L450, _loadCurrentBook L425
+ *
+ * 账套管理
+ *   newBook L761, switchBook L904, removeBook L962, listBooks L715
+ *   refreshBookIndex L724, setStandard L799, isBookEnabled L855
+ *
+ * 科目表
+ *   subjects L1009, subject L1045, subjectName L1051, cashAccounts L1063
+ *   addSubject L1069, updateSubject L1117, subjectRole L1496
+ *   childCodesOf L2146, rollCodes L2153
+ *
+ * 期初余额
+ *   opening L1143, setOpening L1148, openingBalanceCheck L1166
+ *   openingOf L2156
+ *
+ * 凭证（增删改查 / 审核 / 红冲 / 模板）
+ *   addVoucher L1205, updateVoucher L1293, removeVoucher L1377
+ *   getVoucher L1350, deletedVouchers L1428, restoreVoucher L1402
+ *   auditVoucher L1442, unauditVoucher L1480
+ *   nextVoucherNo L1178, periodVouchers L1610, vouchersBefore L1615
+ *   vchTemplates L1253, saveVchTemplate L1256, removeVchTemplate L1273
+ *
+ * 账簿取数（核心：generalLedger 是所有报表的唯一底层）
+ *   generalLedger L2398          ← 总账缓存（_glCache memoization）
+ *   trialBalance L2603           ← 科目余额表（前端 TrialBalance.js 调）
+ *   subjectEndBalance L2463      ← 某科目期末余额
+ *   subjectPeriodAmount L2504    ← 某科目本期发生额
+ *   subjectPeriod L2564          ← 某科目本期余额（含期初期末）
+ *   cashBalance L2493            ← 资金余额（首页资金卡）
+ *   detailLedger L2527           ← 明细账（前端 Ledger.js 调）
+ *
+ * 利润表 / 损益类
+ *   incomeStatement L2712        ← 完整利润表行（含 reportRules 规则计算）
+ *   profitStatement L2609        ← 旧版兼容调用 incomeStatement
+ *   plSummary L2753              ← 首页专用：revenue/cost/expense/netProfit + formula 明细
+ *   unclosedProfit L2832         ← 未结转的本期净利润（结账用）
+ *
+ * 资产负债表
+ *   balanceSheet L2865           ← 完整资产负债表行
+ *   yearStart L2864              ← 年初辅助函数
+ *
+ * 现金流量表
+ *   cashFlow L3081               ← 完整现金流量表
+ *   getSubjectCashFlowMap L3652  ← 科目→现金流量项目映射
+ *   suggestCashFlowMap L3660     ← 自动建议映射
+ *   ensureCashFlowFields L3700   ← 老账套补 cashFlow 字段
+ *
+ * 期末结账
+ *   closePeriod L2085            ← 执行结账（结转损益 + 记 closing 凭证）
+ *   reopenPeriod L2112           ← 反结账
+ *   settleChecklist L1941        ← 结账前自检清单
+ *   carryForwardProfit L1796     ← 损益结转（收入/费用→本年利润）
+ *   carryYearEnd L1866           ← 年末结转（本年利润→未分配利润）
+ *   isPeriodClosed L1919
+ *
+ * 固定资产
+ *   addFixedAsset L3212, updateFixedAsset L3259, removeFixedAsset L3267
+ *   depreciateMonth L3366, assetMonthlyDepr L3351, genCleanVoucher L3299
+ *
+ * 工资 / 薪酬
+ *   addPayroll L3484, removePayroll L3490, payrollSummary L3516
+ *   genPayrollVoucher L3543
+ *   salaryVchTpls L3604, addSalaryVchTpl L3611, resetSalaryVchTpls L3627
+ *
+ * 工具 / 自检 / 健康
+ *   runSelfTest L1531            ← 期初/凭证/报表恒等式自检（首页横幅）
+ *   financialHealthCheck L2183  ← 深度健康体检
+ *   backupNow L1631              ← 立即手动备份（Rust Storage）
+ *   vatEditGet L3045 / vatEditSet L3072 ← 增值税附列资料（小规模/一般纳税人）
+ *   log 系统：addLog L3715, getLogs L3753
+ *   getParam L3207 / setParam L3201 ← 全局参数（bookHideZero / thousand 等）
+ *
+ * 内部工具函数（IIFE 私有，不暴露到 global S）
+ *   pad2 L54, fmtDate L55, monthOf L57, voucherMonth L61, voucherOrderCmp L81
+ *   prevMonth L94, round2 L101, monthsBetween L104, normMonth L111
+ *   num L115, money L122, lastDay L88, EPS L102（金额容差半分）
+ *   emptyState L178, detectStandardBySubjects L252, backfillIncomeRowIds L285
+ * ======================================================================= */
 (function (global) {
   'use strict';
 
