@@ -883,6 +883,20 @@ fn open_in_explorer(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 用系统默认浏览器打开指定 URL（前端更新检查跳转 Release 页面用）。
+/// 复用 open::that，跨平台统一、无需 opener 插件 scope 配置。
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|e| format!("无法打开浏览器: {e}"))?;
+    Ok(())
+}
+
+/// 返回当前应用版本号（编译时从 Cargo.toml 读）。
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// 唤出并聚焦主窗口（用于单实例：已有实例在跑时把它的窗口提到前台）
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -927,6 +941,8 @@ pub fn run() {
             write_meta_cmd,
             debug_status,
             open_in_explorer,
+            open_url,
+            app_version,
             save_export_file,
             save_attachment,
             // 云同步（WebDAV，手动触发）

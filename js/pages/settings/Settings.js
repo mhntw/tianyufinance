@@ -727,6 +727,18 @@ function refreshParam() {
   var curStdKey = S.state.standard || 'old';
   var curLabel = (globalThis.STANDARDS && globalThis.STANDARDS[curStdKey] && globalThis.STANDARDS[curStdKey].label) || curStdKey;
   var stdLab = $('sysStdLabel'); if (stdLab) stdLab.textContent = curLabel;
+  // 软件版本号：从 Rust 编译时读，没拿到就显示 "--"
+  var verEl = $('sysVersion');
+  if (verEl) {
+    var upd = window.__TY_UPDATE__;
+    if (upd && upd.getVersion) {
+      upd.getVersion().then(function (v) {
+        if (verEl) verEl.textContent = v ? 'v' + v : '--';
+      });
+    } else {
+      verEl.textContent = '--';
+    }
+  }
   var vc = p.voucherChecks || {};
   $('pChkDeficit').checked = !!vc.deficitCheck;
   $('pBookHideZero').checked = !!p.bookHideZero;
@@ -787,6 +799,25 @@ function refreshParam() {
     });
     var bCancelEditStart = $('btnCancelEditStart');
     if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
+    // 软件更新：手动检查 + 查看所有版本
+    var bChkUpd = $('btnCheckUpdate');
+    if (bChkUpd) bChkUpd.addEventListener('click', function () {
+      var upd = window.__TY_UPDATE__;
+      if (!upd || !upd.check) { showToast('更新模块未加载'); return; }
+      upd.check(function (result) {
+        // 不管结果如何，都显示「查看所有版本」链接
+        var rel = $('btnOpenRelease');
+        if (rel) {
+          rel.style.display = '';
+          rel.href = upd.REPO_RELEASE;
+        }
+      });
+    });
+    var bOpenRel = $('btnOpenRelease');
+    if (bOpenRel) bOpenRel.addEventListener('click', function () {
+      var upd = window.__TY_UPDATE__;
+      if (upd && upd.openUrl) upd.openUrl(upd.REPO_RELEASE);
+    });
     // 会计制度变更（高危不可逆）：入口收敛为「变更准则…」按钮 → 选择目标准则 → 操作密码 → 二次确认
     var bStdOpen = $('btnChangeStandard');
     if (bStdOpen) bStdOpen.addEventListener('click', function () {

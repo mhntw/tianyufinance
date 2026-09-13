@@ -336,6 +336,10 @@
    * 从磁盘真实文件拉取账本（<应用数据目录>/添钰财务/books/<id>.json）并刷新。
    * 避免「双入口互相覆盖、id 字段不一致」导致查凭证点不开。 */
   refreshAll();
+  // 启动时静默检查更新（24h 内已查过就跳过，有新版才 toast 提示）
+  if (window.__TY_UPDATE__ && window.__TY_UPDATE__.silentCheck) {
+    setTimeout(function () { window.__TY_UPDATE__.silentCheck(); }, 3000);
+  }
   // 卡片期间选择状态：fundBalPeriod / cardPeriods 已迁入 js/pages/home/Home.js（模块级 let）
   if (S.state && S.state.vouchers && globalThis.__renderHome) globalThis.__renderHome();
 

@@ -1852,6 +1852,14 @@
               <button class="btn btn-sm" id="btnChangeStandard" title="切换会计准则将迁移损益类科目编码（5xxx↔6xxx）并重灌报表规则，不可逆，需验证操作密码">切换</button>
             </div>
           </div>
+          <div class="form-row">
+            <label>软件版本</label>
+            <div class="form-ctrl-row">
+              <span class="info-value" id="sysVersion">--</span>
+              <button class="btn btn-sm" id="btnCheckUpdate">检查更新</button>
+              <a class="tool-link" id="btnOpenRelease" style="display:none" target="_blank">查看所有版本 →</a>
+            </div>
+          </div>
         </div>
 
         <div class="card" id="cardSysVch">
@@ -2315,6 +2323,7 @@
   <script src="js/dialog-bridge.js?v=dev"></script>
   <script src="js/file-save-bridge.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>
+  <script src="js/update.js?v=dev"></script>
   <script type="module" src="js/main.js?v=dev"></script>
 
   <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
