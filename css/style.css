@@ -5486,7 +5486,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 }
 .ty-period-trigger {
   position: relative; display: flex; align-items: center;
-  height: 30px; min-height: 30px; padding: 0 22px 0 8px;
+  height: 30px; min-height: 30px; min-width: 148px; padding: 0 22px 0 8px;
   background: #fff; border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: pointer; white-space: nowrap; width: max-content;
 }
@@ -5521,6 +5521,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-trigger:hover { border-color: var(--ty-border); }
 .ty-period-trigger-label { font-size: 12.5px; color: var(--ty-text-2); margin-right: 8px; }
 .ty-period-trigger-text { font-size: 12.5px; color: var(--ty-text); }
+.ty-period-trigger-text.is-placeholder { color: var(--ty-text-3); }
 
 .ty-period-trigger::after {
   content: ''; position: absolute; right: 9px; top: 50%;

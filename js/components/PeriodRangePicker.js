@@ -19,14 +19,14 @@ function generatePeriodRanges() {
     var id = host.dataset.period;
     var single = host.dataset.single || '1';
     var onChange = host.dataset.onChange || '';
-    var startId = id + 'Start';
-    var endId = id + 'End';
+    var startId = id + 'PeriodStart';
+    var endId = id + 'PeriodEnd';
 
     host.outerHTML =
-      '<div class="ty-period-range" data-single-period="' + single + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '">' +
+      '<div class="ty-period-range" data-period="' + id + '" data-single-period="' + single + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '">' +
       '  <div class="ty-period-trigger" id="' + id + 'Trigger">' +
       '    <span class="ty-period-trigger-label">期间</span>' +
-      '    <span class="ty-period-trigger-text" id="' + id + 'Text">请选择期间</span>' +
+      '    <span class="ty-period-trigger-text is-placeholder" id="' + id + 'Text">请选择期间</span>' +
       '  </div>' +
       '  <input type="hidden" id="' + startId + '" />' +
       '  <input type="hidden" id="' + endId + '" />' +
@@ -60,18 +60,15 @@ function currentPeriod() {
 function allAvailablePeriods() {
   var S = globalThis.S;
   if (!S || !S.state) return [];
-  var list = [];
-  var subs = S.state.subjects || [];
-  // 科目里的 period 字段——每条凭证对应的期间
-  // 但更简单的：从 state.startYear/endYear + 凭证数据推断
-  // 这里用 store 现成方法
-  if (typeof S.allAvailablePeriods === 'function') {
-    return S.allAvailablePeriods();
+  // store 里的 allMonths() 返回账套真实存在的所有 YYYY-MM
+  if (typeof S.allMonths === 'function') {
+    return S.allMonths();
   }
-  // fallback：从 startYear 开始到 currentPeriod 所在年
-  var startY = S.state.startYear || new Date().getFullYear();
+  // fallback：从 startYear 到 currentPeriod 所在年
+  var startY = (S.state.company && S.state.company.startYear) || new Date().getFullYear();
   var cur = currentPeriod();
   var curY = cur ? parseInt(cur.split('-')[0], 10) : startY;
+  var list = [];
   for (var y = startY; y <= curY; y++) {
     var maxM = (y === curY && cur) ? parseInt(cur.split('-')[1], 10) : 12;
     for (var m = 1; m <= maxM; m++) {
@@ -108,25 +105,27 @@ function renderGrid() {
 
   grid.innerHTML = '';
   for (var m = 1; m <= 12; m++) {
-    var ym = state.startYear + '-' + pad2(m);
-    var cell = document.createElement('button');
-    cell.type = 'button';
-    cell.className = 'ty-period-cell';
-    cell.textContent = m + '期';
-    cell.dataset.ym = ym;
-    if (ym === state.selected) cell.classList.add('selected');
-    if (!availableSet[ym]) {
-      cell.classList.add('disabled');
-      cell.disabled = true;
-    } else {
-      cell.addEventListener('click', function () {
-        state.selected = ym;
-        grid.querySelectorAll('.ty-period-cell.selected').forEach(function (el) { el.classList.remove('selected'); });
-        cell.classList.add('selected');
-        applySelection();
-      });
-    }
-    grid.appendChild(cell);
+    (function (month) {
+      var ym = state.startYear + '-' + pad2(month);
+      var cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'ty-period-cell';
+      cell.textContent = month + '期';
+      cell.dataset.ym = ym;
+      if (ym === state.selected) cell.classList.add('selected');
+      if (!availableSet[ym]) {
+        cell.classList.add('disabled');
+        cell.disabled = true;
+      } else {
+        cell.addEventListener('click', function () {
+          state.selected = ym;
+          grid.querySelectorAll('.ty-period-cell.selected').forEach(function (el) { el.classList.remove('selected'); });
+          cell.classList.add('selected');
+          applySelection();
+        });
+      }
+      grid.appendChild(cell);
+    })(m);
   }
 }
 
@@ -173,10 +172,13 @@ function applySelection() {
   var ym = state.selected;
   if (startInput) startInput.value = ym;
   if (endInput) endInput.value = ym;
-  if (textEl) textEl.textContent = fmtPeriod(ym);
+  if (textEl) {
+    textEl.textContent = fmtPeriod(ym);
+    textEl.classList.remove('is-placeholder');
+  }
   closePop();
   if (state.onChange) {
-    try { eval(state.onChange); } catch (e) { console.warn('[PeriodRangePicker] onChange eval failed:', e); }
+    try { eval(state.onChange + '()'); } catch (e) { console.warn('[PeriodRangePicker] onChange eval failed:', e); }
   }
 }
 
@@ -233,6 +235,7 @@ export function updatePeriodRangeTrigger(startId, endId) {
   var e = endEl ? endEl.value : s;
   if (!s) return;
   textEl.textContent = (s === e) ? fmtPeriod(s) : fmtPeriod(s) + ' ~ ' + fmtPeriod(e);
+  textEl.classList.remove('is-placeholder');
 }
 
 export function initPeriodRangePicker() {
