@@ -138,7 +138,9 @@ function renderGl(month) {
   // 系统参数开关（账簿显示偏好），纯前端渲染控制，不参与任何取数/计算
   var p = (S && S.state && S.state.param) || {};
   var hideZero = p.bookHideZero !== false;   // 默认 true：无期初+本期发生额的科目不显示（默认）
-  var expandAll = p.bookExpandAll !== false; // 默认 true：展开所有级次；false 时只显示一级科目
+  // 展开级次：页面内勾选框（与科目余额表、科目页、费用表一致，不读系统参数）
+  var glExpand = document.getElementById('glExpandAll');
+  var expandAll = !!(glExpand && glExpand.checked);
   S.generalLedger(month).forEach(function (r) {
     // 利润表跳转来的科目过滤：只显示对应编码（跳转目标强制显示，不受 hideZero 影响）
     if (glFilterCodes && !glFilterCodes.has(r.code)) return;
@@ -146,9 +148,13 @@ function renderGl(month) {
     if (!expandAll && r.code.length > 4) return;
     // 隐藏零行：期初借贷与本期借贷贷方均为 0 时跳过（受 bookHideZero 控制，但跳转目标强制显示）
     if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
+    // 缩进深度：直接读科目对象的 level（store 在科目入库时已算好）
+    var subj = S.subject(r.code);
+    var depth = (expandAll && subj && typeof subj.level === 'number') ? subj.level : 0;
+    var indent = '<span style="display:inline-block;width:' + (depth * 14) + 'px"></span>';
     var tr = document.createElement('tr');
     tr.className = 'gl-subject';
-    tr.innerHTML = '<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + escHtml(r.name) + '</td>' +
+    tr.innerHTML = '<td rowspan="3" class="mono">' + indent + '<a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td><td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) + '</td>' +
       '<td class="gl-seg">期初余额</td>' +
       '<td class="ta-r mono">' + money(r.obDr) + '</td><td class="ta-r mono">' + money(r.obCr) + '</td>' +
       '<td class="ta-r mono gl-empty"></td><td class="ta-r mono gl-empty"></td>' +
@@ -515,3 +521,6 @@ function emptyRow(tbody, colspan, text) {
 export {
   refreshGl, refreshDl, refreshMl
 };
+
+// 总账页面内展开勾选框 onchange 入口（暴露到全局，HTML 直接调用）
+globalThis.__renderGl = refreshGl;

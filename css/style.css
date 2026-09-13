@@ -5268,6 +5268,9 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 .card-sub { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; padding: 6px 10px; font-size: var(--fs-sm); font-weight: 400; color: var(--ty-text-2); background: var(--ty-bg-2); border-radius: 4px; }
 .card-sub:first-child { margin-top: 6px; }
 .card-tools { margin-left: auto; display: flex; gap: 8px; }
+/* card-head 右侧操作链接（蓝色文字，非按钮） */
+.card-head-op { margin-left: 10px; color: var(--ty-blue); font-size: 13px; cursor: pointer; user-select: none; }
+.card-head-op:hover { text-decoration: underline; }
 .card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--ty-bg-2); }
 .card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
 .card-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ty-text-3); white-space: nowrap; }
@@ -5485,7 +5488,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   position: relative; display: flex; align-items: center;
   height: 30px; min-height: 30px; padding: 0 22px 0 8px;
   background: #fff; border: 1px solid var(--ty-border-2); border-radius: 3px;
-  cursor: pointer; white-space: nowrap;
+  cursor: pointer; white-space: nowrap; width: max-content;
 }
 
 /* 科目范围输入框：与同行「期间选择器」同款胶囊样式，
@@ -5546,11 +5549,11 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 }
 .ty-period-year-nav button:hover { color: var(--ty-blue); border-color: var(--ty-blue); }
 .ty-period-year-text { font-size: 13px; font-weight: 400; color: var(--ty-text); }
-.ty-period-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ty-period-grid { display: grid; grid-template-columns: repeat(4, auto); gap: 6px; width: max-content; }
 .ty-period-cell {
   height: 28px; display: flex; align-items: center; justify-content: center;
   font-size: 12.5px; color: var(--ty-text); background: #fff;
-  border: 1px solid var(--ty-border-2); border-radius: 3px; cursor: pointer; padding: 0;
+  border: 1px solid var(--ty-border-2); border-radius: 3px; cursor: pointer; padding: 0 10px;
 }
 .ty-period-cell:hover { border-color: var(--ty-blue); color: var(--ty-blue); }
 .ty-period-cell.selected { background: var(--ty-blue); border-color: var(--ty-blue); color: #fff; }
@@ -5838,12 +5841,12 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   text-align: right;
 }
 .about-val {
-  flex: 1;
   font-size: 13px;
   color: var(--ty-text);
 }
-.about-line .btn { margin-left: 8px; }
-.about-link { color: var(--ty-blue); cursor: pointer; }
+.about-val.flex { flex: 1; }   /* 需要撑满的行才加此类 */
+/* 检查更新 / 邮箱 / GitHub 链接：紧贴内容、不撑满、蓝色可点击 */
+.about-link { color: var(--ty-blue); cursor: pointer; margin-left: 10px; }
 .about-link:hover { text-decoration: underline; }
 .about-copy {
   margin-top: 10px;

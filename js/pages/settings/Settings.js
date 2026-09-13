@@ -46,6 +46,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     var name = await H.promptAsync('凭证字（如 记 / 转 / 收）：', '', { title: '新增凭证字' });
     if (!name) return;
     var title = (await H.promptAsync('打印标题（如 记账凭证）：', name + '账凭证', { title: '打印标题' })) || name;
+    if (!S.state.voucherWords) S.state.voucherWords = [];
     S.state.voucherWords.push({ name: name.trim(), title: title.trim(), enabled: true });
     S.persist(); refreshVoucherWord(); showToast('已新增凭证字');
   });
@@ -742,7 +743,6 @@ function refreshParam() {
   var vc = p.voucherChecks || {};
   $('pChkDeficit').checked = !!vc.deficitCheck;
   $('pBookHideZero').checked = !!p.bookHideZero;
-  $('pBookExpand').checked = !!p.bookExpandAll;
   $('pChkSettle').checked = !!p.checkBeforeSettle;
   // 事件绑定（一次性）
   if (!globalThis.__paramBound) {
@@ -753,7 +753,6 @@ function refreshParam() {
         deficitCheck: $('pChkDeficit').checked
       };
       p.bookHideZero = $('pBookHideZero').checked;
-      p.bookExpandAll = $('pBookExpand').checked;
       p.checkBeforeSettle = $('pChkSettle').checked;
       S.persist();
       showToast('参数已保存');

@@ -1,6 +1,41 @@
 // 起止期间选择器（用于总账/明细账等筛选栏）
 // 依赖全局：$（DOM 查询）、currentPeriod、lastClosedPeriod、periodRangeOptions（可外部注入）
-// 用法：index.html 中 .ty-period-range 容器配置 data-start-id / data-end-id / data-on-change
+// 用法 A（旧，仍支持）：index.html 手写完整 .ty-period-range DOM
+// 用法 B（新，推荐）：在占位 div 上只写三个 data 属性，本模块启动时批量生成完整结构：
+//     <div data-period="gl" data-single="1" data-on-change="__renderGl"></div>
+//   会自动展开为等价的 .ty-period-range + hidden inputs + trigger DOM。
+//   优点：index.html 少掉 16×6=96 行重复模板，改样式/加属性改一处即全局生效。
+
+/**
+ * 扫描页面所有 data-period 占位 div，批量生成 .ty-period-range 完整 DOM。
+ * 调用时机：initPeriodRangePicker() 内部，在 initEvents 之前。
+ */
+function generatePeriodRanges() {
+  document.querySelectorAll('[data-period]').forEach(function (host) {
+    if (host.dataset.rangeGenerated) return;  // 已生成过，跳过
+    var prefix = host.dataset.period;          // 如 'gl' / 'tb' / 'bs'
+    var single = host.dataset.single === '1';   // 默认单期
+    var onChange = host.dataset.onChange || '';
+    var startId = prefix + 'PeriodStart';
+    var endId = prefix + 'PeriodEnd';
+    var triggerId = prefix + 'PeriodTrigger';
+    var textId = prefix + 'PeriodText';
+    host.outerHTML =
+      '<div class="ty-period-range"'
+      + (single ? ' data-single-period="1"' : '')
+      + ' data-start-id="' + startId + '"'
+      + ' data-end-id="' + endId + '"'
+      + (onChange ? ' data-on-change="' + onChange + '"' : '')
+      + '>'
+      + '<div class="ty-period-trigger" id="' + triggerId + '">'
+      + '<span class="ty-period-trigger-label">期间</span>'
+      + '<span class="ty-period-trigger-text" id="' + textId + '">请选择期间</span>'
+      + '</div>'
+      + '<input type="hidden" id="' + startId + '" />'
+      + '<input type="hidden" id="' + endId + '" />'
+      + '</div>';
+  });
+}
 //
 // ── 单期模式（data-single-period="1"）─────────────────────────────
 // 背景：本项目多数页面是【单期】口径（只读结束期间），但控件是范围式（左「开始期间」/右「结束期间」，
@@ -383,6 +418,7 @@ function initEvents() {
 }
 
 export function initPeriodRangePicker() {
+  generatePeriodRanges();  // 先把占位 div 展开成完整 DOM
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initEvents);
   } else {

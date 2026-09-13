@@ -485,14 +485,7 @@
       <section class="page" id="page-voucher-sum">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-start-id="sumPeriodStart" data-end-id="sumPeriodEnd" data-on-change="__renderSum">
-              <div class="ty-period-trigger" id="sumPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="sumPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="sumPeriodStart" />
-              <input type="hidden" id="sumPeriodEnd" />
-            </div>
+            <div data-period="sum" data-single="0" data-on-change="__renderSum"></div>
           </div>
         </div>
         <div class="grid-wrap">
@@ -507,14 +500,7 @@
 
         <div class="vq-filter">
           <div class="vq-filter-left">
-            <div class="ty-period-range" data-start-id="qPeriodStart" data-end-id="qPeriodEnd" data-on-change="__renderQuery">
-              <div class="ty-period-trigger" id="qPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="qPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="qPeriodStart" />
-              <input type="hidden" id="qPeriodEnd" />
-            </div>
+            <div data-period="q" data-single="0" data-on-change="__renderQuery"></div>
             <div class="ykj-filter-item-box">
               <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
@@ -561,24 +547,13 @@
       <section class="page" id="page-general-ledger">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="glPeriodStart" data-end-id="glPeriodEnd" data-on-change="__renderGl">
-              <div class="ty-period-trigger" id="glPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="glPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="glPeriodStart" />
-              <input type="hidden" id="glPeriodEnd" />
-            </div>
-            <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
-              <div class="ykj-filter-item-box-content">
-                <div class="ty-subject-range" id="glCodeWrap">
-                  <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
-                  <button type="button" class="ty-subject-trigger" id="glCodeBtn" title="从科目表选择" tabindex="-1"></button>
-                </div>
-              </div>
+            <div data-period="gl" data-single="1" data-on-change="__renderGl"></div>
+            <div class="ty-subject-range" id="glCodeWrap">
+              <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
+              <button type="button" class="ty-subject-trigger" id="glCodeBtn" title="从科目表选择" tabindex="-1"></button>
             </div>
             <span id="glFilterHint" class="gl-filter-hint" hidden></span>
+            <label class="chk" style="margin-left:8px"><input type="checkbox" id="glExpandAll" checked onchange="__renderGl()"> 展开所有级次</label>
             <button class="btn" data-print>打印</button>
           </div>
         </div>
@@ -608,14 +583,7 @@
       <section class="page" id="page-detail-ledger">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="dlPeriodStart" data-end-id="dlPeriodEnd" data-on-change="__renderDl">
-              <div class="ty-period-trigger" id="dlPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="dlPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="dlPeriodStart" />
-              <input type="hidden" id="dlPeriodEnd" />
-            </div>
+            <div data-period="dl" data-single="1" data-on-change="__renderDl"></div>
             <button class="btn" data-print>打印</button>
           </div>
         </div>
@@ -649,14 +617,7 @@
                 </div>
               </div>
             </div>
-            <div class="ty-period-range" data-single-period="1" data-start-id="mlPeriodStart" data-end-id="mlPeriodEnd" data-on-change="__renderMl">
-              <div class="ty-period-trigger" id="mlPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="mlPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="mlPeriodStart" />
-              <input type="hidden" id="mlPeriodEnd" />
-            </div>
+            <div data-period="ml" data-single="1" data-on-change="__renderMl"></div>
             <button class="btn" data-print>打印</button>
           </div>
         </div>
@@ -675,14 +636,7 @@
       <section class="page" id="page-trial-balance">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="tbPeriodStart" data-end-id="tbPeriodEnd" data-on-change="__renderTrialBalance">
-              <div class="ty-period-trigger" id="tbPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="tbPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="tbPeriodStart" />
-              <input type="hidden" id="tbPeriodEnd" />
-            </div>
+            <div data-period="tb" data-single="1" data-on-change="__renderTrialBalance"></div>
             <label class="subj-check"><input type="checkbox" id="tbExpandAll"> 展开所有级次</label>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTbExport">导出</button>
@@ -715,14 +669,7 @@
       <section class="page" id="page-report-balance">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="bsPeriodStart" data-end-id="bsPeriodEnd" data-on-change="__renderBs">
-              <div class="ty-period-trigger" id="bsPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="bsPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="bsPeriodStart" />
-              <input type="hidden" id="bsPeriodEnd" />
-            </div>
+            <div data-period="bs" data-single="1" data-on-change="__renderBs"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnBsExport">导出</button>
           </div>
@@ -741,14 +688,7 @@
       <section class="page" id="page-report-profit">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="plPeriodStart" data-end-id="plPeriodEnd" data-on-change="__renderPl">
-              <div class="ty-period-trigger" id="plPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="plPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="plPeriodStart" />
-              <input type="hidden" id="plPeriodEnd" />
-            </div>
+            <div data-period="pl" data-single="1" data-on-change="__renderPl"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnPlExport">导出</button>
           </div>
@@ -765,14 +705,7 @@
       <section class="page" id="page-report-cashflow">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="cfPeriodStart" data-end-id="cfPeriodEnd" data-on-change="__renderCf">
-              <div class="ty-period-trigger" id="cfPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="cfPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="cfPeriodStart" />
-              <input type="hidden" id="cfPeriodEnd" />
-            </div>
+            <div data-period="cf" data-single="1" data-on-change="__renderCf"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnCfExport">导出</button>
           </div>
@@ -789,14 +722,7 @@
       <section class="page" id="page-report-tax">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="txPeriodStart" data-end-id="txPeriodEnd" data-on-change="__renderTx">
-              <div class="ty-period-trigger" id="txPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="txPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="txPeriodStart" />
-              <input type="hidden" id="txPeriodEnd" />
-            </div>
+            <div data-period="tx" data-single="1" data-on-change="__renderTx"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTxExport">导出</button>
           </div>
@@ -952,14 +878,7 @@
       <section class="page" id="page-asset-depr-sum" data-name="折旧汇总表">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="dasPeriodStart" data-end-id="dasPeriodEnd" data-on-change="__renderDas">
-              <div class="ty-period-trigger" id="dasPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="dasPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="dasPeriodStart" />
-              <input type="hidden" id="dasPeriodEnd" />
-            </div>
+            <div data-period="das" data-single="1" data-on-change="__renderDas"></div>
             <label class="chk"><input type="checkbox" id="dasByDept"> 按部门汇总</label>
             <label class="chk"><input type="checkbox" id="dasShowCleaned"> 显示已清理</label>
             <button class="btn" id="btnDasPrint" data-print>打印</button>
@@ -984,14 +903,7 @@
       <section class="page" id="page-asset-depr-detail" data-name="折旧明细表">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="dadPeriodStart" data-end-id="dadPeriodEnd" data-on-change="__renderDad">
-              <div class="ty-period-trigger" id="dadPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="dadPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="dadPeriodStart" />
-              <input type="hidden" id="dadPeriodEnd" />
-            </div>
+            <div data-period="dad" data-single="1" data-on-change="__renderDad"></div>
             <label class="chk"><input type="checkbox" id="dadShowCleaned"> 显示已清理</label>
             <label class="chk"><input type="checkbox" id="dadShowChange"> 显示变动信息</label>
             <button class="btn" id="btnDadPrint" data-print>打印</button>
@@ -1015,14 +927,7 @@
       <section class="page" id="page-asset-change-log" data-name="资产变动记录">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="aclPeriodStart" data-end-id="aclPeriodEnd" data-on-change="__renderAssetChangeLog">
-              <div class="ty-period-trigger" id="aclPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="aclPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="aclPeriodStart" />
-              <input type="hidden" id="aclPeriodEnd" />
-            </div>
+            <div data-period="acl" data-single="1" data-on-change="__renderAssetChangeLog"></div>
             <label class="chk"><input type="checkbox" id="aclByDept"> 按部门汇总</label>
             <label class="chk"><input type="checkbox" id="aclShowCleaned"> 显示已清理</label>
             <label class="chk"><input type="checkbox" id="aclShowChange"> 显示变动信息</label>
@@ -1086,14 +991,7 @@
       <section class="page" id="page-salary">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="salPeriodStart" data-end-id="salPeriodEnd" data-on-change="__renderSalary">
-              <div class="ty-period-trigger" id="salPeriodTrigger">
-                <span class="ty-period-trigger-label">期间</span>
-                <span class="ty-period-trigger-text" id="salPeriodText">请选择期间</span>
-              </div>
-              <input type="hidden" id="salPeriodStart" />
-              <input type="hidden" id="salPeriodEnd" />
-            </div>
+            <div data-period="sal" data-single="1" data-on-change="__renderSalary"></div>
             <button class="btn" id="btnNewSalary">新增工资</button>
             <button class="btn" id="btnGenSalaryAccrual">计提工资凭证</button>
             <button class="btn" id="btnGenSalaryPay">发放工资凭证</button>
@@ -1114,14 +1012,7 @@
       <section class="page" id="page-salary-statistics">
         <div class="page-head">
           <div class="page-actions">
-            <div class="ty-period-range" data-single-period="1" data-start-id="sstPeriodStart" data-end-id="sstPeriodEnd" data-on-change="__renderSalaryStats">
-              <div class="ty-period-trigger" id="sstPeriodTrigger">
-                <span class="ty-period-trigger-label">月份</span>
-                <span class="ty-period-trigger-text" id="sstPeriodText">请选择月份</span>
-              </div>
-              <input type="hidden" id="sstPeriodStart" />
-              <input type="hidden" id="sstPeriodEnd" />
-            </div>
+            <div data-period="sst" data-single="1" data-on-change="__renderSalaryStats"></div>
             <button class="btn" data-print>打印</button>
           </div>
         </div>
@@ -1657,14 +1548,7 @@
           <div class="page-actions ed-page-actions">
             <div class="ykj-filter-item-box">
               <div class="ykj-filter-item-box-content">
-                <div class="ty-period-range" data-start-id="edPeriodStart" data-end-id="edPeriodEnd" data-on-change="refreshExpenseDetail">
-                  <div class="ty-period-trigger" id="edPeriodTrigger">
-                    <span class="ty-period-trigger-label">期间</span>
-                    <span class="ty-period-trigger-text" id="edPeriodText">2023年01期 ~ 2023年12期</span>
-                  </div>
-                  <input type="hidden" id="edPeriodStart" />
-                  <input type="hidden" id="edPeriodEnd" />
-                </div>
+                <div data-period="ed" data-on-change="refreshExpenseDetail"></div>
               </div>
             </div>
             <div class="ykj-filter-item-box">
@@ -1855,32 +1739,24 @@
         </div>
 
         <div class="card" id="cardSysVch">
-          <div class="card-head"><span>凭证与账簿</span></div>
-          <div class="card-sub">凭证字</div>
+          <div class="card-head"><span>凭证字</span><span class="card-head-op" id="btnAddWord" role="button">新增</span></div>
           <p class="set-hint">“记”为默认凭证字，不可删除。</p>
-          <div class="page-actions">
-            <button class="btn" id="btnAddWord">新增凭证字</button>
-          </div>
           <div class="grid-wrap">
             <table class="grid" id="vwGrid">
               <thead><tr><th>凭证字</th><th>打印标题</th><th class="col-op">操作</th></tr></thead>
               <tbody id="vwBody"></tbody>
             </table>
           </div>
-          <div class="card-sub">凭证选项</div>
-          <label class="chk-row"><input type="checkbox" id="pChkDeficit"> 现金、银行存款、其他货币资金科目赤字检查</label>
-          <div class="card-sub">账簿选项</div>
-          <label class="chk-row"><input type="checkbox" id="pBookHideZero"> 无发生额且余额为0不显示</label>
-          <label class="chk-row"><input type="checkbox" id="pBookExpand"> 展开所有级次</label>
-          <div class="card-sub">结账选项</div>
-          <label class="chk-row"><input type="checkbox" id="pChkSettle"> 凭证审核后才允许结账</label>
-          <!-- 本按钮只保存凭证/账簿/结账选项（见 Settings.js），故归属本卡底部，
-               不再悬在两张卡之间造成归属不明 -->
-          <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
         </div>
 
         <div class="card" id="cardSysPw">
-          <div class="card-head"><span>操作保护</span></div>
+          <div class="card-head"><span>系统参数</span></div>
+          <div class="card-sub">凭证与账簿选项</div>
+          <label class="chk-row"><input type="checkbox" id="pChkDeficit"> 现金、银行存款、其他货币资金科目赤字检查</label>
+          <label class="chk-row"><input type="checkbox" id="pBookHideZero"> 无发生额且余额为0不显示</label>
+          <label class="chk-row"><input type="checkbox" id="pChkSettle"> 凭证审核后才允许结账</label>
+          <div class="page-actions"><button class="btn btn-primary" id="btnSaveParam">保存系统参数</button></div>
+          <div class="card-sub">操作保护</div>
           <div class="form-row">
             <label>当前操作密码</label>
             <input id="opPwCur" class="inp" type="password" placeholder="输入当前操作密码">
@@ -1985,16 +1861,16 @@
           <div class="about-box">
             <div class="about-line">
               <span class="about-label">产品</span>
-              <span class="about-val">添钰财务管理系统</span>
+              <span class="about-val flex">添钰财务管理系统</span>
             </div>
             <div class="about-line">
               <span class="about-label">版本</span>
               <span class="about-val" id="aboutVersion">--</span>
-              <button class="btn btn-sm" id="aboutCheckUpdate">检查更新</button>
+              <span class="about-link" id="aboutCheckUpdate" role="button">检查更新</span>
             </div>
             <div class="about-line">
               <span class="about-label">作者</span>
-              <span class="about-val">诗和远方</span>
+              <span class="about-val flex">诗和远方</span>
             </div>
             <div class="about-line">
               <span class="about-label">联系</span>
@@ -2002,7 +1878,7 @@
             </div>
             <div class="about-line">
               <span class="about-label">源码</span>
-              <a class="about-val about-link" id="aboutGitHub" target="_blank">GitHub · 查看所有版本</a>
+              <a class="about-link" id="aboutGitHub" target="_blank">GitHub · 查看所有版本</a>
             </div>
             <div class="about-copy">© 2024-2026 诗和远方 · 小微企业专属财务引擎</div>
           </div>
