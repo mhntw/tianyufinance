@@ -111,7 +111,7 @@ function main() {
 
   if (argv.indexOf('--check') < 0) {
     const t = tags();
-    if (t.length) console.log('仓库现有 v* tag：' + t.length + ' 个（含历史品牌线，见 CHANGELOG）');
+    if (t.length) console.log('仓库现有 v* tag：' + t.length + ' 个 → ' + t.join(', '));
     process.exit(0);
   }
 

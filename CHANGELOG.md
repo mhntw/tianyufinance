@@ -5,6 +5,44 @@
 ---
 ## 2026-09-14 — 金蝶差异「分类定档」+ 落实两批（多栏账 3 处 / 凭证汇总表张数 / 折旧两表分工）
 
+### 🧹 版本号信息彻底清理（维护者选 **C 方案**：删除旧品牌线 tag）
+- **起因**：维护者问「怎么彻底清理之前的版本号信息，防止打包时再出问题」；
+- **清点：版本号散在 4 个文件，其中 1 处是旧号**
+  | 位置 | 清理前 | 谁在读 |
+  |---|---|---|
+  | `tauri/src-tauri/tauri.conf.json` | 0.5.1 | tauri-action → **安装包名 + GitHub Release**（权威源） |
+  | `tauri/src-tauri/Cargo.toml` | 0.5.1 | Rust `CARGO_PKG_VERSION` → `app_version` → **界面「软件版本」+ js/update.js 的本地版本** |
+  | `tauri/src-tauri/Cargo.lock`（`name="ty"` 块） | 0.5.1 | cargo |
+  | **`tauri/package.json`** | **1.1.2** ⚠️ | **全库无人读**（npm 壳），但旧号会误导人 → **已改 0.5.1** |
+  - **顺带排除两个担心**：`dist` 里的 `?v=` **不是版本号**，是 `build-dist.mjs` 用 `computeFingerprint()`（sha1 前 12 位）注入的**内容指纹**，按内容变、不会漂；界面「软件版本」是**运行时**从 Rust `app_version` 取，没有硬编码。
+- **新增 `tools/version.js`（版本号单一入口）**：
+  - `node tools/version.js` → 打印四处 + 一致性（只读，永不失败，供发版脚本第 1.6 步用）；
+  - `node tools/version.js --check` → 四处一致 + semver 合法 + **该 tag 尚不存在**，任一不过非零退出；
+  - `node tools/version.js --set 0.5.2` → **一次改四处**，只替换「顶层/本包」那个版本字段（`Cargo.lock` 精确定位到 `name = "ty"` 块，不误伤依赖版本），写完立刻回读核对。
+  - 实测有效：它当场抓出 `package.json` 的旧号；`--check` 的「tag 已存在」守卫也当场拦住了刚发布的 v0.5.1。
+- **`发布新版.command` 接入（注意：该文件在 `.gitignore` 第 12 行，本补丁只在本机，不入库）**：
+  - 第 1.6 步：发版前**只读**打印四处版本现状（不判定成败）；
+  - 第 4 步：原来的 `sed`（**只改 tauri.conf.json** —— 正是 `7a674ce`「版本号统一」要消灭的那类不一致）换成 `node tools/version.js --set`，`git add` 四个文件；并在**打 tag 前**加 `--check` 卡口（防止重复打同一 tag 让云端工作流去「更新既有 Release」而非发新版本）。
+- **C 方案：删除 10 个旧品牌线 tag（本地 + 远程）**——维护者明确选择「彻底」。「添钰财务」新线自 `v0.5.0` 起算，旧品牌（心中有数/`com.chen.xzys`）线不再保留 tag。
+  - 删除前后对照：`git tag --sort=-v:refname | head -1` 由 **v1.1.6 → v0.5.1**；`git describe` 由 **v1.1.6 → v0.5.1-2-g…**；
+  - 保留：**`v0.5.0` / `v0.5.1`**（执行前有硬守卫：待删列表必须正好 10 个、且绝不含 `v0.5.*`）；
+  - ⚠️ **连带影响**：GitHub 的 Release 与 tag 是**两个对象** —— 删 tag 不会删 Release 与安装包（旧包仍可下载），但旧 Release 会**失去 tag 关联**，在 Release 页看起来「没有 tag」；
+  - 📌 **tag → 提交映射（留档，需要时可随时重建：`git tag <tag> <sha>` + `git push origin <tag>`）**：
+    | 旧 tag | 提交 | 说明 |
+    |---|---|---|
+    | `v1.0.0` | `7910228` | ci: release 自动正式发布（releaseDraft=false） |
+    | `v1.0.1` | `7ae822c` | ci: 重构自动发布（Windows 先建 Release、macOS 后附加） |
+    | `v1.0.2` | `bfad28f` | chore: bump version to 1.0.2 |
+    | `v1.1.0` | `1d0b82a` | 新增云备份/云同步（WebDAV），统一系统设置页排版 |
+    | `v1.1.1` | `f6a9fd8` | 凭证打印/空白凭证、账表凭证字科目穿透补全、账务健康体检去噪 |
+    | `v1.1.2` | `f29fbe1` | 明细账滚动布局优化、科目树自适应宽度、凭证保存防误触 |
+    | `v1.1.3` | `572a724` | 科目栏编码+全路径名、搜索入口统一、内置凭证模板库、资金余额口径修复、发版对账卡口 |
+    | `v1.1.4` | `8b3e8d2` | 常用功能默认顺序调整、录凭证设为固定项 |
+    | `v1.1.5` | `707da93` | chore: bump version to 1.1.5 |
+    | `v1.1.6` | `e2b6ad0` | 去金蝶化命名统一为 ty，清理死代码与重构期开发工具 |
+  - **提交引用未丢失**：被删的只是「指向这些提交的指针」，上述提交仍在 `main` 历史里（`git log --oneline | grep 7910228` 等均可查到）。
+- **执行过程中的一次失误（已如实记录）**：首次执行时按 bash 习惯用未加引号的 `$DEL` 做参数拆分，而本机登录 shell 是 **zsh**（不做默认词拆分），导致所有命令报错 —— **其实什么都没删**（已即时复查确认 12 个 tag 完好），随后改为**显式列举**写法并加守卫后重跑成功。
+
 ### 🚀 发版 v0.5.1（含 2026-09-13 与 09-14 两个工作日的全部改动）
 - **流程**：两道发版卡口 → 提交 → 推送 → 打 tag `v0.5.1`；tag 触发 `.github/workflows/build-release.yml`：
   Windows job 先跑并**创建/更新 Release**（`releaseDraft: false` → **直接发布，非草稿**），macOS job `needs` Windows 完成后对同一 tag 附加 `.dmg` —— 双平台产物进同一 Release，约 10~20 分钟；
