@@ -5,6 +5,23 @@
 ---
 ## 2026-09-14 — 金蝶差异「分类定档」+ 落实两批（多栏账 3 处 / 凭证汇总表张数 / 折旧两表分工）
 
+### 🐞 修「科目表页整页崩溃」`ReferenceError: subjParentMap is not defined`（含同类缺陷全库排查）
+- **现象**（维护者报）：打开科目表页即报 `ReferenceError: subjParentMap is not defined @ renderSubjects`，**整页渲染失败**（科目表格空白）。
+- **根因**：`js/pages/subject/Subject.js` 的 `renderSubjects()` 里两处调用裸名 `subjParentMap(...)`，而这个名字**全库已无定义**。它是 `cd5b581` 那次重构删掉的本地函数，重构只把同文件另一处调用改成了 `S.subjectParentMap`（现第 257 行），**漏改这 2 处**。→ 与 `store.js` 的 `S.subjectParentMap` 语义逐字一致（集合内「最长真前缀」为直接父，`1002001` 的父不会算成 `10020`），故直接改用 `S.subjectParentMap`。
+- **影响面**：`renderSubjects()` 是科目页唯一渲染入口 → 科目表、搜索、逐级展开、分类 Tab 全部失效；其它页面不受影响。
+- **修复**：2 行（`subjParentMap` → `S.subjectParentMap`，行为等价）。
+- **同类缺陷全库排查**：以「被当函数调用、但本文件作用域内无声明、也非内置全局」为判据扫描 32 个生产文件，除本次这处外另得 **1 处同类** 与 8 处误报（`global.X = function` 定义的真全局属性在运行时可见；或带 `typeof x === 'function'` / `H.x ?` 守卫）。其中：
+  - **`js/pages/ledger/Ledger.js` 的 `safeFillAuxType` / `safeFillAuxItem`**：其调用方（`fillAuxTypeSelect`/`fillAuxItemSelect` 的定义，以及 `safeFillAuxType($('axType'))` 等调用点）已在 `3e7dc62` 随「数量总账/明细账、核算项目明细账/余额表/组合表」整体下线时一并删除，`index.html` 里也不再存在 `axType`/`abType` 元素 → 这两个 wrapper 成了**孤儿死代码**（正常路径永不执行，一旦被调用必 `ReferenceError`）→ **已删除**（连带只剩它使用的 `var bookKey = H.bookKey` 也一并清理），并把该文件顶部过期的模块说明（仍写着 refreshQg/Qd/Ax/Ab/Ac）改为实际保留的 `refreshGl/Dl/Ml`。
+- **验证**：
+  - **反向自测**（关键）：把修复前（HEAD）的 `Subject.js` 放进临时目录重跑审计 → 准确报出 `Subject.js:76 subjParentMap [全库无声明 → 必为 ReferenceError]`；修复后该文件不再出现在报告中 —— 同时证明「检查器能抓到这一类」与「修复确实消除了它」；
+  - `node --check` 两个改动文件语法 OK；`read_lints` 零告警；
+  - 项目现有检查器复跑：`check-period-contract`（16 个期间控件契约全部通过）、`check_no_native_download`、`test_subject_levels`（18/18）、`test_subject_picker`（全过）。
+- **附：复跑时确认项目现有检查器的 2 处「红色」都不是产品缺陷**（本轮未改动，仅登记备查）：
+  | 检查器 | 报告 | 结论 |
+  |---|---|---|
+  | `tools/test_stale_dom_refs.js` | `Salary.js:42/54/57/64` 的 `$('salPeriodEnd').value` | **检查器漏判**：该 id 由 `PeriodRangePicker` 依 `index.html:1012` 的 `data-period="sal"` **动态生成**（`id + 'PeriodEnd'`），运行时元素存在 |
+  | `tools/check_no_native_dialog.js` | `file-save-bridge.js:93/164` 裸 `alert` | 属**兜底分支**：`typeof showToast === 'function'` 不成立时的最后手段 |
+
 ### 🧹 版本号信息彻底清理（维护者选 **C 方案**：删除旧品牌线 tag）
 - **起因**：维护者问「怎么彻底清理之前的版本号信息，防止打包时再出问题」；
 - **清点：版本号散在 4 个文件，其中 1 处是旧号**

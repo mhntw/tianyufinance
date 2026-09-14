@@ -73,8 +73,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var cashCodes = S.cashAccounts().map(function (s) { return s.code; });
     // 父链映射用全量科目（祖先判断不受当前分类过滤影响）；
     // 箭头关系依据当前列表内的直接父子关系（父子一般同属一个分类）
-    var pmAll = subjParentMap(S.subjects());
-    var pmList = subjParentMap(list);
+    var pmAll = S.subjectParentMap(S.subjects());
+    var pmList = S.subjectParentMap(list);
     var hasKids = {};
     list.forEach(function (s) { var p = pmList[s.code]; if (p) hasKids[p] = 1; });
     // 搜索态：命中的科目 + 其整条父链都显示（无关展开开关）；未搜时由「展开所有级次」开关与折叠态决定
