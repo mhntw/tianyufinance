@@ -17,6 +17,14 @@
     var n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }
+  // 固定资产导入专用金额清洗：处理会计括号负数 (1,000) → -1000，再剥掉千分位/货币符号
+  function cleanNum(v) {
+    if (v === undefined || v === null || v === '') return 0;
+    if (typeof v === 'number') return v;
+    var s = String(v).trim();
+    if (/^\(.*\)$/.test(s)) s = '-' + s.replace(/[()]/g, '');
+    return num(s.replace(/[^\d.\-]/g, ''));
+  }
 
   function fmt(n) { return n ? Number(n).toFixed(2) : ''; }
 
@@ -187,26 +195,26 @@
         dept: get('dept', arr),
         acqDate: get('acqDate', arr),
         entryPeriod: get('entryPeriod', arr),
-        original: num(get('original', arr).toString().replace(/[^\d.\-]/g, '')),
-        accumDeprBegin: num(get('accumDeprBegin', arr).toString().replace(/[^\d.\-]/g, '')),
-        accumDepr: num(get('accumDepr', arr).toString().replace(/[^\d.\-]/g, '')),
+        original: cleanNum(get('original', arr)),
+        accumDeprBegin: cleanNum(get('accumDeprBegin', arr)),
+        accumDepr: cleanNum(get('accumDepr', arr)),
         // 金蝶「预计使用期数」按"月/期"计；本软件 life 按"年"存。无"年"后缀的纯数字按 ÷12 折算。
-        life: (function () { var r = get('life', arr).toString(); var v = num(r.replace(/[^\d.\-]/g, '')); return (v && r.indexOf('年') < 0) ? v / 12 : v; })(),
+        life: (function () { var r = get('life', arr).toString(); var v = cleanNum(r); return (v && r.indexOf('年') < 0) ? v / 12 : v; })(),
         // 残值：优先取文件「残值」列；若文件只给残值率%没给残值(金蝶常见)，按「原值×残值率%」补算，与卡片新增表单同逻辑，否则折旧基数会算错
         salvage: (function () {
-          var s = num(get('salvage', arr).toString().replace(/[^\d.\-]/g, ''));
+          var s = cleanNum(get('salvage', arr));
           if (s > 0) return s;
-          var r = num(get('salvageRate', arr).toString().replace(/[^\d.\-]/g, ''));
-          var o = num(get('original', arr).toString().replace(/[^\d.\-]/g, ''));
+          var r = cleanNum(get('salvageRate', arr));
+          var o = cleanNum(get('original', arr));
           return (o > 0 && r > 0) ? o * r / 100 : s;
         })(),
         salvageRate: get('salvageRate', arr),
-        impairment: num(get('impairment', arr).toString().replace(/[^\d.\-]/g, '')),
-        netValueBegin: num(get('netValueBegin', arr).toString().replace(/[^\d.\-]/g, '')),
-        netValueEnd: num(get('netValueEnd', arr).toString().replace(/[^\d.\-]/g, '')),
+        impairment: cleanNum(get('impairment', arr)),
+        netValueBegin: cleanNum(get('netValueBegin', arr)),
+        netValueEnd: cleanNum(get('netValueEnd', arr)),
         method: get('method', arr) || '平均年限法',
         status: get('status', arr) || '正常',
-        qty: num(get('qty', arr).toString().replace(/[^\d.\-]/g, '')),
+        qty: cleanNum(get('qty', arr)),
         spec: get('spec', arr),
         location: get('location', arr),
         user: get('user', arr),
@@ -216,8 +224,8 @@
         impairVoucher: get('impairVoucher', arr),
         otherVoucher: get('otherVoucher', arr),
         memo: get('memo', arr),
-        periodUsed: num(get('periodUsed', arr).toString().replace(/[^\d.\-]/g, '')),
-        yearDepr: num(get('yearDepr', arr).toString().replace(/[^\d.\-]/g, '')),
+        periodUsed: cleanNum(get('periodUsed', arr)),
+        yearDepr: cleanNum(get('yearDepr', arr)),
         faAcctId: get('faAcctId', arr),
         accDeprAcct: get('accDeprAcct', arr),
         deprFeeAcct: get('deprFeeAcct', arr),

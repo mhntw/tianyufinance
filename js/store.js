@@ -1459,7 +1459,10 @@
         id: 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         name: (String(name || '').trim() || '常用业务'),
         entries: list.map(function (e) {
-          return { code: e.code || '', name: e.name || '', summary: e.summary || '', side: e.side === 'cr' ? 'cr' : 'dr' };
+          var item = { code: e.code || '', name: e.name || '', summary: e.summary || '' };
+          var dr = Number(e.dr) || 0, cr = Number(e.cr) || 0;
+          if (dr > 0) item.dr = dr; else if (cr > 0) item.cr = cr;
+          return item;
         }),
         createdAt: new Date().toISOString()
       };
@@ -1566,11 +1569,8 @@
       // 工资：工资模块按凭证类型（v.kind）+ 同期间识别凭证（工资记录无 voucherId 字段）。
       // 删掉工资凭证后工资数据仍在，会造成「工资已发但总账无凭证」的账实不符，故拦截提示先处理工资记录。
       // 原实现按摘要正则匹配，对导入凭证（无 v.summary）恒不命中，该保护从未生效。
-      if (v) {
-        var K = this.VOUCHER_KINDS;
-        var kv = this.voucherKind(v);
-        if (kv === K.PAYROLL_ACC || kv === K.PAYROLL_PAY) hits.push('工资');
-      }
+      // 仅拦截工资模块显式生成的凭证（v.payroll 标记）；纯手工录入、仅科目结构像工资的凭证不锁
+      if (v && v.payroll) hits.push('工资');
       return hits;
     },
     removeVoucher: function (id) {
@@ -1702,6 +1702,7 @@
         FA_ASSET: ['固定资产'], FA_CLEAN: ['固定资产清理'], FA_IMPAIR: ['减值准备'],
         PAYROLL_PAYABLE: ['应付职工薪酬'], BANK: ['银行存款'],
         PROFIT_YEAR: ['本年利润'], PROFIT_RESIDUAL: ['利润分配'],
+        SURPLUS_RESERVE: ['盈余公积'], DIVIDEND_PAYABLE: ['应付股利', '应付利润'],
         COST_PROD: ['生产成本'], COST_INV: ['库存商品']
       }[role];
       if (kw) {
@@ -1885,7 +1886,8 @@
       ACCRUE_SURTAX: 'accrueSurTax', // 计提附加税
       ACCRUE_INCTAX: 'accrueIncTax', // 计提所得税
       PAYROLL_ACC: 'payrollAcc',     // 计提工资
-      PAYROLL_PAY: 'payrollPay'      // 发放工资
+      PAYROLL_PAY: 'payrollPay',     // 发放工资
+      PROFIT_DIST: 'profitDist'      // 利润分配（提取盈余公积/分配股利，仅 12 月）
     },
 
     // 按结构特征识别单张凭证的期末业务类型（不读摘要，兼容导入凭证）
@@ -1910,6 +1912,8 @@
       if (hasPL && hasRole('PROFIT_YEAR')) return K.CARRY_PL;
       // 2) 年度结转：本年利润 + 利润分配，且不含损益类科目（含损益的归入结转损益）
       if (hasRole('PROFIT_YEAR') && hasRole('PROFIT_RESIDUAL') && !hasPL) return K.CARRY_YE;
+      // 2.5) 利润分配：利润分配科目 +（盈余公积或应付股利），且不含本年利润（含本年利润归 CARRY_YE）
+      if (hasRole('PROFIT_RESIDUAL') && !hasRole('PROFIT_YEAR') && (hasRole('SURPLUS_RESERVE') || hasRole('DIVIDEND_PAYABLE'))) return K.PROFIT_DIST;
       // 3) 计提折旧：折旧费用科目 + 累计折旧（累计折旧仅折旧业务使用，误判风险极低）
       if (hasRole('DEPR_FEE') && hasRole('ACC_DEPR')) return K.DEPR;
       // 4) 结转销售成本：生产成本 + 库存商品
@@ -2108,6 +2112,72 @@
       }
       this.backupNow(); // 年末结转利润高风险，强制立即备份
       return { ok: true, voucher: saved, amount: Math.abs(bal) };
+    },
+
+    /* ===================== 年末利润分配 ===================== */
+    // 12 月结账前，结转本年利润（3103→3104）后，按净利润提取盈余公积、分配股利。
+    // 金蝶结账方案（GLServiceType FID=8/9/10）：法定盈余公积 10%、任意盈余公积 10%、应付股利 30%。
+    // 本软件合并法定/任意盈余公积为「盈余公积」20%、应付股利 30%（金蝶默认比例）；
+    // 账套无对应明细科目时仅对存在的科目生成分录（灵活适配小企业简化科目）。
+    carryProfitDistribute: function (month) {
+      if (!month || month.substring(5, 7) !== '12')
+        return { ok: false, msg: '仅 12 月可进行利润分配' };
+      if (this.isPeriodClosed(month)) return { ok: false, msg: '该期已结账，请先反结账' };
+      // 必须先结转本年利润（3103→3104），否则基数（净利润/未分配利润）失真
+      var ye = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_YE);
+      if (!ye.length) return { ok: false, msg: '请先结转本年利润，再进行利润分配' };
+      // 幂等保护（同 carryYearEnd）：按 v.kind 定位，避免重复生成错账
+      var old = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.PROFIT_DIST);
+      if (old.length) {
+        var nums = old.map(function (v) { return (v.word || '转') + '-' + v.no; }).join('、');
+        return { ok: false, msg: '本期已生成 ' + old.length + ' 张利润分配凭证（' + nums + '），请勿重复；如需重做请先删除旧凭证', vouchers: old };
+      }
+      var undist = this.subjectRole('PROFIT_RESIDUAL');
+      if (!undist) return { ok: false, msg: '缺失利润分配科目' };
+      var self = this, year = month.slice(0, 4);
+      // 净利润基数取自「结转本年利润」凭证金额。
+      // 注意：已结账账套中损益科目已被结转凭证平掉，profitStatement 逐分录累加会因
+      // 「借费用 贷3103」「借3103 贷收入」导致发生额重复计入而失真；故直接以 CARRY_YE
+      // 凭证中 借3103(本年利润) / 贷3104(利润分配-未分配利润及其明细) 的金额为准。
+      var R = function (x) { return Math.round(x * 100) / 100; };
+      var net = 0;
+      ye.forEach(function (v) {
+        v.entries.forEach(function (e) {
+          if (e.code === '3103' || e.code === PROFIT_CODE) net += num(e.dr);
+          if (/^3104/.test(e.code) || e.code === undist.code) net += num(e.cr);
+        });
+      });
+      net = R(net);
+      if (!(net > 0.005)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };
+      // 找科目：优先明细（金蝶 310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
+      function findSub(kw, code) {
+        var s = code ? self.subject(code) : null; if (s) return s;
+        return self.subjects().filter(function (x) { return x.name && x.name.indexOf(kw) >= 0; })[0];
+      }
+      var legal = findSub('法定盈余公积', '310101');
+      var disc = findSub('任意盈余公积', '310102');
+      var div = this.subjectRole('DIVIDEND_PAYABLE') || findSub('应付利润', '2232');
+      var surplus = this.subjectRole('SURPLUS_RESERVE');
+      var entries = [];
+      var alloc = 0;
+      if (legal) { var a = R(net * 0.10); entries.push({ code: legal.code, name: legal.name, summary: '提取法定盈余公积', dr: 0, cr: a }); alloc += a; }
+      if (disc) { var b = R(net * 0.10); entries.push({ code: disc.code, name: disc.name, summary: '提取任意盈余公积', dr: 0, cr: b }); alloc += b; }
+      // 无明细科目时回退：合并计提盈余公积 20%（法定+任意）
+      if (!legal && !disc && surplus) { var c = R(net * 0.20); entries.push({ code: surplus.code, name: surplus.name, summary: '提取盈余公积', dr: 0, cr: c }); alloc += c; }
+      if (div) { var d = R(net * 0.30); entries.push({ code: div.code, name: div.name, summary: '分配股利', dr: 0, cr: d }); alloc += d; }
+      if (!entries.length) return { ok: false, msg: '未找到盈余公积/应付股利科目，请先在「科目」中增设利润分配明细科目，或使用自定义结转模板' };
+      alloc = R(alloc);
+      entries.unshift({ code: undist.code, name: undist.name, summary: '利润分配（提取盈余公积及分配股利）', dr: alloc, cr: 0 });
+      var v = {
+        word: '转', date: lastDay(month), attach: 0,
+        summary: '分配 ' + year + ' 年度利润',
+        kind: this.VOUCHER_KINDS.PROFIT_DIST,
+        entries: entries
+      };
+      var saved = this.addVoucher(v);
+      if (!saved || saved.ok === false) return { ok: false, msg: (saved && saved.msg) || '利润分配失败' };
+      this.backupNow(); // 利润分配高风险，强制立即备份
+      return { ok: true, voucher: saved, amount: alloc, netProfit: net };
     },
 
     // 注：原「期末调汇（exchangeAdjust）」外币核算功能已整体下线（产品定为纯本币人民币记账），
@@ -3513,7 +3583,8 @@
       fa.original = num(fa.original);                 // 原值
       fa.accumDeprBegin = num(fa.accumDeprBegin);     // 期初累计折旧
       fa.accumDepr = num(fa.accumDepr);               // 期末累计折旧
-      if (!fa.accumDepr && fa.accumDeprBegin) fa.accumDepr = fa.accumDeprBegin; // 卡片新增只给期初时，期末以期初为起点
+      if (!fa.accumDepr && fa.accumDeprBegin) fa.accumDepr = fa.accumDeprBegin;   // 卡片新增只给期初时，期末以期初为起点
+      if (!fa.accumDeprBegin && fa.accumDepr) fa.accumDeprBegin = fa.accumDepr;   // 金蝶清单常有期末累计但无期初，默认期初=期末
       fa.life = num(fa.life);                         // 预计使用期限（年）
       fa.salvage = num(fa.salvage);                  // 残值
       fa.salvageRate = fa.salvageRate !== undefined && fa.salvageRate !== '' ? num(fa.salvageRate)
@@ -3521,6 +3592,9 @@
       fa.impairment = num(fa.impairment);             // 减值准备
       fa.netValueBegin = num(fa.netValueBegin);       // 期初净值
       fa.netValueEnd = num(fa.netValueEnd);           // 期末净值
+      // 净值自动补算：未指定时按恒等式 original - accumDepr - impairment 回填
+      if (!fa.netValueBegin && fa.original > 0) fa.netValueBegin = fa.original - fa.accumDeprBegin - fa.impairment;
+      if (!fa.netValueEnd && fa.original > 0) fa.netValueEnd = fa.original - fa.accumDepr - fa.impairment;
       fa.method = fa.method || '平均年限法';           // 折旧方法
       fa.status = fa.status || '正常';                 // 状态
       fa.qty = num(fa.qty);                           // 数量
@@ -3558,6 +3632,19 @@
       if (fa && fa.category !== undefined) fa.category = this.normalizeAssetCategory(fa.category);
       if (fa && fa.dept !== undefined) fa.dept = this.normalizeDept(fa.dept);
       Object.assign(this.state.fixedAssets[idx], fa, { id: id });
+      // 合并后做净值/累计折旧兜底补算（表单 _collectAsset 不采集 accumDepr/netValue* 字段，
+      // 直接 Object.assign 后可能为 undefined 或原值未同步，需要主动补算）
+      var r = this.state.fixedAssets[idx];
+      r.original = num(r.original);
+      r.accumDeprBegin = num(r.accumDeprBegin);
+      r.accumDepr = num(r.accumDepr);
+      r.impairment = num(r.impairment);
+      r.netValueBegin = num(r.netValueBegin);
+      r.netValueEnd = num(r.netValueEnd);
+      if (!r.accumDepr && r.accumDeprBegin) r.accumDepr = r.accumDeprBegin;
+      if (!r.accumDeprBegin && r.accumDepr) r.accumDeprBegin = r.accumDepr;
+      if (!r.netValueBegin && r.original > 0) r.netValueBegin = r.original - r.accumDeprBegin - r.impairment;
+      if (!r.netValueEnd && r.original > 0) r.netValueEnd = r.original - r.accumDepr - r.impairment;
       this.persist();
       return { ok: true };
     },
@@ -3796,10 +3883,21 @@
         return { ok: false, msg: (saved && saved.msg) || '生成折旧凭证失败' };
       }
       // 更新卡片已计提月份与累计折旧，并记录折旧凭证号（供删除凭证时引用校验）
+      // 月末滚转：accumDeprBegin / netValueBegin ← 上月期末，然后本月折旧累加；netValueEnd / netValueBegin 用恒等式重算
       var dvno = (saved.word || '转') + '-' + (saved.no != null ? saved.no : '');
       assetLines.forEach(function (al) {
         self.state.fixedAssets.forEach(function (fa) {
-          if (fa.id === al.id) { fa.deprMonth = month; fa.accumDepr = num(fa.accumDepr) + al.amt; fa.periodUsed = num(fa.periodUsed || 0) + 1; fa.deprVoucher = dvno; }
+          if (fa.id === al.id) {
+            fa.deprMonth = month;
+            fa.accumDepr = num(fa.accumDepr) + al.amt;       // 本月折旧累加 → 期末累计
+            fa.accumDeprBegin = fa.accumDepr;                // 月末 = 下月初
+            fa.periodUsed = num(fa.periodUsed || 0) + 1;
+            fa.yearDepr = num(fa.yearDepr || 0) + al.amt;   // 本年已折旧同步累加
+            // 净值重算（期末=下月初，此时两者恒等）
+            fa.netValueEnd = Math.max(0, num(fa.original) - num(fa.accumDepr) - num(fa.impairment));
+            fa.netValueBegin = fa.netValueEnd;
+            fa.deprVoucher = dvno;
+          }
         });
       });
       this.persist();
@@ -3948,6 +4046,7 @@
       var v = {
         word: word, date: lastDay(month), attach: 0, summary: summary,
         kind: (type === 'pay') ? this.VOUCHER_KINDS.PAYROLL_PAY : this.VOUCHER_KINDS.PAYROLL_ACC,
+        payroll: true,
         entries: entries
       };
       var saved = this.addVoucher(v);

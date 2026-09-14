@@ -631,10 +631,6 @@ function setupVoucher() {
     var res = saveVoucher();
     if (res && res.ok && !res.unchanged) showToast(res.unaudited ? '已保存（原凭证已审核，保存后已自动撤销审核状态）' : '已保存凭证');
   });
-  var bDraft = $('btnDraftVoucher'); if (bDraft) bDraft.addEventListener('click', function () {
-    var res = saveVoucher();
-    if (res && res.ok && !res.unchanged) showToast('已暂存凭证');
-  });
   var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
   var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
   var bPref = $('btnVoucherPref'); if (bPref) bPref.addEventListener('click', function () {
@@ -876,6 +872,7 @@ function saveVoucher() {
   var drT = v.entries.reduce(function (s, e) { return s + e.dr; }, 0);
   var crT = v.entries.reduce(function (s, e) { return s + e.cr; }, 0);
   if (Math.abs(drT - crT) >= 0.005) { showToast('借贷不平衡，无法保存', 'warn'); return { ok: false }; }
+  if (drT + crT < 0.01) { showToast('请填写凭证金额后再保存', 'warn'); return { ok: false }; }
   // 科目存在性校验：分录的 code 必须存在于科目表，避免误录用不存在的科目（幽灵科目）
   var badCodes = [];
   v.entries.forEach(function (e) {
@@ -1135,7 +1132,7 @@ var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click',
     var r = S.removeVoucher(c.getAttribute('data-id'));
     if (r.ok) n++; else { fail++; if (!failMsg) failMsg = r.msg; }
   });
-  if (n) syncAll();
+  if (n) { syncAll(); qRender(); }
   if (n && fail) showToast('已删除 ' + n + ' 张，' + fail + ' 张未删：' + failMsg, 'warn');
   else if (n) showToast('已删除 ' + n + ' 张凭证');
   else if (fail) showToast('删除失败：' + failMsg, 'error');
@@ -1289,24 +1286,19 @@ function refreshRecycleBin() {
   var list = (S.deletedVouchers ? S.deletedVouchers() : []);
   tb.innerHTML = '';
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="6" class="empty-hint">回收站为空</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#000">回收站为空</td></tr>';
     return;
   }
   list.forEach(function (v) {
     var tr = document.createElement('tr');
-    tr.className = 'log-row-reopen';
-    var entries = (v.entries || []).map(function (e) {
-      // 科目名同样取实时名称（回收站行数少，逐个查即可），快照名兜底
-      var nm = (S.subjectName && S.subjectName(e.code)) || e.name || '';
-      return (e.code || '') + ' ' + nm + (e.dr ? ' 借' + e.dr : (e.cr ? ' 贷' + e.cr : ''));
-    }).join('；');
+    var drSum = (v.entries || []).reduce(function (s, e) { return s + (e.dr || 0); }, 0);
     tr.innerHTML =
-      '<td class="mono">' + (v.date || '') + '</td>' +
-      '<td class="mono">' + (v.word || '记') + '-' + (v.no != null ? v.no : '') + '</td>' +
-      '<td>' + escHtml(v.summary || '') + '</td>' +
-      '<td class="mono ta-r">' + num(v.entries.reduce(function (s, e) { return s + (e.dr || 0); }, 0)).toFixed(2) + '</td>' +
-      '<td class="mono">' + (v.deletedAt || '') + '<br><span class="log-reason">删除人：' + escHtml(v.deletedBy || '') + '</span></td>' +
-      '<td class="col-op"><a class="link-toggle" data-act="restore" data-id="' + v.id + '">还原</a></td>';
+      '<td>' + escHtml(v.date || '') + '</td>' +
+      '<td>' + escHtml((v.word || '记') + '-' + (v.no != null ? v.no : '')) + '</td>' +
+      '<td>' + num(drSum).toFixed(2) + '</td>' +
+      '<td>' + escHtml(v.deletedAt || '') + '</td>' +
+      '<td>' + escHtml(v.deletedBy || '') + '</td>' +
+      '<td><a class="link-toggle" data-act="restore" data-id="' + v.id + '">还原</a></td>';
     tb.appendChild(tr);
   });
   tb.querySelectorAll('[data-act="restore"]').forEach(function (a) {
@@ -1326,20 +1318,50 @@ function refreshRecycleBin() {
 }
 
 /* —— 对外暴露：刷新 + 跨页入口 —— */
-/* ===================== 日常凭证模板（结构模板，金额留空待填） ===================== */
-function vchTplCurrentEntries() {
-  var out = [];
-  (vRows || []).forEach(function (r) {
-    var dr = U.num(r.dr), cr = U.num(r.cr);
-    if (!r.code || (dr <= 0 && cr <= 0)) return; // 仅收集带科目且已定借贷方向的行
-    out.push({
-      code: r.code,
-      name: ((S.subject(r.code) || {}).name) || r.name || '',
-      summary: r.summary || '',
-      side: dr > 0 ? 'dr' : 'cr'
-    });
+/* ===================== 日常凭证模板（结构模板：摘要/科目必带，金额选填） ===================== */
+// 模板方向三级兜底：①带金额→金额落点；②显式 side（系统/导入模板）；③无金额无 side→按科目常规性质
+function tplSideOf(e) {
+  if (U.num(e.dr) > 0) return 'dr';
+  if (U.num(e.cr) > 0) return 'cr';
+  if (e.side === 'cr') return 'cr';
+  if (e.side === 'dr') return 'dr';
+  var s = S.subject(e.code);
+  var cls = s && (s.grpCls || s.cls);
+  if (cls === 'liability' || cls === 'equity' || cls === 'revenue') return 'cr';
+  return 'dr';
+}
+// 打开「保存为模板」面板：逐条勾选是否携带金额（对应金蝶金额选填）
+function openVchTplSave() {
+  var m = $('vchTplSaveModal'); if (!m) return;
+  var first = '';
+  (vRows || []).some(function (r) {
+    if (r.code) { first = (r.summary || '').trim() || ((S.subject(r.code) || {}).name || ''); return true; }
+    return false;
   });
-  return out;
+  var nm = $('vchTplSaveName'); if (nm) nm.value = first;
+  var cat = $('vchTplSaveCat'); if (cat) cat.value = '';
+  var amt = $('vchTplSaveAmt'); if (amt) amt.checked = false;
+  m.classList.add('show');
+}
+function commitVchTplSave() {
+  var rows = (vRows || []).filter(function (r) { return r.code; });
+  if (!rows.length) { showToast('没有带科目的分录，无法保存模板', 'warn'); return; }
+  if (!(rows[0].summary || '').trim()) { showToast('请为首行填写摘要才能保存模板', 'warn'); return; }
+  var withAmt = !!($('vchTplSaveAmt') || {}).checked;
+  var entries = rows.map(function (r) {
+    var item = { code: r.code, name: ((S.subject(r.code) || {}).name) || r.name || '', summary: r.summary || '' };
+    if (withAmt) {
+      var dr = U.num(r.dr), cr = U.num(r.cr);
+      if (dr > 0) item.dr = dr; else if (cr > 0) item.cr = cr;
+    }
+    return item;
+  });
+  var nm = (($('vchTplSaveName') || {}).value || '').trim();
+  var r = S.saveVchTemplate(nm, entries);
+  if (!r.ok) return showToast(r.msg, 'error');
+  showToast('已保存为模板「' + r.tpl.name + '」（' + entries.length + ' 条分录）', 'success', 3200);
+  var m = $('vchTplSaveModal'); if (m) m.classList.remove('show');
+  renderVchTplList();
 }
 function openVchTpl() {
   var m = $('vchTplModal'); if (!m) return;
@@ -1406,11 +1428,11 @@ function renderVchTplList() {
   var sysF = sys.filter(pass), mineF = mine.filter(pass);
   function tplRow(t, builtin) {
     var segs = (t.entries || []).map(function (e) {
-      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + (e.side === 'cr' ? '贷' : '借') + '</i>'
+      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + (tplSideOf(e) === 'cr' ? '贷' : '借') + '</i>'
         + '<em class="muted">' + escHtml(e.code || '') + '</em> ' + escHtml(e.name || '')
         + (e.summary ? '<span class="muted vch-tpl-sum"> · ' + escHtml(e.summary) + '</span>' : '') + '</span>';
     }).join('<span class="vch-tpl-sep">／</span>');
-    var miss = (builtin && t.missing && t.missing.length)
+    var miss = (t.missing && t.missing.length)
       ? '<div class="vch-tpl-miss">缺少 ' + t.missing.length + ' 个科目：'
         + t.missing.map(function (m) { return escHtml(m.code + ' ' + m.name); }).join('、')
         + '，已跳过，套用后请补录</div>' : '';
@@ -1433,8 +1455,8 @@ function renderVchTplList() {
       + '<span class="vch-tpl-cnt">' + count + ' 个</span></div>';
   }
   var html = '';
-  if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
   if (mineF.length) html += sec('我的模板', mine.length) + mineF.map(function (t) { return tplRow(t, false); }).join('');
+  if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
   if (!html) {
     html = '<div class="empty-hint" style="padding:26px 0;text-align:center;color:var(--ty-text-3)">'
       + (q ? '没有找到名称含「' + escHtml(q) + '」的模板' : '暂无可用模板') + '</div>';
@@ -1444,15 +1466,7 @@ function renderVchTplList() {
   box.innerHTML = html;
 }
 function saveCurrentAsTpl() {
-  var entries = vchTplCurrentEntries();
-  if (!entries.length) { showToast('请先录入带金额的分录（用于确定借贷方向）', 'warn'); return; }
-  var base = (entries[0].summary || '').trim() || ((S.subject(entries[0].code) || {}).name || '常用业务');
-  var dup = (S.vchTemplates() || []).filter(function (x) { return x.name === base; }).length;
-  var name = dup ? (base + ' (' + (dup + 1) + ')') : base;
-  var r = S.saveVchTemplate(name, entries);
-  if (!r.ok) return showToast(r.msg, 'error');
-  showToast('已保存为模板「' + name + '」（' + entries.length + ' 条分录）', 'success', 3200);
-  renderVchTplList();
+  openVchTplSave();
 }
 function applyVchTpl(t) {
   if (!t) return;
@@ -1463,11 +1477,14 @@ function applyVchTpl(t) {
     vEditId = null;
     vAttachFiles = [];
     if (renderAttachPanel) renderAttachPanel();
-    vRows = (t.entries || []).filter(function (e) { return e.code; }).map(function (e) {
+    vRows = (t.entries || []).filter(function (e) { return e.code && S.subject(e.code); }).map(function (e) {
       var r = defaultVoucherRow();
       r.summary = e.summary || '';
       r.code = e.code || '';
       r.name = e.name || ((S.subject(e.code) || {}).name) || '';
+      var side = tplSideOf(e);
+      if (side === 'dr') { var d = U.num(e.dr); if (d > 0) r.dr = d; }
+      else { var c = U.num(e.cr); if (c > 0) r.cr = c; }
       return r;
     });
     while (vRows.length < 4) vRows.push(defaultVoucherRow());
@@ -1498,6 +1515,16 @@ function applyVchTpl(t) {
   if (bOpen && menu) bOpen.addEventListener('click', function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; });
   // 点击其它处关闭下拉
   document.addEventListener('click', hideMenu);
+  // 「保存为模板」面板
+  var saveModal = $('vchTplSaveModal');
+  if (saveModal) {
+    function hideSaveTpl() { saveModal.classList.remove('show'); }
+    var bSaveOk = $('btnVchTplSaveOk'), bSaveCls = $('btnVchTplSaveClose'), bSaveCal = $('btnVchTplSaveCancel');
+    if (bSaveOk) bSaveOk.addEventListener('click', commitVchTplSave);
+    if (bSaveCls) bSaveCls.addEventListener('click', hideSaveTpl);
+    if (bSaveCal) bSaveCal.addEventListener('click', hideSaveTpl);
+    saveModal.addEventListener('click', function (e) { if (e.target === saveModal) hideSaveTpl(); });
+  }
   // 下拉两项（形态）
   var sItem = $('vchTplSaveItem'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
   var uItem = $('vchTplUseItem'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
@@ -1517,11 +1544,9 @@ function applyVchTpl(t) {
         (S.vchTemplates() || []).some(function (x) { if (x.id === id) { t = x; return true; } return false; });
       }
       if (!t) return;
-      if (t.builtin) {
-        if (!t.entries.length) { showToast('模板「' + t.name + '」的科目在本账套中均不存在，无法套用', 'warn'); return; }
-        if (t.missing && t.missing.length) {
-          showToast('模板「' + t.name + '」有 ' + t.missing.length + ' 条分录的科目本账套没有，已跳过，套用后请补录', 'warn', 4000);
-        }
+      if (!t.entries.length) { showToast('模板「' + t.name + '」没有可套用的分录', 'warn'); return; }
+      if (t.missing && t.missing.length) {
+        showToast('模板「' + t.name + '」有 ' + t.missing.length + ' 条分录的科目本账套没有，已跳过，套用后请补录', 'warn', 4000);
       }
       applyVchTpl(t);
     } else if (del) {
@@ -1552,13 +1577,13 @@ globalThis.__VOUCHER__ = {
   btn.addEventListener('click', function () {
     var modal = document.getElementById('recycleBinModal');
     if (!modal) return;
-    modal.style.display = '';
+    modal.classList.add('show');
     refreshRecycleBin();
   });
   // 关闭按钮
   function closeRecycleBin() {
     var m = document.getElementById('recycleBinModal');
-    if (m) m.style.display = 'none';
+    if (m) m.classList.remove('show');
   }
   var x = document.getElementById('recycleBinClose');
   if (x) x.addEventListener('click', closeRecycleBin);

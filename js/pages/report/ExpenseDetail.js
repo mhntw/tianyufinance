@@ -6,6 +6,8 @@ const edState = {
   pageSize: 500,
   expanded: new Set()           // 手动展开/折叠的 code（与“展开所有级次”互不干扰）
 };
+// 缓存 refreshExpenseDetail 的全量计算结果，供「导出」复用：避免解析 DOM，格式统一为 xlsx。
+let edExportData = null;
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = (globalThis.__TY_HELPERS__ || {}).periodRangeValue;
 
@@ -422,6 +424,13 @@ function refreshExpenseDetail() {
 
   renderEDGrid(months, displayRoots, totals, { showYearTotal, showRatio, expandAll, yearTotalsByCode, start, end });
   renderEDPagination(displayRoots.length);
+  // 缓存全量结果供导出：直接基于已算数据构造 xlsx，金额写数值、不依赖页面渲染/DOM。
+  edExportData = {
+    months: months,
+    displayRoots: displayRoots,
+    totals: totals,
+    opts: { showYearTotal: showYearTotal, showRatio: showRatio, yearTotalsByCode: yearTotalsByCode }
+  };
 }
 
 function renderEDGrid(months, roots, totals, opts) {
@@ -519,29 +528,53 @@ function renderEDPagination(totalRoots) {
   pagesEl.innerHTML = html;
 }
 
+// 导出（xlsx，与全账套报表统一）：直接基于 refreshExpenseDetail 缓存的全量数据构造，不解析 DOM。
+// 金额列写数值（Excel 可再算，免去旧 CSV 的千分位/引号转义脆弱逻辑）；百分比列沿用界面 pct 文本。
 function exportED() {
-  const head = $('edGridHead');
-  const body = $('edBody');
-  const foot = $('edFoot');
-  if (!head || !body) return;
-  // CSV 单元格转义：含逗号/引号/换行时用双引号包裹，内部引号翻倍（RFC 4180）。
-  // 数值清洗：表格内数字经 money() 格式化带千分位逗号（如 200,848.45），若原样写入 CSV
-  // 会被 Excel 按分隔符拆成多列、或按区域设置误判为文本，故导出时去掉千分位逗号还原纯数值。
-  const numRe = /^-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/;
-  const csvCell = raw => {
-    let t = (raw == null ? '' : String(raw)).trim();
-    if (numRe.test(t)) t = t.replace(/,/g, '');
-    if (/[",\n\r]/.test(t)) t = '"' + t.replace(/"/g, '""') + '"';
-    return t;
+  if (!edExportData) { showToast('请先打开费用明细表再导出', 'warn'); return; }
+  var XLSX = globalThis.XLSX;
+  if (!XLSX) { showToast('导出组件未加载', 'error'); return; }
+  var safeExport = globalThis.__safeExportExcel;
+  if (!safeExport) { showToast('导出功能不可用', 'error'); return; }
+  var months = edExportData.months, opts = edExportData.opts, totals = edExportData.totals;
+  var headers = ['编码', '名称'];
+  months.forEach(function (m) { headers.push(monthLabel(m)); });
+  if (opts.showYearTotal) headers.push((months[0] ? months[0].split('-')[0] : '') + '年合计');
+  if (opts.showRatio) { headers.push('较上期'); headers.push('较同期'); }
+  var rows = [headers];
+  // 递归整棵树（不依赖界面展开状态，导出完整层级）
+  var walk = function (nodes) {
+    nodes.forEach(function (n) {
+      var indent = (S && S.subjectIndentSpaces) ? S.subjectIndentSpaces(n.level || 0) : '';
+      var cells = [n.code || '', indent + (n.name || '')];
+      (n.amounts || []).forEach(function (v) { cells.push(num(v)); });
+      if (opts.showYearTotal) cells.push(num(n.total));
+      if (opts.showRatio) {
+        var amts = n.amounts || [], last = amts[amts.length - 1] || 0, prev = amts.length > 1 ? amts[amts.length - 2] : 0;
+        var ySum = (opts.yearTotalsByCode && opts.yearTotalsByCode[n.code]) || 0;
+        cells.push(prev === 0 ? '' : pct(last - prev, prev));
+        cells.push(ySum === 0 ? '' : pct(n.total - ySum, ySum));
+      }
+      rows.push(cells);
+      if (n.children && n.children.length) walk(n.children);
+    });
   };
-  const headers = Array.from(head.querySelectorAll('th')).map(th => csvCell(th.textContent));
-  const rows = [];
-  const collect = tr => { rows.push(Array.from(tr.querySelectorAll('td')).map(td => csvCell(td.textContent))); };
-  body.querySelectorAll('tr').forEach(collect);
-  if (foot) foot.querySelectorAll('tr').forEach(collect);
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-  const fname = `费用明细表_${currentPeriod()}.csv`;
-  __safeExportCsv('\ufeff' + csv, fname);
+  walk(edExportData.displayRoots);
+  var foot = ['', '合计'];
+  (totals.months || []).forEach(function (v) { foot.push(num(v)); });
+  if (opts.showYearTotal) foot.push(num(totals.yearTotal));
+  if (opts.showRatio) { foot.push(''); foot.push(''); }
+  rows.push(foot);
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var cols = [{ wch: 10 }, { wch: 22 }];
+  for (var i = 0; i < months.length; i++) cols.push({ wch: 12 });
+  if (opts.showYearTotal) cols.push({ wch: 12 });
+  if (opts.showRatio) { cols.push({ wch: 10 }); cols.push({ wch: 10 }); }
+  ws['!cols'] = cols;
+  XLSX.utils.book_append_sheet(wb, ws, '费用明细表');
+  safeExport(wb, '费用明细表_' + currentPeriod());
+  showToast('已导出费用明细表', 'success');
 }
 
 /* ============================================================

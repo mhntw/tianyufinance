@@ -3,6 +3,68 @@
 本文件记录历次功能优化与缺陷修复，按时间倒序排列。
 
 ---
+## 2026-09-14 — 结账新增「利润分配」年末功能（提取盈余公积/分配股利）
+
+- **来源**：解析金蝶 KIS 结账方案 `GLServiceType`（FID=8/9/10）发现，金蝶年末结账含「利润分配」步骤（法定盈余公积 10%、任意盈余公积 10%、应付股利 30%）。我们软件原有结转损益、结转本年利润（3103→3104），唯独缺"净利润→盈余公积/股利"这一步，导致年末未分配利润无法按章程分配。
+- **实现**：
+  - `store.js` 新增 `carryProfitDistribute(month)`：仅 12 月、需先结转本年利润、按 `v.kind='profitDist'` 幂等；取全年净利润（`profitStatement(month).netProfit`），按金蝶默认比例生成凭证——借「利润分配-未分配利润」(PROFIT_RESIDUAL 角色)，贷「盈余公积」(SURPLUS_RESERVE，法定+任意合并 20%) 与「应付股利」(DIVIDEND_PAYABLE，30%)。账套无对应明细科目时仅对存在的科目生成，灵活适配小企业简化科目；两者皆缺则提示先设科目或用自定义模板。
+  - `store.js` `subjectRole` 新增 `SURPLUS_RESERVE`(盈余公积)、`DIVIDEND_PAYABLE`(应付股利/应付利润) 角色；`VOUCHER_KINDS` 加 `PROFIT_DIST`；`_detectVoucherKind` 加利润分配识别规则（利润分配科目 + 盈余公积/应付股利，且不含本年利润），与 CARRY_YE 不冲突。
+  - `Settle.js` 新增 `btnProfitDist` 按钮（仅 12 月显示，已分配显示「重新分配」，支持删除旧凭证重做），含已结账拦截、确认弹窗。
+  - `index.html` 结账页 `settlePaneProcess` 在「结转本年利润」后加「利润分配」按钮。
+- **验证**：`node --check` 通过；`read_lints` 零告警；`carryYearEnd`→`carryProfitDistribute` 顺序正确；幂等/重做/查重与既有结转损益、本年利润一致。
+
+## 2026-09-14 — 修复查凭证页批量删除凭证后列表不刷新
+
+- **现象**：查凭证页勾选凭证 → 删除（进回收站）后，列表未更新，已删凭证仍显示。
+- **根因**：`bQDelete` handler（`js/pages/voucher/Voucher.js`）删除成功后只调了 `syncAll()`，漏掉列表重绘。同文件批量审核分支（1114）是 `syncAll(); qRender();` 才重绘，而 `syncAll` 仅同步顶部状态、不重绘查凭证列表（`#qBody`）。另 `S.removeVoucher` 为软删除（打 `deleted='y'`，`store.js:1588`），`periodVouchers` 已过滤 `deleted==='y'`（`store.js:1810`），故重绘即可让已删凭证消失。
+- **修复**：`if (n) syncAll();` → `if (n) { syncAll(); qRender(); }`（与批量审核分支对齐）。
+- **验证**：`node --check` 通过；`read_lints` 零告警；`qRender` 同文件定义可用；`S.removeVoucher` 调用点仅批量删除入口（1135）一处。
+
+## 2026-09-14 — 修复凭证页「回收站」点击无反应（modal 显示方式与全项目不一致）
+
+- **现象**：凭证页「回收站」按钮点击无任何反应。
+- **根因**：`#recycleBinModal` 在 `index.html:438` 带内联 `style="display:none"`；而 `bindRecycleBinBtn`（`js/pages/voucher/Voucher.js`）打开弹窗用的是 `modal.style.display = ''`——既清不掉内联（清空后回到 CSS `.modal{display:none}` 默认），又没加 `.show` 类。项目统一约定是 `.modal.show{display:flex}`（`css/style.css:2061`），其他弹窗（`voucherPrefModal`/`vchTplModal`/app.js `openModal`）均用 `classList.add('show')`。回收站是唯一用 `style.display=''` 的，故弹窗永远隐藏。
+- **修复**：
+  - `index.html`：去掉 `#recycleBinModal` 的内联 `style="display:none"`，隐藏改由 `.modal` 默认 `display:none` 接管（与其他 modal 一致）。
+  - `Voucher.js`：打开 `modal.classList.add('show')`、关闭 `m.classList.remove('show')`。
+- **验证**：`node --check` 通过；`read_lints` 零告警；`recycleBinModal` 已无残留 `style.display` 写法；Voucher.js 三处 modal 均用 `classList.add('show')` 统一。
+
+## 2026-09-14 — 费用明细表导出统一为 xlsx（与全账套报表一致，去除 DOM 文本解析）
+
+- **背景**：费用明细表是唯一走 CSV 的报表（其余均 xlsx）。旧 `exportED` 直接抓 `$('edBody')` 的 `innerHTML` 文本 + 一段 RFC4180 引号转义 + 千分位逗号清洗，属脆弱实现；且与其他报表「从已算数据构造 workbook」的口径不统一。
+- **修复**（`js/pages/report/ExpenseDetail.js`）：
+  - `refreshExpenseDetail()` 末尾把全量计算结果缓存到模块级 `edExportData = { months, displayRoots, totals, opts }`。所有筛选变更均回调该函数，缓存始终与界面一致。
+  - `exportED()` 重写：基于 `edExportData` 直接构造 xlsx，表头 `编码/名称` + 各月 +（年合计）+（较上期/较同期）；递归整棵树导出**完整层级**（不依赖界面展开状态）；金额列写**数值**（Excel 可再算）；百分比列沿用界面 `pct` 文本；合计行与界面 `totals` 对齐。复用 `globalThis.__safeExportExcel`（与全账套一致）。
+  - 顺带核实：`renderEDGrid` 渲染未做 `pageSize` 切片（`body` 本就全量），故「分页漏数据」在旧实现中也并不存在；本次收益是**口径统一 + 去掉 DOM 文本解析脆弱性**，而非修漏。
+- **注**：`__safeExportCsv` 桥接函数保留（`file-save-bridge.js`），仅费用明细表不再调用。
+- **验证**：`node --check` 通过；`read_lints` 零告警；`exportED` 定义 1 次；`__safeExportCsv` 已无业务调用。
+
+## 2026-09-14 — 明细账增加「导出」按钮（Excel，与界面渲染口径一致）
+
+- **需求**：账簿域明细账页此前只有「打印」，无「导出」（总账已有 `exportGl`）。新增 `导出` 与总账对齐。
+- **实现**（`js/pages/ledger/Ledger.js` 新增 `exportDl()`）：
+  - 借用现有 `S.detailLedger(code, month)` 取数，复用 `globalThis.__safeExportExcel` 与 `periodRangeValue('dlPeriod')`（与总账导出同套守卫：未加载 XLSX / 不可用 / 未选期间都有提示）。
+  - 表头 9 列：科目编码 / 科目名称 / 日期 / 凭证字号 / 摘要 / 借方 / 贷方 / 余额 / 方向。
+  - 每个科目一段：`期初余额` → 逐笔（日期+凭证字号+摘要+借/贷/余额/方向）→ `本期合计` → `本年累计`，与 `renderDlSegment` 渲染口径逐字一致；金额列写**数值**（非 `money()` 字符串）便于 Excel 再计算。
+  - 尊重当前筛选：`dlCurCode` 有值 = 仅该科目，为 `null` = 「全部科目」模式（与界面 `renderDl` 一致）；无数据给「没有可导出的数据」提示。
+- **UI**（`index.html #page-detail-ledger` 工具栏）：在「打印」后加 `<button id="btnDlExport">导出</button>`，样式与总账 `btnGlExport` 一致；`Ledger.js` 末尾 `globalThis.__exportDl` + 绑定点击。
+- **验证**：`node --check` 通过；`read_lints` 零告警；`exportDl` 定义 1 次；挂载点 `btnDlExport` 在 `index.html` / `Ledger.js` 两侧齐备。
+
+## 2026-09-14 — 结账模板「分录表格」落地（固定金额多行分录 + 生成凭证 + Excel 导入/导出）
+
+### 🚀 结账模板：补齐「新增模板」的分录录入（原「阶段二」未接线）
+- **背景**（维护者问「金蝶那批摊销类模板（摊销房租/装修款…）为什么导不进账套」）。结论：那批 `.ais` 本身是被剥离的**配置层**账套（与固定资产卡片、部门/职员档案同因），模板数据不在文件里 —— 不是导入器漏读。但顺藤摸瓜发现：本项目「结账凭证模板设置」弹窗的**分录表格 `index.html #settleTmplNewBody` 有 DOM、有样式（`.tmpl-cell-inp`/`.tmpl-op`/`.col-amount`…），却没有任何一行 JS 渲染它**（代码注释写明「分录表格为阶段二能力」），所以即便想手动建「借 540112 装修款 87,244.41 / 贷 180101…」这种固定金额模板也无处可存。
+- **修复**：`js/pages/settle/Settle.js`
+  - 行模型 `newTplRows = [{summary, code, dc:'D'|'C', amount, ruleType}]`（UI 口径：方向 + 金额单列 + 取数规则）；**落盘口径仍沿用 `buildSettleTmplRow` 的 `{summary, code, dr, cr}` 并扩展 `ruleType`**，与历史自定义模板数据完全兼容。
+  - 表格渲染 + 事件委托（加行 `+` / 删行 `×`、摘要/科目/方向/金额就地同步、科目列接统一 `bindSubjectPicker` 联想、借贷合计与差额实时提示）。
+  - **UI 进一步对齐金蝶截图**：金额列表头改为「金额 设置」；每行金额列拆为「取数规则」下拉 +「金额」输入；目前仅「固定金额」可用，余额比例/发生额比例/公式三项置灰占位，后续可扩展。
+  - 「新增模板」与左侧点选**自定义模板**都进分录表格面板（模板名称 + 凭证字 + 分录）；系统模板仍走各自专属表单（折旧/结转成本/增值税等有专用取数逻辑）。
+  - 保存校验：名称必填、同名自定义模板不可重复、填了金额就必须一借一贷且借贷相等。
+- **期末处理卡片**：自定义模板卡片新增「生成凭证」按钮 + 状态（已生成 `记-3` / 未结转：`金额` / 未设置分录金额）；生成时按 `kind='settleTpl:<id>'` 查重（连点/重做有明确提示），用模板自己的凭证字，强制借贷平衡、科目必须在当前账套。
+- **Excel 往返**：弹窗左侧新增「导入模板 / 导出模板」。`导出模板` 按 `模板名称/凭证字/摘要/会计科目/方向/金额/取数规则` 导出（可作填写骨架）；`导入模板` 按模板名称分组写入/覆盖同名自定义模板，**科目编码不在当前账套的行跳过并报告**、借贷不平的模板导入后提示待修正。编码列兼容「180101 长期待摊费用_…」这种编码+名称，也支持纯科目名称反查。
+- **验证**：`node --check` 通过；新函数各定义 1 次、无 `addSettleTemplateFromPanel` 残留；HTML 七个挂载点（`settleTmplNewBody/NewTotal/ImportFile/btnSettleTmplImport/Export/settleTmplNewWord/NewName`）齐备；CSS 变量 `--ty-text-2`/`--ty-red` 已定义；`exportTable` 由 `_shared.js` 正常导出。
+- **未做（备查）**：自定义模板未纳入「结账检查清单」7 项（避免改结账闸口逻辑），启用后结账不强制要求它；如需，单开。
+
 ## 2026-09-14 — 金蝶差异「分类定档」+ 落实两批（多栏账 3 处 / 凭证汇总表张数 / 折旧两表分工）
 
 ### 🐞 修「科目表页整页崩溃」`ReferenceError: subjParentMap is not defined`（含同类缺陷全库排查）

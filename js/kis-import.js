@@ -33,6 +33,15 @@
     return best ? best.cls : null;
   }
 
+  // 模板分录方向兜底：按科目权威类别（资产/成本/费用→借，负债/权益/收入→贷）。
+  // 仅用于金蝶老模式模板（GLVchTemplate1 无方向字段、金额又为空）的方向预置，
+  // 与金蝶套用行为一致；少数反向业务（如提现的银行存款）需套用后微调。
+  function tplSideOfCode(code) {
+    var cls = standardClsOf(code);
+    if (cls === 'liability' || cls === 'equity' || cls === 'revenue') return 'cr';
+    return 'dr';
+  }
+
   // 科目表 GLAcct.FGroup 的权威分类（账套实测规律）：
   // 101/102 资产（流动/非流动）、201/202 负债（流动/长期）、301 权益、
   // 400/401 成本、501/502 收入、503~507 费用。
@@ -439,6 +448,31 @@
             word: (r.FVchGroup || '记') || '记',
             entries: entries
           });
+        });
+      }
+      // ===== 老模式常用凭证模板（金蝶 KIS：GLVchTemplate + GLVchTemplate1，仅结构、金额留空）=====
+      // GLVchTemplate1 无 FDR 方向字段，方向由 FDebit/FCredit 体现；结构模板两者皆 0，
+      // 金蝶本身未存方向，套用时按科目性质预置（与金蝶一致，少数反向业务如提现需微调）。
+      // 仅解析主表 GLVchTemplate / GLVchTemplate1（不带 _2011/_NewKJ 等准则变体后缀，避免重复）。
+      var tplH2 = getRows(reader, 'GLVchTemplate');
+      var tplL2 = getRows(reader, 'GLVchTemplate1');
+      if (tplH2.length || tplL2.length) {
+        var by2 = {};
+        tplL2.forEach(function (r) {
+          var gid = r.FGroupID; if (gid == null) return;
+          (by2[gid] = by2[gid] || []).push({
+            summary: r.FExp || '',
+            code: String(r.FAcctID || ''),
+            name: subjName[String(r.FAcctID || '')] || '',
+            side: (parseFloat(r.FDebit) > 0) ? 'dr' : ((parseFloat(r.FCredit) > 0) ? 'cr' : tplSideOfCode(r.FAcctID))
+          });
+        });
+        tplH2.forEach(function (r) {
+          var name = String(r.FName || '').trim();
+          if (!name || r.FID == null) return;
+          var entries = (by2[r.FID] || []).filter(function (e) { return e.code && subjName[e.code] !== undefined; });
+          if (!entries.length) return;
+          vchTemplates.push({ id: 'K' + r.FID, name: name, word: (r.FVchGroup || '记') || '记', entries: entries });
         });
       }
     } catch (e) {

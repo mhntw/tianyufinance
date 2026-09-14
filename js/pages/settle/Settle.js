@@ -15,13 +15,21 @@ const closeModal = H.closeModal;
 const round2 = H.round2;
 const esc = H.esc || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
-// 取卡片对应的模板 id：系统卡用固定 id 映射，自定义卡用 data-id 属性
+// 取卡片对应的模板 id：系统卡用固定 id 映射，预置摊销/自定义卡用 data-id 属性
 function cardTplId(card) {
   var map = { cardDepr: 'dep', cardCost: 'cost', cardVat: 'vat', cardSurTax: 'surTax', cardIncTax: 'incTax', cardProfit: 'profit' };
   if (card.id && map[card.id]) return map[card.id];
   var did = card.getAttribute('data-id');
   return did || null;
 }
+
+// 预置摊销模板列表（金蝶风格：默认禁用，启用后显示卡片；可删除，可设置固定金额分录）
+var PRESET_AMORT_TEMPLATES = [
+  { id: 'amort_rent',   name: '摊销房租',   summary: '按月摊销房租',   months: 12, custom: true },
+  { id: 'amort_deco',   name: '摊销装修费', summary: '按月摊销装修费', months: 36, custom: true },
+  { id: 'amort_franch', name: '摊销加盟费', summary: '按月摊销加盟费', months: 60, custom: true },
+  { id: 'amort_fee',    name: '固话电视费', summary: '按月摊销固话电视费', months: 12, custom: true }
+];
 
 /* ============================================================
  * 期末结账
@@ -261,6 +269,25 @@ function bindSettleEvents() {
     showToast('已结转本年利润：' + money(Math.abs(r.bal || 0)), 'success');
     refreshSettle(); syncAll();
   });
+  onBtn('btnProfitDist', async function () {
+    var month = selMonth; // 期末处理跟随结账 tab 选期
+    if (String(month).substring(5, 7) !== '12') return showToast('仅 12 月可进行利润分配', 'error');
+    if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
+    var old = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.PROFIT_DIST);
+    var cmsg = old.length
+      ? '重新分配将删除本期已有的 ' + old.length + ' 张利润分配凭证并重新生成，确定继续？'
+      : '确认按净利润的 20% 提取盈余公积、30% 分配股利（金蝶默认比例）？\n余额将转入「利润分配-未分配利润」对应明细。';
+    if (!(await H.confirmAsync(cmsg, { title: old.length ? '重新分配利润' : '利润分配' }))) return;
+    // 重新分配：先删除旧凭证，避免重复生成错账（同结转损益/本年利润）
+    for (var i = 0; i < old.length; i++) {
+      var dr = S.removeVoucher(old[i].id);
+      if (!dr.ok) return showToast('删除旧利润分配凭证失败：' + dr.msg, 'error');
+    }
+    var r2 = S.carryProfitDistribute(month);
+    if (!r2.ok) return showToast(r2.msg, 'error');
+    showToast('已分配利润：' + money(r2.amount), 'success');
+    refreshSettle(); syncAll();
+  });
   onBtn('btnClosePeriod', async function () {
     var month = selMonth;
     if (S.isPeriodClosed(month)) return showToast('该期已结账', 'error');
@@ -317,6 +344,148 @@ function bindSettleEvents() {
     showToast('已反结账：' + month + '（原因已记录）');
     refreshSettle(); syncAll();
   });
+
+  // ===== 顶部批量操作按钮（对齐金蝶期末处理 Tab 顶部按钮栏）=====
+  onBtn('settleCheckAll', function () {
+    var cb = $('settleCheckAll');
+    var checked = cb.checked;
+    document.querySelectorAll('#settleProcessCards .settle-card input[type=checkbox]').forEach(function (inpp) {
+      inpp.checked = checked;
+    });
+  });
+  onBtn('btnSettleRecalc', function () {
+    // 重新测算 = 强制刷新卡片状态（已结转/未结转金额来自 store，无额外测算逻辑）
+    showToast('已刷新测算');
+    refreshSettle();
+  });
+  onBtn('btnSettleBatchGen', async function () {
+    // 批量生成：遍历所有勾选的卡片，逐个生成凭证
+    var cards = document.querySelectorAll('#settleProcessCards .settle-card input[type=checkbox]:checked');
+    if (!cards.length) return showToast('请先勾选要生成凭证的卡片', 'warn');
+    var month = selMonth;
+    if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
+    var okCount = 0, skipCount = 0, errCount = 0, msgs = [];
+    // 收集勾选的模板（去重，因为自定义卡和系统卡都走 settleTplList）
+    var doneIds = {};
+    var toGenerate = [];
+    cards.forEach(function (cb) {
+      var card = cb.closest('.settle-card');
+      var id = cardTplId(card);
+      if (!id || doneIds[id]) return;
+      doneIds[id] = true;
+      toGenerate.push({ id: id, card: card });
+    });
+    if (!toGenerate.length) return showToast('没有可生成的卡片', 'warn');
+    for (var i = 0; i < toGenerate.length; i++) {
+      var g = toGenerate[i];
+      var sysMap = { dep: 'btnDepVoucher', cost: 'btnCarryCost', vat: 'btnCarryVat', surTax: 'btnAccrueSurTax', incTax: 'btnAccrueIncTax', profit: 'btnReCarryForward' };
+      if (sysMap[g.id]) {
+        // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑
+        var sysKindMap = { dep: S.VOUCHER_KINDS.DEPR, cost: S.VOUCHER_KINDS.CARRY_COST, vat: S.VOUCHER_KINDS.CARRY_VAT, surTax: S.VOUCHER_KINDS.ACCRUE_SURTAX, incTax: S.VOUCHER_KINDS.ACCRUE_INCTAX, profit: S.VOUCHER_KINDS.CARRY_PL };
+        var existed = S.periodVouchersOfKind(month, sysKindMap[g.id]);
+        if (existed.length) { skipCount++; continue; }
+        // 直接调各按钮的处理函数（复用已有逻辑）
+        if (g.id === 'profit') {
+          var oldPL = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_PL);
+          if (oldPL.length) { skipCount++; continue; }
+          var rPL = S.carryForwardProfit(month);
+          if (rPL.ok) okCount++; else { errCount++; msgs.push('结转损益：' + rPL.msg); }
+        } else if (g.id === 'dep') {
+          var rD = S.depreciateMonth(month);
+          if (rD.ok) okCount++; else { errCount++; msgs.push('计提折旧：' + rD.msg); }
+        } else if (g.id === 'cost') {
+          var tplC = getSettleTemplates().filter(function (t) { return t.id === 'cost'; })[0] || {};
+          var estC = S.costVoucherEstimate(month, tplC);
+          var amtC = U.num(tplC.costAmount) > 0 ? U.num(tplC.costAmount) : estC.amount;
+          if (amtC < 0.005) { skipCount++; continue; }
+          var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
+          if (costExisted.length) { skipCount++; continue; }
+          var rC = S.genCostVoucher(month, tplC, amtC);
+          if (rC && rC.ok) okCount++; else { errCount++; msgs.push('结转销售成本：' + (rC ? rC.msg : '失败')); }
+        } else if (g.id === 'vat') {
+          var estV = S.profitStatement(month);
+          var vatV = Math.max(0, U.num(estV.totalRevenue) - U.num(estV.totalExpense)) * 0.13;
+          if (vatV < 0.005) { skipCount++; continue; }
+          var vt = (S.vatEditGet(month).entries || [])[0] || {};
+          var vatTarget = vt.target || '222101';
+          var vatTargetName = vt.name || (S.subject(vatTarget) ? S.subject(vatTarget).name : '未交增值税');
+          var rrV = genOnceVoucher(month, S.VOUCHER_KINDS.CARRY_VAT, '转出' + month + '未交增值税', [
+            { code: '2221', name: S.subject('2221') ? S.subject('2221').name : '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
+            { code: vatTarget, name: vatTargetName, summary: '转出未交增值税', dr: 0, cr: vatV }
+          ]);
+          if (rrV.ok) okCount++; else { skipCount++; }
+        } else if (g.id === 'surTax') {
+          var estS = S.profitStatement(month);
+          var vatS = Math.max(0, U.num(estS.totalRevenue) - U.num(estS.totalExpense)) * 0.13;
+          var amtS = vatS * 0.12;
+          if (amtS < 0.005) { skipCount++; continue; }
+          var rrS = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_SURTAX, '计提' + month + '附加税', [
+            { code: '6403', name: S.subject('6403') ? S.subject('6403').name : '税金及附加', summary: '计提附加税', dr: amtS, cr: 0 },
+            { code: '222109', name: '应交附加税', summary: '计提附加税', dr: 0, cr: amtS }
+          ]);
+          if (rrS.ok) okCount++; else { skipCount++; }
+        } else if (g.id === 'incTax') {
+          var estI = S.profitStatement(month);
+          var amtI = Math.max(0, U.num(estI.netProfit)) * 0.25;
+          if (amtI < 0.005) { skipCount++; continue; }
+          var rrI = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_INCTAX, '计提' + month + '所得税', [
+            { code: '6801', name: S.subject('6801') ? S.subject('6801').name : '所得税费用', summary: '计提所得税', dr: amtI, cr: 0 },
+            { code: '222115', name: '应交所得税', summary: '计提所得税', dr: 0, cr: amtI }
+          ]);
+          if (rrI.ok) okCount++; else { skipCount++; }
+        }
+      } else {
+        // 预置摊销/自定义模板：走 genVoucherFromTpl
+        var tpl = findSettleTemplate(g.id);
+        if (!tpl) { errCount++; msgs.push('模板「' + g.id + '」不存在'); continue; }
+        var oldCust = S.periodVouchersOfKind(month, 'settleTpl:' + tpl.id);
+        if (oldCust.length) { skipCount++; continue; }
+        var ok = genVoucherFromTpl(tpl, true); // 静默模式，不弹 toast
+        if (ok) okCount++; else { errCount++; }
+      }
+    }
+    refreshSettle(); syncAll();
+    // 汇总结果
+    var summary = '批量完成：成功 ' + okCount + ' 张，跳过 ' + skipCount + ' 张，失败 ' + errCount + ' 张';
+    showToast(summary, errCount > 0 ? 'warn' : 'success');
+    if (msgs.length) showToast(msgs.slice(0, 3).join('；'), 'error');
+  });
+  onBtn('btnSettleQuickClose', function () {
+    // 从期末处理 Tab 直接跳到结账 Tab
+    switchSettleTab('close');
+  });
+  onBtn('btnSettleQuickReopen', function () {
+    switchSettleTab('reopen');
+  });
+}
+
+// 期末处理 Tab 切换（顶部批量按钮里的"结账"/"反结账"快捷入口）
+function switchSettleTab(target) {
+  var map = { close: 'settlePaneClose', reopen: 'settlePaneReopen', process: 'settlePaneProcess' };
+  document.querySelectorAll('#settleTabs .settle-tab').forEach(function (tab) {
+    tab.classList.toggle('active', tab.getAttribute('data-tab') === target);
+  });
+  ['settlePaneProcess', 'settlePaneClose', 'settlePaneReopen'].forEach(function (id) {
+    var p = document.getElementById(id); if (p) p.style.display = id === map[target] ? '' : 'none';
+  });
+  refreshSettle();
+}
+// 同步全选 checkbox 状态：所有可见卡片都勾选 = 全选勾选；部分勾选 = 半选(indeterminate)；都不勾 = 不勾
+function syncCheckAllState() {
+  var ca = $('settleCheckAll');
+  if (!ca) return;
+  var visibleCbs = [];
+  document.querySelectorAll('#settleProcessCards .settle-card').forEach(function (card) {
+    if (card.style.display !== 'none' && !card.classList.contains('settle-add-card')) {
+      var cb = card.querySelector('.settle-card-check input');
+      if (cb) visibleCbs.push(cb);
+    }
+  });
+  if (!visibleCbs.length) { ca.checked = false; ca.indeterminate = false; return; }
+  var allChecked = visibleCbs.every(function (cb) { return cb.checked; });
+  var someChecked = visibleCbs.some(function (cb) { return cb.checked; });
+  ca.checked = allChecked;
+  ca.indeterminate = !allChecked && someChecked;
 }
 // 卡片 checkbox / 设置按钮（innerHTML 重建后需每次重绑）
 function bindSettleCards() {
@@ -331,28 +500,30 @@ function bindSettleCards() {
       if (!id) return;
       var tpl = settleTmplList.filter(function (t) { return t.id === id; })[0];
       if (tpl) { tpl.enabled = cb.checked; persistSettleTemplates(); }
+      // 启用/禁用后实时刷新卡片显隐（对齐金蝶：取消勾选卡片立即消失）
+      refreshSettle();
     });
   });
   document.querySelectorAll('.settle-card').forEach(function (card) {
     var id = cardTplId(card);
     if (!id) return;
-    card.querySelectorAll('.settle-link[data-act]').forEach(function (link) {
-      var act = link.getAttribute('data-act');
+    card.querySelectorAll('[data-act]').forEach(function (el) {
+      var act = el.getAttribute('data-act');
       // 禁用/启用：链接文案随模板启用状态切换（每次 refresh 更新）
       if (act === 'disable') {
         var cur = findSettleTemplate(id);
-        if (cur) link.textContent = cur.enabled ? '禁用' : '启用';
+        if (cur) el.textContent = cur.enabled ? '禁用' : '启用';
       }
-      if (link._bound) return;
-      link._bound = true;
+      if (el._bound) return;
+      el._bound = true;
       if (act === 'setting') {
-        link.addEventListener('click', function (e) {
+        el.addEventListener('click', function (e) {
           e.preventDefault(); e.stopPropagation();
           selectSettleTemplate(id);
           openSettleTemplateModal();
         });
       } else if (act === 'disable') {
-        link.addEventListener('click', function (e) {
+        el.addEventListener('click', function (e) {
           e.preventDefault(); e.stopPropagation();
           var t = findSettleTemplate(id);
           if (!t) return;
@@ -361,53 +532,114 @@ function bindSettleCards() {
           refreshSettle();
         });
       } else if (act === 'delete') {
-        link.addEventListener('click', async function (e) {
+        el.addEventListener('click', async function (e) {
           e.preventDefault(); e.stopPropagation();
           var t = findSettleTemplate(id);
           if (!t) return;
           if (!t.custom) return showToast('系统模板不可删除', 'warn');
           if (!(await H.confirmAsync('确认删除自定义模板「' + t.name + '」？', { title: '删除模板' }))) return;
           settleTmplList = settleTmplList.filter(function (x) { return x !== t; });
+          // 预置摊销模板删除后记入 dismissed，防止刷新后复活
+          if (t.preset) {
+            try {
+              var DISMISS_KEY = 'settle_preset_dismissed';
+              var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]');
+              if (!Array.isArray(d)) d = [];
+              if (d.indexOf(t.id) < 0) { d.push(t.id); localStorage.setItem(DISMISS_KEY, JSON.stringify(d)); }
+            } catch (e) {}
+          }
           persistSettleTemplates();
           // 删除对应 DOM 卡片并重新渲染（自定义卡按 data-id 定位，系统卡无此属性不动）
           if (card.getAttribute('data-custom')) card.remove();
           refreshSettle();
+        });
+      } else if (act === 'gen') {
+        el.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          genVoucherFromTpl(findSettleTemplate(id));
         });
       }
     });
   });
 }
 
-// 动态渲染自定义模板卡片：插入到 #settleProcessCards 中（结转损益之后），
-// 启用时显示、禁用时隐藏；每个卡片带 checkbox + 设置/禁用/删除 链接，与系统卡一致。
+// 动态渲染自定义/预置摊销模板卡片：插入到 #settleProcessCards 中（结转损益之后），
+// 启用时显示、禁用时隐藏；每个卡片带 checkbox + 禁用/设置/删除 链接，与系统卡一致。
+// 列表末尾追加 "+ 新增自定义模板" 占位卡（金蝶风格）。
 function renderCustomCards(procList, profitCard) {
   if (!procList) return;
-  // 先移除上一次渲染的自定义卡片（避免重复叠加）
+  // 先移除上一次渲染的卡片（避免重复叠加）
   procList.querySelectorAll('.settle-card[data-custom]').forEach(function (el) { el.remove(); });
+  procList.querySelectorAll('.settle-add-card').forEach(function (el) { el.remove(); });
+  // custom=true 包括预置摊销模板（preset=true）和用户新增模板
   var customs = settleTmplList.filter(function (t) { return t.custom; });
+  // 排序：预置摊销模板在前，用户自定义在后，按 id 顺序
+  customs.sort(function (a, b) {
+    if (a.preset && !b.preset) return -1;
+    if (!a.preset && b.preset) return 1;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+  var insertAnchor = profitCard ? profitCard : procList.firstElementChild;
   customs.forEach(function (t) {
     var enabled = t.enabled !== false;
+    var done = S.periodVouchersOfKind(selMonth, 'settleTpl:' + t.id);
+    // 已结转金额 = 已生成摊销凭证的借方合计（取第一张凭证即可，一张模板一期只允许一张）
+    var carried = 0;
+    if (done.length) {
+      done[0].entries.forEach(function (e) { carried += U.num(e.dr); });
+      carried = round2(carried);
+    }
+    // 模板分录借方合计 = 应结转总额
+    var totalDr = 0;
+    (t.template || []).forEach(function (r) { totalDr += U.num(r.dr); });
+    totalDr = round2(totalDr);
+    var todo = round2(Math.max(0, totalDr - carried));
+    var vchTxt = done.length ? ('已生成 ' + (done[0].word || '记') + '-' + done[0].no)
+      : (totalDr > 0 ? '未结转' : '未设置分录金额');
+    var cardBodyHtml;
+    if (done.length || totalDr > 0) {
+      // 有金额/已生成：显示已结转/未结转 两行统计（金蝶风格）
+      cardBodyHtml =
+        '<div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val">' + money(carried) + '</span></div>' +
+        '<div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val">' + money(todo) + '</span></div>';
+    } else {
+      // 空模板：提示语
+      cardBodyHtml = '<div class="settle-card-sub" style="color:var(--ty-text-3)">' + esc(t.summary || t.name) + '（请设置分录金额）</div>';
+    }
     var card = document.createElement('div');
-    card.className = 'settle-card' + (enabled ? ' settle-card-checked' : '');
+    card.className = 'settle-card' + (enabled ? ' settle-card-checked' : ' settle-card-disabled');
     card.setAttribute('data-custom', '1');
     card.setAttribute('data-id', t.id);
+    card.style.display = enabled ? '' : 'none';
+    var presetTag = t.preset ? '<span class="settle-card-preset-tag">预置</span>' : '';
     card.innerHTML =
       '<div class="settle-card-head">' +
         '<label class="settle-card-check"><input type="checkbox"' + (enabled ? ' checked' : '') + ' /></label>' +
-        '<span class="settle-card-name">' + esc(t.name) + '</span>' +
+        '<span class="settle-card-name">' + esc(t.name) + '</span>' + presetTag +
         '<i class="settle-card-help" title="' + esc(t.summary || t.name) + '">?</i>' +
+        '<span class="settle-card-op">' +
+          '<a class="settle-link" data-act="disable">' + (enabled ? '禁用' : '启用') + '</a>' +
+          '<a class="settle-link" data-act="setting">设置</a>' +
+          '<a class="settle-link link-del" data-act="delete">删除</a>' +
+        '</span>' +
       '</div>' +
-      '<div class="settle-card-body"><div class="settle-card-sub">' + esc(t.summary || t.name) + '</div></div>' +
+      '<div class="settle-card-body">' + cardBodyHtml + '</div>' +
       '<div class="settle-card-foot">' +
-        '<span class="settle-vch"></span>' +
-        '<a class="settle-link settle-link-inline" data-act="setting" href="javascript:;">设置</a>' +
-        '<a class="settle-link settle-link-inline" data-act="disable" href="javascript:;">' + (enabled ? '禁用' : '启用') + '</a>' +
-        '<a class="settle-link settle-link-inline link-del" data-act="delete" href="javascript:;">删除</a>' +
+        '<span class="settle-vch">' + vchTxt + '</span>' +
+        '<button class="btn btn-sm btn-ghost" data-act="gen">生成凭证</button>' +
       '</div>';
-    // 紧跟结转损益卡片之后插入（保持利润第一、自定义卡依次排列）
-    if (profitCard && profitCard.nextSibling) procList.insertBefore(card, profitCard.nextSibling);
+    if (insertAnchor && insertAnchor.nextSibling) procList.insertBefore(card, insertAnchor.nextSibling);
     else procList.appendChild(card);
+    insertAnchor = card;
   });
+  // "+ 新增自定义模板" 占位卡（金蝶风格，点击打开模板弹窗）
+  var addCard = document.createElement('div');
+  addCard.className = 'settle-add-card';
+  addCard.innerHTML =
+    '<div class="settle-add-icon">+</div>' +
+    '<div>新增自定义模板</div>';
+  addCard.addEventListener('click', function () { openSettleTemplateModal(); });
+  procList.appendChild(addCard);
   bindSettleCards();
 }
 
@@ -608,12 +840,24 @@ function refreshSettle() {
     cye.disabled = closed;
   }
 
+  // 「利润分配」仅 12 月显示（年末提取盈余公积/分配股利），已分配显示「重新分配」
+  var pd = $('btnProfitDist');
+  if (pd) {
+    var isDecPd = String(curMonth || '').substring(5, 7) === '12';
+    pd.style.display = isDecPd ? '' : 'none';
+    pd.disabled = closed;
+    if (closed) pd.textContent = '已分配';
+    else pd.textContent = (kindVs(curVs, K.PROFIT_DIST).length > 0) ? '重新分配' : '利润分配';
+  }
+
   // 增值税编辑入口
   var btnVatew = $('btnVatew');
   if (btnVatew && !btnVatew._bound) {
     btnVatew._bound = true;
     btnVatew.addEventListener('click', openVatEditModal);
   }
+  // 同步全选 checkbox 状态（刷新后可见卡片集合可能变了）
+  syncCheckAllState();
 }
 
 // 增值税编辑弹窗（结账页 转出未交增值税 凭证设置）
@@ -745,8 +989,9 @@ function renderReopenMonthNav() {
 
 // 通用：生成单张 demo 凭证（期末处理生成凭证后强制立即备份，防丢失/可回滚）
 // kind：期末业务类型标记（S.VOUCHER_KINDS），写入 v.kind 供后续查重/结账检查识别。
-function makeSimpleVoucher(month, summary, entries, kind) {
-  var v = S.addVoucher({ word: '转', date: U.lastDay(month), attach: 0, summary: summary, kind: kind, entries: entries });
+// word：可选凭证字（自定义结账模板带自己的凭证字，如「记」）；不传则沿用历史默认「转」。
+function makeSimpleVoucher(month, summary, entries, kind, word) {
+  var v = S.addVoucher({ word: word || '转', date: U.lastDay(month), attach: 0, summary: summary, kind: kind, entries: entries });
   if (v && S.backupNow) S.backupNow();
   return v;
 }
@@ -757,7 +1002,7 @@ function makeSimpleVoucher(month, summary, entries, kind) {
 // 本期已存在同类凭证则拒绝，须先删除旧凭证再重做。
 // 查重按 v.kind（结构识别）而非摘要正则——导入凭证无 summary，摘要匹配恒不命中。
 // 返回 { ok, v } 或 { ok:false, msg }
-function genOnceVoucher(month, kind, summary, entries) {
+function genOnceVoucher(month, kind, summary, entries, word) {
   // 已结账期间禁止再生成凭证（否则会向已锁定期间写入，破坏账务一致性）。
   // 对齐同文件其它期末处理按钮（结转损益/反结账）已有的 isPeriodClosed 拦截。
   if (S.isPeriodClosed(month)) return { ok: false, msg: '该期已结账，请先反结账再操作', month: month };
@@ -765,7 +1010,7 @@ function genOnceVoucher(month, kind, summary, entries) {
   if (existed.length) {
     return { ok: false, msg: '本期已生成 ' + existed.length + ' 张同类凭证（' + (existed[0].word || '转') + '-' + existed[0].no + '），请勿重复生成；如需重做请先删除旧凭证', vouchers: existed };
   }
-  var v = makeSimpleVoucher(month, summary, entries, kind);
+  var v = makeSimpleVoucher(month, summary, entries, kind, word);
   // 修复：原实现忽略 addVoucher 返回，写盘被拒（借贷不平衡等）时仍提示成功。
   if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '凭证生成失败，请稍后重试' };
   return { ok: true, v: v };
@@ -933,6 +1178,25 @@ function loadSettleTemplates() {
       });
     }
   } catch (e) {}
+  // 补入预置摊销模板（金蝶风格）：只加入不在列表里的、也未被用户删除过的，已存在的保留用户配置
+  var DISMISS_KEY = 'settle_preset_dismissed';
+  var dismissed = {};
+  try {
+    var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || 'null');
+    if (Array.isArray(d)) d.forEach(function (id) { dismissed[id] = true; });
+  } catch (e) {}
+  var existingIds = list.map(function (t) { return t.id; });
+  PRESET_AMORT_TEMPLATES.forEach(function (p) {
+    if (existingIds.indexOf(p.id) < 0 && !dismissed[p.id]) {
+      list.push({
+        id: p.id, name: p.name, enabled: false, custom: true,
+        summary: p.summary, word: '记', template: [], hasEntries: false,
+        preset: true
+      });
+    }
+  });
+  // 凭证字规范化：任何模板 word 为空一律默认「记」（金蝶默认记账凭证）
+  list.forEach(function (t) { if (!t.word) t.word = '记'; });
   return list;
 }
 var settleTmplList = loadSettleTemplates();
@@ -956,6 +1220,7 @@ function applySettleTemplateStates() {
     var enabled = tpl ? tpl.enabled : true;
     var cb = card.querySelector('.settle-card-check input');
     if (cb) { cb.checked = !!enabled; cb.disabled = false; }
+    card.style.display = enabled ? '' : 'none';
     card.classList.toggle('settle-card-disabled', !enabled);
   });
 }
@@ -1002,13 +1267,27 @@ function bindTmplTreeItems(ul) {
 function selectSettleTemplate(id) {
   settleTmplSelectedId = id;
   var t = findSettleTemplate(id);
-  // 切换右侧面板：系统/已有模板走表单面板，新增自定义走 newPanel
-  var formPanel = $('settleTmplFormPanel');
-  var newPanel = $('settleTmplNewPanel');
-  if (newPanel) newPanel.style.display = 'none';
-  if (formPanel) formPanel.style.display = '';
   renderSettleTmplTree();
+  // 所有模板都走同一个 FormPanel，只根据 t.custom 切换 extra 区域（成本参数 vs 分录表格）
+  var formPanel = $('settleTmplFormPanel');
+  if (formPanel) formPanel.style.display = '';
   fillSettleTmplForm(t);
+  if (t && t.custom) {
+    // 预置摊销/自定义模板：隐藏成本参数，显示分录表格
+    var costExtra = $('settleTmplCostExtra'); if (costExtra) costExtra.style.display = 'none';
+    var custExtra = $('settleTmplCustomExtra'); if (custExtra) custExtra.style.display = '';
+    editingCustomId = id;
+    // 把当前模板的分录加载到 newTplRows 供 renderNewTplRows 使用
+    newTplRows = (t.template || []).map(function (r) { return tplToUiRow(r, t.ruleType); });
+    if (!newTplRows.length) newTplRows = [
+      { summary: '', code: '', dc: 'D', amount: 0, ratio: 0 },
+      { summary: '', code: '', dc: 'C', amount: 0, ratio: 0 }
+    ];
+    renderNewTplRows();
+  } else {
+    // 系统模板：隐藏分录表格，显示各自专属表单（成本参数等在 fillSettleTmplForm 内按 id 控制显隐）
+    var custExtra2 = $('settleTmplCustomExtra'); if (custExtra2) custExtra2.style.display = 'none';
+  }
 }
 
 // 特殊模板字段填充（期末调汇 / 结转销售成本）
@@ -1041,15 +1320,13 @@ function updateCostEstimate() {
 function fillSettleTmplForm(t) {
   var formPanel = $('settleTmplFormPanel');
   if (!formPanel || !t) return;
-  setText('settleTmplFormName', t.name);
-  setText('settleTmplFormTag', t.custom ? '自定义' : '系统');
-  // 删除按钮仅自定义模板可见（系统模板不可删）
+  // 模板名称改成可编辑 input
+  var nm = $('settleTmplFormName'); if (nm) nm.value = t.name || '';
+  // 删除按钮：自定义/预置模板显示，系统模板隐藏
   var delBtn = $('btnSettleTmplDelete');
-  if (delBtn) delBtn.style.display = t.custom ? '' : 'none';
+  if (delBtn) delBtn.style.display = (t.custom || t.preset) ? '' : 'none';
   var en = $('settleTmplFormEnabled'); if (en) en.checked = !!t.enabled;
-  var dt = $('settleTmplFormDate'); if (dt) dt.value = t.date || currentPeriod();
-  var wd = $('settleTmplFormWord'); if (wd) { if (!wd.options.length) fillWordOptions(wd); wd.value = t.word || ''; }
-  var sm = $('settleTmplFormSummary'); if (sm) sm.value = t.summary || '';
+  var wd = $('settleTmplFormWord'); if (wd) { if (!wd.options.length) fillWordOptions(wd); wd.value = t.word || '记'; }
 
   // 结转销售成本专属
   var costExtra = $('settleTmplCostExtra');
@@ -1079,13 +1356,15 @@ function fillWordOptions(sel) {
 
 function setText(id, txt) { var el = $(id); if (el) el.textContent = txt; }
 
-// 显示新增模板面板
+// 显示新增模板面板（分录表格：模板名称 + 凭证字 + 摘要/科目/方向/金额）
 function showSettleTmplNewPanel() {
-  var formPanel = $('settleTmplFormPanel');
-  var newPanel = $('settleTmplNewPanel');
-  if (formPanel) formPanel.style.display = 'none';
-  if (newPanel) newPanel.style.display = '';
-  var wd = $('settleTmplNewWord'); if (wd && !wd.options.length) fillWordOptions(wd);
+  var id = 'custom_' + Date.now();
+  settleTmplList.push({
+    id: id, name: '自定义模板', enabled: true, custom: true,
+    summary: '', word: '记', template: [], hasEntries: false
+  });
+  persistSettleTemplates();
+  selectSettleTemplate(id);
 }
 
 // 模板列表（弹窗打开时）
@@ -1110,29 +1389,476 @@ function saveSettleTemplate(id, data) {
   persistSettleTemplates();
 }
 
-// 从新增面板创建自定义模板（名称 + 凭证字；分录表格为阶段二能力）
-function addSettleTemplateFromPanel() {
-  var nameEl = $('settleTmplNewName');
-  var wordEl = $('settleTmplNewWord');
-  var name = nameEl ? nameEl.value.trim() : '';
-  if (!name) { showToast('请输入模板名称', 'error'); return; }
-  var id = 'custom_' + Date.now();
-  settleTmplList.push({ id: id, name: name, enabled: true, custom: true, summary: name, word: wordEl ? wordEl.value : '', template: [], hasEntries: false });
-  settleTmplSelectedId = id;
-  persistSettleTemplates();
-  renderSettleTmplTree();
-  refreshSettle(); // 新增后立即在期末处理页渲染卡片
-  showToast('已新增模板：' + name);
+/* ============================================================
+ * 结账模板「分录表格」（自定义模板：固定金额多行分录）
+ * 背景：此前「新增模板」只能录名称 + 凭证字，分录表格（index.html #settleTmplNewBody）
+ *   有 DOM、有样式（.tmpl-cell-inp/.tmpl-op），但没有任何 JS —— 即「阶段二」未落地，
+ *   所以参考实现里那种「借 540112 主营业务成本_装修款 87,244.41 / 贷 180101…」的
+ *   固定金额摊销类模板无处可存。此处补齐：
+ *   · 行模型 newTplRows = [{summary, code, dr, cr}]（类似录凭证双金额列）
+ *   · 落盘口径仍是 buildSettleTmplRow 的 {summary, code, dr, cr}，与历史数据完全兼容
+ *   · 借贷平衡在「保存」与「生成凭证」两处都校验（财务安全：不平的模板绝不生成凭证）
+ * ============================================================ */
+var newTplRows = [];
+var editingCustomId = null; // 新建面板当前编辑的自定义模板 id；null = 新建
+
+// 行模型 {summary, code, dc:'D'|'C', amount, ruleType} → 落盘 {summary, code, dr, cr, ruleType}
+// 取数规则（金蝶四选一）
+// 'none'       → 不设置取数（金额在模板分录里手填固定值，生成时带出，如每月固定电话费 500）
+// 'manual'     → 按统一金额(手填)分摊（模板级 totalAmount × 每行 ratio）
+// 'subject'    → 按统一金额(科目余额)分摊（S.subjectEndBalance × 每行 ratio）
+// 'per_row'    → 按凭证分录逐行指定（每行独立填 amount）
+var RULE_OPTIONS = [
+  { key: 'none',    label: '不设置取数' },
+  { key: 'manual',  label: '按统一金额(手填金额)分摊' },
+  { key: 'subject', label: '按统一金额(任一科目金额)分摊' },
+  { key: 'per_row', label: '按凭证分录逐行指定' }
+];
+function normRuleType(v) {
+  var s = String(v == null ? '' : v).trim();
+  // 老数据兼容：fixed → per_row，balance/amount/formula → per_row（降级处理）
+  if (s === 'fixed' || s === 'per_row') return 'per_row';
+  if (s === 'none' || s === 'manual' || s === 'subject') return s;
+  if (s === 'balance' || s === 'amount' || s === 'formula') return 'per_row';
+  return 'none'; // 金蝶默认：不设置取数
 }
+
+// 行模型 → 落盘模型（统一走 buildSettleTmplRow）
+function uiRowToTpl(r) {
+  var o;
+  if (r.ratio != null) {
+    // 分摊规则：只存 ratio（百分比小数，如 0.3 表示 30%）
+    o = buildSettleTmplRow({ summary: r.summary, code: String(r.code || '').trim(), dr: 0, cr: 0 });
+    o.ratio = U.num(r.ratio);
+  } else {
+    // 逐行指定：存 dc + amount → 拆成 dr/cr
+    var a = U.num(r.amount);
+    o = buildSettleTmplRow({ summary: r.summary, code: String(r.code || '').trim(), dr: r.dc === 'C' ? 0 : a, cr: r.dc === 'C' ? a : 0 });
+  }
+  o.dc = r.dc || 'D';
+  return o;
+}
+// 落盘模型 → 行模型（读 ruleType 决定用 ratio 还是 amount）
+function tplToUiRow(r, ruleType) {
+  ruleType = normRuleType(ruleType);
+  var base = { summary: r.summary || '', code: r.code || '', dc: r.dc || ((U.num(r.cr) > 0 && U.num(r.dr) <= 0) ? 'C' : 'D') };
+  if (ruleType === 'manual' || ruleType === 'subject') {
+    base.ratio = r.ratio != null ? U.num(r.ratio) : 0;
+    base.amount = 0;
+  } else {
+    var dr = U.num(r.dr), cr = U.num(r.cr);
+    base.amount = (cr > 0 && dr <= 0) ? cr : dr;
+    base.ratio = 0;
+  }
+  return base;
+}
+
+function _tmplAmt(v) { var n = U.num(v); return n ? money(round2(n)) : ''; }
+
+function renderNewTplRows() {
+  var tb = $('settleTmplNewBody');
+  if (!tb) return;
+  // 当前模板的 ruleType（决定金额列显示什么）
+  var curTpl = findSettleTemplate(settleTmplSelectedId);
+  var ruleType = normRuleType(curTpl ? curTpl.ruleType : 'none');
+  // 预查科目名称表
+  var subjMap = {};
+  try { (S.subjects ? S.subjects() : []).forEach(function (s) { subjMap[String(s.code)] = s.name; }); } catch(e) {}
+  var html = '';
+  newTplRows.forEach(function (r, i) {
+    var name = subjMap[String(r.code || '')];
+    var codeText = r.code ? (name ? r.code + ' ' + name : r.code) : '';
+    // 金额列：按 ruleType 切换显示
+    var amtCell;
+    if (ruleType === 'manual' || ruleType === 'subject') {
+      // 分摊规则：显示比例输入框（百分比）
+      var pctVal = r.ratio != null ? (round2(r.ratio * 100)) : '';
+      amtCell = '<div class="tmpl-amount-wrap">'
+        + '<input class="tmpl-cell-inp" data-f="ratio" value="' + pctVal + '" placeholder="0" style="text-align:right">%'
+        + '</div>';
+    } else {
+      // 不设置取数 / 逐行指定：金额输入框（金额在模板里手填，生成时带出）
+      amtCell = '<input class="tmpl-cell-inp" data-f="amount" value="' + _tmplAmt(r.amount) + '" placeholder="0.00" style="text-align:right">';
+    }
+    html += '<tr data-idx="' + i + '">'
+      + '<td class="col-op">'
+      +   '<span class="tmpl-op tmpl-op-add" data-op="add" title="在下方插入一行"></span>'
+      +   '<span class="tmpl-op tmpl-op-del" data-op="del" title="删除本行"></span>'
+      + '</td>'
+      + '<td><input class="tmpl-cell-inp" data-f="summary" value="' + esc(r.summary) + '" placeholder="摘要"></td>'
+      + '<td><input class="tmpl-cell-inp" data-f="code" value="' + esc(codeText) + '" placeholder="输入科目编码或名称"></td>'
+      + '<td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="' + r.dc + '">' + (r.dc === 'C' ? '贷' : '借') + '</span></td>'
+      + '<td class="col-amount">' + amtCell + '</td>'
+      + '</tr>';
+  });
+  tb.innerHTML = html;
+  tb.querySelectorAll('input[data-f="code"]').forEach(function (inp) {
+    bindSubjectPicker(inp, { onPick: function (code, s) {
+      inp.value = s && s.name ? (code + ' ' + s.name) : code;
+      syncTplRowFromInput(inp);
+    } });
+  });
+  updateNewTplTotal();
+}
+
+// 表格事件：加/删行走重建；输入就地同步
+function bindNewTplBodyEvents() {
+  var tb = $('settleTmplNewBody');
+  if (!tb || tb.dataset.bound) return;
+  tb.dataset.bound = '1';
+  tb.addEventListener('click', function (e) {
+    // 方向 popover：点击「借/贷」文字 → 弹小 popover 选
+    var dcEl = e.target.closest && e.target.closest('.tmpl-dc-toggle');
+    if (dcEl) {
+      e.preventDefault();
+      var tr = dcEl.closest('tr');
+      var idx = tr ? parseInt(tr.getAttribute('data-idx'), 10) : -1;
+      if (idx >= 0) openDcPopover(idx, dcEl);
+      return;
+    }
+    var op = e.target && e.target.getAttribute ? e.target.getAttribute('data-op') : '';
+    if (!op) return;
+    var tr = e.target.closest('tr');
+    if (!tr) return;
+    var idx = parseInt(tr.getAttribute('data-idx'), 10);
+    if (isNaN(idx) || !newTplRows[idx]) return;
+    if (op === 'del') {
+      newTplRows.splice(idx, 1);
+      if (!newTplRows.length) newTplRows.push({ summary: '', code: '', dc: 'D', amount: 0, ratio: 0 });
+    } else {
+      // 在当前行下方插入，默认方向：上一行是借则插贷，否则插借（一借一贷配对）
+      var prevDc = newTplRows[idx] ? newTplRows[idx].dc : 'D';
+      newTplRows.splice(idx + 1, 0, { summary: '', code: '', dc: prevDc === 'D' ? 'C' : 'D', amount: 0, ratio: 0 });
+    }
+    renderNewTplRows();
+  });
+  var onEdit = function (e) { syncTplRowFromInput(e.target); };
+  tb.addEventListener('input', onEdit);
+  tb.addEventListener('change', onEdit);
+}
+
+function syncTplRowFromInput(el) {
+  var f = el && el.getAttribute ? el.getAttribute('data-f') : '';
+  if (!f) return;
+  var tr = el.closest('tr');
+  if (!tr) return;
+  var r = newTplRows[parseInt(tr.getAttribute('data-idx'), 10)];
+  if (!r) return;
+  if (f === 'summary') r.summary = el.value;
+  else if (f === 'code') {
+    var raw = String(el.value || '').trim();
+    // 编码 + 名称一起存，但只把空格前的编码写入 r.code
+    r.code = raw.split(/\s+/)[0] || raw;
+  }
+  else if (f === 'dc') r.dc = (el.value === 'C') ? 'C' : 'D';
+  else if (f === 'amount') r.amount = U.num(String(el.value || '').replace(/[,¥\s]/g, ''));
+  else if (f === 'ratio') r.ratio = round2(U.num(String(el.value || '').replace(/[,¥\s%]/g, '')) / 100);
+  updateNewTplTotal();
+}
+
+// 合计提示：按 ruleType 切换显示
+function updateNewTplTotal() {
+  var tb = $('settleTmplNewBody'); if (!tb) return;
+  var curTpl = findSettleTemplate(settleTmplSelectedId);
+  var ruleType = normRuleType(curTpl ? curTpl.ruleType : 'none');
+  var out = $('settleTmplNewTotal');
+  if (!out) return;
+
+  if (ruleType === 'manual' || ruleType === 'subject') {
+    // 分摊规则：显示比例合计
+    var ratioSum = round2(newTplRows.reduce(function (s, r) { return s + U.num(r.ratio); }, 0));
+    out.innerHTML = '比例合计 <b>' + round2(ratioSum * 100) + '%</b>　';
+    out.innerHTML += Math.abs(ratioSum - 1) < 0.005
+      ? '<span style="color:#16a34a">分摊完整 ✓</span>'
+      : '<span style="color:var(--ty-red)">合计 ≠ 100%，请检查分摊比例</span>';
+    return;
+  }
+  // 不设置取数 / 逐行指定：借贷平衡（金额在模板里手填）
+  // per_row：借贷平衡
+  var dr = 0, cr = 0;
+  newTplRows.forEach(function (r) { var a = U.num(r.amount); if (r.dc === 'C') cr += a; else dr += a; });
+  dr = round2(dr); cr = round2(cr);
+  var diff = round2(dr - cr);
+  out.innerHTML = '借方合计 <b>' + money(dr) + '</b>　贷方合计 <b>' + money(cr) + '</b>　';
+  out.innerHTML += Math.abs(diff) < 0.005
+    ? '<span style="color:#16a34a">借贷平衡 ✓</span>'
+    : '<span style="color:var(--ty-red)">差额 ' + money(Math.abs(diff)) + ' ' + (diff > 0 ? '（贷方少 ' : '（借方少 ') + money(Math.abs(diff)) + '）</span>';
+}
+
+// ─── 方向 popover（点击「借/贷」弹出） ───────────────────────────────
+var _dcPopDocClick = function (e) { if (!e.target.closest('.tmpl-dc-popover')) closeDcPopover(); };
+function closeDcPopover() {
+  document.removeEventListener('click', _dcPopDocClick, true);
+  var pop = document.querySelector('.tmpl-dc-popover');
+  if (pop) pop.remove();
+}
+function openDcPopover(idx, anchor) {
+  closeDcPopover();
+  var cur = (newTplRows[idx] && newTplRows[idx].dc === 'C') ? 'C' : 'D';
+  var pop = document.createElement('div');
+  pop.className = 'tmpl-dc-popover';
+  pop.innerHTML =
+    '<div class="tmpl-dc-opt' + (cur === 'D' ? ' active' : '') + '" data-dc="D">借</div>'
+    + '<div class="tmpl-dc-opt' + (cur === 'C' ? ' active' : '') + '" data-dc="C">贷</div>';
+  document.body.appendChild(pop);
+  var rect = anchor.getBoundingClientRect();
+  pop.style.top = (rect.bottom + 2) + 'px';
+  pop.style.left = (rect.left - 12) + 'px';
+  pop.querySelectorAll('.tmpl-dc-opt').forEach(function (optEl) {
+    optEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (newTplRows[idx]) newTplRows[idx].dc = optEl.getAttribute('data-dc');
+      closeDcPopover();
+      renderNewTplRows();
+    });
+  });
+  setTimeout(function () { document.addEventListener('click', _dcPopDocClick, true); }, 0);
+}
+
+// ─── 模板级金额规则 popover（表头「设置」链接触发） ──────────────────
+// ─── 模板级取数规则 popover（表头「设置」链接触发） ──────────────────
+function openTplRulePopover(anchor) {
+  closeTplRowSettingPopover();
+  var tpl = findSettleTemplate(settleTmplSelectedId) || {};
+  var curRule = normRuleType(tpl.ruleType || 'none');
+
+  var pop = document.createElement('div');
+  pop.className = 'tmpl-setting-popover';
+  pop.innerHTML =
+    '<div class="tmpl-setting-row">'
+    + '<span class="tmpl-setting-label">取数规则：</span>'
+    + '<select class="tmpl-setting-sel" id="tmplPopRule">'
+    +   RULE_OPTIONS.map(function (o) { return '<option value="' + o.key + '"' + (curRule === o.key ? ' selected' : '') + '>' + esc(o.label) + '</option>'; }).join('')
+    + '</select></div>'
+    + '<div id="tmplPopExtra"></div>'
+    + '<div class="tmpl-setting-actions">'
+    +   '<button class="btn btn-sm" id="tmplPopCancel">取消</button>'
+    +   '<button class="btn btn-sm btn-primary" id="tmplPopOk">确定</button>'
+    + '</div>';
+  document.body.appendChild(pop);
+
+  // 动态渲染 extra 区域
+  function renderExtra(rule) {
+    var box = pop.querySelector('#tmplPopExtra');
+    if (!box) return;
+    var h = '';
+    if (rule === 'manual') {
+      var ta = U.num(tpl.totalAmount);
+      h += '<div class="tmpl-setting-row">'
+        + '<span class="tmpl-setting-label">统一金额：</span>'
+        + '<input class="tmpl-setting-inp" id="tmplPopTotal" value="' + (ta ? money(ta) : '') + '" placeholder="如 5000.00" style="width:140px"></div>'
+        + '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>';
+    } else if (rule === 'subject') {
+      var sc = tpl.sourceSubject || '';
+      var subjMap = {};
+      try { (S.subjects ? S.subjects() : []).forEach(function (s) { subjMap[String(s.code)] = s; }); } catch(e) {}
+      var sn = sc && subjMap[sc] ? (sc + ' ' + subjMap[sc].name) : sc;
+      h += '<div class="tmpl-setting-row">'
+        + '<span class="tmpl-setting-label">取金额科目：</span>'
+        + '<input class="tmpl-setting-inp" id="tmplPopSubj" value="' + esc(sn) + '" placeholder="输入科目编码或名称" style="width:180px"></div>'
+        + '<div class="tmpl-setting-row">'
+        + '<span class="tmpl-setting-label">取数方式：</span>'
+        + '<select class="tmpl-setting-sel" id="tmplPopDir" style="width:140px">'
+        +   '<option value="end_balance"' + (!tpl.sourceDirection || tpl.sourceDirection === 'end_balance' ? ' selected' : '') + '>期末余额</option>'
+        +   '<option value="period_dr"' + (tpl.sourceDirection === 'period_dr' ? ' selected' : '') + '>本期借方发生额</option>'
+        +   '<option value="period_cr"' + (tpl.sourceDirection === 'period_cr' ? ' selected' : '') + '>本期贷方发生额</option>'
+        + '</select></div>'
+        + '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3)">将按下方各行比例分摊该科目金额</div>';
+    } else if (rule === 'per_row') {
+      h += '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3);margin:4px 0 8px">在下方表格每行独立填写金额</div>';
+    } else { // none
+      h += '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3);margin:4px 0 8px">金额在下方表格每行手填，生成凭证时直接带出（适用于每月固定计提，如电话费 500）</div>';
+    }
+    box.innerHTML = h;
+    // subject 规则：绑定 SubjectPicker
+    if (rule === 'subject') {
+      var subjInp = pop.querySelector('#tmplPopSubj');
+      if (subjInp) bindSubjectPicker(subjInp, {
+        bareInput: true,
+        onPick: function (code, s) { subjInp.value = s && s.name ? (code + ' ' + s.name) : code; }
+      });
+    }
+  }
+  renderExtra(curRule);
+  pop.querySelector('#tmplPopRule').addEventListener('change', function () { renderExtra(this.value); });
+
+  // 定位
+  var rect = anchor.getBoundingClientRect();
+  pop.style.top = (rect.bottom + 4) + 'px';
+  pop.style.left = Math.max(8, rect.right - 260) + 'px';
+
+  // 保存
+  pop.querySelector('#tmplPopOk').addEventListener('click', function () {
+    var rule = pop.querySelector('#tmplPopRule').value;
+    var t = findSettleTemplate(settleTmplSelectedId);
+    if (!t) { closeTplRowSettingPopover(); return; }
+    t.ruleType = normRuleType(rule);
+    // 按规则读额外字段
+    if (rule === 'manual') {
+      var taEl = pop.querySelector('#tmplPopTotal');
+      t.totalAmount = U.num(String(taEl ? taEl.value : '').replace(/[,¥\s]/g, ''));
+      t.sourceSubject = '';
+    } else if (rule === 'subject') {
+      var saEl = pop.querySelector('#tmplPopSubj');
+      var raw = String(saEl ? saEl.value : '').trim();
+      t.sourceSubject = raw.split(/\s+/)[0] || raw;
+      var drEl = pop.querySelector('#tmplPopDir');
+      t.sourceDirection = drEl ? drEl.value : 'end_balance';
+      t.totalAmount = 0;
+    } else {
+      t.totalAmount = 0; t.sourceSubject = ''; t.sourceDirection = '';
+    }
+    persistSettleTemplates();
+    closeTplRowSettingPopover();
+    showToast('取数规则已更新：' + RULE_OPTIONS.filter(function (o) { return o.key === rule; })[0].label);
+    renderNewTplRows();
+    updateNewTplTotal();
+  });
+  pop.querySelector('#tmplPopCancel').addEventListener('click', closeTplRowSettingPopover);
+  setTimeout(function () { document.addEventListener('click', _tplPopDocClick, true); }, 0);
+}
+function _tplPopDocClick(e) {
+  if (!e.target.closest('.tmpl-setting-popover')) closeTplRowSettingPopover();
+}
+function closeTplRowSettingPopover() {
+  document.removeEventListener('click', _tplPopDocClick, true);
+  var pop = document.querySelector('.tmpl-setting-popover');
+  if (pop) pop.remove();
+}
+
+// 收集有效分录（有科目编码的行）
+function collectCustomTplRows() {
+  return newTplRows.filter(function (r) { return String(r.code || '').trim(); }).map(uiRowToTpl);
+}
+
+// 分录校验：只要有金额，就必须一借一贷且借贷相等
+function validateCustomTplRows(rows) {
+  var dr = 0, cr = 0, withAmt = 0;
+  rows.forEach(function (r) { var d = U.num(r.dr), c = U.num(r.cr); dr += d; cr += c; if (d || c) withAmt++; });
+  dr = round2(dr); cr = round2(cr);
+  if (!dr && !cr) return ''; // 纯结构模板（金额留待生成时补录）允许保存
+  if (withAmt < 2) return '已填金额时至少需要两行分录（一借一贷）';
+  if (Math.abs(dr - cr) >= 0.005) return '借贷合计不相等（借 ' + money(dr) + ' / 贷 ' + money(cr) + '），请检查金额';
+  return '';
+}
+
+// 由模板分录生成凭证（支持四种取数规则）
+function genVoucherFromTpl(t, silent) {
+  if (!t) return false;
+  var month = selMonth;
+  if (S.isPeriodClosed(month)) { if (!silent) showToast('该期已结账，请先反结账再操作', 'error'); return false; }
+  var ruleType = normRuleType(t.ruleType || 'none');
+  var rows = (t.template || []).filter(function (r) { return String(r.code || '').trim(); });
+  if (rows.length < 2) { if (!silent) showToast('模板「' + t.name + '」分录不完整：至少需要一借一贷两行，请先在「设置」里补全', 'error'); return false; }
+
+  // ── 第一步：按 ruleType 计算每行的真实金额 ──
+  var computed = rows.map(function (r) {
+    return { code: r.code, summary: r.summary || t.summary || t.name, dc: r.dc || 'D', dr: 0, cr: 0 };
+  });
+  var totalAmount = 0;
+  var srcLabel = '';
+
+  if (ruleType === 'none' || ruleType === 'per_row') {
+    // 不设置取数 / 逐行指定：直接读每行的 dr/cr（金额在模板分录里手填，生成时带出）
+    computed.forEach(function (e, i) {
+      e.dr = U.num(rows[i].dr); e.cr = U.num(rows[i].cr);
+    });
+    totalAmount = round2(computed.reduce(function (s, e) { return s + e.dr; }, 0));
+    if (!totalAmount) { if (!silent) showToast('模板「' + t.name + '」尚未填写分录金额，请先在「设置」里填金额', 'error'); return false; }
+    var crSum = round2(computed.reduce(function (s, e) { return s + e.cr; }, 0));
+    if (Math.abs(totalAmount - crSum) >= 0.005) { if (!silent) showToast('模板「' + t.name + '」借贷不平（借 ' + money(totalAmount) + ' / 贷 ' + money(crSum) + '），请先修正模板', 'error'); return false; }
+
+  } else if (ruleType === 'manual') {
+    // 按统一金额(手填)分摊
+    totalAmount = U.num(t.totalAmount);
+    if (!totalAmount) { if (!silent) showToast('请先在「设置」里填统一金额', 'error'); return false; }
+    srcLabel = '手填金额 ' + money(totalAmount);
+
+  } else {
+    // 按统一金额(科目金额)分摊
+    var srcCode = String(t.sourceSubject || '').trim();
+    if (!srcCode || !S.subject(srcCode)) { if (!silent) showToast('请先在「设置」里指定取金额科目', 'error'); return false; }
+    var dir = t.sourceDirection || 'end_balance';
+    if (dir === 'end_balance') {
+      totalAmount = Math.abs(S.subjectEndBalance(srcCode, month));
+    } else {
+      var pa = S.subjectPeriodAmount(srcCode, month);
+      totalAmount = (dir === 'period_dr') ? U.num(pa.dr) : U.num(pa.cr);
+    }
+    if (!totalAmount) { if (!silent) showToast('科目「' + srcCode + '」当期无可用金额', 'error'); return false; }
+    srcLabel = S.subject(srcCode).name + ' ' + money(totalAmount);
+  }
+
+  // ── 第二步：分摊规则（manual / subject） → 算每行金额 ──
+  if (ruleType === 'manual' || ruleType === 'subject') {
+    // 校验比例合计
+    var ratioSum = round2(rows.reduce(function (s, r) { return s + U.num(r.ratio); }, 0));
+    if (Math.abs(ratioSum - 1) >= 0.005) { if (!silent) showToast('分摊比例合计需等于 100%（当前 ' + round2(ratioSum * 100) + '%），请修正模板', 'error'); return false; }
+    // 按比例算金额，最后一行补差额防浮点误差
+    var allocated = 0;
+    computed.forEach(function (e, i) {
+      if (i < computed.length - 1) {
+        var amt = round2(totalAmount * U.num(rows[i].ratio));
+        allocated += amt;
+      } else {
+        var amt = round2(totalAmount - allocated);
+      }
+      if (e.dc === 'C') e.cr = amt; else e.dr = amt;
+    });
+  }
+
+  // ── 第三步：科目存在性检查 ──
+  var missing = [];
+  computed.forEach(function (e) {
+    if (!S.subject(e.code) && missing.indexOf(e.code) < 0) missing.push(e.code);
+  });
+  if (missing.length) { if (!silent) showToast('模板里的科目在当前账套不存在：' + missing.slice(0, 5).join('、') + '，请先在「设置」里改掉', 'error'); return false; }
+
+  // ── 第四步：生成凭证 ──
+  var entries = computed.map(function (e) {
+    var s = S.subject(e.code);
+    return { code: e.code, name: s ? s.name : '', summary: e.summary, dr: e.dr, cr: e.cr };
+  });
+  var rr = genOnceVoucher(month, 'settleTpl:' + t.id, t.summary || t.name, entries, t.word || '记');
+  if (!rr.ok) { if (!silent) showToast(rr.msg, 'error'); return false; }
+  if (!silent) {
+    var baseMsg = srcLabel ? ('来源：' + srcLabel + '　') : '';
+    showToast('已生成凭证 ' + (rr.v.word || '记') + '-' + rr.v.no + '（' + t.name + ' ' + money(totalAmount) + '）　' + baseMsg);
+    refreshSettle();
+    syncAll();
+  }
+  return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // 保存当前表单面板（系统/已有模板的字段改动）
 function saveSettleTmplForm() {
   var t = findSettleTemplate(settleTmplSelectedId);
+  // 新增模板（custom 且 editingCustomId 找不到）：自动创建
+  if (!t && editingCustomId) {
+    settleTmplList.push({
+      id: editingCustomId, name: settleTmplSelectedId || '自定义模板', enabled: true, custom: true,
+      summary: '', word: '记', template: [], hasEntries: false
+    });
+    t = findSettleTemplate(editingCustomId);
+  }
   if (!t) return;
+  // 从 input 读模板名称（金蝶可编辑）
+  var nm = $('settleTmplFormName'); if (nm && nm.value.trim()) t.name = nm.value.trim();
   var en = $('settleTmplFormEnabled'); if (en) t.enabled = en.checked;
-  var dt = $('settleTmplFormDate'); if (dt) t.date = dt.value;
-  var wd = $('settleTmplFormWord'); if (wd) t.word = wd.value;
-  var sm = $('settleTmplFormSummary'); if (sm) t.summary = sm.value;
+  var wd = $('settleTmplFormWord'); if (wd) t.word = wd.value || '记';
   if (t.id === 'cost') {
     var rev = $('settleTmplCostRevSubj'); if (rev) t.costRevSubj = rev.value;
     var inv = $('settleTmplCostInvSubj'); if (inv) t.costInvSubj = inv.value;
@@ -1141,26 +1867,44 @@ function saveSettleTmplForm() {
     var amt = $('settleTmplCostAmt'); if (amt) t.costAmount = amt.value;
     var csm = $('settleTmplCostSummary'); if (csm) t.costSummary = csm.value;
   }
+  // custom=true 模板：保存分录表格数据（校验借贷平衡）
+  if (t.custom) {
+    var rows = collectCustomTplRows();
+    var bad = validateCustomTplRows(rows);
+    if (bad) { showToast(bad, 'error'); return false; }
+    t.template = rows;
+    t.hasEntries = rows.length > 0;
+    // 预置摊销模板：用摘要作为默认名称（如果未显式改过）
+    if (t.preset && (!t.summary || t.summary === '')) t.summary = t.name;
+  }
   persistSettleTemplates();
   applySettleTemplateStates();
   renderSettleTmplTree();
-  refreshSettle(); // 启用/禁用后同步结账页卡片显隐
+  refreshSettle();
   showToast('已保存模板：' + t.name);
 }
 
 // 模板弹窗事件绑定
 if ($('btnSettleTmpl')) $('btnSettleTmpl').addEventListener('click', openSettleTemplateModal);
 if ($('btnSettleTmplClose')) $('btnSettleTmplClose').addEventListener('click', closeSettleTemplateModal);
-// 弹窗内：新增模板 / 保存 / 取消
+// 弹窗内：新增模板 / 保存 / 取消 / 导入 / 导出
 if ($('btnSettleTmplNew')) $('btnSettleTmplNew').addEventListener('click', showSettleTmplNewPanel);
 if ($('btnSettleTmplSave')) $('btnSettleTmplSave').addEventListener('click', function () {
-  // 若处于新增面板则建自定义模板，否则保存表单
-  var newPanel = $('settleTmplNewPanel');
-  if (newPanel && newPanel.style.display !== 'none') { addSettleTemplateFromPanel(); }
-  else { saveSettleTmplForm(); }
-  closeSettleTemplateModal();
+  // 统一走 saveSettleTmplForm（现在 custom=true 模板也走 FormPanel）
+  var ok = saveSettleTmplForm();
+  if (ok !== false) closeSettleTemplateModal();
 });
 if ($('btnSettleTmplCancel')) $('btnSettleTmplCancel').addEventListener('click', closeSettleTemplateModal);
+// 分录表格事件（tbody 事件委托，绑定一次）
+bindNewTplBodyEvents();
+// 表头「设置」链接 → 模板级取数规则 popover
+document.addEventListener('click', function (e) {
+  var el = e.target;
+  if (!el || !el.classList || !el.classList.contains('tmpl-setting-link')) return;
+  if (el.getAttribute('data-op') !== 'setting') return;
+  e.preventDefault();
+  openTplRulePopover(el);
+});
 if ($('btnSettleTmplDelete')) $('btnSettleTmplDelete').addEventListener('click', async function () {
   var t = findSettleTemplate(settleTmplSelectedId);
   if (!t) return;

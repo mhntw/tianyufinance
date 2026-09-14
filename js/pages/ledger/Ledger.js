@@ -1,7 +1,7 @@
 // 账簿域模块（B 方案解耦）
-// 包含：总账(refreshGl) / 明细账(refreshDl) / 多栏账(refreshMl)
-// 已下线（实现与调用点均已移除，本模块不再包含）：数量总账/数量明细账、
-//   核算项目明细账/余额表/组合表；其对应的「核算类别/核算项目下拉」填充守卫同步清理。
+// 包含：总账(refreshGl) / 明细账(refreshDl) / 多栏账(refreshMl) / 数量总账(refreshQg) /
+// 数量明细账(refreshQd) / 核算项目明细账(refreshAx) / 核算项目余额表(refreshAb) /
+// 核算项目组合表(refreshAc)
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 注：试算平衡表(trial-balance) 已在 js/pages/ledger/TrialBalance.js 独立迁走，本模块不含。
 
@@ -24,6 +24,21 @@ const escAttr = escHtml;
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { createSubjectTree } from '../../components/SubjectTree.js?v=dev';
 import { updatePeriodRangeTrigger } from '../../components/PeriodRangePicker.js';
+
+/* ===================== 通用：安全填充（带守卫，避免查询时重置用户选择） ===================== */
+// bookKey：账套切换标识（app.js 内定义）。下面两个下拉守卫靠它判断「是否已为当前账套」，
+// 账套不变则跳过重填，保住用户在查询前已选的值。
+var bookKey = H.bookKey;
+// 核算类别下拉
+function safeFillAuxType(sel) {
+  var k = bookKey();
+  if (sel.dataset.key !== k) { fillAuxTypeSelect(sel); sel.dataset.key = k; }
+}
+// 核算项目下拉：随类别切换重填
+function safeFillAuxItem(sel, typeKey) {
+  var k = bookKey() + '|' + typeKey;
+  if (sel.dataset.key !== k) { fillAuxItemSelect(sel, typeKey); sel.dataset.key = k; }
+}
 
 /* ===================== 总账 ===================== */
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
@@ -590,6 +605,55 @@ function exportGl() {
 globalThis.__exportGl = exportGl;
 var bGlExport = document.getElementById('btnGlExport');
 if (bGlExport) bGlExport.addEventListener('click', exportGl);
+
+// 明细账导出：金蝶式 9 列（科目编码/名称 + 日期/凭证字号/摘要/借/贷/余额/方向），
+// 每个科目一段（期初余额 → 逐笔 → 本期合计 → 本年累计），与界面渲染口径一致。
+function exportDl() {
+  var XLSX = globalThis.XLSX;
+  if (!XLSX) { H.showToast('导出组件未加载', 'error'); return; }
+  var safeExport = globalThis.__safeExportExcel;
+  if (!safeExport) { H.showToast('导出功能不可用', 'error'); return; }
+  var month = periodRangeValue('dlPeriod');
+  if (!month) { H.showToast('请先选择期间', 'warn'); return; }
+  var rows = [['科目编码', '科目名称', '日期', '凭证字号', '摘要', '借方', '贷方', '余额', '方向']];
+  // dlCurCode 为 null = 「全部科目」模式（与界面 renderDl 一致），否则仅当前科目
+  var codes = dlCurCode
+    ? [String(dlCurCode)]
+    : (S.subjects() || []).map(function (s) { return s.code; });
+  var shown = 0;
+  codes.forEach(function (code) {
+    var d = S.detailLedger(code, month);
+    if (!d) return;
+    var s = d.subject;
+    var obNet = num(d.obDr) - num(d.obCr);
+    var obBal = Math.abs(obNet);
+    var obDir = obNet === 0 ? '' : (obNet > 0 ? '借' : '贷');
+    rows.push([s.code, s.name, '', '', '期初余额', '', '', obBal, obDir]);
+    d.rows.forEach(function (r) {
+      var vch = (r.word || '') + '-' + (r.no || '');
+      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', num(r.dr), num(r.cr), num(r.bal), r.dir || '']);
+    });
+    var endNet = num(d.endDr) - num(d.endCr);
+    var endBal = Math.abs(endNet);
+    var endDir = endNet >= 0 ? '借' : '贷';
+    rows.push([s.code, s.name, '', '', '本期合计', num(d.periodDr), num(d.periodCr), endBal, endDir]);
+    rows.push([s.code, s.name, '', '', '本年累计', num(d.ytdDr), num(d.ytdCr), endBal, endDir]);
+    shown++;
+  });
+  if (!shown) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 22 }, { wch: 11 }, { wch: 10 }, { wch: 30 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 6 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '明细账');
+  safeExport(wb, '明细账_' + month);
+  H.showToast('已导出明细账_' + month, 'success');
+}
+globalThis.__exportDl = exportDl;
+var bDlExport = document.getElementById('btnDlExport');
+if (bDlExport) bDlExport.addEventListener('click', exportDl);
 
 // 总账页面内展开勾选框 onchange 入口（暴露到全局，HTML 直接调用）
 globalThis.__renderGl = refreshGl;

@@ -287,7 +287,6 @@
           <div class="voucher-toolbar">
             <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
             <button class="btn" id="btnSaveVoucher">保存</button>
-            <button class="btn" id="btnDraftVoucher" title="保存为未审核凭证">暂存</button>
             <button class="btn" id="btnVoucherPrint" title="打印当前凭证">打印</button>
             <button class="btn" id="btnBlankVoucher" title="打印空白凭证纸（手填用）">空白凭证</button>
             <div class="vch-tpl-wrap">
@@ -395,6 +394,29 @@
         </div>
       </div>
 
+      <!-- 保存为凭证模板（摘要/科目必带，金额选填；对齐金蝶常用凭证） -->
+      <div class="modal" id="vchTplSaveModal">
+        <div class="modal-box">
+          <div class="modal-title">保存为凭证模板<button class="modal-x" id="btnVchTplSaveClose">×</button></div>
+          <div class="modal-body">
+            <div class="vch-tpl-save-meta">
+              <label>模板名称<input id="vchTplSaveName" class="inp" placeholder="默认取首行摘要" autocomplete="off"></label>
+              <label>模板类别<input id="vchTplSaveCat" class="inp" placeholder="可选" autocomplete="off"></label>
+            </div>
+            <div class="vch-tpl-save-sub">保存以下信息</div>
+            <div class="vch-tpl-save-fields">
+              <label class="vtsf"><input type="checkbox" checked disabled>摘要</label>
+              <label class="vtsf"><input type="checkbox" checked disabled>科目</label>
+              <label class="vtsf"><input type="checkbox" id="vchTplSaveAmt">金额</label>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn" id="btnVchTplSaveCancel">取消</button>
+            <button class="btn btn-primary" id="btnVchTplSaveOk">保存模板</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 风险检测报告 -->
       <div class="modal" id="healthCheckModal" style="display:none">
         <div class="modal-box modal-wide">
@@ -435,28 +457,24 @@
       </div>
 
       <!-- 凭证回收站（软删除还原入口）-->
-      <div class="modal" id="recycleBinModal" style="display:none">
+      <div class="modal" id="recycleBinModal">
         <div class="modal-box modal-wide">
           <div class="modal-title">凭证回收站 · 已删除凭证<button class="modal-x" id="recycleBinClose">×</button></div>
           <div class="modal-body">
             <div class="table-box">
-              <table class="ty-table">
+              <table class="recycle-table">
                 <thead>
                   <tr>
                     <th>日期</th>
                     <th>凭证号</th>
-                    <th>摘要</th>
-                    <th class="ta-r">借方合计</th>
-                    <th>删除时间/人</th>
-                    <th class="col-op">操作</th>
+                    <th>金额</th>
+                    <th>删除时间</th>
+                    <th>操作人</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="recycleBody"></tbody>
               </table>
-            </div>
-            <div class="modal-tip">
-              软删除说明：删除凭证仅打标，不真正清除数据，可随时还原。还原后凭证恢复为未审核状态。
-              如需彻底清除（不可恢复），请通过设置-操作日志-审计明细。
             </div>
           </div>
           <div class="modal-actions">
@@ -483,11 +501,9 @@
 
 
       <section class="page" id="page-voucher-sum">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="sum" data-default="currentPeriod" data-on-change="__renderSum"></div>
             <button class="btn" data-print>打印</button>
-          </div>
         </div>
         <div class="grid-wrap">
           <!-- 副标题：凭证总张数 / 附件总张数（对齐金蝶同位置文案），由 renderSum 填充 -->
@@ -501,8 +517,7 @@
 
       <section class="page" id="page-voucher-query">
 
-        <div class="vq-filter">
-          <div class="vq-filter-left">
+        <div class="page-actions">
             <div data-period="q" data-default="currentPeriod" data-on-change="__renderQuery"></div>
             <div class="ykj-filter-item-box">
               <label class="ykj-filter-item-box-label">科目</label>
@@ -512,9 +527,6 @@
                 </div>
               </div>
             </div>
-
-          </div>
-          <div class="vq-filter-right">
             <button class="btn btn-primary" id="btnQNewVoucher">新增</button>
             <button class="btn" id="btnRecycleBin" title="查看已删除的凭证并可还原">回收站</button>
             <!-- 原「审核/打印/导出/删除」各带一个 ▾ 倒三角，但背后并无任何下拉菜单，
@@ -523,7 +535,6 @@
             <button class="btn" id="btnQPrint" data-print>打印</button>
             <button class="btn" id="btnQExport">导出</button>
             <button class="btn" id="btnQDelete">删除</button>
-          </div>
         </div>
 
         <table class="grid vq-grid" id="qGrid">
@@ -547,8 +558,7 @@
       </section>
 
       <section class="page" id="page-general-ledger">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="gl" data-default="currentPeriod" data-on-change="__renderGl"></div>
             <div class="ty-subject-range" id="glCodeWrap">
               <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
@@ -558,7 +568,6 @@
             <label class="chk" style="margin-left:8px"><input type="checkbox" id="glHideZero"> 隐藏零行</label>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnGlExport">导出</button>
-          </div>
         </div>
         <table class="grid gl-grid" id="glGrid">
           <!-- 金蝶式 8 列：科目编码/名称(合并行) | 期间 | 摘要 | 借方 | 贷方 | 方向 | 余额 -->
@@ -580,11 +589,10 @@
       </section>
 
       <section class="page" id="page-detail-ledger">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="dl" data-default="currentPeriod" data-on-change="__renderDl"></div>
             <button class="btn" data-print>打印</button>
-          </div>
+            <button class="btn" id="btnDlExport">导出</button>
         </div>
         <div class="dl-layout">
           <div class="dl-main">
@@ -605,8 +613,7 @@
       </section>
 
       <section class="page" id="page-multi-ledger">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div class="ykj-filter-item-box">
               <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
@@ -617,7 +624,6 @@
             </div>
             <div data-period="ml" data-default="currentPeriod" data-on-change="__renderMl"></div>
             <button class="btn" data-print>打印</button>
-          </div>
         </div>
         <div class="open-check" id="mlTip">多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。</div>
         <table class="grid ml-grid" id="mlGrid">
@@ -632,14 +638,12 @@
 
 
       <section class="page" id="page-trial-balance">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="tb" data-default="currentPeriod" data-on-change="__renderTrialBalance"></div>
             <label class="subj-check"><input type="checkbox" id="tbExpandAll"> 展开所有级次</label>
             <label class="subj-check"><input type="checkbox" id="tbHideZero"> 隐藏零行</label>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTbExport">导出</button>
-          </div>
         </div>
         <table class="grid tb-grid" id="tbGrid">
           <!-- 金额列须固定宽，文本列吸收剩余空间。
@@ -666,12 +670,10 @@
       </section>
 
       <section class="page" id="page-report-balance">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="bs" data-default="lastClosedPeriod" data-on-change="__renderBs"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnBsExport">导出</button>
-          </div>
         </div>
         <div id="bsWip" class="bs-wip" style="display:none"></div>
         <table class="grid bs-grid rpt-grid" id="bsGrid">
@@ -685,12 +687,10 @@
       </section>
 
       <section class="page" id="page-report-profit">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="pl" data-default="lastClosedPeriod" data-on-change="__renderPl"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnPlExport">导出</button>
-          </div>
         </div>
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="plGrid">
@@ -702,12 +702,10 @@
       </section>
 
       <section class="page" id="page-report-cashflow">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="cf" data-default="lastClosedPeriod" data-on-change="__renderCf"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnCfExport">导出</button>
-          </div>
         </div>
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="cfGrid">
@@ -719,12 +717,10 @@
       </section>
 
       <section class="page" id="page-report-tax">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="tx" data-default="lastClosedPeriod" data-on-change="__renderTx"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTxExport">导出</button>
-          </div>
         </div>
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="txGrid">
@@ -737,18 +733,14 @@
 
       <section class="page" id="page-asset-card">
 
-        <div class="orig-filter-top">
-          <div class="orig-filter-left" id="assetFilterToggle" title="筛选">
-            <span class="iconcool guolv"></span> 过滤
-          </div>
-          <div class="orig-filter-right">
+        <div class="page-actions">
+            <span id="assetFilterToggle" title="筛选" style="cursor:pointer;color:var(--ty-text-2);font-size:13px;user-select:none;display:inline-flex;align-items:center;gap:4px;"><span class="iconcool guolv"></span> 过滤</span>
             <div class="ykj-filter-item-box">
               <div class="ykj-filter-item-box-content">
                 <input type="month" class="inp inp-month" id="aPeriod" title="会计期">
               </div>
             </div>
-            <label class="orig-holdup" style="margin-left:12px;"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
-          </div>
+            <label style="margin-left:12px;display:inline-flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
         </div>
 
         <div class="orig-filter-fold" id="assetFilterFold" style="display:none;">
@@ -893,15 +885,13 @@
       <!-- 资产板块独立分页（原 page-asset-depr 宿主内页 Tab 拆出）：
            折旧凭证 / 折旧汇总表 / 折旧明细表 / 资产变动记录 -->
       <section class="page" id="page-asset-depr-sum" data-name="折旧汇总表">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="das" data-default="currentPeriod" data-on-change="__renderDas"></div>
             <label class="chk"><input type="checkbox" id="dasByDept"> 按部门汇总</label>
             <label class="chk"><input type="checkbox" id="dasShowCleaned"> 显示已清理</label>
             <button class="btn" id="btnDasPrint" data-print>打印</button>
             <button class="btn" id="btnDasExport">导出</button>
             <button class="btn" id="btnDepreciateAll">计提本月折旧</button>
-          </div>
         </div>
         <table class="grid" id="dasGrid">
           <!-- 汇总表列 = 1 个分组列 + 7 个金额列（8 列），金额列须固定宽（否则千分位金额会折行）；
@@ -919,14 +909,12 @@
       </section>
 
       <section class="page" id="page-asset-depr-detail" data-name="折旧明细表">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="dad" data-default="currentPeriod" data-on-change="__renderDad"></div>
             <label class="chk"><input type="checkbox" id="dadShowCleaned"> 显示已清理</label>
             <label class="chk"><input type="checkbox" id="dadShowChange"> 显示变动信息</label>
             <button class="btn" id="btnDadPrint" data-print>打印</button>
             <button class="btn" id="btnDadExport">导出</button>
-          </div>
         </div>
         <table class="grid" id="dadGrid">
 
@@ -943,15 +931,13 @@
       </section>
 
       <section class="page" id="page-asset-change-log" data-name="资产变动记录">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="acl" data-default="currentPeriod" data-on-change="__renderAssetChangeLog"></div>
             <label class="chk"><input type="checkbox" id="aclByDept"> 按部门汇总</label>
             <label class="chk"><input type="checkbox" id="aclShowCleaned"> 显示已清理</label>
             <label class="chk"><input type="checkbox" id="aclShowChange"> 显示变动信息</label>
             <button class="btn" id="btnAclPrint" data-print>打印</button>
             <button class="btn" id="btnAclExport">导出</button>
-          </div>
         </div>
         <table class="grid" id="aclGrid">
           <thead>
@@ -966,14 +952,12 @@
       </section>
 
       <section class="page" id="page-asset-depr-voucher" data-name="折旧凭证">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <span class="page-period" id="dvPeriod"></span>
             <button class="btn" id="btnDeprVchSetting">折旧凭证参数设置</button>
             <button class="btn btn-primary" id="btnAccrueDepr">生成折旧凭证</button>
             <button class="btn" id="btnDvExport">导出</button>
             <button class="btn" id="btnDvBatch">批量操作</button>
-          </div>
         </div>
         <div class="k-tip" id="dvTip">点击「生成折旧凭证」按当前期间计提折旧并生成凭证。</div>
         <table class="grid" id="dvGrid">
@@ -1007,8 +991,7 @@
       </section>
 
       <section class="page" id="page-salary">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="sal" data-default="currentPeriod" data-on-change="__renderSalary"></div>
             <button class="btn" id="btnNewSalary">新增工资</button>
             <button class="btn" id="btnGenSalaryAccrual">计提工资凭证</button>
@@ -1016,7 +999,6 @@
             <button class="btn" id="btnOpenDeptStaff">部门职员</button>
             <button class="btn" id="btnOpenSalaryTpl">凭证模板</button>
             <button class="btn" data-print>打印</button>
-          </div>
         </div>
         <table class="grid" id="salGrid">
           <colgroup>
@@ -1029,11 +1011,9 @@
       </section>
 
       <section class="page" id="page-salary-statistics">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <div data-period="sst" data-default="currentPeriod" data-on-change="__renderSalaryStats"></div>
             <button class="btn" data-print>打印</button>
-          </div>
         </div>
         <table class="grid" id="sstGrid">
           <colgroup>
@@ -1111,6 +1091,16 @@
 
         <div class="settle-tab-pane" id="settlePaneProcess">
 
+          <div class="settle-process-bar">
+            <label class="settle-checkall"><input type="checkbox" id="settleCheckAll"> 全选</label>
+            <div class="settle-process-bar-right">
+              <button class="btn btn-ghost" id="btnSettleRecalc">重新测算</button>
+              <button class="btn btn-primary" id="btnSettleBatchGen">生成凭证</button>
+              <button class="btn btn-ghost" id="btnSettleQuickClose">结账</button>
+              <button class="btn btn-ghost" id="btnSettleQuickReopen">反结账</button>
+            </div>
+          </div>
+
           <div class="settle-card-list" id="settleProcessCards">
 
             <div class="settle-card settle-card-checked" id="cardProfit">
@@ -1129,6 +1119,7 @@
                 <button class="btn btn-sm btn-primary" id="btnReCarryForward">重新结转</button>
                 <!-- 年末结转本年利润（3103 → 3104 未分配利润）：仅 12 月显示 -->
                 <button class="btn btn-sm" id="btnCarryYearEnd" style="display:none" title="将本年利润余额结转至利润分配-未分配利润，避免跨年未分配利润失真">结转本年利润</button>
+                <button class="btn btn-sm" id="btnProfitDist" style="display:none" title="按净利润提取盈余公积并分配股利（金蝶默认比例）">利润分配</button>
               </div>
             </div>
             <div class="settle-card settle-card-checked" id="cardDepr">
@@ -1263,27 +1254,20 @@
             <div class="settle-tmpl-main">
               <div class="settle-tmpl-form-panel" id="settleTmplFormPanel">
               <div class="settle-tmpl-head">
-                <div class="settle-tmpl-head-title">
-                  <span id="settleTmplFormName">结账模板凭证设置</span>
-                  <span class="settle-tmpl-tag" id="settleTmplFormTag">系统</span>
+                <div class="settle-tmpl-head-left">
+                  <div class="settle-tmpl-label">模板名称：</div>
+                  <input type="text" class="settle-tmpl-name-input" id="settleTmplFormName" placeholder="请输入模板名称" />
                 </div>
                 <div class="settle-tmpl-head-right">
-                  <span>启用</span>
+                  <span class="settle-tmpl-enable-label">启用</span>
                   <label class="settle-tmpl-switch"><input type="checkbox" id="settleTmplFormEnabled" /><i></i></label>
+                  <button class="settle-tmpl-del-btn" id="btnSettleTmplDelete"><i class="iconcool shanchu"></i>删除</button>
                 </div>
               </div>
               <div class="settle-tmpl-form">
                 <div class="flex--3nLNX">
-                  <div class="label--315S5">凭证日期：</div>
-                  <input type="date" class="inp" id="settleTmplFormDate" />
-                </div>
-                <div class="flex--3nLNX">
-                  <div class="label--315S5">凭证字：</div>
+                  <div class="label--315S5 w60">凭证字：</div>
                   <select class="inp" id="settleTmplFormWord"></select>
-                </div>
-                <div class="flex--3nLNX">
-                  <div class="label--315S5">凭证摘要：</div>
-                  <input type="text" class="inp" id="settleTmplFormSummary" />
                 </div>
 
                 <div id="settleTmplCostExtra" style="display:none">
@@ -1317,45 +1301,26 @@
                     <input class="inp" id="settleTmplCostProdSubj" placeholder="输入编码或名称选择" autocomplete="off">
                   </div>
                 </div>
-              </div>
-              </div>
 
-              <div class="settle-tmpl-new" id="settleTmplNewPanel" style="display:none">
-                <div class="settle-tmpl-new-head">
-                  <div class="settle-tmpl-new-name">
-                    <div class="label--315S5 settle-tmpl-label-req">模板名称：</div>
-                    <input type="text" class="inp" id="settleTmplNewName" placeholder="请输入模板名称" />
+                <!-- 预置摊销/自定义模板：分录表格（系统模板隐藏） -->
+                <div id="settleTmplCustomExtra" style="display:none">
+                  <div class="settle-tmpl-grid">
+                    <table class="grid settle-tmpl-table" id="settleTmplTable">
+                      <thead>
+                        <tr>
+                          <th class="col-op">操作</th>
+                          <th class="col-summary">摘要</th>
+                          <th class="col-subject">会计科目</th>
+                          <th class="col-dc">方向</th>
+                          <th class="col-amount">金额 <a class="tmpl-setting-link" data-op="setting" style="font-weight:400">设置</a></th>
+                        </tr>
+                      </thead>
+                      <tbody id="settleTmplNewBody"></tbody>
+                    </table>
                   </div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">凭证字：</div>
-                    <select class="inp settle-tmpl-word-sel" id="settleTmplNewWord"></select>
-                  </div>
+                  <div id="settleTmplNewTotal" style="margin-top:8px;font-size:12px;color:var(--ty-text-2);"></div>
                 </div>
-                <div class="settle-tmpl-grid">
-                  <table class="settle-tmpl-table">
-                    <thead>
-                      <tr>
-                        <th class="col-op">操作</th>
-                        <th class="col-summary">摘要</th>
-                        <th class="col-subject">会计科目</th>
-                        <th class="col-dc">方向</th>
-                        <th class="col-amount">金额</th>
-                      </tr>
-                    </thead>
-                    <tbody id="settleTmplNewBody"></tbody>
-                  </table>
-                </div>
-                <div class="settle-tmpl-rule">
-                  <span class="settle-tmpl-rule-link" id="settleTmplRuleToggle">如何设置金额取数规则？</span>
-                  <div class="settle-tmpl-rule-tip" id="settleTmplRuleTip" style="display:none">
-                    <p>生成凭证时，金额取数规则：</p>
-                    <ol>
-                      <li>余额取数：取科目当前期间期末余额，按方向自动借贷。</li>
-                      <li>发生额取数：取科目当前期间借方或贷方发生额。</li>
-                      <li>固定金额：不填写取数规则时，生成凭证需手动补录金额。</li>
-                    </ol>
-                  </div>
-                </div>
+              </div>
               </div>
             </div>
           </div>
@@ -1401,7 +1366,7 @@
       </div>
 
       <section class="page" id="page-subject">
-        <div class="page-head subj-head">
+        <div class="page-actions">
           <div class="subj-tabs" id="subjTabs">
             <button class="subj-tab active" data-cls="asset">资产</button>
             <button class="subj-tab" data-cls="liability">负债</button>
@@ -1409,17 +1374,13 @@
             <button class="subj-tab" data-cls="cost">成本</button>
             <button class="subj-tab" data-cls="pl">损益</button>
           </div>
-          <div class="subj-checks">
-            <input type="search" class="subj-search" id="subjSearch" placeholder="搜索编码/名称" autocomplete="off">
-            <label class="subj-check"><input type="checkbox" id="subjExpandAll"> 展开所有级次</label>
-          </div>
-          <div class="page-actions">
-            <button class="btn" id="btnNewSubject">新增</button>
-            <button class="btn" id="btnSubjImport">导入</button>
-            <input type="file" id="subjImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
-            <button class="btn" id="btnSubjExport">导出</button>
-            <button class="btn" data-print>打印</button>
-          </div>
+          <input type="search" class="subj-search" id="subjSearch" placeholder="搜索编码/名称" autocomplete="off">
+          <label class="subj-check"><input type="checkbox" id="subjExpandAll"> 展开所有级次</label>
+          <button class="btn" id="btnNewSubject">新增</button>
+          <button class="btn" id="btnSubjImport">导入</button>
+          <input type="file" id="subjImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+          <button class="btn" id="btnSubjExport">导出</button>
+          <button class="btn" data-print>打印</button>
         </div>
         <div class="grid-wrap">
           <table class="grid pp-grid" id="subjGrid">
@@ -1438,12 +1399,10 @@
       </section>
 
       <section class="page" id="page-opening" data-unsaved-scope="opening">
-        <div class="page-head">
-          <div class="page-actions">
+        <div class="page-actions">
             <button class="btn" id="btnSaveOpening">保存</button>
             <button class="btn" id="btnOpenCheck">试算平衡</button>
             <button class="btn" id="btnOpenExport">导出</button>
-          </div>
         </div>
         <div class="open-check" id="openCheck"></div>
         <div class="k-tip info">录入规则：年初余额为本年年初数；本年累计借/贷为年初至启用期间前的累计发生额；期初余额 = 年初余额 + 本年累计借 − 本年累计贷（按科目方向填入借/贷列）。</div>
@@ -1465,11 +1424,8 @@
       <!-- ============ 原始凭证（电子档案 / 附件管理） ============ -->
       <section class="page" id="page-original">
 
-        <div class="orig-filter-top">
-          <div class="orig-filter-left" id="origFilterToggle" title="筛选">
-            <span class="iconcool guolv"></span> 过滤
-          </div>
-          <div class="orig-filter-right">
+        <div class="page-actions">
+            <span id="origFilterToggle" title="筛选" style="cursor:pointer;color:var(--ty-text-2);font-size:13px;user-select:none;display:inline-flex;align-items:center;gap:4px;"><span class="iconcool guolv"></span> 过滤</span>
             <div class="ykj-filter-item-box">
               <div class="ykj-filter-item-box-label">附件名称</div>
               <div class="ykj-filter-item-box-content">
@@ -1477,7 +1433,6 @@
                 <i class="iconcool sousuo icon--search"></i>
               </div>
             </div>
-          </div>
         </div>
 
         <div class="orig-filter-fold" id="origFilterFold" style="display:none;">
@@ -1563,8 +1518,7 @@
 
       <!-- ============ 费用明细表（期间范围 + 图表 + 树形多栏表） ============ -->
       <section class="page" id="page-expense-detail">
-        <div class="page-head">
-          <div class="page-actions ed-page-actions">
+        <div class="page-actions">
             <div class="ykj-filter-item-box">
               <div class="ykj-filter-item-box-content">
                 <div data-period="ed" data-default="lastClosedPeriod" data-on-change="__renderExpenseDetail"></div>
@@ -1585,20 +1539,12 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="ed-opt-row">
-          <div class="ed-opt-checks">
             <label class="chk"><input type="checkbox" id="edOptYearTotal" checked onchange="__edOptChange()"> 年度合计</label>
             <label class="chk"><input type="checkbox" id="edOptRatio" onchange="__edOptChange()"> 显示同环比</label>
             <label class="chk"><input type="checkbox" id="edOptExpand" checked onchange="__edOptChange()"> 展开所有级次</label>
-            <label class="chk"><input type="checkbox" id="edOptZero" onchange="__edOptChange()"> 展示发生额为0的科目</label>
-          </div>
-          <div class="ed-opt-actions">
+            <label class="chk"><input type="checkbox" id="edOptZero" onchange="__edOptChange()"> 展示零值科目</label>
             <button class="btn" id="btnEdPrint" data-print>打印</button>
             <button class="btn" id="btnEdExport">导出</button>
-          </div>
         </div>
 
         <div class="grid-wrap ed-grid-wrap">

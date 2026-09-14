@@ -562,7 +562,7 @@
    * __printSelfTest() 全量扫描所有 [data-print] 入口并输出"通过/失败"清单。
    */
   // 克隆得到的数据表内部不允许出现的 UI（允许它存在 = 纸面必带残件，必须当场暴露）
-  var PRINT_TABLE_UI_BLOCK = '.page-actions, .page-head, .ty-period-range, .topbar, ' +
+  var PRINT_TABLE_UI_BLOCK = '.page-actions, .ty-period-range, .topbar, ' +
     '.content-toolbar, .voucher-toolbar, select, textarea, input';
 
   // 打印主体收集：唯一且稳定的取数点（打印按钮、直印、自检三路共用）。
@@ -611,7 +611,7 @@
     var scope = (btn && btn.closest('.page')) || active;
     // 报表名优先级：页内 h2 标题 > PAGE_NAMES 页面名 > 页面 data-name > 通用兜底。
     var subName = '';
-    var h2 = active && active.querySelector('.page-head h2');
+    var h2 = active && active.querySelector('.page-actions h2');
     var reportName = '';
     if (subName) reportName = subName;
     else if (h2 && h2.textContent.trim()) reportName = h2.textContent.trim();

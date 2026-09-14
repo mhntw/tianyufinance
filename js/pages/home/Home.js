@@ -238,7 +238,7 @@ function fillMetrics() {
   });
   setEl('mFundNet', signed(round2(fundDr - fundCr)));
 
-  // ---- 应收 / 应付（存量：最新期末余额）----
+  // ---- 应收 / 应付（存量：最新期末余额；单科目，合计=明细之和，对齐金蝶首页卡片）----
   renderArapItems(latestPeriod, '1122', 'arapItemsAr', 'mReceivable', '应收');
   renderArapItems(latestPeriod, '2202', 'arapItemsAp', 'mPayable', '应付');
   setEl('periodArap', periodText);
@@ -352,56 +352,33 @@ function subjectBalance(code, month) {
   return S.subjectEndBalance ? S.subjectEndBalance(code, month) : 0;
 }
 
-// 应收应付卡片：顶部合计 + 末级往来单位明细
-// ar：一级科目码(1122/2202)；itemsBox：明细容器 id；totalId：合计元素 id
-function renderArapItems(month, ar, itemsBox, totalId, label) {
+// 应收应付卡片：顶部合计 = subjectEndBalance(code)（父行已含下级，一个调用搞定）
+// 明细 = code 下末级科目余额，按绝对值降序
+// 简单稳定：不做同名合并、不标注预收预付、不收集 codes
+function renderArapItems(month, code, itemsBox, totalId, label) {
   var box = document.getElementById(itemsBox);
   if (!box) return;
-  // 取该一级科目下的「末级」往来单位（排除有下级子目的父科目，避免父子重名都列出）。
-  // 兼容无点编码：凡 code 以 ar 开头且更长、且不被其他科目 code 前缀包含者，即为末级。
-  var subs = (S.subjects() || []);
+  var subs = S.subjects() || [];
   var children = subs.filter(function (s) {
-    if (!isChildOf(ar, s.code)) return false;   // 仅取 ar 的「直接/间接」下级
-    var isParent = subs.some(function (o) {
+    if (s.code !== code && !isChildOf(code, s.code)) return false;
+    // 只留末级（无下级的）
+    return !subs.some(function (o) {
       return o.code !== s.code && isChildOf(s.code, o.code);
     });
-    return !isParent;                            // 排除有下级的父科目
   }).map(function (s) {
-    return { s: s, v: subjectBalance(s.code, month) };
-  }).filter(function (x) { return x.v; });
-  // 同名往来单位合并（导入/建账重名时，金额累加，避免同一单位在明细里出现两次）；
-  // 同时收集合并到的末级科目编码，供「点明细行跳总账看该单位流水」使用。
-  var merged = {};
-  children.forEach(function (x) {
-    var nm = (x.s.name && String(x.s.name).trim()) || x.s.code;
-    if (!merged[nm]) merged[nm] = { name: nm, v: 0, codes: [] };
-    merged[nm].v += x.v;
-    merged[nm].codes.push(String(x.s.code));
-  });
-  var list = Object.keys(merged).map(function (k) { return merged[k]; })
-    .filter(function (x) { return x.v; })
+    return { name: s.name, code: s.code, v: subjectBalance(s.code, month) };
+  }).filter(function (x) { return x.v; })
     .sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
   var html = '';
-  list.forEach(function (x) {
-    // 余额在贷方（应收）或借方（应付）反向时，金额前置负号以提示性质
-    var sign = (label === '应收' && x.v < 0) || (label === '应付' && x.v > 0) ? '-' : '';
-    var tag = (label === '应收' && x.v < 0) ? ' 预收'
-            : (label === '应付' && x.v > 0) ? ' 预付' : '';
+  children.forEach(function (x) {
     html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
-            '</span><span class="ai-val amt-link" data-codes="' + esc(x.codes.join(',')) + '">' +
-            sign + fmt(Math.abs(x.v)) + tag + '</span></div>';
+            '</span><span class="ai-val amt-link" data-codes="' + esc(x.code) + '">' +
+            fmt(Math.abs(x.v)) + '</span></div>';
   });
   box.innerHTML = html;
-  var total = subjectBalance(ar, month);
-  // 余额方向与正常方向相反时标注性质（subjectBalance 为借正贷负）：
-  //   应收（资产，正常在借）→ 出现贷方余额(total<0) 才是「预收」
-  //   应付（负债，正常在贷）→ 出现借方余额(total>0) 才是「预付」
-  // 旧实现两种科目都判 total<0，对应付正好判反：正常的应付余额(贷方=负)被标成「预付」，
-  // 于是卡片上出现「应付账款 → 预付 162,591.72」这种自相矛盾的显示。
-  // （同函数内明细行的判法本就正确，见上方 tag 计算，仅合计行有误。）
-  var reversed = (label === '应收') ? (total < 0) : (total > 0);
-  var nature = reversed ? (label === '应收' ? '预收' : '预付') : label;
-  setEl(totalId, (reversed ? nature + ' ' : '') + fmt(Math.abs(total)));
+  // 合计 = 父科目余额（父行已含全部下级）
+  var total = round2(subjectBalance(code, month));
+  setEl(totalId, fmt(Math.abs(total)));
 }
 
 // 应收 / 应付 Tab 切换（卡片内两个主体互斥显隐）
