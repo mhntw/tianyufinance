@@ -349,8 +349,7 @@ function renderTrashRows() {
       var left = 7 - (daysAgo(it.ts) || 0);
       var expire = left <= 0 ? '即将清理' : ('还剩 ' + left + ' 天');
       html += '<div class="backup-item"><span>' + esc(it.name) + '（删除于 ' + fmtTs(it.ts) + '，' + expire + '）</span>'
-        + '<button class="btn btn-xs" data-trash-restore="' + esc(it.file) + '">还原</button>'
-        + '<button class="btn btn-danger-xs" data-trash-del="' + esc(it.file) + '">彻底删除</button></div>';
+        + '<button class="btn btn-xs" data-trash-restore="' + esc(it.file) + '">还原</button></div>';
     });
     if (items.length > 5) {
       html += '<div style="margin:6px 16px"><a class="tool-link" id="btnTrashToggle">' +
@@ -389,7 +388,6 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
   var t = e.target;
   if (!t || t.tagName !== 'A' && t.tagName !== 'BUTTON') return;
   var restoreFile = t.getAttribute('data-trash-restore');
-  var delFile = t.getAttribute('data-trash-del');
   if (t.id === 'btnRefreshTrash') { renderTrash(); return; }
   if (t.id === 'btnTrashToggle') {
     var tb = $('trashPanel');
@@ -397,7 +395,6 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
     return;
   }
   if (t.id === 'btnEmptyTrash') {
-    // 高危操作保护：整账套永久删除，先验证操作密码（默认 admin，可在系统设置修改）
     if (!(await H.askOpPassword('清空账套回收站'))) return;
     const ok = await H.confirmAsync('确定清空回收站？其中的账套将永久删除，无法还原。', { title: '清空回收站' });
     if (!ok) return;
@@ -412,25 +409,31 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
     try {
       var rr = await window.Storage.restoreFromTrash(restoreFile);
       if (!rr || !rr.ok) { showToast('还原失败', 'error'); return; }
-      // 原 id 被占用时 Rust 会换一个新 id 落回，这里如实告知，避免用户找不到账套
+      var newId = rr.id;
       await S.refreshBookIndex();
-      showToast('账套已还原' + (rr.id ? '（' + rr.id + '）' : ''));
-      logSysEvent('还原账套', '还原账套（' + (rr.id || '') + '）', rr.id || '');
+      // 检查是否与现有账套重名：如果冲突，自动在 name 后加 "(已还原)" 后缀
+      var newBook = null;
+      if (newId && typeof window.Storage.loadBook === 'function') {
+        try {
+          var txt = await window.Storage.loadBook(newId);
+          var b = JSON.parse(txt);
+          var newName = (b && b.company && b.company.name) || '';
+          var dup = (S._bookList || []).some(function (x) { return x.id !== newId && x.name === newName; });
+          if (dup && newName) {
+            b.company.name = newName + '（已还原）';
+            if (typeof window.Storage.saveBook === 'function') {
+              await window.Storage.saveBook(newId, JSON.stringify(b));
+            }
+          }
+        } catch (e) { /* 读/改失败不阻断还原 */ }
+      }
+      await S.refreshBookIndex();
+      var suffixDup = (newId && (/_\d+$/.test(newId))) ? '（原 id 被占用，已换名）' : '';
+      showToast('账套已还原' + suffixDup);
+      logSysEvent('还原账套', '还原账套（' + (newId || '') + suffixDup + '）', newId || '');
       renderTrash(); refreshTools(); refreshAll();
       if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
     } catch (err) { showToast('还原失败：' + ((err && err.message) || err), 'error'); }
-    return;
-  }
-  if (delFile) {
-    // 规则：单条彻底删除与「清空回收站」同为不可逆操作 → 必须先验证操作密码
-    if (!(await H.askOpPassword('彻底删除账套'))) return;
-    const ok2 = await H.confirmAsync('确定彻底删除该账套？此操作不可恢复。', { title: '彻底删除' });
-    if (!ok2) return;
-    var rd = await window.Storage.deleteTrashItem(delFile);
-    showToast(rd && rd.ok ? '已彻底删除' : '删除失败', (rd && rd.ok) ? 'success' : 'error');
-    if (rd && rd.ok) logSysEvent('彻底删除账套', '彻底删除回收站账套（' + delFile + '，不可恢复）');
-    renderTrash();
-    if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
   }
 });
 // 手动备份：立即落 Rust 备份目录（<应用数据目录>/添钰财务/backups）。

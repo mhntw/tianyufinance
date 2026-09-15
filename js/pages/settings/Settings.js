@@ -350,7 +350,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     if (!tb) return; // HTML 未含新卡片（旧 dist），静默跳过不干扰
     tb.innerHTML = '<tr><td colspan="5" class="empty-hint">正在读取…</td></tr>';
     // 账套级动作集合：凡命中即展示（含历史无 module 字段的老条目兼容）
-    var SYS_ACTIONS = { '新建账套': 1, '删除账套': 1, '导入账套': 1, '恢复备份': 1, '切换会计准则': 1, '还原账套': 1, '清空回收站': 1, '彻底删除账套': 1 };
+    var SYS_ACTIONS = { '新建账套': 1, '删除账套': 1, '导入账套': 1, '恢复备份': 1, '还原账套': 1, '清空回收站': 1 };
     function isSysEvent(l) {
       if (!l) return false;
       if (l.module === '账套') return true;          // 结构化 module 直接命中
