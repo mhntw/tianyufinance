@@ -21,7 +21,7 @@
  *
  * 账套管理
  *   newBook L761, switchBook L904, removeBook L962, listBooks L715
- *   refreshBookIndex L724, setStandard L799, isBookEnabled L855
+ *   refreshBookIndex L724, isBookEnabled L855
  *
  * 科目表
  *   subjects L1009, subject L1045, subjectName L1051, cashAccounts L1063
@@ -32,10 +32,9 @@
  *   opening L1143, setOpening L1148, openingBalanceCheck L1166
  *   openingOf L2156
  *
- * 凭证（增删改查 / 审核 / 红冲 / 模板）
- *   addVoucher L1205, updateVoucher L1293, removeVoucher L1377
- *   getVoucher L1350, deletedVouchers L1428, restoreVoucher L1402
- *   auditVoucher L1442, unauditVoucher L1480
+ * 凭证（增删改查 / 模板）
+ *   addVoucher L1404, updateVoucher L1494, removeVoucher L1578
+ *   getVoucher L1554, deletedVouchers L1625, restoreVoucher L1603
  *   nextVoucherNo L1178, periodVouchers L1610, vouchersBefore L1615
  *   vchTemplates L1253, saveVchTemplate L1256, removeVchTemplate L1273
  *
@@ -300,7 +299,7 @@
    *              STANDARDS[key].reportRules，拷入后即与准则模板解耦，可逐账套独立编辑
    */
   function emptyState(standardKey) {
-    var stdKey = standardKey && global.STANDARDS && global.STANDARDS[standardKey] ? standardKey : 'old';
+    var stdKey = standardKey && global.STANDARDS && global.STANDARDS[standardKey] ? standardKey : 'small2013';
     var snap = global.cloneStandard ? global.cloneStandard(stdKey) : null;
     var stdMeta = (global.STANDARDS && global.STANDARDS[stdKey]) || { label: '小企业会计准则' };
     return {
@@ -315,6 +314,7 @@
       payrolls: [],          // 工资记录
       salaryVchTpls: [],     // 工资凭证模板（计提/发放）
       vchTemplates: [],      // 日常凭证模板（常用业务结构，按账套保存）
+      settleTemplates: [],   // 期末处理自定义模板（金蝶 AIS GLServiceType 导入 / 用户自建）
       depts: DEFAULT_DEPTS.map(function (s) { return Object.assign({}, s); }), // 部门职员种子（酒店三部门）
       assetCats: DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); }), // 资产类别档案（默认 6 类）
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
@@ -324,7 +324,12 @@
                                // {id,name,remark,smallType,amount,voucherTpl,group,isInvoice,uploadTime,uploader,fileSize,checkStatus,auditTime,voucherNo,period,vouchered,audited,voucherId}
                                // 数据来自用户导入/拍照，新账套为空表（不预置假数据）
       closedPeriods: [],     // 已结账月份列表 ['YYYY-MM', ...]
-      voucherWords: [{ name: '记', title: '记账凭证', enabled: true }],
+      voucherWords: [
+        { name: '记', title: '记账凭证', enabled: true },
+        { name: '收', title: '收款凭证', enabled: true },
+        { name: '付', title: '付款凭证', enabled: true },
+        { name: '转', title: '转账凭证', enabled: true }
+      ],
       param: {
         standard: stdMeta.label,
         voucherWord: '记',
@@ -334,9 +339,7 @@
         },
         // 账簿开关（仅保留已接真的两项；其余开关本项目无消费方，已移除）
         bookHideZero: false,           // 无发生额且余额为0不显示
-        bookExpandAll: true,           // 展开所有级次（默认✓）
-        checkBeforeSettle: false       // 单人/免审核场景默认不强制：结账前无需先审核
-                                       // （审核为可选合规动作；如需强制，在系统设置勾选）
+        bookExpandAll: true            // 展开所有级次（默认✓）
       }
     };
   }
@@ -880,7 +883,7 @@
     // startMonth: 启用期间（'YYYY-MM'），建账时定稿；缺省/非法时回落 emptyState 的建账当月
     newBook: function (name, standardKey, startMonth) {
       var id = 'B' + Date.now();
-      var st = emptyState(standardKey || 'old');
+      var st = emptyState(standardKey || 'small2013');
       st.company.name = name && name.trim() ? name.trim() : '新建账套';
       if (typeof startMonth === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
         st.company.startMonth = startMonth;
@@ -907,69 +910,6 @@
         this.refreshBookIndex();
       }
       return id;
-    },
-
-    /* ---------- 切换会计准则（已有账套） ----------
-     * 对已有账套切换准则：① 迁移损益类科目编码（5xxx↔6xxx，资产/负债/权益不变）
-     *   于 subjects / openingBalances / vouchers.entries 全量改写；② 重灌 reportRules
-     *   为目标准则快照；③ 同步 standard 键 + param.standard 显示名。
-     * 风险控制：调用方须先做备份（结账/高危操作惯例）；本方法幂等——同键再切只重灌规则不改编码。
-     * 返回 { ok, msg, changed:{subjects,vouchers,opening} }
-     */
-    setStandard: function (toKey) {
-      if (!global.STANDARDS || !global.STANDARDS[toKey]) return { ok: false, msg: '未知准则：' + toKey };
-      if (!this.state) return { ok: false, msg: '账套未加载' };
-      var fromKey = this.state.standard || 'old';
-      var snap = global.cloneStandard(toKey);
-      var stats = { subjects: 0, vouchers: 0, opening: 0 };
-      var self = this;
-
-      // 仅在 from≠to 时迁移编码（同键切换只重灌规则，安全幂等）
-      if (fromKey !== toKey) {
-        // 1) subjects：编码映射
-        (this.state.subjects || []).forEach(function (s) {
-          var nc = global.migrateSubjectCode(s.code, fromKey, toKey);
-          if (nc !== s.code) { s.code = nc; stats.subjects++; }
-        });
-        // 2) openingBalances：键名迁移（{ oldCode: {...} } → { newCode: {...} }）
-        var ob = this.state.openingBalances || {};
-        var newOb = {};
-        Object.keys(ob).forEach(function (code) {
-          var nc = global.migrateSubjectCode(code, fromKey, toKey);
-          newOb[nc] = ob[code];
-          if (nc !== code) stats.opening++;
-        });
-        this.state.openingBalances = newOb;
-        // 3) vouchers.entries.code：逐分录改写
-        (this.state.vouchers || []).forEach(function (v) {
-          var touched = false;
-          (v.entries || []).forEach(function (e) {
-            var nc = global.migrateSubjectCode(e.code, fromKey, toKey);
-            if (nc !== e.code) { e.code = nc; touched = true; }
-          });
-          if (touched) stats.vouchers++;
-        });
-        // subjectCashFlowMap：键为科目编码，需同步迁移
-        var scfm = this.state.subjectCashFlowMap || {};
-        var newScfm = {};
-        Object.keys(scfm).forEach(function (code) {
-          var nc = global.migrateSubjectCode(code, fromKey, toKey);
-          newScfm[nc] = scfm[code];
-        });
-        this.state.subjectCashFlowMap = newScfm;
-      }
-
-      // 重灌规则快照 + 同步键/标签
-      this.state.standard = toKey;
-      this.state.reportRules = snap.reportRules;
-      this.state.param = this.state.param || {};
-      this.state.param.standard = global.STANDARDS[toKey].label;
-      this.normalizeState();
-      this.addLog('切换会计准则', '由「' + (global.STANDARDS[fromKey] && global.STANDARDS[fromKey].label || fromKey) +
-                  '」切换为「' + global.STANDARDS[toKey].label + '」（改科目 ' + stats.subjects +
-                  '、凭证 ' + stats.vouchers + '、期初 ' + stats.opening + '）', '账套');
-      this.persist();
-      return { ok: true, msg: '已切换为「' + global.STANDARDS[toKey].label + '」', changed: stats };
     },
 
     isBookEnabled: function (id) {
@@ -1117,7 +1057,19 @@
             }).catch(function () {});
           }
         } catch (e) {}
-        // 3) 待主账本真正删完后重建索引，确保列表与磁盘一致
+        // 3) 清理跟随该账套的结账自定义/预置模板（全局 localStorage，按 bookId 归属标记），
+        //    避免删除账套后这些模板仍残留在全局、下次进入其它账套时串台显示
+        try {
+          var TMPL_KEY = 'settle_templates_v1';
+          var list = JSON.parse(localStorage.getItem(TMPL_KEY) || '[]');
+          if (Array.isArray(list)) {
+            // 仅按 bookId 清理：系统默认模板（dep/cost/vat/surTax/incTax/profit）永远不带 bookId，不会被误删；
+            // 其余跟随账套的自定义/预置模板带上 bookId，删除账套时随之清除
+            var kept = list.filter(function (t) { return !(t && t.bookId === id); });
+            if (kept.length !== list.length) localStorage.setItem(TMPL_KEY, JSON.stringify(kept));
+          }
+        } catch (e) {}
+        // 4) 待主账本真正删完后重建索引，确保列表与磁盘一致
         return self.refreshBookIndex().then(function () {
           return { ok: true, name: name };
         });
@@ -1421,10 +1373,9 @@
 
       v.word = v.word || this.state.param.voucherWord || '记';
       v.no = v.no || this.nextVoucherNo(v.word, _month);
-      // 凭证字号唯一性校验：同月同凭证字下字号不可重复（规则）
-      // 已删除（软删）凭证不占号，允许新凭证使用被删凭证的字号
+      // 凭证字号唯一性校验：同月同凭证字下字号不可重复（含已软删凭证——号一旦签发就永不回收，保持审计链条完整）
       var _dup = (this.state.vouchers || []).filter(function (x) {
-        return x.deleted !== 'y' && (x.word || '记') === v.word
+        return (x.word || '记') === v.word
           && String(x.no) === String(v.no) && voucherMonth(x) === _month;
       });
       if (_dup.length) {
@@ -1435,15 +1386,14 @@
       // 导致原始凭证/固定资产等按 voucherId 记录的引用全部失效
       // （体现为：刷新后引用对不上号，对应业务单据保护失效）。
       v.id = this._calcVoucherId(v.word, v.no, voucherMonth(v));
-      v.status = v.status || 'draft'; // draft 草稿 / audited 已审核（出纳复核 reviewed 已下线归一 audited）
-      // 记录制单人（用于"不允许修改/删除别人录入的凭证"等系统参数开关校验）
+      // 记录制单人
       if (!v.maker) v.maker = (this.state.company && this.state.company.bookkeeper) || '会计';
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
       this.state.vouchers.push(v);
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存（否则后续查询会命中旧值）
       this.persist();
       this.addLog('新增凭证', v.word + '-' + v.no + ' ' + (v.summary || ''), '凭证',
-        null, null, this._voucherAuditSummary(v),
+        null, null, v.word + '-' + v.no + (v.summary ? ' ' + v.summary : ''),
         { id: v.id, action_type: 'create', target_name: v.word + '-' + v.no, result: 'success' });
       return v;
     },
@@ -1469,6 +1419,47 @@
       if (!tpl.entries.some(function (e) { return e.code; })) return { ok: false, msg: '模板至少需要一条带科目的分录' };
       this.state.vchTemplates = this.state.vchTemplates || [];
       this.state.vchTemplates.push(tpl);
+      // 同步到结账凭证模板（localStorage），让录凭证保存的模板也能在期末处理中使用
+      // （金蝶"保存为模板 → 自动出现在结账凭证模板"行为）
+      try {
+        var STL_KEY = 'settle_templates_v1';
+        var _stl = JSON.parse(localStorage.getItem(STL_KEY) || '[]');
+        if (!Array.isArray(_stl)) _stl = [];
+        // 已存在的同名模板先移除（避免重复 push）
+        _stl = _stl.filter(function (s) { return !(s.fromVchTpl && s.vchTplId === tpl.id); });
+        var _settleEntry = {
+          id: 'vch_' + tpl.id,          // 前缀区分系统模板（profit/dep/vat...）
+          name: tpl.name,
+          enabled: true,
+          custom: true,
+          summary: tpl.summary || '',
+          word: this.state.param && this.state.param.voucherWord || '记',
+          template: tpl.entries.map(function (e) {
+            return {
+              summary: e.summary || '',
+              code: e.code || '',
+              name: e.name || '',
+              dc: Number(e.dr) > 0 ? 'D' : (Number(e.cr) > 0 ? 'C' : 'D'),
+              dr: Number(e.dr) || 0,
+              cr: Number(e.cr) || 0,
+              amount: Number(e.dr) || Number(e.cr) || 0,
+              ruleType: 'none'        // 固定金额（录凭证模板不涉及取数规则）
+            };
+          }),
+          hasEntries: tpl.entries.length > 0,
+          ruleType: 'none',
+          fromVchTpl: true,
+          vchTplId: tpl.id,
+          bookId: this.bookId   // 跟随当前账套：金额模板绝不能跨账套串台
+        };
+        _stl.push(_settleEntry);
+        localStorage.setItem(STL_KEY, JSON.stringify(_stl));
+        // 同时写入 store.state.settleTemplates，让 settleTplEnabled 能读到 enabled=true
+        this.state.settleTemplates = this.state.settleTemplates || [];
+        var existing = this.state.settleTemplates.filter(function(s){ return !(s.fromVchTpl && s.vchTplId === tpl.id); });
+        existing.push(_settleEntry);
+        this.state.settleTemplates = existing;
+      } catch (_) { /* localStorage 失败不阻断主流程 */ }
       this.persist();
       return { ok: true, tpl: tpl };
     },
@@ -1478,19 +1469,17 @@
       arr.forEach(function (t, i) { if (t.id === id) idx = i; });
       if (idx < 0) return { ok: false, msg: '模板不存在' };
       arr.splice(idx, 1);
+      // 同步删除结账凭证模板里对应的条目（vchTplId 匹配）
+      try {
+        var STL_KEY2 = 'settle_templates_v1';
+        var _stl2 = JSON.parse(localStorage.getItem(STL_KEY2) || '[]');
+        if (Array.isArray(_stl2)) {
+          _stl2 = _stl2.filter(function (s) { return !(s.fromVchTpl && s.vchTplId === id); });
+          localStorage.setItem(STL_KEY2, JSON.stringify(_stl2));
+        }
+      } catch (_) {}
       this.persist();
       return { ok: true };
-    },
-    // 凭证审计摘要（精简后留痕用）：仅保留关键字段，避免日志条目过大
-    _voucherAuditSummary: function (v) {
-      if (!v) return null;
-      return {
-        id: v.id, word: v.word, no: v.no, date: v.date,
-        summary: v.summary, status: v.status, maker: v.maker,
-        entries: (v.entries || []).map(function (e) {
-          return { code: e.code, name: e.name, dr: num(e.dr), cr: num(e.cr) };
-        })
-      };
     },
     updateVoucher: function (id, v) {
       var idx = -1;
@@ -1499,9 +1488,6 @@
       if (this.state.vouchers[idx].deleted === 'y') return { ok: false, msg: '凭证已删除，请先还原再修改' };
       if (this.isPeriodClosed(voucherMonth(this.state.vouchers[idx])))
         return { ok: false, msg: '该凭证所在月份已结账，不可修改' };
-      // 单人/免审核场景：审核是可选合规动作，不作为编辑锁。
-      // 已审核凭证允许修改，保存后审核状态自动撤销（内容已变更，原审核失效，需重新审核）。
-      var wasAudited = !!(this.state.vouchers[idx].status && this.state.vouchers[idx].status !== 'draft');
       // 凭证字号唯一性校验（编辑场景）：仅当用户实际改变了字/号/月份时才校验，
       // 避免历史遗留重复凭证编辑自身不改号时被误拦截。
       var _old = this.state.vouchers[idx];
@@ -1522,10 +1508,13 @@
         return { ok: false, msg: '凭证日期（' + _tMonth + '）不能晚于当前月份（' + _cur + '）' };
 
       var _selfId = _old.id;
-      var _changed = (_tWord !== _oWord) || (String(_tNo) !== String(_oNo)) || (_tMonth !== _oMonth);
+      // 凭证归属月份不可修改（对齐金蝶/用友）：如需调整期间，请删除后在正确月份重新录入。
+      // 原因：凭证号、id（含月份后缀）、引用关系（固定资产/工资/原始凭证）都跟月份绑定，改月份会断审计链条。
+      if (_tMonth !== _oMonth) return { ok: false, msg: '凭证归属月份不可修改。如需调整期间，请删除后在正确月份重新录入。' };
+      var _changed = (_tWord !== _oWord) || (String(_tNo) !== String(_oNo));
       if (_changed) {
         var _dupEdit = (this.state.vouchers || []).filter(function (x) {
-          return x.id !== _selfId && x.deleted !== 'y'
+          return x.id !== _selfId
             && (x.word || '记') === _tWord && String(x.no) === String(_tNo)
             && voucherMonth(x) === _tMonth;
         });
@@ -1534,20 +1523,15 @@
         }
       }
       // 审计留痕：先快照修改前值，再应用修改
-      var before = this._voucherAuditSummary(this.state.vouchers[idx]);
+      var before = this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || '');
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
       this.state.vouchers[idx] = Object.assign(this.state.vouchers[idx], v, { id: id });
-      if (wasAudited) {
-        // 内容已改，审核失效：状态回草稿并清除审计人
-        this.state.vouchers[idx].status = 'draft';
-        delete this.state.vouchers[idx].auditor;
-      }
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存
       this.persist();
       this.addLog('修改凭证', this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || ''), '凭证',
-        null, before, this._voucherAuditSummary(this.state.vouchers[idx]),
+        null, before, this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + (this.state.vouchers[idx].summary ? ' ' + this.state.vouchers[idx].summary : ''),
         { id: id, action_type: 'update', target_name: this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no, result: 'success' });
-      return { ok: true, unaudited: wasAudited };
+      return { ok: true };
     },
     getVoucher: function (id) {
       // 软删除过滤：默认排除 deleted==='y'；UI 回收站入口通过 getVoucherIncludeDeleted 显式查
@@ -1579,8 +1563,6 @@
       if (v.deleted === 'y') return { ok: false, msg: '凭证已删除' };
       if (this.isPeriodClosed(voucherMonth(v)))
         return { ok: false, msg: '该凭证所在月份已结账，不可删除' };
-      // 单人/免审核场景：审核不构成删除锁（删除仍有确认框 + 操作日志完整留痕）。
-      var wasAudited = !!(v.status && v.status !== 'draft');
       // 财务严谨：校验凭证是否被业务单据引用（报销单/原始凭证/固定资产/工资等），有引用则禁删
       var ref = this._voucherRefs(id);
       if (ref && ref.length) return { ok: false, msg: '该凭证已被' + ref.join('、') + '引用，请先解除关联后再删除' };
@@ -1593,11 +1575,11 @@
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存
       this.persist();
       this.addLog('删除凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
-        null, this._voucherAuditSummary(v), null,
+        null, (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''), null,
         { id: id, action_type: 'delete', target_name: (v.word || '') + '-' + (v.no != null ? v.no : ''), result: 'success' });
-      return { ok: true, unaudited: wasAudited };
+      return { ok: true };
     },
-    // 还原已软删的凭证（撤销删除；还原一律回到草稿态，可正常编辑）
+    // 还原已软删的凭证（撤销删除）
     restoreVoucher: function (id) {
       var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
       if (!v) return { ok: false, msg: '凭证不存在' };
@@ -1608,14 +1590,11 @@
       v.deleted = 'n';
       delete v.deletedAt;
       delete v.deletedBy;
-      // 还原统一回到草稿态（与回收站提示"可正常编辑"一致），不恢复出"已审核"的隐性锁定
-      v.status = 'draft';
-      delete v.auditor;
       this._glCache = {};
       this.persist();
       var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
       this.addLog('还原凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
-        null, null, this._voucherAuditSummary(v),
+        null, null, (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''),
         { id: id, action_type: 'restore', target_name: (v.word || '') + '-' + (v.no != null ? v.no : ''), result: 'success' });
       return { ok: true };
     },
@@ -1637,56 +1616,6 @@
       }
       return { ok: true, purged: purged };
     },
-    // 凭证审核（审核后凭证生效，可记账；受系统参数开关控制）
-    auditVoucher: function (id) {
-      var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
-      if (!v) return { ok: false, msg: '凭证不存在' };
-      if (v.deleted === 'y') return { ok: false, msg: '凭证已删除，不可审核' };
-      if (this.isPeriodClosed(voucherMonth(v)))
-        return { ok: false, msg: '该凭证所在月份已结账' };
-      var bal = this.voucherBalance(v.entries);
-      if (!bal.balanced) return { ok: false, msg: '借贷不平衡，不能审核' };
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
-      // 开关：现金、银行存款、其他货币资金科目赤字检查
-      var vc = (this.state.param && this.state.param.voucherChecks) || {};
-      if (vc.deficitCheck) {
-        var cashAccts = this.cashAccounts ? this.cashAccounts() : [];
-        var cashCodes = cashAccts.map(function (s) { return s.code; });
-        if (cashCodes.length) {
-          var month = voucherMonth(v);
-          var gl = this.generalLedger(month);
-          // 当前凭证已在 state.vouchers 中（审核只是改 status），generalLedger 已含其影响
-          var deficit = (v.entries || []).some(function (e) {
-            if (!e.code || cashCodes.indexOf(e.code) < 0) return false;
-            var row = gl.filter(function (r) { return r.code === e.code; })[0];
-            if (!row) return false;
-            // 期末余额（借-贷）按科目正常方向判断：借方科目 cr>dr 即赤字；贷方科目 dr>cr 即赤字
-            var subj = this.subject(e.code);
-            var normal = subj ? subj.normal : 'dr';
-            var endDr = num(row.endDr), endCr = num(row.endCr);
-            return normal === 'dr' ? (endCr - endDr > EPS) : (endDr - endCr > EPS);
-          }.bind(this));
-          if (deficit) return { ok: false, msg: '存在现金/银行存款等科目赤字（系统参数已开启赤字检查）' };
-        }
-      }
-      v.status = 'audited';
-      // 记录审核人
-      if (!v.auditor) v.auditor = curUser;
-      this.persist();
-      return { ok: true };
-    },
-    // 反审核（受系统参数开关控制）
-    unauditVoucher: function (id) {
-      var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
-      if (!v) return { ok: false, msg: '凭证不存在' };
-      if (v.deleted === 'y') return { ok: false, msg: '凭证已删除' };
-      if (this.isPeriodClosed(voucherMonth(v)))
-        return { ok: false, msg: '该凭证所在月份已结账，不可反审核（已结账期间凭证状态锁定）' };
-      v.status = 'draft';
-      this.persist();
-      return { ok: true };
-    },
-    // 凭证审核状态中文
     /* ---------- 业务科目角色解析（单点，规范化） ----------
      * 自动凭证生成与默认科目只说「角色」，编码由当前准则决定（两准则费用类不同 5xxx/6xxx）。
      * 解析顺序：用户配置编码 preferred → 准则 subjectRoles → 按名称关键字回退 → null。
@@ -1923,10 +1852,10 @@
         if (hasRole('PAYROLL_FEE')) return K.PAYROLL_ACC;
         if (hasRole('BANK') || has('1001')) return K.PAYROLL_PAY;
       }
-      // 6) 计提所得税：所得税费用 6801（仅计提使用；缴纳时走 2221 不涉及 6801）
-      if (has('6801')) return K.ACCRUE_INCTAX;
-      // 7) 计提附加税：税金及附加 6403 + 应交税费明细
-      if (has('6403') && startsWith('2221')) return K.ACCRUE_SURTAX;
+      // 6) 计提所得税：所得税费用 5801（仅计提使用；缴纳时走 2221 不涉及 5801）
+      if (has('5801')) return K.ACCRUE_INCTAX;
+      // 7) 计提附加税：税金及附加 5403 + 应交税费明细
+      if (has('5403') && startsWith('2221')) return K.ACCRUE_SURTAX;
       // 8) 转出未交增值税：借贷双方全部落在应交税费 2221 系列
       // （实际缴税凭证必含银行/现金，不会误命中）
       if (codeList.length >= 2 && codeList.every(function (c) { return c.indexOf('2221') === 0; })) {
@@ -1996,7 +1925,8 @@
     // 口径见 tools/audit_books.js「结转损益口径 = 利润表口径（逐期）」。
     // 纯可读性改动（花括号/缩进/拆辅助函数）不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑上述两脚本，全绿才算完成（决策记录见 CHANGELOG 2026-09-12）。
-    carryForwardProfit: function (month) {
+    carryForwardProfit: function (month, opts) {
+      opts = opts || {};
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       // 幂等（财务规范：一个期间只能结转一次损益）：按 v.kind 定位结转凭证，
       // 兼容导入账套（其凭证无 summary，摘要正则恒不命中，必须靠结构识别）。
@@ -2028,38 +1958,62 @@
           }
         });
       });
-      var entries = [];
+      // 按科目性质分成收入类 entriesRev 和费用类 entriesExp
+      var entriesRev = [], entriesExp = [];
       Object.keys(map).forEach(function (code) {
         var s = self.subject(code);
         var amt = map[code];
         if (s.cls === 'revenue') {
-          entries.push({ code: code, name: s.name, summary: '结转' + s.name, dr: amt, cr: 0 });
+          entriesRev.push({ code: code, name: s.name, summary: '结转' + s.name, dr: amt, cr: 0 });
         } else {
-          entries.push({ code: code, name: s.name, summary: '结转' + s.name, dr: 0, cr: amt });
+          entriesExp.push({ code: code, name: s.name, summary: '结转' + s.name, dr: 0, cr: amt });
         }
       });
-      // 差额入本年利润（科目角色解析：本年利润）
       var net = totalRev - totalExp;
-      var profitSubj = self.subjectRole('PROFIT_YEAR');
-      var profitCode = profitSubj ? profitSubj.code : PROFIT_CODE;
-      var profitName = profitSubj ? profitSubj.name : '本年利润';
-      // 净额为零（收入=费用）时各损益科目结转分录已自行平衡，不得再挂一条 0 金额的本年利润分录
-      if (Math.abs(net) >= EPS) {
-        if (net > 0) entries.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: net });
-        else entries.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: -net, cr: 0 });
-      }
-      var v = {
-        word: '转', date: lastDay(month), attach: 0,
-        summary: '结转' + month + '损益',
-        kind: this.VOUCHER_KINDS.CARRY_PL, // 期末业务类型标记（幂等/结账检查按此识别，不依赖摘要）
-        entries: entries
+      var profitCode = opts.targetSubj || (this.subjectRole('PROFIT_YEAR') || { code: PROFIT_CODE }).code;
+      var profitName = this.subject(profitCode) ? this.subject(profitCode).name : '本年利润';
+      var savedVouchers = [];
+      var baseV = {
+        word: opts.word || this.state.param.voucherWord || '记',
+        date: (opts && opts.date) || lastDay(month), attach: 0,
+        kind: this.VOUCHER_KINDS.CARRY_PL
       };
-      var saved = this.addVoucher(v);
-      if (!saved || saved.ok === false) {
-        return { ok: false, msg: (saved && saved.msg) || '结转损益失败' };
+      var doSave = function (entries) {
+        if (!entries.length) return null;
+        var v = Object.assign({}, baseV, { entries: entries });
+        v.summary = opts.summary || ('结转' + month + '损益');
+        var r = self.addVoucher(v);
+        if (r && r.ok !== false) savedVouchers.push(r);
+        return r;
+      };
+      // separate=true（默认，金蝶风格）：收入→3103（贷）一张、费用→3103（借）一张
+      if (opts.separate !== false) {
+        var saved1 = null, saved2 = null;
+        // 凭证 1：收入类 → 本年利润（3103 在贷方）
+        if (entriesRev.length || Math.abs(totalRev) >= EPS) {
+          var e1 = entriesRev.slice();
+          if (Math.abs(totalRev) >= EPS) e1.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: totalRev });
+          saved1 = doSave(e1);
+        }
+        // 凭证 2：成本费用类 → 本年利润（3103 在借方）
+        if (entriesExp.length || Math.abs(totalExp) >= EPS) {
+          var e2 = entriesExp.slice();
+          if (Math.abs(totalExp) >= EPS) e2.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: totalExp, cr: 0 });
+          saved2 = doSave(e2);
+        }
+        if (!saved1 && !saved2) return { ok: false, msg: '结转损益失败' };
+      } else {
+        // 同时结转（一张净额，旧逻辑）
+        var entriesAll = entriesRev.concat(entriesExp);
+        if (Math.abs(net) >= EPS) {
+          if (net > 0) entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: net });
+          else entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: -net, cr: 0 });
+        }
+        if (!entriesAll.length) return { ok: false, msg: '结转损益失败：无损益类科目' };
+        doSave(entriesAll);
       }
-      this.backupNow(); // 结转损益为高风险操作，强制立即备份
-      return { ok: true, voucher: saved, totalRev: totalRev, totalExp: totalExp, net: net };
+      this.backupNow();
+      return { ok: true, vouchers: savedVouchers, totalRev: totalRev, totalExp: totalExp, net: net };
     },
 
     /* ===================== 年末结转本年利润 ===================== */
@@ -2101,7 +2055,7 @@
         ];
       }
       var v = {
-        word: '转', date: lastDay(month), attach: 0,
+        word: this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
         summary: '结转 ' + month.substring(0, 4) + ' 年度本年利润',
         kind: this.VOUCHER_KINDS.CARRY_YE, // 期末业务类型标记（幂等/结账检查按此识别，不依赖摘要）
         entries: entries
@@ -2169,7 +2123,7 @@
       alloc = R(alloc);
       entries.unshift({ code: undist.code, name: undist.name, summary: '利润分配（提取盈余公积及分配股利）', dr: alloc, cr: 0 });
       var v = {
-        word: '转', date: lastDay(month), attach: 0,
+        word: this.state.param.voucherWord || '记', date: lastDay(month), attach: 0,
         summary: '分配 ' + year + ' 年度利润',
         kind: this.VOUCHER_KINDS.PROFIT_DIST,
         entries: entries
@@ -2189,11 +2143,10 @@
       if (!this.state.closedPeriods) this.state.closedPeriods = [];
       return this.state.closedPeriods.indexOf(month) >= 0;
     },
-    // 模板默认启用状态：仅「结转损益」默认启用（2026-09-05 依实际账套数据：两店只用结转损益，
-    // 折旧/成本/增值税/附加税/所得税均无模板凭证，属手工业务）。其余默认禁用，
-    // 需要时在「设置-期末处理模板」启用；避免结账前被"建议转出增值税/计提附加税"等打扰。
+    // 系统模板默认全部启用，用户可在设置里停用
     settleTplDefaultEnabled: function (id) {
-      return id === 'profit';
+      var systemTpls = ['dep', 'cost', 'vat', 'surTax', 'incTax', 'profit'];
+      return systemTpls.indexOf(id) >= 0;
     },
     // 模板当前是否启用（读 state.settleTemplates，未保存时用默认）
     settleTplEnabled: function (id) {
@@ -2204,7 +2157,7 @@
       }
       return this.settleTplDefaultEnabled(id);
     },
-    // 结账前检查清单（凭证全部审核 + 损益结转是硬性条件；
+    // 结账前检查清单（损益结转 + 借贷平衡是硬性条件；
     // 折旧/调汇/税费等启用的期末处理模板为提示项，未完成时结账需确认）。
     // 返回 [{ key, label, status: 'ok'|'fail'|'warn', tip }]
     settleChecklist: function (month) {
@@ -2212,27 +2165,45 @@
       var vs = this.periodVouchers(month);
       var est = this.profitStatement(month);
       var checks = [];
-      function add(key, label, status, tip) { checks.push({ key: key, label: label, status: status, tip: tip }); }
+      function add(key, label, status, tip) {
+        var ov = (self.state.param && self.state.param.checkOverrides) || {};
+        var o = ov[key];
+        if (o === 'warn' && status === 'fail') status = 'warn';   // 降级为提醒
+        if (o === 'block' && status === 'warn') status = 'fail';  // 升级为拦截
+        checks.push({ key: key, label: label, status: status, tip: tip });
+      }
       // 期末处理凭证是否已生成：一律按 v.kind 判定（结构识别，兼容导入的无摘要凭证）。
       // 此前用摘要正则（/结转.*损益/、/计提.*折旧/ …），对导入凭证恒不命中，
       // 导致这些项在账套上永远显示「未生成/建议生成」，且幂等保护形同虚设。
       function kindCount(kind) { return self.periodVouchersOfKind(month, kind).length; }
 
-      // 1. 凭证全部审核（硬性；开关"凭证审核后才允许结账"控制是否检查）
-      var requireAudit = self.state.param && self.state.param.checkBeforeSettle;
-      if (requireAudit) {
-        var unaudited = vs.filter(function (v) { return !v.status || v.status === 'draft'; });
-        add('audit', '凭证全部审核', unaudited.length ? 'fail' : 'ok',
-          unaudited.length ? '本期有 ' + unaudited.length + ' 张凭证未审核' : '本期凭证已全部审核');
-      } else {
-        add('audit', '凭证全部审核', 'ok', '系统参数已关闭"凭证审核后才允许结账"，跳过审核检查');
-      }
-
-      // 1.5 凭证借贷平衡（硬性：本期内任意凭证借贷不平则拦截结账）
+      // 1. 凭证借贷平衡（硬性：本期内任意凭证借贷不平则拦截结账）
       if (vs.some(function (v) { return !self.voucherBalance(v.entries).balanced; })) {
         add('vbal', '凭证借贷平衡', 'fail', '本期存在借贷不平衡的凭证，请修正后再结账');
       } else {
         add('vbal', '凭证借贷平衡', 'ok', '本期凭证借贷均已平衡');
+      }
+
+      // 1.2 凭证号连续性（提示：软删凭证会导致活动列表断号，但号仍在系统中未丢失）
+      var byWord = {};
+      vs.forEach(function (v) {
+        var w = v.word || '记';
+        if (!byWord[w]) byWord[w] = [];
+        byWord[w].push(v.no);
+      });
+      var gapTips = [];
+      for (var wd in byWord) {
+        var nos = byWord[wd].sort(function (a, b) { return a - b; });
+        for (var i = 1; i < nos.length; i++) {
+          if (nos[i] - nos[i - 1] > 1) {
+            gapTips.push(wd + '-' + (nos[i - 1] + 1) + '~' + (nos[i] - 1));
+          }
+        }
+      }
+      if (gapTips.length) {
+        add('vseq', '凭证号连续', 'warn', '本期存在断号：' + gapTips.join('、') + '（已删除的凭证可在回收站还原）');
+      } else {
+        add('vseq', '凭证号连续', 'ok', '本期凭证号连续无断号');
       }
 
       // 1.6 幽灵科目检查（硬性：任何分录 e.code 不在科目表中都会被总账静默漏算，必须拦截）
@@ -2348,6 +2319,27 @@
       } else {
         add('incTax', '计提所得税', 'ok', '模板已禁用');
       }
+
+      // 9. 科目余额检查（标准结账守卫；小公司可在「检查项处置」里降级/关闭）
+      // 取数口径复用 generalLedger（行已带 normal/endDr/endCr），与报表一致。
+      var glRows = self.generalLedger(month) || [];
+      function endBalOf(code) {
+        var r = glRows.filter(function (x) { return x.code === code; })[0];
+        if (!r) return null;
+        return r.normal === 'cr' ? (num(r.endCr) - num(r.endDr)) : (num(r.endDr) - num(r.endCr));
+      }
+      // 现金/银行/其他货币资金期末为贷方余额（赤字）→ 硬性拦截
+      var cashAccts = (self.cashAccounts ? self.cashAccounts() : []).map(function (s) { return s.code; });
+      var negCash = cashAccts.filter(function (c) { var b = endBalOf(c); return b !== null && b < -EPS; });
+      if (negCash.length) add('cashNeg', '货币资金赤字', 'fail', '以下科目期末为贷方余额（赤字）：' + negCash.join('、') + '，请核查');
+      else add('cashNeg', '货币资金赤字', 'ok', '货币资金余额正常（无赤字）');
+      // 应收(1122)/应付(2202) 出现反向余额 → 仅提醒（可能为重分类事项）
+      var ar = endBalOf('1122');
+      if (ar !== null && ar < -EPS) add('arRev', '应收账款反向余额', 'warn', '应收账款为贷方余额，可能为预收款项未重分类');
+      else add('arRev', '应收账款反向余额', 'ok', '应收账款余额方向正常');
+      var ap = endBalOf('2202');
+      if (ap !== null && ap < -EPS) add('apRev', '应付账款反向余额', 'warn', '应付账款为借方余额，可能为预付款项未重分类');
+      else add('apRev', '应付账款反向余额', 'ok', '应付账款余额方向正常');
 
       return checks;
     },
@@ -2859,13 +2851,88 @@
         { code: invCode, name: inv ? inv.name : '库存商品', summary: summary, dr: 0, cr: amt }
       ];
       var v = this.addVoucher({
-        word: tpl.word || this.state.param.voucherWord || '转', date: lastDay(month), attach: 0,
+        word: tpl.word || this.state.param.voucherWord || '记', date: (tpl && tpl.date) || lastDay(month), attach: 0,
         summary: summary, kind: this.VOUCHER_KINDS.CARRY_COST, entries: entries
       });
       if (!v || v.ok === false) {
         return { ok: false, msg: (v && v.msg) || '结转成本失败' };
       }
       this.backupNow(); // 结转成本批量写凭证，强制立即备份
+      return { ok: true, voucher: v, amount: amt };
+    },
+    // 转出未交增值税
+    genVatVoucher: function (month, opts) {
+      opts = opts || {};
+      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
+      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_VAT);
+      if (existed.length) return { ok: false, msg: '本期已转出未交增值税，请勿重复生成' };
+      var netPL = this.periodProfitNet(month);
+      var rate = num(opts.rate) || 13;
+      var vatV = Math.max(0, num(netPL.rev) - num(netPL.exp)) * rate / 100;
+      if (vatV < 0.005) return { ok: false, msg: '本期净利润为负或零，无需转出增值税' };
+      var targetCode = opts.targetSubj || '222102';
+      var v = this.addVoucher({
+        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
+        summary: opts.summary || ('转出' + month + '未交增值税'),
+        kind: this.VOUCHER_KINDS.CARRY_VAT,
+        entries: [
+          { code: '2221', name: '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
+          { code: targetCode, name: this.subject(targetCode) ? this.subject(targetCode).name : '未交增值税', summary: '转出未交增值税', dr: 0, cr: vatV }
+        ]
+      });
+      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '转出增值税失败' };
+      return { ok: true, voucher: v, amount: vatV };
+    },
+    // 计提附加税（城建税 7% + 教育费附加 3% + 地方教育附加 2% = 12%）
+    genSurTaxVoucher: function (month, opts) {
+      opts = opts || {};
+      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
+      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.ACCRUE_SURTAX);
+      if (existed.length) return { ok: false, msg: '本期已计提附加税，请勿重复生成' };
+      // 附加税计税依据 = 本期实际计提/转出的「未交增值税」+「消费税」贷方发生额（与「查看金额计算逻辑」浮层口径一致）
+      var vatTarget = opts.vatTargetSubj || '222102';
+      var unpaySp = this.subjectPeriod(vatTarget, month);
+      var unpayVat = Math.max(0, unpaySp ? num(unpaySp.periodCr) : 0);
+      var consumeSp = this.subjectPeriod('222121', month);
+      var consumeTax = Math.max(0, consumeSp ? num(consumeSp.periodCr) : 0);
+      var base = unpayVat + consumeTax;
+      var surRate = num(opts.rate) || 12;
+      var amt = base * surRate / 100;
+      if (amt < 0.005) return { ok: false, msg: '本期附加税无需计提' };
+      var v = this.addVoucher({
+        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
+        summary: opts.summary || ('计提' + month + '附加税'),
+        kind: this.VOUCHER_KINDS.ACCRUE_SURTAX,
+        entries: [
+          { code: '5403', name: this.subject('5403') ? this.subject('5403').name : '税金及附加', summary: '计提附加税', dr: amt, cr: 0 },
+          { code: '222109', name: '应交附加税', summary: '计提附加税', dr: 0, cr: amt }
+        ]
+      });
+      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提附加税失败' };
+      return { ok: true, voucher: v, amount: amt };
+    },
+    // 计提所得税
+    genIncTaxVoucher: function (month, opts) {
+      opts = opts || {};
+      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
+      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.ACCRUE_INCTAX);
+      if (existed.length) return { ok: false, msg: '本期已计提所得税，请勿重复生成' };
+      // 所得税在「利润总额（税前）」上计提，而非净利润（净利润已扣所得税，会循环且恒为 0）
+      var netPL = this.periodProfitNet(month);
+      var rate = num(opts.rate) || 25;
+      var profit = Math.max(0, num(netPL.rev) - num(netPL.exp));
+      var amt = profit * rate / 100;
+      if (amt < 0.005) return { ok: false, msg: '本期利润为负或零，无需计提所得税' };
+      var v = this.addVoucher({
+        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
+        summary: opts.summary || ('计提' + month + '所得税'),
+        kind: this.VOUCHER_KINDS.ACCRUE_INCTAX,
+        entries: [
+          { code: '5801', name: this.subject('5801') ? this.subject('5801').name : '所得税费用', summary: '计提所得税', dr: amt, cr: 0 },
+          { code: '222115', name: '应交所得税', summary: '计提所得税', dr: 0, cr: amt }
+        ]
+      });
+      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提所得税失败' };
       return { ok: true, voucher: v, amount: amt };
     },
     // 科目余额表（至某月末）
@@ -3796,7 +3863,7 @@
       if (errMsg) return { ok: false, msg: errMsg };
       if (!entries.length) return { ok: false, msg: '勾选的卡片中没有待生成清理凭证的已清理资产' };
       var v = {
-        word: '转', date: lastDay(month), attach: 0,
+        word: this.state.param.voucherWord || '记', date: lastDay(month), attach: 0,
         summary: '清理' + month + '固定资产',
         entries: entries
       };
@@ -3826,7 +3893,8 @@
     // 凭证借贷平衡由不变量 I1 兜底。纯可读性改动不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑 verify_e2e_snapshot.js 与 verify_invariants.js，全绿才算完成。
     // 计提某月折旧 -> 生成凭证（借 5602 管理费用-折旧费 / 贷 1602 累计折旧）
-    depreciateMonth: function (month) {
+    depreciateMonth: function (month, opts) {
+      opts = opts || {};
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       var self = this;
       // 科目角色解析（单点）：累计折旧 / 折旧费用(管理费用) 随准则取码（5602|6602），卡片可配置覆盖
@@ -3873,8 +3941,8 @@
       });
       if (!entries.length) return { ok: false, msg: '本月无资产需要计提折旧' };
       var v = {
-        word: '转', date: lastDay(month), attach: 0,
-        summary: '计提' + month + '固定资产折旧',
+        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
+        summary: opts.summary || ('计提' + month + '固定资产折旧'),
         kind: this.VOUCHER_KINDS.DEPR, // 期末业务类型标记（结账检查按此识别，不依赖摘要）
         entries: entries
       };
@@ -3902,7 +3970,7 @@
       });
       this.persist();
       this.backupNow(); // 计提折旧批量写凭证，强制立即备份
-      return { ok: true, voucher: saved, total: total };
+      return { ok: true, voucher: saved, total: total, count: assetLines.length };
     },
     // 折旧汇总表
     // 原始凭证（电子档案/附件管理）
@@ -4145,7 +4213,7 @@
         var code = s.code;
         var credit = '', debit = '';
         // 经营-流入
-        if (['5001','5051','5111','5301','6051'].indexOf(code) >= 0) { credit = 'cf_sale'; }       // 主营业务收入/其他业务/投资收益(分红外)/其他收益 贷方=销售收现
+        if (['5001','5051','5111','5301'].indexOf(code) >= 0) { credit = 'cf_sale'; }       // 主营业务收入/其他业务/投资收益(分红外)/其他收益 贷方=销售收现
         else if (['1122','1123','2203','1161'].indexOf(code) >= 0) { credit = 'cf_sale'; debit = 'cf_sale'; } // 应收/预付贷方收回、预收借方转收=销售收现(净额)
         // 经营-流出
         else if (['2202','1401','1402','1403','1404','1405','1406','1408'].indexOf(code) >= 0) { debit = 'cf_buy'; credit = 'cf_buy'; } // 存货/应付 购货付现(净额)
@@ -4290,20 +4358,11 @@
       for (var pk in def.param) {
         if (this.state.param[pk] === undefined) this.state.param[pk] = def.param[pk];
       }
-      // 单人/免审核迁移（一次性语义）：把「结账前必须凭证全部审核」由默认强制改为不强制。
-      // - 旧账套中 checkBeforeSettle=true 均来自已失效的旧默认（旧版结账处并不读该开关），
-      // 统一转为不强制；原本就为 false 的账套保持原值；
-      // - _settleAuditMig 记录本账套已执行过该迁移：首见即标记，此后无论 true/false
-      // 都完全交给系统设置，绝不在 normalize 中覆盖（防止用户手动开启后又被吞掉）。
-      // 本处只改内存，随下一次正常写盘一起落库，不主动 persist（保持加载/审计流程只读）。
-      if (!this.state.param._settleAuditMig) {
-        if (this.state.param.checkBeforeSettle === true) this.state.param.checkBeforeSettle = false;
-        this.state.param._settleAuditMig = true;
-      }
       if (!this.state.param.voucherChecks) this.state.param.voucherChecks = def.param.voucherChecks;
       for (var vk in def.param.voucherChecks) {
         if (this.state.param.voucherChecks[vk] === undefined) this.state.param.voucherChecks[vk] = def.param.voucherChecks[vk];
       }
+      if (!this.state.param.checkOverrides) this.state.param.checkOverrides = {}; // 结账检查项处置策略（block/warn）
       if (!this.state.voucherWords) this.state.voucherWords = def.voucherWords;
       // 凭证字迁移：老账套 voucherWords 未预置 → 按 param.voucherWord 补一条
       // （保证默认凭证字在列表中存在，否则设置页空表且 fillVoucherWord 硬兜底看不到）
@@ -4312,14 +4371,26 @@
         var defTitle = defName + '账凭证';
         this.state.voucherWords = [{ name: defName, title: defTitle, enabled: true }];
       }
-      // param.voucherWord 必须指向列表中存在且启用的条目；否则回退到第一个启用项
+      // 扫描所有凭证实际使用过的凭证字 → 全部加入 voucherWords 并启用
+      // （金蝶导入账套可能有收/付/转/记四个字，全部要保留和可见；param.voucherWord 只决定默认值）
+      var _usedWords = {};
+      (this.state.vouchers || []).forEach(function (v) { if (v.word) _usedWords[v.word] = true; });
+      var _vwChanged = false;
+      Object.keys(_usedWords).forEach(function (wn) {
+        var found = this.state.voucherWords.find(function (w) { return w.name === wn; });
+        if (!found) {
+          this.state.voucherWords.push({ name: wn, title: wn + '账凭证', enabled: true });
+          _vwChanged = true;
+        } else if (found.enabled === false) {
+          found.enabled = true;
+          _vwChanged = true;
+        }
+      }.bind(this));
+      if (_vwChanged) this.persist();
+      // param.voucherWord 必须指向列表中存在的条目；否则回退到第一个
       var curVW = this.state.param && this.state.param.voucherWord;
-      var vwMatch = this.state.voucherWords.find(function (x) { return x.enabled !== false && x.name === curVW; });
-      if (!vwMatch) {
-        var firstEnabled = this.state.voucherWords.find(function (x) { return x.enabled !== false; });
-        if (firstEnabled) this.state.param.voucherWord = firstEnabled.name;
-        else this.state.param.voucherWord = this.state.voucherWords[0].name;
-      }
+      var vwMatch = this.state.voucherWords.find(function (x) { return x.name === curVW; });
+      if (!vwMatch) this.state.param.voucherWord = this.state.voucherWords[0].name;
       // 科目层级统一（存量校正）：父子一律按「表内最长真前缀」实算，level=1 基（一级=1）。
       // 兼容 4+2、7 位、9 位与混长账套——旧式按 (长度-4)/2 推导在 7 位账会偏，此处强制幂等收敛。
       if (Array.isArray(this.state.subjects) && this.state.subjects.length) {

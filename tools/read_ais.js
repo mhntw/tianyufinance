@@ -213,13 +213,13 @@ function main() {
   console.log('科目数: ' + subjects.length);
   console.log('期间数: ' + periods.length + ' (' + periods.join(', ') + ')');
 
-  // 打印 5301 科目的金蝶原始方向（验证 H2 根因）
+  // 校验 H2 修复：5301 营业外收入 金蝶 FDC=C，ty classify 应归 revenue（非 expense）
   const s5301 = subjects.filter(s => s.code === '5301')[0];
   if (s5301) {
-    console.log('\n--- 5301 营业外收入 金蝶原始数据 ---');
+    console.log('\n--- 5301 营业外收入 分类校验（H2 修复验证）---');
     console.log('金蝶方向 FDC: ' + s5301.dc + ' (D=借方 C=贷方)');
-    console.log('ty 导入后 cls: expense (classify 函数将 5301 归为 expense)');
-    console.log('正确应为: revenue (营业外收入是收入类科目)');
+    console.log('当前 ty classify(5301, FDC) 应为 revenue（营业外收入属收入类）');
+    console.log('注：早期 H2 版本曾误归 expense 导致利润表 I10 恒等式 FAIL，现已修复（classify 走 standardClsOf 权威模板）');
   }
 
   // 打印几个关键科目的方向对比

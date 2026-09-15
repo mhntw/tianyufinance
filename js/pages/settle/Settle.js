@@ -23,14 +23,6 @@ function cardTplId(card) {
   return did || null;
 }
 
-// 预置摊销模板列表（金蝶风格：默认禁用，启用后显示卡片；可删除，可设置固定金额分录）
-var PRESET_AMORT_TEMPLATES = [
-  { id: 'amort_rent',   name: '摊销房租',   summary: '按月摊销房租',   months: 12, custom: true },
-  { id: 'amort_deco',   name: '摊销装修费', summary: '按月摊销装修费', months: 36, custom: true },
-  { id: 'amort_franch', name: '摊销加盟费', summary: '按月摊销加盟费', months: 60, custom: true },
-  { id: 'amort_fee',    name: '固话电视费', summary: '按月摊销固话电视费', months: 12, custom: true }
-];
-
 /* ============================================================
  * 期末结账
  * ============================================================ */
@@ -134,8 +126,8 @@ function onBtn(id, fn) {
 }
 // 按钮绑定（结账/期末处理/反结账 主按钮，静态元素）
 function bindSettleEvents() {
-  // 设置弹窗：启用/禁用模板分组均可折叠/展开（默认展开）
-  [['settleTmplGroupEnabled', 'settleTmplEnabled'], ['settleTmplGroupDisabled', 'settleTmplDisabled']].forEach(function (pair) {
+  // 设置弹窗：启用 / 凭证模板 / 禁用 三个分组均可折叠
+  [['settleTmplGroupEnabled', 'settleTmplEnabled'], ['settleTmplGroupVch', 'settleTmplVch'], ['settleTmplGroupDisabled', 'settleTmplDisabled']].forEach(function (pair) {
     var grp = $(pair[0]), ul = $(pair[1]);
     if (grp && ul && !grp._bound) {
       grp._bound = true;
@@ -166,8 +158,9 @@ function bindSettleEvents() {
     });
   });
   onBtn('btnDepVoucher', function () {
-    var month = selMonth; // 期末处理跟随结账 tab 选期（与 btnClosePeriod 一致，避免选 A 期操作 B 期）
-    var r = S.depreciateMonth(month);
+    var month = selMonth;
+    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'dep'; })[0] || {};
+    var r = S.depreciateMonth(month, { word: tpl.word, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已生成折旧凭证：' + money(r.total) + '（' + r.count + ' 项资产）');
     refreshSettle(); syncAll();
@@ -190,47 +183,28 @@ function bindSettleEvents() {
     refreshSettle(); syncAll();
   });
   onBtn('btnCarryVat', function () {
-    var month = selMonth; // 期末处理跟随结账 tab 选期
-    var est = S.profitStatement(month);
-    var vat = Math.max(0, U.num(est.totalRevenue) - U.num(est.totalExpense)) * 0.13;
-    if (vat < 0.005) return showToast('本期无未交增值税可转出', 'error');
-    // 目标科目取「增值税编辑」配置模板（跨账套科目码不同，勿硬编码 222101）
-    var vt = (S.vatEditGet(month).entries || [])[0] || {};
-    var vatTarget = vt.target || '222101';
-    var vatTargetName = vt.name || (S.subject(vatTarget) ? S.subject(vatTarget).name : '未交增值税');
-    var rr = genOnceVoucher(month, S.VOUCHER_KINDS.CARRY_VAT, '转出' + month + '未交增值税', [
-      { code: '2221', name: S.subject('2221') ? S.subject('2221').name : '应交税费', summary: '转出未交增值税', dr: vat, cr: 0 },
-      { code: vatTarget, name: vatTargetName, summary: '转出未交增值税', dr: 0, cr: vat }
-    ]);
-    if (!rr.ok) return showToast(rr.msg, 'error');
-    showToast('已转出未交增值税：' + money(vat));
+    var month = selMonth;
+    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
+    var r = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, date: tmplVoucherDate(month, tpl) });
+    if (!r.ok) return showToast(r.msg, 'error');
+    showToast('已转出未交增值税：' + money(r.amount));
     refreshSettle(); syncAll();
   });
   onBtn('btnAccrueSurTax', function () {
-    var month = selMonth; // 期末处理跟随结账 tab 选期
-    var est = S.profitStatement(month);
-    var vat = Math.max(0, U.num(est.totalRevenue) - U.num(est.totalExpense)) * 0.13;
-    var amt = vat * 0.12;
-    if (amt < 0.005) return showToast('本期无附加税可计提', 'error');
-    var rr = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_SURTAX, '计提' + month + '附加税', [
-      { code: '6403', name: S.subject('6403') ? S.subject('6403').name : '税金及附加', summary: '计提附加税', dr: amt, cr: 0 },
-      { code: '222109', name: '应交附加税', summary: '计提附加税', dr: 0, cr: amt }
-    ]);
-    if (!rr.ok) return showToast(rr.msg, 'error');
-    showToast('已计提附加税：' + money(amt));
+    var month = selMonth;
+    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'surTax'; })[0] || {};
+    var vatTpl0 = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
+    var r = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: vatTpl0.targetSubj || '222102' });
+    if (!r.ok) return showToast(r.msg, 'error');
+    showToast('已计提附加税：' + money(r.amount));
     refreshSettle(); syncAll();
   });
   onBtn('btnAccrueIncTax', function () {
-    var month = selMonth; // 期末处理跟随结账 tab 选期
-    var est = S.profitStatement(month);
-    var amt = Math.max(0, U.num(est.netProfit)) * 0.25;
-    if (amt < 0.005) return showToast('本期无所得税可计提', 'error');
-    var rr = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_INCTAX, '计提' + month + '所得税', [
-      { code: '6801', name: S.subject('6801') ? S.subject('6801').name : '所得税费用', summary: '计提所得税', dr: amt, cr: 0 },
-      { code: '222115', name: '应交所得税', summary: '计提所得税', dr: 0, cr: amt }
-    ]);
-    if (!rr.ok) return showToast(rr.msg, 'error');
-    showToast('已计提所得税：' + money(amt));
+    var month = selMonth;
+    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'incTax'; })[0] || {};
+    var r = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
+    if (!r.ok) return showToast(r.msg, 'error');
+    showToast('已计提所得税：' + money(r.amount));
     refreshSettle(); syncAll();
   });
   onBtn('btnReCarryForward', async function () {
@@ -251,9 +225,11 @@ function bindSettleEvents() {
       if (!dr.ok) return showToast('删除旧结转凭证失败：' + dr.msg, 'error');
     }
     if (old.length) delMsg = '（已删除旧结转凭证 ' + old.length + ' 张）';
-    var r = S.carryForwardProfit(month);
+    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'profit'; })[0] || {};
+    var r = S.carryForwardProfit(month, { word: tpl.word, targetSubj: tpl.targetSubj, summary: tpl.summaryText, separate: tpl.separate !== false, date: tmplVoucherDate(month, tpl) });
     if (!r.ok) return showToast(r.msg, 'error');
-    showToast('已重新结转损益：' + money(r.net) + delMsg, 'success');
+    var numV = (r.vouchers || []).length;
+    showToast('已' + (old.length ? '重新' : '') + '结转损益：' + money(r.net) + delMsg + '（生成 ' + numV + ' 张凭证）', 'success');
     refreshSettle(); syncAll();
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
   });
@@ -293,12 +269,6 @@ function bindSettleEvents() {
     if (S.isPeriodClosed(month)) return showToast('该期已结账', 'error');
     var vs = S.periodVouchers(month);
     if (!vs.length) return showToast('该期无凭证，无法结账', 'error');
-    // 结账前是否要求「凭证全部审核」由系统参数控制（单人场景默认不强制）
-    var requireAudit = !!(S.state.param && S.state.param.checkBeforeSettle);
-    if (requireAudit) {
-      var unaudited = vs.filter(function (v) { return !v.status || v.status === 'draft'; });
-      if (unaudited.length) return showToast('存在未审核凭证，请先审核（或到系统设置关闭「凭证审核后才允许结账」）', 'error');
-    }
     if (!(await H.confirmAsync('确认结账 ' + month + '？\n结账后该期凭证将被锁定，如需修改须反结账。', { title: '期末结账' }))) return;
     var r = S.closePeriod(month);
     if (!r.ok) {
@@ -349,8 +319,13 @@ function bindSettleEvents() {
   onBtn('settleCheckAll', function () {
     var cb = $('settleCheckAll');
     var checked = cb.checked;
-    document.querySelectorAll('#settleProcessCards .settle-card input[type=checkbox]').forEach(function (inpp) {
-      inpp.checked = checked;
+    document.querySelectorAll('#settleProcessCards .settle-card').forEach(function (card) {
+      if (card.style.display === 'none' || card.classList.contains('settle-add-card')) return;
+      var inpp = card.querySelector('input[type=checkbox]');
+      if (inpp && !inpp.disabled) {
+        inpp.checked = checked;
+        card.classList.toggle('settle-card-checked', checked);
+      }
     });
   });
   onBtn('btnSettleRecalc', function () {
@@ -385,54 +360,31 @@ function bindSettleEvents() {
         var existed = S.periodVouchersOfKind(month, sysKindMap[g.id]);
         if (existed.length) { skipCount++; continue; }
         // 直接调各按钮的处理函数（复用已有逻辑）
+        var tpl = getSettleTemplates().filter(function (t) { return t.id === g.id; })[0] || {};
         if (g.id === 'profit') {
-          var oldPL = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_PL);
-          if (oldPL.length) { skipCount++; continue; }
-          var rPL = S.carryForwardProfit(month);
+          var rPL = S.carryForwardProfit(month, { word: tpl.word, targetSubj: tpl.targetSubj, summary: tpl.summaryText, separate: tpl.separate !== false, date: tmplVoucherDate(month, tpl) });
           if (rPL.ok) okCount++; else { errCount++; msgs.push('结转损益：' + rPL.msg); }
         } else if (g.id === 'dep') {
-          var rD = S.depreciateMonth(month);
+          var rD = S.depreciateMonth(month, { word: tpl.word, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
           if (rD.ok) okCount++; else { errCount++; msgs.push('计提折旧：' + rD.msg); }
         } else if (g.id === 'cost') {
-          var tplC = getSettleTemplates().filter(function (t) { return t.id === 'cost'; })[0] || {};
-          var estC = S.costVoucherEstimate(month, tplC);
-          var amtC = U.num(tplC.costAmount) > 0 ? U.num(tplC.costAmount) : estC.amount;
+          var estC = S.costVoucherEstimate(month, tpl);
+          var amtC = U.num(tpl.costAmount) > 0 ? U.num(tpl.costAmount) : estC.amount;
           if (amtC < 0.005) { skipCount++; continue; }
           var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
           if (costExisted.length) { skipCount++; continue; }
-          var rC = S.genCostVoucher(month, tplC, amtC);
+          var rC = S.genCostVoucher(month, Object.assign({}, tpl, { date: tmplVoucherDate(month, tpl) }), amtC);
           if (rC && rC.ok) okCount++; else { errCount++; msgs.push('结转销售成本：' + (rC ? rC.msg : '失败')); }
         } else if (g.id === 'vat') {
-          var estV = S.profitStatement(month);
-          var vatV = Math.max(0, U.num(estV.totalRevenue) - U.num(estV.totalExpense)) * 0.13;
-          if (vatV < 0.005) { skipCount++; continue; }
-          var vt = (S.vatEditGet(month).entries || [])[0] || {};
-          var vatTarget = vt.target || '222101';
-          var vatTargetName = vt.name || (S.subject(vatTarget) ? S.subject(vatTarget).name : '未交增值税');
-          var rrV = genOnceVoucher(month, S.VOUCHER_KINDS.CARRY_VAT, '转出' + month + '未交增值税', [
-            { code: '2221', name: S.subject('2221') ? S.subject('2221').name : '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
-            { code: vatTarget, name: vatTargetName, summary: '转出未交增值税', dr: 0, cr: vatV }
-          ]);
-          if (rrV.ok) okCount++; else { skipCount++; }
+          var rV = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, date: tmplVoucherDate(month, tpl) });
+          if (rV.ok) okCount++; else { errCount++; msgs.push('转出未交增值税：' + rV.msg); }
         } else if (g.id === 'surTax') {
-          var estS = S.profitStatement(month);
-          var vatS = Math.max(0, U.num(estS.totalRevenue) - U.num(estS.totalExpense)) * 0.13;
-          var amtS = vatS * 0.12;
-          if (amtS < 0.005) { skipCount++; continue; }
-          var rrS = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_SURTAX, '计提' + month + '附加税', [
-            { code: '6403', name: S.subject('6403') ? S.subject('6403').name : '税金及附加', summary: '计提附加税', dr: amtS, cr: 0 },
-            { code: '222109', name: '应交附加税', summary: '计提附加税', dr: 0, cr: amtS }
-          ]);
-          if (rrS.ok) okCount++; else { skipCount++; }
+          var vatTplB = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
+          var rS = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: vatTplB.targetSubj || '222102' });
+          if (rS.ok) okCount++; else { errCount++; msgs.push('计提附加税：' + rS.msg); }
         } else if (g.id === 'incTax') {
-          var estI = S.profitStatement(month);
-          var amtI = Math.max(0, U.num(estI.netProfit)) * 0.25;
-          if (amtI < 0.005) { skipCount++; continue; }
-          var rrI = genOnceVoucher(month, S.VOUCHER_KINDS.ACCRUE_INCTAX, '计提' + month + '所得税', [
-            { code: '6801', name: S.subject('6801') ? S.subject('6801').name : '所得税费用', summary: '计提所得税', dr: amtI, cr: 0 },
-            { code: '222115', name: '应交所得税', summary: '计提所得税', dr: 0, cr: amtI }
-          ]);
-          if (rrI.ok) okCount++; else { skipCount++; }
+          var rI = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
+          if (rI.ok) okCount++; else { errCount++; msgs.push('计提所得税：' + rI.msg); }
         }
       } else {
         // 预置摊销/自定义模板：走 genVoucherFromTpl
@@ -450,25 +402,6 @@ function bindSettleEvents() {
     showToast(summary, errCount > 0 ? 'warn' : 'success');
     if (msgs.length) showToast(msgs.slice(0, 3).join('；'), 'error');
   });
-  onBtn('btnSettleQuickClose', function () {
-    // 从期末处理 Tab 直接跳到结账 Tab
-    switchSettleTab('close');
-  });
-  onBtn('btnSettleQuickReopen', function () {
-    switchSettleTab('reopen');
-  });
-}
-
-// 期末处理 Tab 切换（顶部批量按钮里的"结账"/"反结账"快捷入口）
-function switchSettleTab(target) {
-  var map = { close: 'settlePaneClose', reopen: 'settlePaneReopen', process: 'settlePaneProcess' };
-  document.querySelectorAll('#settleTabs .settle-tab').forEach(function (tab) {
-    tab.classList.toggle('active', tab.getAttribute('data-tab') === target);
-  });
-  ['settlePaneProcess', 'settlePaneClose', 'settlePaneReopen'].forEach(function (id) {
-    var p = document.getElementById(id); if (p) p.style.display = id === map[target] ? '' : 'none';
-  });
-  refreshSettle();
 }
 // 同步全选 checkbox 状态：所有可见卡片都勾选 = 全选勾选；部分勾选 = 半选(indeterminate)；都不勾 = 不勾
 function syncCheckAllState() {
@@ -489,24 +422,18 @@ function syncCheckAllState() {
 }
 // 卡片 checkbox / 设置按钮（innerHTML 重建后需每次重绑）
 function bindSettleCards() {
-  // 注意：.settle-card-check 是 label 容器，change 事件与 checked 状态必须作用在内部 input 上
-  document.querySelectorAll('.settle-card-check input').forEach(function (cb) {
-    if (cb._bound) return;
-    cb._bound = true;
-    cb.addEventListener('change', function () {
-      var card = cb.closest('.settle-card');
-      if (!card) return;
-      var id = cardTplId(card);
-      if (!id) return;
-      var tpl = settleTmplList.filter(function (t) { return t.id === id; })[0];
-      if (tpl) { tpl.enabled = cb.checked; persistSettleTemplates(); }
-      // 启用/禁用后实时刷新卡片显隐（对齐金蝶：取消勾选卡片立即消失）
-      refreshSettle();
-    });
-  });
   document.querySelectorAll('.settle-card').forEach(function (card) {
     var id = cardTplId(card);
     if (!id) return;
+    // 单个 checkbox 勾选联动卡片高亮 + 同步全选状态
+    var cb = card.querySelector('.settle-card-check input');
+    if (cb && !cb._bound) {
+      cb._bound = true;
+      cb.addEventListener('change', function () {
+        card.classList.toggle('settle-card-checked', cb.checked);
+        syncCheckAllState();
+      });
+    }
     card.querySelectorAll('[data-act]').forEach(function (el) {
       var act = el.getAttribute('data-act');
       // 禁用/启用：链接文案随模板启用状态切换（每次 refresh 更新）
@@ -614,7 +541,7 @@ function renderCustomCards(procList, profitCard) {
     var presetTag = t.preset ? '<span class="settle-card-preset-tag">预置</span>' : '';
     card.innerHTML =
       '<div class="settle-card-head">' +
-        '<label class="settle-card-check"><input type="checkbox"' + (enabled ? ' checked' : '') + ' /></label>' +
+        '<label class="settle-card-check"><input type="checkbox" /></label>' +
         '<span class="settle-card-name">' + esc(t.name) + '</span>' + presetTag +
         '<i class="settle-card-help" title="' + esc(t.summary || t.name) + '">?</i>' +
         '<span class="settle-card-op">' +
@@ -638,12 +565,15 @@ function renderCustomCards(procList, profitCard) {
   addCard.innerHTML =
     '<div class="settle-add-icon">+</div>' +
     '<div>新增自定义模板</div>';
-  addCard.addEventListener('click', function () { openSettleTemplateModal(); });
+  // 与弹窗内「新增模板」一致：打开弹窗并直接进入新建自定义模板编辑态
+  addCard.addEventListener('click', function () { openSettleTemplateModal(); showSettleTmplNewPanel(); });
   procList.appendChild(addCard);
   bindSettleCards();
 }
 
 function refreshSettle() {
+  // 每次刷新都重新加载模板列表（导入账套/切换账套后 settleTemplates 会变）
+  settleTmplList = loadSettleTemplates();
   // 模板启用状态以 store 为权威（结账检查清单数据源），进入页面/切换账套时同步
   syncTplEnabledFromStore();
   // 绑定结账页交互（幂等，卡片每次重绑）
@@ -663,7 +593,6 @@ function refreshSettle() {
   var closed = S.isPeriodClosed(month);
   // 结账面板数据源（按所选期）
   var vs = S.periodVouchers(month);
-  var unaudited = vs.filter(function (v) { return !v.status || v.status === 'draft'; });
   var est = S.profitStatement(month);
   // 期末处理凭证识别：一律按 v.kind（结构识别），不再按摘要正则。
   // 背景：  / Excel 导入的凭证没有凭证级 summary 字段（摘要只落在分录级），
@@ -674,16 +603,14 @@ function refreshSettle() {
   }
   function doneCount(kind) { return kindVs(vs, kind).length; }
   function firstVoucherNo(kind) {
-    var v = kindVs(vs, kind)[0];
-    return v ? (v.word || '记') + '-' + v.no : '';
+    return kindVs(vs, kind).map(function (v) { return (v.word || '记') + '-' + v.no; }).join('、');
   }
   // 期末处理区块数据源（固定当前期）
   var curVs = S.periodVouchers(curMonth);
   var curEst = S.profitStatement(curMonth);
   function curDoneCount(kind) { return kindVs(curVs, kind).length; }
   function curFirstVoucherNo(kind) {
-    var v = kindVs(curVs, kind)[0];
-    return v ? (v.word || '记') + '-' + v.no : '';
+    return kindVs(curVs, kind).map(function (v) { return (v.word || '记') + '-' + v.no; }).join('、');
   }
 
   // 期末处理卡片：checkbox 绑定模板启用状态（每张卡的启用开关）
@@ -696,9 +623,9 @@ function refreshSettle() {
     if (!card) return;
     var enabled = S.settleTplEnabled(cardTplMap[cid]);
     var cb = card.querySelector('.settle-card-check input');
-    if (cb) { cb.checked = !!enabled; cb.disabled = false; }
-    // 默认只显示结转损益，其余模板禁用时自动隐藏卡片（逻辑：设置入口可启用）
+    if (cb) { cb.checked = false; cb.disabled = false; } // 默认全不勾选，由用户手动选
     card.style.display = enabled ? '' : 'none';
+    card.classList.toggle('settle-card-disabled', !enabled);
   });
   // 保证顺序：结转损益永远在模板列表第一个，启用的卡片按固定 DOM 顺序连续排列
   var procList = $('settleProcessCards');
@@ -731,13 +658,13 @@ function refreshSettle() {
         '<span class="sci-info">' + (done ? ('已生成 ' + cnt + ' 张') : r.hint) + '</span>' +
         '</div>';
     });
-    // 追加 store 的「结账硬性条件」检查项（凭证已审核/借贷平衡/幽灵科目/损益结转等）。
-    // 修复：closePeriod 内部本就会调 S.settleChecklist() 并拦截 fail 项，但 UI 从未展示这些项，
-    // 用户只能点了结账才被拦、还看不到原因。此处仅展示 fail/warn 项（ok 项不占位，避免刷屏）。
+    // 追加 store 的「结账硬性条件」检查项（借贷平衡/幽灵科目/损益结转/科目余额等）。
+    // closePeriod 内部会调 S.settleChecklist() 拦截 fail 项，此处仅高亮展示 fail/warn 项（ok 项折叠）。
+    // 处置策略配置移到「检查项设置」弹窗（btnSettleCheck）。
     try {
-      var hard = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
-      hard.forEach(function (c) {
-        if (c.status !== 'fail' && c.status !== 'warn') return; // 仅展示需关注项
+      var chk = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
+      chk.forEach(function (c) {
+        if (c.status === 'ok') return; // ok 项不占位，避免刷屏
         html += '<div class="settle-check-item' + (c.status === 'fail' ? ' settle-check-fail' : ' settle-check-warn') + '" data-k="' + c.key + '">' +
           '<span class="sci-dot">' + (c.status === 'fail' ? '✕' : '!') + '</span>' +
           '<span class="sci-name">' + (c.label || '') + '</span>' +
@@ -785,26 +712,9 @@ function refreshSettle() {
     }
   }
   // ===== 结账面板（所选期 month） =====
-  // 回填「凭证审核后才允许结账」开关状态（从 store 读取账套级参数）
-  var chkAudit = $('settleChkAudit');
-  if (chkAudit) {
-    chkAudit.checked = !!(S.state.param && S.state.param.checkBeforeSettle);
-    if (!chkAudit._bound) {
-      chkAudit._bound = true;
-      chkAudit.addEventListener('change', function () {
-        S.state.param = S.state.param || {};
-        S.state.param.checkBeforeSettle = chkAudit.checked;
-        S.persist();
-        refreshSettle();
-      });
-    }
-  }
   var btnClose = $('btnClosePeriod');
   if (btnClose) {
-    // 与 btnClosePeriod 同一口径：仅当开启「凭证审核后才允许结账」时才要求本期全部审核
-    var reqAuditForClose = !!(S.state.param && S.state.param.checkBeforeSettle);
-    var canClose = !closed && vs.length > 0 && (!reqAuditForClose || !unaudited.length);
-    btnClose.disabled = !canClose;
+    btnClose.disabled = !(vs.length > 0) || closed;
     btnClose.textContent = closed ? ('已结账 · ' + month) : '检查并结账';
   }
   // 期末处理 / 反结账 区域（固定当前期 curMonth）
@@ -990,10 +900,24 @@ function renderReopenMonthNav() {
 // 通用：生成单张 demo 凭证（期末处理生成凭证后强制立即备份，防丢失/可回滚）
 // kind：期末业务类型标记（S.VOUCHER_KINDS），写入 v.kind 供后续查重/结账检查识别。
 // word：可选凭证字（自定义结账模板带自己的凭证字，如「记」）；不传则沿用历史默认「转」。
-function makeSimpleVoucher(month, summary, entries, kind, word) {
-  var v = S.addVoucher({ word: word || '转', date: U.lastDay(month), attach: 0, summary: summary, kind: kind, entries: entries });
+function makeSimpleVoucher(month, summary, entries, kind, word, date) {
+  var v = S.addVoucher({ word: word || S.state.param.voucherWord || '记', date: date || U.lastDay(month), attach: 0, summary: summary, kind: kind, entries: entries });
   if (v && S.backupNow) S.backupNow();
   return v;
+}
+
+// 结账模板「凭证日期」选项 → 实际凭证日期
+// 'period'    → 当期日期（今天落在本期则用今天，否则取期末最后一天）
+// 'periodEnd' → 期末最后一天（与历史默认行为一致）
+function tmplVoucherDate(month, t) {
+  if (t && t.voucherDate === 'period') {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    var td = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    if (td.slice(0, 7) === month) return td; // 今天落在本期 → 用当期日期
+    return U.lastDay(month);
+  }
+  return U.lastDay(month);
 }
 
 // 期末处理「生成凭证」统一查重入口（财务大忌：重复点击生成多张同额凭证）。
@@ -1002,7 +926,7 @@ function makeSimpleVoucher(month, summary, entries, kind, word) {
 // 本期已存在同类凭证则拒绝，须先删除旧凭证再重做。
 // 查重按 v.kind（结构识别）而非摘要正则——导入凭证无 summary，摘要匹配恒不命中。
 // 返回 { ok, v } 或 { ok:false, msg }
-function genOnceVoucher(month, kind, summary, entries, word) {
+function genOnceVoucher(month, kind, summary, entries, word, date) {
   // 已结账期间禁止再生成凭证（否则会向已锁定期间写入，破坏账务一致性）。
   // 对齐同文件其它期末处理按钮（结转损益/反结账）已有的 isPeriodClosed 拦截。
   if (S.isPeriodClosed(month)) return { ok: false, msg: '该期已结账，请先反结账再操作', month: month };
@@ -1010,7 +934,7 @@ function genOnceVoucher(month, kind, summary, entries, word) {
   if (existed.length) {
     return { ok: false, msg: '本期已生成 ' + existed.length + ' 张同类凭证（' + (existed[0].word || '转') + '-' + existed[0].no + '），请勿重复生成；如需重做请先删除旧凭证', vouchers: existed };
   }
-  var v = makeSimpleVoucher(month, summary, entries, kind, word);
+  var v = makeSimpleVoucher(month, summary, entries, kind, word, date);
   // 修复：原实现忽略 addVoucher 返回，写盘被拒（借贷不平衡等）时仍提示成功。
   if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '凭证生成失败，请稍后重试' };
   return { ok: true, v: v };
@@ -1019,8 +943,10 @@ function genOnceVoucher(month, kind, summary, entries, word) {
 // 计提附加税「查看金额计算逻辑」浮层（结账页 计提附加税 链接浮层）
 function renderSurTaxCalc() {
   var month = currentPeriod();
-  // 增值税：取「应交税费_未交增值税」222102 本期贷方发生额（正数）
-  var unpayVat = S.subjectPeriod('222102', month);
+  // 增值税：取「未交增值税」本期贷方发生额（正数），科目与「转出未交增值税」凭证写入科目一致
+  var vatTplC = (getSettleTemplates && getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0]) || {};
+  var vatCode = vatTplC.targetSubj || '222102';
+  var unpayVat = S.subjectPeriod(vatCode, month);
   var vat = Math.max(0, unpayVat ? U.num(unpayVat.periodCr) : 0);
   // 消费税：取「应交税费_应交消费税」222121 本期贷方发生额
   var consumeSubj = S.subjectPeriod('222121', month);
@@ -1122,18 +1048,21 @@ if ($('btnIncTaxCalcClose2')) $('btnIncTaxCalcClose2').addEventListener('click',
 var SETTLE_TMPL_KEY = 'settle_templates_v1';
 
 function defaultSettleTemplates() {
-  // 默认只启用「结转损益」，其余模板默认禁用（禁用后卡片自动隐藏，可在设置入口启用）
+  // 6 个系统模板默认全部启用，用户可在设置里停用
   return [
-    { id: 'dep', name: '计提折旧', enabled: false, summary: '计提本月固定资产折旧', template: [], hasEntries: false },
-    { id: 'cost', name: '结转销售成本', enabled: false, summary: '按收入比例结转销售成本', template: [], hasEntries: false, costRate: '80', costAmount: '' },
-    { id: 'vat', name: '转出未交增值税', enabled: false, summary: '结转未交增值税', template: [], hasEntries: false },
-    { id: 'surTax', name: '计提附加税', enabled: false, summary: '计提城建/教育费附加', template: [], hasEntries: false },
-    { id: 'incTax', name: '计提所得税', enabled: false, summary: '计提企业所得税', template: [], hasEntries: false },
-    { id: 'profit', name: '结转损益', enabled: true, summary: '结转损益类科目至本年利润', template: [], hasEntries: false }
+    { id: 'dep', name: '计提折旧', enabled: true, summary: '计提本月固定资产折旧', template: [], hasEntries: false, summaryText: '计提折旧费用' },
+    { id: 'cost', name: '结转销售成本', enabled: true, summary: '按收入比例结转销售成本', template: [], hasEntries: false, costRate: '80', costAmount: '' },
+    { id: 'vat', name: '转出未交增值税', enabled: true, summary: '结转未交增值税', template: [], hasEntries: false, rate: '13', summaryText: '转出{month}未交增值税', targetSubj: '222102' },
+    { id: 'surTax', name: '计提附加税', enabled: true, summary: '计提城建/教育费附加', template: [], hasEntries: false, rate: '12', summaryText: '计提{month}附加税', vatRate: '13' },
+    { id: 'incTax', name: '计提所得税', enabled: true, summary: '计提企业所得税', template: [], hasEntries: false, rate: '25', summaryText: '计提{month}所得税' },
+    { id: 'profit', name: '结转损益', enabled: true, summary: '结转损益类科目至本年利润', template: [], hasEntries: false, targetSubj: '3103', summaryText: '结转{month}损益', separate: true }
   ];
 }
 
-// 模板启用状态以 store（S.state.settleTemplates）为唯一权威：
+// 系统默认模板（6 个，跟账套无关、全局共享）；其余模板一律跟随账套（删除账套时按 bookId 清理）
+function isSystemSettleTmpl(t) {
+  return ['dep', 'cost', 'vat', 'surTax', 'incTax', 'profit'].indexOf(t && t.id) >= 0;
+}
 // 结账检查清单（store.settleChecklist）按它判断、卡片 checkbox 显示也按它，两处从此一致。
 function syncTplEnabledFromStore() {
   if (!S || !S.settleTplEnabled || !settleTmplList) return;
@@ -1157,7 +1086,7 @@ function syncTplEnabledToStore() {
   if (S.persist) S.persist();
 }
 
-// 加载模板配置：优先合并本地已保存配置（摘要/凭证字/汇率/分录），enabled 以 store 为准
+// 加载模板配置：defaultSettleTemplates（6 个系统模板） + localStorage 本地覆盖 + state.settleTemplates 里的完整自定义模板
 function loadSettleTemplates() {
   var list = defaultSettleTemplates();
   try {
@@ -1169,6 +1098,12 @@ function loadSettleTemplates() {
         if (!s || !s.id) return;
         // 已下线的期末调汇（fx）模板历史残留一律丢弃，避免复活
         if (s.id === 'fx') return;
+        // 除系统默认模板外，其余模板按账套归属过滤：只加载属于当前账套的，删除账套后不再随全局残留串台显示
+        if (!isSystemSettleTmpl(s)) {
+          var curBid = (typeof S !== 'undefined' && S && S.bookId) || '';
+          if (s.bookId && s.bookId !== curBid) return; // 归属其它账套，跳过
+          if (!s.bookId) s.bookId = curBid;            // 旧数据无归属标记：归入当前账套，下次保存即打标
+        }
         if (byId[s.id]) {
           // 合并业务配置（摘要/凭证字/分录等），但 enabled 以默认/store 为准，不读本地旧值
           var keepEnabled = byId[s.id].enabled;
@@ -1178,23 +1113,18 @@ function loadSettleTemplates() {
       });
     }
   } catch (e) {}
-  // 补入预置摊销模板（金蝶风格）：只加入不在列表里的、也未被用户删除过的，已存在的保留用户配置
-  var DISMISS_KEY = 'settle_preset_dismissed';
-  var dismissed = {};
-  try {
-    var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || 'null');
-    if (Array.isArray(d)) d.forEach(function (id) { dismissed[id] = true; });
-  } catch (e) {}
-  var existingIds = list.map(function (t) { return t.id; });
-  PRESET_AMORT_TEMPLATES.forEach(function (p) {
-    if (existingIds.indexOf(p.id) < 0 && !dismissed[p.id]) {
-      list.push({
-        id: p.id, name: p.name, enabled: false, custom: true,
-        summary: p.summary, word: '记', template: [], hasEntries: false,
-        preset: true
-      });
-    }
-  });
+  // 从 store 里的 settleTemplates 合并 custom=true 完整模板（金蝶 AIS 导入进来的 GLServiceType）
+  if (typeof S !== 'undefined' && S && S.state && Array.isArray(S.state.settleTemplates)) {
+    var byId2 = {};
+    list.forEach(function (t) { byId2[t.id] = t; });
+    S.state.settleTemplates.forEach(function (st) {
+      if (!st || !st.id) return;
+      // 只合并有完整 template 分录的自定义模板（系统模板已在 defaultSettleTemplates 里）
+      if (st.custom && st.template && st.template.length) {
+        if (!byId2[st.id]) { byId2[st.id] = st; list.push(st); }
+      }
+    });
+  }
   // 凭证字规范化：任何模板 word 为空一律默认「记」（金蝶默认记账凭证）
   list.forEach(function (t) { if (!t.word) t.word = '记'; });
   return list;
@@ -1206,6 +1136,9 @@ var settleTmplSelectedId = 'profit';
 
 function getSettleTemplates() { return settleTmplList; }
 function persistSettleTemplates() {
+  // 除系统默认模板外，其余模板归属当前账套：打 bookId 标记，使其跟随账套（删除账套时一并清理，不再跨账套串台）
+  var bid = (typeof S !== 'undefined' && S && S.bookId) || '';
+  settleTmplList.forEach(function (t) { if (!isSystemSettleTmpl(t)) t.bookId = bid; });
   try { localStorage.setItem(SETTLE_TMPL_KEY, JSON.stringify(settleTmplList)); } catch (e) {}
   syncTplEnabledToStore();
 }
@@ -1219,9 +1152,8 @@ function applySettleTemplateStates() {
     var tpl = settleTmplList.filter(function (t) { return t.id === map[cid]; })[0];
     var enabled = tpl ? tpl.enabled : true;
     var cb = card.querySelector('.settle-card-check input');
-    if (cb) { cb.checked = !!enabled; cb.disabled = false; }
+    if (cb) { cb.checked = false; cb.disabled = false; }
     card.style.display = enabled ? '' : 'none';
-    card.classList.toggle('settle-card-disabled', !enabled);
   });
 }
 
@@ -1233,26 +1165,22 @@ function findSettleTemplate(id) {
   return settleTmplList.filter(function (t) { return t.id === id; })[0];
 }
 
-// 模板面板：左侧列表（启用 / 禁用两个分组，对接 HTML settleTmplEnabled / settleTmplDisabled）
+// 模板面板：左侧列表（启用 / 凭证 / 禁用 三个分组）
 function renderSettleTmplTree() {
-  var enUl = $('settleTmplEnabled'), disUl = $('settleTmplDisabled');
-  if (!enUl && !disUl) return;
-  var enHtml = '', disHtml = '';
+  var enUl = $('settleTmplEnabled'), vchUl = $('settleTmplVch'), disUl = $('settleTmplDisabled');
+  var enHtml = '', vchHtml = '', disHtml = '';
   settleTmplList.forEach(function (t) {
     var cls = 'stm-item' + (t.id === settleTmplSelectedId ? ' select' : '') + (t.custom ? ' stm-custom' : '');
     var li = '<li class="' + cls + '" data-id="' + t.id + '">' +
       '<span class="stm-check">' + (t.enabled ? '✓' : '') + '</span>' +
       '<span class="stm-name">' + t.name + '</span></li>';
-    if (t.enabled) enHtml += li; else disHtml += li;
+    if (t.fromVchTpl) vchHtml += li;       // 录凭证页保存的模板 → 独立分组
+    else if (t.enabled) enHtml += li;      // 启用
+    else disHtml += li;                     // 禁用
   });
-  if (enUl) {
-    enUl.innerHTML = enHtml || '<li class="stm-empty">暂无启用的模板</li>';
-    bindTmplTreeItems(enUl);
-  }
-  if (disUl) {
-    disUl.innerHTML = disHtml || '<li class="stm-empty">暂无禁用的模板</li>';
-    bindTmplTreeItems(disUl);
-  }
+  if (enUl) { enUl.innerHTML = enHtml || '<li class="stm-empty">暂无启用的模板</li>'; bindTmplTreeItems(enUl); }
+  if (vchUl) { vchUl.innerHTML = vchHtml || '<li class="stm-empty">暂无凭证模板</li>'; bindTmplTreeItems(vchUl); }
+  if (disUl) { disUl.innerHTML = disHtml || '<li class="stm-empty">暂无禁用的模板</li>'; bindTmplTreeItems(disUl); }
 }
 
 function bindTmplTreeItems(ul) {
@@ -1264,18 +1192,19 @@ function bindTmplTreeItems(ul) {
   });
 }
 
-function selectSettleTemplate(id) {
+function selectSettleTemplate(id, t0) {
   settleTmplSelectedId = id;
-  var t = findSettleTemplate(id);
+  var t = findSettleTemplate(id) || t0;
   renderSettleTmplTree();
   // 所有模板都走同一个 FormPanel，只根据 t.custom 切换 extra 区域（成本参数 vs 分录表格）
   var formPanel = $('settleTmplFormPanel');
   if (formPanel) formPanel.style.display = '';
   fillSettleTmplForm(t);
   if (t && t.custom) {
-    // 预置摊销/自定义模板：隐藏成本参数，显示分录表格
+    // 预置摊销/自定义模板：隐藏成本参数和系统参数，显示分录表格
     var costExtra = $('settleTmplCostExtra'); if (costExtra) costExtra.style.display = 'none';
     var custExtra = $('settleTmplCustomExtra'); if (custExtra) custExtra.style.display = '';
+    var sysExtra0 = $('settleTmplSystemExtra'); if (sysExtra0) sysExtra0.style.display = 'none';
     editingCustomId = id;
     // 把当前模板的分录加载到 newTplRows 供 renderNewTplRows 使用
     newTplRows = (t.template || []).map(function (r) { return tplToUiRow(r, t.ruleType); });
@@ -1285,8 +1214,31 @@ function selectSettleTemplate(id) {
     ];
     renderNewTplRows();
   } else {
-    // 系统模板：隐藏分录表格，显示各自专属表单（成本参数等在 fillSettleTmplForm 内按 id 控制显隐）
+    // 系统模板：隐藏分录表格，显示通用参数区（按模板类型显示子项）
     var custExtra2 = $('settleTmplCustomExtra'); if (custExtra2) custExtra2.style.display = 'none';
+    var sysExtra = $('settleTmplSystemExtra'); if (sysExtra) sysExtra.style.display = '';
+    // 全部子项先隐藏，再按模板 id 逐个显示
+    var show = {
+      profit: { profitTarget: true, summaryText: true, separate: true },
+      dep: { summaryText: true },
+      vat: { rate: true, vatTarget: true, summaryText: true },
+      surTax: { rate: true, surVatRate: true, summaryText: true },
+      incTax: { rate: true, summaryText: true },
+      cost: {} // cost 用专属的 costExtra，不走 systemExtra
+    }[t.id] || {};
+    function toggle(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
+    toggle('settleTmplProfitParams', !!show.profitTarget);
+    toggle('settleTmplProfitSeparate', !!show.separate);
+    toggle('settleTmplRateParams', !!show.rate);
+    toggle('settleTmplVatTargetParams', !!show.vatTarget);
+    toggle('settleTmplSurVatRateParams', !!show.surVatRate);
+    // cost 的参数在 costExtra（已在 fillSettleTmplForm 里控制）；summaryText 已上移到通用卡片头（始终可见）
+    // 回填值
+    var pt = $('settleTmplProfitTarget'); if (pt) pt.value = t.targetSubj || '';
+    var ps = $('settleTmplProfitSeparateSel'); if (ps) ps.value = (t.separate !== false) ? 'true' : 'false';
+    var rt = $('settleTmplRate'); if (rt) rt.value = t.rate || '';
+    var vt = $('settleTmplVatTarget'); if (vt) vt.value = t.targetSubj || '';
+    var sv = $('settleTmplSurVatRate'); if (sv) sv.value = t.vatRate || '';
   }
 }
 
@@ -1320,13 +1272,33 @@ function updateCostEstimate() {
 function fillSettleTmplForm(t) {
   var formPanel = $('settleTmplFormPanel');
   if (!formPanel || !t) return;
-  // 模板名称改成可编辑 input
-  var nm = $('settleTmplFormName'); if (nm) nm.value = t.name || '';
+  // 模板名称：系统模板显示为标题（金蝶样式，不可改名），自定义/预置为可编辑输入框
+  var isSystem = !t.custom && !t.preset;
+  var nm = $('settleTmplFormName');
+  var nmLabel = $('settleTmplFormNameLabel');
+  var ftitle = $('settleTmplFormTitle');
+  var ftitleText = $('settleTmplFormTitleText');
+  if (nm) { nm.value = t.name || ''; nm.style.display = isSystem ? 'none' : ''; }
+  if (nmLabel) nmLabel.style.display = isSystem ? 'none' : '';
+  if (ftitle) ftitle.style.display = isSystem ? '' : 'none';
+  if (ftitleText) ftitleText.textContent = t.name || '';
   // 删除按钮：自定义/预置模板显示，系统模板隐藏
   var delBtn = $('btnSettleTmplDelete');
   if (delBtn) delBtn.style.display = (t.custom || t.preset) ? '' : 'none';
+  // 系统模板角标：随标题一起，仅系统模板显示
+  var fbadge = $('settleTmplFormBadge'); if (fbadge) fbadge.style.display = isSystem ? '' : 'none';
   var en = $('settleTmplFormEnabled'); if (en) en.checked = !!t.enabled;
   var wd = $('settleTmplFormWord'); if (wd) { if (!wd.options.length) fillWordOptions(wd); wd.value = t.word || '记'; }
+  // 凭证日期：系统模板显示真实计算日期（如 2026-08-31）并锁定；自定义/预置保留下拉可选
+  var dt = $('settleTmplFormDate');
+  var dtText = $('settleTmplFormDateText');
+  if (dt) dt.value = t.voucherDate || 'period';
+  if (dtText) {
+    if (isSystem) { dtText.value = tmplVoucherDate(selMonth, t); dtText.style.display = ''; dtText.classList.add('stm-name-ro'); }
+    else { dtText.style.display = 'none'; }
+  }
+  if (dt) dt.style.display = isSystem ? 'none' : '';
+  var sm = $('settleTmplSummaryText'); if (sm) { sm.value = t.summaryText || ''; sm.readOnly = false; if (sm.classList) sm.classList.remove('stm-name-ro'); sm.placeholder = isSystem ? '留空则按系统规则自动生成摘要' : '留空则用模板名称作为默认摘要'; }
 
   // 结转销售成本专属
   var costExtra = $('settleTmplCostExtra');
@@ -1357,14 +1329,14 @@ function fillWordOptions(sel) {
 function setText(id, txt) { var el = $(id); if (el) el.textContent = txt; }
 
 // 显示新增模板面板（分录表格：模板名称 + 凭证字 + 摘要/科目/方向/金额）
+// 草稿仅保留在内存（不进 settleTmplList、不落库），点「保存」才由 saveSettleTmplForm 写入；
+// 取消/关闭则自然丢弃，不会留下空白模板。
 function showSettleTmplNewPanel() {
   var id = 'custom_' + Date.now();
-  settleTmplList.push({
-    id: id, name: '自定义模板', enabled: true, custom: true,
-    summary: '', word: '记', template: [], hasEntries: false
-  });
-  persistSettleTemplates();
-  selectSettleTemplate(id);
+  var draft = { id: id, name: '自定义模板', enabled: true, custom: true, summary: '', word: '记', template: [], hasEntries: false };
+  editingCustomId = id;
+  settleTmplSelectedId = id;
+  selectSettleTemplate(id, draft);
 }
 
 // 模板列表（弹窗打开时）
@@ -1819,7 +1791,7 @@ function genVoucherFromTpl(t, silent) {
     var s = S.subject(e.code);
     return { code: e.code, name: s ? s.name : '', summary: e.summary, dr: e.dr, cr: e.cr };
   });
-  var rr = genOnceVoucher(month, 'settleTpl:' + t.id, t.summary || t.name, entries, t.word || '记');
+  var rr = genOnceVoucher(month, 'settleTpl:' + t.id, t.summaryText || t.summary || t.name, entries, t.word || '记', tmplVoucherDate(month, t));
   if (!rr.ok) { if (!silent) showToast(rr.msg, 'error'); return false; }
   if (!silent) {
     var baseMsg = srcLabel ? ('来源：' + srcLabel + '　') : '';
@@ -1855,8 +1827,8 @@ function saveSettleTmplForm() {
     t = findSettleTemplate(editingCustomId);
   }
   if (!t) return;
-  // 从 input 读模板名称（金蝶可编辑）
-  var nm = $('settleTmplFormName'); if (nm && nm.value.trim()) t.name = nm.value.trim();
+  // 从 input 读模板名称（仅自定义/预置模板可改名）
+  var nm = $('settleTmplFormName'); if ((t.custom || t.preset) && nm && nm.value.trim()) t.name = nm.value.trim();
   var en = $('settleTmplFormEnabled'); if (en) t.enabled = en.checked;
   var wd = $('settleTmplFormWord'); if (wd) t.word = wd.value || '记';
   if (t.id === 'cost') {
@@ -1867,6 +1839,26 @@ function saveSettleTmplForm() {
     var amt = $('settleTmplCostAmt'); if (amt) t.costAmount = amt.value;
     var csm = $('settleTmplCostSummary'); if (csm) t.costSummary = csm.value;
   }
+  // 系统模板通用参数（profit/dep/vat/surTax/incTax）
+  if (t.id === 'profit') {
+    var pt = $('settleTmplProfitTarget'); if (pt) t.targetSubj = pt.value.trim();
+    var ps = $('settleTmplProfitSeparateSel'); if (ps) t.separate = ps.value === 'true';
+  }
+  if (t.id === 'vat') {
+    var rt = $('settleTmplRate'); if (rt) t.rate = rt.value;
+    var vt = $('settleTmplVatTarget'); if (vt) t.targetSubj = vt.value.trim();
+  }
+  if (t.id === 'surTax') {
+    var st = $('settleTmplRate'); if (st) t.rate = st.value;
+    var sv = $('settleTmplSurVatRate'); if (sv) t.vatRate = sv.value;
+  }
+  if (t.id === 'incTax') {
+    var it = $('settleTmplRate'); if (it) t.rate = it.value;
+  }
+  // 凭证摘要（通用卡片头）：所有模板均可编辑并保存（金蝶样式，可改）
+  var sm = $('settleTmplSummaryText'); if (sm) t.summaryText = sm.value;
+  // 凭证日期（当期日期 / 期末最后一天）
+  var dt = $('settleTmplFormDate'); if (dt) t.voucherDate = dt.value || 'period';
   // custom=true 模板：保存分录表格数据（校验借贷平衡）
   if (t.custom) {
     var rows = collectCustomTplRows();
@@ -1887,6 +1879,52 @@ function saveSettleTmplForm() {
 // 模板弹窗事件绑定
 if ($('btnSettleTmpl')) $('btnSettleTmpl').addEventListener('click', openSettleTemplateModal);
 if ($('btnSettleTmplClose')) $('btnSettleTmplClose').addEventListener('click', closeSettleTemplateModal);
+// 弹窗启用开关：改了立即生效（persist + 刷新左侧分组 + 页面卡片）
+var _tmplEnCb = $('settleTmplFormEnabled');
+if (_tmplEnCb) _tmplEnCb.addEventListener('change', function () {
+  var t = findSettleTemplate(settleTmplSelectedId);
+  if (!t) return;
+  t.enabled = _tmplEnCb.checked;
+  persistSettleTemplates();
+  renderSettleTmplList();  // 左侧启用/禁用分组重排
+  refreshSettle();         // 页面卡片显隐刷新
+  showToast((t.enabled ? '已启用' : '已禁用') + '：' + t.name, 'success');
+});
+// 检查项设置弹窗
+if ($('btnSettleCheck')) $('btnSettleCheck').addEventListener('click', openSettleCheckModal);
+if ($('btnSettleCheckClose')) $('btnSettleCheckClose').addEventListener('click', closeSettleCheckModal);
+if ($('btnSettleCheckCancel')) $('btnSettleCheckCancel').addEventListener('click', closeSettleCheckModal);
+
+function openSettleCheckModal() {
+  var month = selMonth;
+  var body = $('settleCheckBody');
+  if (!body) return;
+  var all = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
+  var ov = (S.state.param && S.state.param.checkOverrides) || {};
+  var html = '<div class="scc-head">根据业务需求选择，选择「仅提醒」后该项不再拦截结账。</div>';
+  if (!all.length) html += '<div class="scc-empty">本期无检查项</div>';
+  all.forEach(function (c) {
+    var cur = ov[c.key] || (c.status === 'warn' ? 'warn' : 'block');
+    if (cur === 'off') cur = 'block';
+    html += '<div class="scc-row"><span class="scc-name">' + esc(c.label) + '</span>' +
+      '<select class="scc-sel" data-key="' + c.key + '">' +
+      '<option value="block"' + (cur === 'block' ? ' selected' : '') + '>未通过则拦截</option>' +
+      '<option value="warn"' + (cur === 'warn' ? ' selected' : '') + '>仅提醒</option>' +
+      '</select></div>';
+  });
+  body.innerHTML = html;
+  body.querySelectorAll('.scc-sel').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      S.state.param = S.state.param || {};
+      S.state.param.checkOverrides = S.state.param.checkOverrides || {};
+      S.state.param.checkOverrides[sel.getAttribute('data-key')] = sel.value;
+      S.persist();
+      refreshSettle();
+    });
+  });
+  openModal('settleCheckModal');
+}
+function closeSettleCheckModal() { closeModal('settleCheckModal'); }
 // 弹窗内：新增模板 / 保存 / 取消 / 导入 / 导出
 if ($('btnSettleTmplNew')) $('btnSettleTmplNew').addEventListener('click', showSettleTmplNewPanel);
 if ($('btnSettleTmplSave')) $('btnSettleTmplSave').addEventListener('click', function () {
@@ -1908,12 +1946,25 @@ document.addEventListener('click', function (e) {
 if ($('btnSettleTmplDelete')) $('btnSettleTmplDelete').addEventListener('click', async function () {
   var t = findSettleTemplate(settleTmplSelectedId);
   if (!t) return;
-  if (!t.custom) return showToast('系统模板不可删除', 'warn');
-  if (!(await H.confirmAsync('确认删除自定义模板「' + t.name + '」？', { title: '删除模板' }))) return;
+  if (!t.custom && !t.preset) return showToast('系统模板不可删除', 'warn');
+  if (!(await H.confirmAsync('确认删除模板「' + t.name + '」？', { title: '删除模板' }))) return;
   settleTmplList = settleTmplList.filter(function (x) { return x !== t; });
+  // 预置摊销模板删除后记入 dismissed，防止刷新后复活（与卡片删除逻辑一致）
+  if (t.preset) {
+    try {
+      var DISMISS_KEY = 'settle_preset_dismissed';
+      var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]');
+      if (!Array.isArray(d)) d = [];
+      if (d.indexOf(t.id) < 0) { d.push(t.id); localStorage.setItem(DISMISS_KEY, JSON.stringify(d)); }
+    } catch (e) {}
+  }
   persistSettleTemplates();
-  closeSettleTemplateModal();
+  // 删除后留在设置弹窗内：刷新左侧列表，并自动选中下一个模板（无则清空表单）
+  renderSettleTmplTree();
+  if (settleTmplList.length) selectSettleTemplate(settleTmplList[0].id);
+  else { settleTmplSelectedId = null; var fp = $('settleTmplFormPanel'); if (fp) fp.style.display = 'none'; }
   refreshSettle();
+  showToast('已删除模板「' + t.name + '」');
 });
 
 /* 结账业务模块：对外暴露（路由刷新 + 委托桩转发） */

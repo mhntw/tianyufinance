@@ -305,6 +305,9 @@ function fillVoucherWord() {
 function resetVoucherEdit() {
   vEditId = null;
   vRows = [defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow()];
+  // 新增模式：隐藏删除、显示保存并新增
+  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.hidden = true;
+  var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = false;
   fillVoucherWord();
   var w = $('vWord'); if (w) w.value = S.state.param.voucherWord || '记';
   // workMonth = 当前账期（currentPeriod 已统一为：最近已结账+1 / 最近有凭证 / 自然月）
@@ -629,7 +632,16 @@ function setupVoucher() {
   });
   var bSave = $('btnSaveVoucher'); if (bSave) bSave.addEventListener('click', function () {
     var res = saveVoucher();
-    if (res && res.ok && !res.unchanged) showToast(res.unaudited ? '已保存（原凭证已审核，保存后已自动撤销审核状态）' : '已保存凭证');
+    if (res && res.ok && !res.unchanged) showToast('已保存凭证');
+  });
+  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.addEventListener('click', async function () {
+    if (!vEditId) return;
+    if (!(await H.confirmAsync('确定删除该凭证？', { title: '删除凭证' }))) return;
+    var r = S.removeVoucher(vEditId);
+    if (!r.ok) return showToast(r.msg, 'error');
+    syncAll();
+    showToast('已删除凭证');
+    resetVoucherEdit();
   });
   var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
   var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
@@ -743,7 +755,7 @@ var VOUCHER_SHEET_CSS = 'body{font-family:-apple-system,"PingFang SC","Microsoft
   + '.c-name{text-align:center;font-size:17px;font-weight:700;margin:2px 0 10px;letter-spacing:4px;}'
   + '.meta{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:4px;}'
   + 'table{width:100%;border-collapse:collapse;font-size:12.5px;}'
-  + 'th,td{border:1px solid #333;padding:6px 7px;vertical-align:top;}'
+  + 'th,td{border:1px solid #333;padding:10px 7px;vertical-align:top;}'
   + 'th{font-weight:600;text-align:center;}'
   + '.c-sum{width:30%;}'
   + '.c-sub{width:42%;}'
@@ -756,11 +768,11 @@ var VOUCHER_SHEET_CSS = 'body{font-family:-apple-system,"PingFang SC","Microsoft
   + '.foot2 span:nth-child(1){margin-left:15%;}'
   + '.foot2 span:nth-child(2){margin-left:36%;}'
   + '.u{display:inline-block;}'
-  + '.bl-meta{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;font-size:13px;margin:2px 0 14px;}'
+  + '.bl-meta{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;font-size:12.5px;margin:2px 0 14px;}'
   + '.bl-meta span{white-space:nowrap;justify-self:start;}'
   + '.bl-meta span:nth-child(2){justify-self:center;}'
   + '.bl-meta span:nth-child(3){justify-self:end;}'
-  + '.vblank td{height:14px;padding-top:7px;padding-bottom:7px;}'
+  + '.vblank td{height:22px;padding-top:10px;padding-bottom:10px;}'
   + '.print-hint{margin-top:18px;font-size:12px;color:#1565c0;background:#e3f2fd;padding:8px 12px;border-radius:4px;}'
   + '@media print{body{padding:0;}.print-hint{display:none!important;}}';
 
@@ -808,7 +820,7 @@ function printCurrentVoucher() {
 /* 空白记账凭证纸：字号/日期/分录/金额全留空，供财务手填或作凭证纸 */
 function renderBlankVoucherHtml() {
   var trs = '';
-  for (var i = 0; i < 7; i++) {
+  for (var i = 0; i < 5; i++) {
     trs += '<tr class="vblank"><td></td><td></td><td class="c-amt"></td><td class="c-amt"></td></tr>';
   }
   var u = function (w) { return '<span class="u" style="width:' + w + 'px"></span>'; };
@@ -816,9 +828,9 @@ function renderBlankVoucherHtml() {
   return '<div class="wrap">'
     + '<div class="c-name">记 账 凭 证</div>'
     + '<div class="bl-meta">'
-    + '<span>凭证字号：' + u(42) + '字第' + u(28) + '号</span>'
-    + '<span>日期：' + u(40) + '年' + u(32) + '月' + u(32) + '日</span>'
-    + '<span>附件：' + u(22) + '张</span>'
+    + '<span>凭证字 记' + u(22) + '号</span>'
+    + '<span>日期：' + u(26) + '年' + u(22) + '月' + u(22) + '日</span>'
+    + '<span>附件：' + u(18) + '张</span>'
     + '</div>'
     + '<table>'
     + '<thead><tr><th>摘要</th><th>科目</th><th>借方金额</th><th>贷方金额</th></tr></thead>'
@@ -901,11 +913,9 @@ function saveVoucher() {
   }
   savingVoucher = true;
   try {
-    var autoUnaudited = false;
     if (vEditId) {
       var r = S.updateVoucher(vEditId, v);
       if (!r.ok) { showToast(r.msg, 'warn'); return r; }
-      autoUnaudited = !!r.unaudited;
     } else {
       var ar = S.addVoucher(v);
       if (!ar || !ar.ok) { showToast((ar && ar.msg) || '保存失败', 'warn'); return ar || { ok: false }; }
@@ -919,7 +929,7 @@ function saveVoucher() {
       });
     }
     syncAll();
-    return { ok: true, unaudited: autoUnaudited };
+    return { ok: true };
   } finally {
     savingVoucher = false;
   }
@@ -944,16 +954,18 @@ function loadVoucherToEdit(id) {
   }
   if (!v) { showToast('凭证不存在', 'error'); return; }
   vEditId = v.id;
+  // 编辑模式：显示删除、隐藏保存并新增
+  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.hidden = false;
+  var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = true;
+  fillVoucherWord(); // 先确保 options 和 disabled 状态正确
   var w = $('vWord'); if (w) w.value = v.word || '记';
   var no = $('vNo'); if (no) no.value = v.no || '';
   var dt = $('vDate');
   if (dt) {
-    // 编辑态也设 min/max，防止改到非法区间
-    var comp = (S.state && S.state.company) || {};
-    var sm = comp.startMonth ? (comp.startMonth + '-01') : '';
-    var today = H.todayStr ? H.todayStr() : todayStr();
-    if (sm) dt.min = sm;
-    dt.max = today;
+    // 编辑态：凭证归属月份不可改（对齐 store.updateVoucher 的月份锁定）
+    var _month = monthOf(v.date);
+    dt.min = _month + '-01';
+    dt.max = _month + '-31';
     dt.value = v.date || '';
   }
   var at = $('vAttach'); if (at) at.value = v.attach || 0;
@@ -1084,41 +1096,6 @@ if (qThNo) qThNo.addEventListener('click', function () {
   var s = $('qPeriodStart'), e = $('qPeriodEnd'); renderQuery(s ? s.value : '', e ? e.value : '');
 });
 var bQNew = $('btnQNewVoucher'); if (bQNew) bQNew.addEventListener('click', function () { goPage('voucher'); });
-// 批量审核：对勾选的凭证逐张调用 S.auditVoucher（口径：借贷平衡、未结账、
-// 制单人与审核人非同一人、现金银行赤字检查等校验都在 store 内完成，此处不重复实现）。
-// 之所以逐张处理而非一次性提交：每张的失败原因不同（已结账 / 不平衡 / 已审核…），
-// 需要逐张收集原因反馈给用户，部分失败不应回滚已成功的部分。
-var bQAudit = $('btnQAudit');
-if (bQAudit) bQAudit.addEventListener('click', async function () {
-  var cks = document.querySelectorAll('#qBody .row-check:checked');
-  if (!cks.length) { showToast('请先勾选要审核的凭证', 'warn'); return; }
-  var ids = [];
-  cks.forEach(function (c) { ids.push(c.getAttribute('data-id')); });
-  if (!(await H.confirmAsync('确定审核选中的 ' + ids.length + ' 张凭证？', { title: '批量审核' }))) return;
-
-  var ok = 0, skipped = 0, fails = [];
-  ids.forEach(function (id) {
-    var v = S.getVoucher ? S.getVoucher(id) : null;
-    var label = v ? ((v.word || '记') + '-' + (v.no != null ? v.no : '')) : id;
-    if (v && (v.status === 'audited')) { skipped++; return; }
-    var r = S.auditVoucher(id);
-    if (r && r.ok) { ok++; return; }
-    fails.push(label + '：' + ((r && r.msg) || '审核失败'));
-  });
-
-  // S.auditVoucher 内部会 persist（进而触发 __refreshAll 重绘列表），
-  // 这里再显式重绘一次，避免未发生任何变更时状态列不刷新的情况。
-  syncAll(); qRender();
-
-  if (ok) showToast('已审核 ' + ok + ' 张凭证', 'success');
-  if (skipped) showToast(skipped + ' 张已审核，已跳过', 'warn');
-  if (fails.length) {
-    // 失败明细可能很长：3 条以内全部展示，超出只举两例，完整清单走控制台
-    if (fails.length <= 3) showToast(fails.join('\n'), 'error', 12000);
-    else showToast(fails.length + ' 张审核失败，例如：' + fails.slice(0, 2).join('；') + ' 等（完整清单见控制台）', 'error', 12000);
-    console.warn('[批量审核] 失败明细：', fails);
-  }
-});
 // btnQPrint 已加 data-print，由全局委托统一走 tyPrint()，此处不再单独绑定。
 // 查凭证导出：与列表同源（含跨期、科目过滤、字号排序），导出为 Excel
 var bQExport = $('btnQExport'); if (bQExport) bQExport.addEventListener('click', exportQuery);
@@ -1126,7 +1103,7 @@ var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click',
   var cks = document.querySelectorAll('#qBody .row-check:checked');
   if (!cks.length) { showToast('请先勾选要删除的凭证', 'warn'); return; }
   // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码，仅二次确认
-  if (!(await H.confirmAsync('确定删除选中的 ' + cks.length + ' 张凭证？\n\n删除后进入回收站，可随时还原；回收站「彻底清除」才不可恢复（需操作密码）。', { title: '删除凭证' }))) return;
+  if (!(await H.confirmAsync('确定删除选中的 ' + cks.length + ' 张凭证？', { title: '删除凭证' }))) return;
   var n = 0, fail = 0, failMsg = '';
   cks.forEach(function (c) {
     var r = S.removeVoucher(c.getAttribute('data-id'));
@@ -1178,10 +1155,9 @@ function exportQuery() {
   if (typeof XLSX === 'undefined') { showToast('导出组件未加载', 'error'); return; }
 
   function amt(n) { var x = U.num(n); return x ? x : ''; }
-  var rows = [['日期', '凭证字号', '摘要', '科目', '借方金额', '贷方金额', '附件', '原单据编号', '制单人', '审核人']];
+  var rows = [['日期', '凭证字号', '摘要', '科目', '借方金额', '贷方金额', '附件', '原单据编号', '制单人']];
   vs.forEach(function (v) {
     var first = true;
-    var audited = (v.status === 'audited');
     v.entries.forEach(function (en) {
       if (!matchSubjectCode(sc.codes, en.code)) { first = false; return; }
       rows.push([
@@ -1193,9 +1169,7 @@ function exportQuery() {
         amt(en.cr),
         first ? (v.attach || '') : '',
         first ? (v.sourceNo || '') : '',
-        // 与列表保持一致：列表的「制单人」列当前是固定占位文案「本账套」，导出沿用同一口径
-        first ? '本账套' : '',
-        first ? (audited ? (v.auditor || '') : '') : ''
+        first ? '本账套' : ''
       ]);
       first = false;
     });
@@ -1203,7 +1177,7 @@ function exportQuery() {
 
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(wb, ws, '凭证列表');
   var fname = '凭证列表_' + (start === end ? start : start + '至' + end);
   __safeExportExcel(wb, fname);
@@ -1231,11 +1205,8 @@ function renderQuery(start, end) {
       var dateCell = first ? v.date : '';
       var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>') : '';
       var makerCell = first ? maker : '';
-      var auditorCell = first ? ((v.status === 'audited') ? (v.auditor || '') : '') : '';
-      var opCell = first ? ('<a href="#" title="编辑" data-edit="' + v.id + '">✎</a>') : '';
       tr.innerHTML =
         '<td style="text-align:center">' + chk + '</td>' +
-        '<td style="text-align:center">' + opCell + '</td>' +
         '<td>' + dateCell + '</td>' +
         '<td>' + noCell + '</td>' +
         // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
@@ -1245,8 +1216,7 @@ function renderQuery(start, end) {
         '<td class="ta-r mono">' + (U.num(e.cr) ? money(e.cr) : '') + '</td>' +
         '<td>' + (first ? (v.attach || '') : '') + '</td>' +
         '<td>' + (first ? (v.sourceNo || '') : '') + '</td>' +
-        '<td>' + makerCell + '</td>' +
-        '<td>' + auditorCell + '</td>';
+        '<td>' + makerCell + '</td>';
       tb.appendChild(tr);
       first = false;
     });
@@ -1255,7 +1225,7 @@ function renderQuery(start, end) {
   vs.forEach(function (v) { v.entries.forEach(function (e) { sumDr += U.num(e.dr); sumCr += U.num(e.cr); }); });
   var trt = document.createElement('tr');
   trt.className = 'grp-row';
-  trt.innerHTML = '<td></td><td></td><td colspan="4" class="ta-r">合 计</td>' +
+  trt.innerHTML = '<td></td><td colspan="4" class="ta-r">合 计</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumDr) + '</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumCr) + '</td>' +
     '<td colspan="4"></td>';
@@ -1306,7 +1276,7 @@ function refreshRecycleBin() {
       var id = this.getAttribute('data-id');
       var v = S.getVoucherIncludeDeleted ? S.getVoucherIncludeDeleted(id) : null;
       if (!v) { H.showToast && H.showToast('凭证不存在', 'error'); return; }
-      if (!(await H.confirmAsync('确认还原凭证 ' + (v.word || '记') + '-' + (v.no != null ? v.no : '') + '？\n还原后凭证恢复为未审核状态，可正常编辑。', { title: '还原凭证' }))) return;
+      if (!(await H.confirmAsync('确认还原凭证 ' + (v.word || '记') + '-' + (v.no != null ? v.no : '') + '？', { title: '还原凭证' }))) return;
       var r = S.restoreVoucher(id);
       if (!r.ok) { H.showToast && H.showToast(r.msg, 'error'); return; }
       H.showToast && H.showToast('已还原：' + (v.word || '记') + '-' + (v.no != null ? v.no : ''));
@@ -1589,19 +1559,4 @@ globalThis.__VOUCHER__ = {
   if (x) x.addEventListener('click', closeRecycleBin);
   var x2 = document.getElementById('btnRecycleBinClose2');
   if (x2) x2.addEventListener('click', closeRecycleBin);
-  // 彻底清除（物理清除所有已软删凭证，不可恢复）
-  var purge = document.getElementById('btnPurgeRecycle');
-  if (purge) purge.addEventListener('click', async function () {
-    var list = (S.deletedVouchers ? S.deletedVouchers() : []);
-    if (!list.length) { H.showToast && H.showToast('回收站为空', 'warn'); return; }
-    // 高危操作保护：彻底清除不可恢复，先验证操作密码
-    if (!(await H.askOpPassword('彻底清除回收站'))) return;
-    if (!(await H.confirmAsync('确认彻底清除 ' + list.length + ' 张已删除凭证？\n\n此操作不可恢复，清除后无法再还原。建议仅在年末归档后执行。', { title: '彻底清除' }))) return;
-    var r = S.purgeDeletedVouchers();
-    if (!r.ok) { H.showToast && H.showToast(r.msg || '清除失败', 'error'); return; }
-    H.showToast && H.showToast('已彻底清除 ' + r.purged + ' 张凭证');
-    refreshRecycleBin();
-    refreshQuery();
-    if (H.refreshAll) H.refreshAll();
-  });
 })();

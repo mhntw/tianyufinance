@@ -949,31 +949,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   $('btnAccrueDepr').addEventListener('click', function () {
     var m = currentPeriod();
-    // 结账守卫：折旧同样不允许写入已结账期间（与期末处理「生成折旧凭证」depreciateMonth 一致）
-    if (S.isPeriodClosed(m)) return showToast('本期已结账，不能生成折旧凭证，请先反结账', 'error');
-    var s = S.state.deprVchSetting || {};
-    // 折旧科目：配置或准则角色默认（old:1602/5602；2013:1602/6602），科目表缺失给明确提示而非悬空入账
-    var accS = s.deprSubject ? S.subjectRole('ACC_DEPR', s.deprSubject) : (S.subjectRole ? S.subjectRole('ACC_DEPR') : null);
-    var feeS = s.expenseSubject ? S.subjectRole('DEPR_FEE', s.expenseSubject) : (S.subjectRole ? S.subjectRole('DEPR_FEE') : null);
-    if (!accS || !feeS) return showToast('科目表缺少「累计折旧/管理费用」科目，请先在科目页添加后重试', 'error');
-    var deprSubj = accS.code;
-    var expSubj = feeS.code;
-    var word = s.voucherType || '记';
-    var total = 0;
-    S.state.fixedAssets.forEach(function (fa) { if (fa.original && fa.status !== '清理') total += S.assetMonthlyDepr(fa); });
-    if (total <= 0) { showToast('本期无需计提折旧'); return; }
-    // 已生成「计提折旧」凭证则防止重复生成（已在 dvTip 动态提示提醒，此处再拦截防止误操作）
-    if (deprVchOf(m).length) { showToast('本期已生成折旧凭证（' + deprVchOf(m).map(function (v) { return (v.word || '记') + '-' + v.no; }).join('、') + '），请先删除原凭证后再生成。'); return; }
-    var v = {
-      word: word, num: (S.state.vouchers || []).length + 1, date: U.lastDay(m),
-      entries: [
-        { code: expSubj, summary: '计提折旧', dr: +total.toFixed(2), cr: 0, subjectName: S.subject(expSubj) ? S.subject(expSubj).name : '' },
-        { code: deprSubj, summary: '计提折旧', dr: 0, cr: +total.toFixed(2), subjectName: S.subject(deprSubj) ? S.subject(deprSubj).name : '' }
-      ]
-    };
-    S.addVoucher(v);
+    var r = S.depreciateMonth(m);
+    if (!r.ok) return showToast(r.msg, 'error');
     renderAssetDeprVoucher(m);
-    showToast('已生成折旧凭证：' + word + '-' + v.num + '，金额 ' + money(total));
+    showToast('已生成折旧凭证：' + (r.voucher ? ((r.voucher.word || '记') + '-' + r.voucher.no) : '') + '，金额 ' + money(r.total) + '（' + r.count + ' 项资产）');
     syncAll();
   });
 

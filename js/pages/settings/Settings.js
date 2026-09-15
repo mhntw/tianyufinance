@@ -233,12 +233,11 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     reopen: '反结账'
   };
   // 凭证审计摘要格式化（用于日志页「查看明细」展开区）
-  // 输入 _voucherAuditSummary 的产物 {id,word,no,date,summary,status,maker,entries:[{code,name,dr,cr}]}
   function _auditFmt(v) {
     if (!v) return '(无)';
     var lines = [];
     lines.push('凭证 ' + (v.word || '') + '-' + (v.no != null ? v.no : '') + ' · ' + (v.date || '') + ' · ' + (v.summary || ''));
-    if (v.maker) lines.push('制单：' + v.maker + ' · 状态：' + (v.status || 'draft'));
+    if (v.maker) lines.push('制单：' + v.maker);
     (v.entries || []).forEach(function (e) {
       var amt = e.dr ? '借 ' + num(e.dr).toFixed(2) : (e.cr ? '贷 ' + num(e.cr).toFixed(2) : '0.00');
       lines.push('  ' + (e.code || '') + ' ' + ((S.subjectName && S.subjectName(e.code)) || e.name || '') + ' ' + amt);
@@ -767,8 +766,8 @@ function refreshParam() {
   // 基本信息只读展示：公司名称（改名走「账套管理」）、启用期间（点「修改」弹窗调整）
   var nmEl = $('sysNameVal'); if (nmEl) nmEl.textContent = c.name || '';
   var stEl = $('sysStartVal'); if (stEl) stEl.textContent = c.startMonth || '';
-  // 会计制度：只读展示当前准则（由 state.standard 驱动）；变更走受操作密码保护的弹窗
-  var curStdKey = S.state.standard || 'old';
+  // 会计准则：只读展示（软件默认小企业准则，旧账套导入自动识别，不可手动切换）
+  var curStdKey = S.state.standard || 'small2013';
   var curLabel = (globalThis.STANDARDS && globalThis.STANDARDS[curStdKey] && globalThis.STANDARDS[curStdKey].label) || curStdKey;
   var stdLab = $('sysStdLabel'); if (stdLab) stdLab.textContent = curLabel;
   // 软件版本号：在「关于」卡显示，从 Rust 编译时读，没拿到就显示 "--"
@@ -857,49 +856,6 @@ function refreshParam() {
         }
       } catch (e) { showToast('复制失败，请手动选中'); }
     });
-    // 会计制度变更（高危不可逆）：入口收敛为「变更准则…」按钮 → 选择目标准则 → 操作密码 → 二次确认
-    var bStdOpen = $('btnChangeStandard');
-    if (bStdOpen) bStdOpen.addEventListener('click', function () {
-      var curKey = S.state.standard || 'old';
-      // 打开弹窗时默认选中「与当前不同」的准则，避免误触
-      var radios = document.querySelectorAll('input[name="stdNew"]');
-      Array.prototype.forEach.call(radios, function (r) { r.checked = (r.value !== curKey); });
-      if (H.openModal) H.openModal('stdChangeModal');
-    });
-    var bStdDo = $('btnDoChangeStd');
-    if (bStdDo) bStdDo.addEventListener('click', async function () {
-      var STDSW = (typeof globalThis !== 'undefined' && globalThis.STANDARDS) || {};
-      var curKey = S.state.standard || 'old';
-      var sel = document.querySelector('input[name="stdNew"]:checked');
-      var toKey = sel ? sel.value : '';
-      if (!toKey || toKey === curKey) return showToast('请选择与当前不同的会计准则', 'warn');
-      // 不可逆高危操作：先验证操作密码（可逆免密 / 不可逆必密）
-      if (!(await H.askOpPassword('切换会计准则'))) return;
-      var curLabel = (STDSW[curKey] && STDSW[curKey].label) || curKey;
-      var toLabel = (STDSW[toKey] && STDSW[toKey].label) || toKey;
-      var ok = await H.confirmAsync(
-        '当前准则：「' + curLabel + '」\n' +
-        '目标准则：「' + toLabel + '」\n\n' +
-        '切换将迁移损益类科目编码（5xxx↔6xxx）于科目表 / 期初余额 / 凭证分录 / 现金流映射，\n' +
-        '并重灌报表取数规则，不可逆。建议先在「账套管理」做备份。\n\n' +
-        '确定要切换吗？',
-        { title: '切换会计准则' }
-      );
-      if (!ok) return;
-      var r = S.setStandard(toKey);
-      if (r && r.ok) {
-        var ch = r.changed || {};
-        if (H.closeModal) H.closeModal('stdChangeModal');
-        showToast(r.msg + '（改科目 ' + (ch.subjects || 0) +
-                 '、凭证 ' + (ch.vouchers || 0) +
-                 '、期初 ' + (ch.opening || 0) + '）');
-        refreshAll();
-      } else {
-        showToast((r && r.msg) || '切换失败', 'error');
-      }
-    });
-    var bStdCancel = $('btnCancelStdChange');
-    if (bStdCancel) bStdCancel.addEventListener('click', function () { if (H.closeModal) H.closeModal('stdChangeModal'); });
     // 操作密码修改：必须先验证「当前操作密码」（未自定义时为默认 admin），验证通过才允许改/恢复默认
     var bOpPw = $('btnSaveOpPw');
     if (bOpPw) bOpPw.addEventListener('click', function () {

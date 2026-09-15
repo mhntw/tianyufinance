@@ -1633,12 +1633,14 @@ select:not([class]),
 .vh-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
   color: #333;
   white-space: nowrap;
 }
 .vh-left select, .vh-left input { font-size: 13px; }
+/* 凭证号 readonly，紧凑宽度 */
+#vNo { width: 40px; text-align: center; font-size: 13px; }
 .vh-no-label, .vh-date-label { color: #666; }
 .vh-center {
   text-align: center;
@@ -2371,11 +2373,10 @@ select:not([class]),
 }
 .settle-tmpl-node-group:hover { background: #eef2f7; }
 .settle-tmpl-arrow {
-  width: 12px;
-  font-size: 10px;
-  color: var(--ty-text-3);
-  text-align: center;
-  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; font-size: 12px; line-height: 1;
+  color: var(--ty-text-3); flex-shrink: 0; cursor: pointer;
+  transition: transform 0.15s;
 }
 .settle-tmpl-list { list-style: none; margin: 0; padding: 0; }
 .settle-tmpl-list-hidden { display: none; }
@@ -2395,6 +2396,20 @@ select:not([class]),
 .settle-tmpl-list li.active {
   background: var(--ty-blue);
   color: #fff;
+}
+/* 模板名称「系统」角标（系统模板不可删除，金蝶风格） */
+.stm-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 11px;
+  font-style: normal;
+  color: #fff;
+  background: #9aa3af;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
 /* 新增模板（floatBtn 浮动按钮） */
 .settle-tmpl-add {
@@ -2439,6 +2454,13 @@ select:not([class]),
   outline: none;
 }
 .settle-tmpl-name-input:focus { border-color: var(--ty-blue); box-shadow: 0 0 0 1px var(--ty-blue, transparent); }
+/* 系统模板锁定字段（名称/摘要）的只读外观 */
+.stm-name-ro { background: #f4f5f7; color: var(--ty-text-2); cursor: not-allowed; border-color: var(--ty-border-2); box-shadow: none; }
+.settle-tmpl-title { display: flex; align-items: center; gap: 8px; }
+.settle-tmpl-title-text { font-size: 18px; font-weight: 600; color: var(--ty-text-1); }
+/* 金蝶样式通用卡片头：凭证日期 / 凭证字 / 凭证摘要 置于浅色卡片内 */
+.stm-card-hd { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; margin-bottom: 14px; background: #f6f8fb; border: 1px solid var(--ty-border-2); border-radius: 6px; }
+.stm-card-hd .flex--3nLNX { flex: none; }
 .settle-tmpl-head-right {
   display: flex;
   align-items: center;
@@ -4156,6 +4178,16 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-check-item.is-fail .settle-check-tip { color: #cf1322; }
 .settle-check-label { flex: 0 0 auto; color: var(--ty-text); }
 .settle-check-tip { flex: 1 1 auto; text-align: right; }
+/* 检查项处置策略 */
+.settle-check-cfg { margin-top: 10px; padding: 10px 12px; background: #fafafa; border: 1px solid #f0f0f0; border-radius: 6px; }
+.scc-head { font-size: 12px; color: var(--ty-text-2); margin-bottom: 8px; }
+.scc-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+.scc-row + .scc-row { border-top: 1px dashed #eee; }
+.scc-name { font-size: 13px; color: var(--ty-text); }
+.scc-sel { font-size: 12px; padding: 3px 6px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; }
+.scc-empty { font-size: 13px; color: var(--ty-text-2); padding: 8px 0; }
+.settle-check-box { width: 520px; max-width: 92vw; }
+.settle-check-modal-body { padding: 14px 16px; max-height: 62vh; overflow: auto; }
 
 /* 结账页：Tab 切换 */
 /* ============================================================

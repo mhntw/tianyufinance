@@ -151,7 +151,7 @@ var nbCreate = $('btnCreateBook');
 if (nbCreate) nbCreate.addEventListener('click', function () {
   var name = ($('nbName') && $('nbName').value || '').trim();
   if (!name) return showToast('请输入账套名称', 'warn');
-  var key = ($('nbStandard') && $('nbStandard').value) || 'old';
+  var key = 'small2013'; // 默认小企业准则（金蝶 KIS 默认）
   var start = ($('nbStart') && $('nbStart').value) || curMonthStr();
   var STD = (typeof globalThis !== 'undefined' && globalThis.STANDARDS) || {};
   var standardLabel = (STD[key] && STD[key].label) || key;

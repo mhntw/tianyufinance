@@ -15,9 +15,11 @@
 (function (global) {
   'use strict';
 
-  /* ---------- 旧准则（企业会计制度）科目表 ----------
-   * 与改造前 store.js DEFAULT_SUBJECTS 逐字一致；
-   * 收入/费用用 5xxx 编码（5001 主营业务收入 / 5401 主营业务成本）。
+  /* ---------- 企业会计制度（旧准则 2001）科目表 ----------
+   * 参考财政部 2001 年《企业会计制度》科目表；
+   * 但损益类统一采用 5001/5401/5601/5602/5603（小企业准则风格，也是金蝶 KIS 默认风格），
+   * 让两套准则损益类编码兼容；
+   * 唯一差异 = 制造费用：旧准则 4105 vs 小企业准则 4101。
    */
   var SUBJECTS_OLD = [
     { code: '1001', name: '库存现金',       cls: 'asset',     normal: 'dr' },
@@ -58,7 +60,7 @@
     { code: '3103', name: '本年利润',       cls: 'equity', normal: 'cr' },
     { code: '3104', name: '利润分配',       cls: 'equity', normal: 'cr' },
     { code: '4001', name: '生产成本',       cls: 'cost',    normal: 'dr' },
-    { code: '4002', name: '制造费用',       cls: 'cost',    normal: 'dr' },
+    { code: '4105', name: '制造费用',       cls: 'cost',    normal: 'dr' },
     { code: '5001', name: '主营业务收入',   cls: 'revenue', normal: 'cr' },
     { code: '5051', name: '其他业务收入',   cls: 'revenue', normal: 'cr' },
     { code: '5111', name: '投资收益',       cls: 'revenue', normal: 'cr' },
@@ -74,8 +76,12 @@
   ];
 
   /* ---------- 小企业会计准则（2013）科目表 ----------
-   * 资产/负债/权益编码与旧准则一致（1xxx/2xxx/3xxx）；
-   * 收入/费用改用 6xxx 编码（6001 主营业务收入 / 6401 主营业务成本）。
+   * 参考财政部 2011 年 11 月发布的《小企业会计准则》科目表；
+   * 资产/负债/权益编码 1xxx/2xxx/3xxx（与旧准则一致）；
+   * 成本类：生产成本 4001、制造费用 4101（与旧准则制造费用 4105 不同）；
+   * 损益类 5xxx（5001 主营业务收入 / 5401 主营业务成本 / 5601 销售费用 / 5602 管理费用 / 5603 财务费用）。
+   * 注意：小企业准则损益类编码也是 5xxx！之前误以为是 6xxx（那是 2006 企业会计准则的编码）。
+   *   因此两套准则损益类编码兼容，唯一差异 = 制造费用（old: 4105 vs small2013: 4101）。
    */
   var SUBJECTS_SMALL2013 = [
     { code: '1001', name: '库存现金',       cls: 'asset',     normal: 'dr' },
@@ -117,18 +123,18 @@
     { code: '3104', name: '利润分配',       cls: 'equity', normal: 'cr' },
     { code: '4001', name: '生产成本',       cls: 'cost',    normal: 'dr' },
     { code: '4101', name: '制造费用',       cls: 'cost',    normal: 'dr' },
-    { code: '6001', name: '主营业务收入',   cls: 'revenue', normal: 'cr' },
-    { code: '6051', name: '其他业务收入',   cls: 'revenue', normal: 'cr' },
-    { code: '6111', name: '投资收益',       cls: 'revenue', normal: 'cr' },
-    { code: '6301', name: '营业外收入',     cls: 'revenue', normal: 'cr' },
-    { code: '6401', name: '主营业务成本',   cls: 'expense', normal: 'dr' },
-    { code: '6402', name: '其他业务成本',   cls: 'expense', normal: 'dr' },
-    { code: '6403', name: '税金及附加',     cls: 'expense', normal: 'dr' },
-    { code: '6601', name: '销售费用',       cls: 'expense', normal: 'dr' },
-    { code: '6602', name: '管理费用',       cls: 'expense', normal: 'dr' },
-    { code: '6603', name: '财务费用',       cls: 'expense', normal: 'dr' },
-    { code: '6711', name: '营业外支出',     cls: 'expense', normal: 'dr' },
-    { code: '6801', name: '所得税费用',     cls: 'expense', normal: 'dr' }
+    { code: '5001', name: '主营业务收入',   cls: 'revenue', normal: 'cr' },
+    { code: '5051', name: '其他业务收入',   cls: 'revenue', normal: 'cr' },
+    { code: '5111', name: '投资收益',       cls: 'revenue', normal: 'cr' },
+    { code: '5301', name: '营业外收入',     cls: 'revenue', normal: 'cr' },
+    { code: '5401', name: '主营业务成本',   cls: 'expense', normal: 'dr' },
+    { code: '5402', name: '其他业务成本',   cls: 'expense', normal: 'dr' },
+    { code: '5403', name: '税金及附加',     cls: 'expense', normal: 'dr' },
+    { code: '5601', name: '销售费用',       cls: 'expense', normal: 'dr' },
+    { code: '5602', name: '管理费用',       cls: 'expense', normal: 'dr' },
+    { code: '5603', name: '财务费用',       cls: 'expense', normal: 'dr' },
+    { code: '5711', name: '营业外支出',     cls: 'expense', normal: 'dr' },
+    { code: '5801', name: '所得税费用',     cls: 'expense', normal: 'dr' }
   ];
 
   /* ---------- 资产负债表规则 ----------
@@ -217,7 +223,8 @@
    * 注意：codes 为空的占位行不参与老账套 id 回填（多行同签名无法唯一匹配），
    *   其 id 目前仅作占位。
    *
-   * 'old' 与改造前 Report.js:250-299 逐字等价；'small2013' 把 5xxx 换 6xxx。
+   * 'old' 与改造前 Report.js:250-299 逐字等价；'small2013' 损益类也是 5xxx（财政部 2013 准则规定），
+   *   两套准则损益类编码完全兼容，唯一差异 = 制造费用（old=4105 vs small2013=4101）。
    */
   function incomeStatementOld() {
     return [
@@ -272,52 +279,52 @@
   }
 
   function incomeStatementSmall2013() {
+    // 小企业准则损益类也是 5xxx（与 old 准则损益类兼容）
     return [
-      { id: 'revenue', label: '一、营业收入', codes: ['6001', '6051'] },
-      { id: 'cost', label: '减：营业成本', codes: ['6401', '6402'] },
-      { id: 'taxSur', label: '税金及附加', codes: ['6403'] },
-      { id: 'sellExp', label: '销售费用', codes: ['6601'] },
-      { id: 'adminExp', label: '管理费用', codes: ['6602'] },
+      { id: 'revenue', label: '一、营业收入', codes: ['5001', '5051'] },
+      { id: 'cost', label: '减：营业成本', codes: ['5401', '5402'] },
+      { id: 'taxSur', label: '税金及附加', codes: ['5403'] },
+      { id: 'sellExp', label: '销售费用', codes: ['5601'] },
+      { id: 'adminExp', label: '管理费用', codes: ['5602'] },
       { id: 'rdExp', label: '研发费用', codes: [] },
-      { id: 'finExp', label: '财务费用', codes: ['6603'] },
+      { id: 'finExp', label: '财务费用', codes: ['5603'] },
       { id: 'otherIncome', label: '加：其他收益', codes: [] },
-      { id: 'investIncome', label: '投资收益（损失以“-”填列）', codes: ['6111'] },
+      { id: 'investIncome', label: '投资收益（损失以“-”填列）', codes: ['5111'] },
       { id: 'hedgeIncome', label: '净敞口套期收益（损失以“-”填列）', codes: [] },
       { id: 'fvIncome', label: '公允价值变动收益（损失以“-”填列）', codes: [] },
       { id: 'creditLoss', label: '信用减值损失（损失以“-”填列）', codes: [] },
       { id: 'assetLoss', label: '资产减值损失（损失以“-”填列）', codes: [] },
       { id: 'disposalIncome', label: '资产处置收益（损失以“-”填列）', codes: [] },
       // 期间费用合计 = 销售费用 + 管理费用 + 财务费用（可选含研发费用）
-      // subtotal 行，让首页费用卡直接取这个合计值，而非硬编码三行相加。
       { type: 'subtotal', id: 'periodExpenseTotal', label: '期间费用合计',
         formula: [
-          { codes: ['6601'], sign: '+' },
-          { codes: ['6602'], sign: '+' },
-          { codes: ['6603'], sign: '+' }
+          { codes: ['5601'], sign: '+' },
+          { codes: ['5602'], sign: '+' },
+          { codes: ['5603'], sign: '+' }
         ] },
       { type: 'subtotal', id: 'opProfit', label: '二、营业利润（亏损以“-”填列）',
         formula: [
-          { codes: ['6001', '6051'], sign: '+' },
-          { codes: ['6401', '6402'], sign: '-' },
-          { codes: ['6403'], sign: '-' },
-          { codes: ['6601'], sign: '-' },
-          { codes: ['6602'], sign: '-' },
-          { codes: ['6603'], sign: '-' },
-          { codes: ['6111'], sign: '+' }
+          { codes: ['5001', '5051'], sign: '+' },
+          { codes: ['5401', '5402'], sign: '-' },
+          { codes: ['5403'], sign: '-' },
+          { codes: ['5601'], sign: '-' },
+          { codes: ['5602'], sign: '-' },
+          { codes: ['5603'], sign: '-' },
+          { codes: ['5111'], sign: '+' }
         ] },
-      { id: 'nonOpRev', label: '加：营业外收入', codes: ['6301'] },
-      { id: 'nonOpExp', label: '减：营业外支出', codes: ['6711'] },
+      { id: 'nonOpRev', label: '加：营业外收入', codes: ['5301'] },
+      { id: 'nonOpExp', label: '减：营业外支出', codes: ['5711'] },
       { type: 'subtotal', id: 'totalProfit', label: '三、利润总额（亏损以“-”填列）',
         formula: [
           { ref: 'opProfit', sign: '+' },
-          { codes: ['6301'], sign: '+' },
-          { codes: ['6711'], sign: '-' }
+          { codes: ['5301'], sign: '+' },
+          { codes: ['5711'], sign: '-' }
         ] },
-      { id: 'incomeTax', label: '减：所得税费用', codes: ['6801'] },
+      { id: 'incomeTax', label: '减：所得税费用', codes: ['5801'] },
       { type: 'subtotal', id: 'netProfit', label: '四、净利润（亏损以“-”填列）',
         formula: [
           { ref: 'totalProfit', sign: '+' },
-          { codes: ['6801'], sign: '-' }
+          { codes: ['5801'], sign: '-' }
         ] }
     ];
   }
@@ -328,7 +335,7 @@
       key: 'old',
       label: '企业会计制度（旧准则）',
       subjects: SUBJECTS_OLD,
-      fxCode: '6603',                 // 期末调汇汇兑损益科目（保持改造前常量）
+      fxCode: '5603',                 // 期末调汇汇兑损益科目（财务费用）
       carryProfitCode: '3103',        // 本年利润（结转损益目标）
       carryResidualCode: '3104',      // 利润分配
       // 业务科目角色 → 编码：自动凭证生成与默认值一律经 S.subjectRole(role) 解析，
@@ -356,13 +363,13 @@
       key: 'small2013',
       label: '小企业会计准则（2013）',
       subjects: SUBJECTS_SMALL2013,
-      fxCode: '6603',                 // 2013 准则财务费用即 6603，恰为调汇科目
+      fxCode: '5603',                 // 财务费用（汇兑损益）
       carryProfitCode: '3103',
       carryResidualCode: '3104',
-      // 业务科目角色（见 old）：费用类编码不同（管理费用 6602），其余与 old 一致
+      // 两套准则损益类编码兼容（都是 5xxx），roles 与 old 完全一致
       roles: {
-        DEPR_FEE: '6602',             // 折旧费用（管理费用）
-        PAYROLL_FEE: '6602',          // 工资费用（管理费用）
+        DEPR_FEE: '5602',             // 折旧费用（管理费用）
+        PAYROLL_FEE: '5602',          // 工资费用（管理费用）
         ACC_DEPR: '1602',             // 累计折旧
         FA_ASSET: '1601',             // 固定资产
         FA_CLEAN: '1606',             // 固定资产清理
@@ -381,14 +388,11 @@
     }
   };
 
-  // 损益类编码双向映射（仅 5xxx ↔ 6xxx，资产/负债/权益不变）；
+  // 制造费用编码双向映射（唯一差异：old=4105 vs small2013=4101）；
+  // 损益类两套准则都是 5xxx，不需要映射；资产/负债/权益编码完全一致。
   // 用于已有账套切换准则时的科目编码迁移（subjects + openingBalances + vouchers.entries）。
   var CODE_MAP_OLD_TO_2013 = {
-    '4002': '4101',
-    '5001': '6001', '5051': '6051', '5111': '6111', '5301': '6301',
-    '5401': '6401', '5402': '6402', '5403': '6403',
-    '5601': '6601', '5602': '6602', '5603': '6603',
-    '5711': '6711', '5801': '6801'
+    '4105': '4101'
   };
   var CODE_MAP_2013_TO_OLD = (function () {
     var m = {};
@@ -428,8 +432,7 @@
 
   /* ---------- 系统凭证模板（软件内置「常规/业务」常用凭证） ----------
    * 形态与「常用凭证」一致：只存 摘要 + 科目 + 借贷方向，套用后填金额。
-   * 编码以 old（5xxx 损益码）为基准；账套为 small2013（6xxx）或明细化科目时，
-   * Voucher.js 套用侧按账套科目做 code 迁移 / 同名适配，不写死两套数据。
+   * 编码以 5xxx 损益码为基准（两套准则损益类编码兼容，都是 5xxx）。
    * 属性：{ name, word, entries:[{summary, code, name, side:'dr'|'cr'}] }
    */
   var STANDARD_VCH_TEMPLATES = [

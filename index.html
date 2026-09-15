@@ -297,6 +297,7 @@
               </div>
             </div>
             <button class="btn" id="btnVoucherPref">偏好设置</button>
+            <button class="btn btn-danger" id="btnDeleteVoucher" hidden>删除</button>
           </div>
 
           <div class="voucher-head-row">
@@ -308,8 +309,7 @@
                 <option value="付">付</option>
                 <option value="转">转</option>
               </select>
-              <span class="vh-no-label">字第</span>
-              <input id="vNo" type="number" value="1" class="inp inp-xs" min="1" readonly>
+              <input id="vNo" type="text" value="1" class="inp inp-xs" readonly>
               <span>号</span>
               <span class="vh-date-label">日期</span>
               <input id="vDate" type="date" class="inp inp-sm" data-min="" data-max="">
@@ -478,7 +478,6 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button class="btn" id="btnPurgeRecycle" title="物理清除所有已删除凭证，不可恢复">彻底清除</button>
             <button class="btn btn-primary" id="btnRecycleBinClose2">关闭</button>
           </div>
         </div>
@@ -490,7 +489,7 @@
           <div class="modal-body">
             <div class="operator-guide">请填写你的真实姓名</div>
             <div class="form-row"><label>姓名</label><input id="opNameInput" class="inp" placeholder="如：张伟、李娜" maxlength="20"></div>
-            <p class="operator-hint">你的姓名将用于：凭证的制单人、审核人，以及操作日志记录。修改后，新录入凭证会记录你的名字；历史凭证仍保留原制单人信息，便于追溯。</p>
+            <p class="operator-hint">你的姓名将用于：凭证的制单人，以及操作日志记录。修改后，新录入凭证会记录你的名字；历史凭证仍保留原制单人信息，便于追溯。</p>
           </div>
           <div class="modal-actions">
             <button class="btn btn-primary" id="btnOpSave">确定</button>
@@ -529,9 +528,6 @@
             </div>
             <button class="btn btn-primary" id="btnQNewVoucher">新增</button>
             <button class="btn" id="btnRecycleBin" title="查看已删除的凭证并可还原">回收站</button>
-            <!-- 原「审核/打印/导出/删除」各带一个 ▾ 倒三角，但背后并无任何下拉菜单，
-                 纯装饰性元素且会误导用户以为有次级操作，故移除。 -->
-            <button class="btn" id="btnQAudit">审核</button>
             <button class="btn" id="btnQPrint" data-print>打印</button>
             <button class="btn" id="btnQExport">导出</button>
             <button class="btn" id="btnQDelete">删除</button>
@@ -539,8 +535,8 @@
 
         <table class="grid vq-grid" id="qGrid">
           <colgroup>
-            <col style="width:40px"><col style="width:60px">
-            <col style="width:100px"><col style="width:104px">
+            <col style="width:40px"><col style="width:100px">
+            <col style="width:104px">
             <col><col style="width:200px">
             <col style="width:124px"><col style="width:124px">
             <col style="width:60px"><col style="width:120px">
@@ -548,10 +544,9 @@
           </colgroup>
           <thead><tr>
             <th><input type="checkbox" id="qCheckAll"></th>
-            <th>操作</th>
             <th>日期</th><th class="vq-th-no" id="qThNo" title="点击按凭证字号排序">凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th>摘要</th><th>科目</th>
             <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
-            <th>附件</th><th>原单据编号</th><th>制单人</th><th>审核人</th>
+            <th>附件</th><th>原单据编号</th><th>制单人</th>
           </tr></thead>
           <tbody id="qBody"></tbody>
         </table>
@@ -1096,16 +1091,14 @@
             <div class="settle-process-bar-right">
               <button class="btn btn-ghost" id="btnSettleRecalc">重新测算</button>
               <button class="btn btn-primary" id="btnSettleBatchGen">生成凭证</button>
-              <button class="btn btn-ghost" id="btnSettleQuickClose">结账</button>
-              <button class="btn btn-ghost" id="btnSettleQuickReopen">反结账</button>
             </div>
           </div>
 
           <div class="settle-card-list" id="settleProcessCards">
 
-            <div class="settle-card settle-card-checked" id="cardProfit">
+            <div class="settle-card" id="cardProfit">
               <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" checked /></label>
+                <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">结转损益</span>
                 <i class="settle-card-help" title="结转损益">?</i>
                 <span class="settle-card-op"><a class="settle-link" data-act="setting">设置</a></span>
@@ -1122,7 +1115,7 @@
                 <button class="btn btn-sm" id="btnProfitDist" style="display:none" title="按净利润提取盈余公积并分配股利（金蝶默认比例）">利润分配</button>
               </div>
             </div>
-            <div class="settle-card settle-card-checked" id="cardDepr">
+            <div class="settle-card" id="cardDepr">
               <div class="settle-card-head">
                 <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">计提折旧</span>
@@ -1138,16 +1131,16 @@
                 <button class="btn btn-sm btn-ghost" id="btnDepVoucher">生成凭证</button>
               </div>
             </div>
-            <div class="settle-card settle-card-disabled" id="cardCost">
+            <div class="settle-card" id="cardCost">
               <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" disabled /></label>
+                <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">结转销售成本</span>
                 <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
               </div>
               <div class="settle-card-body"><div class="settle-tip" id="costTip"><i class="settle-tip-icon">&#9888;</i>请点击【生成凭证】测算金额</div></div>
               <div class="settle-card-foot"><span class="settle-vch" id="costVchNo"></span><button class="btn btn-sm btn-ghost" id="btnCarryCost">生成凭证</button></div>
             </div>
-            <div class="settle-card settle-card-checked" id="cardVat">
+            <div class="settle-card" id="cardVat">
               <div class="settle-card-head">
                 <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">转出未交增值税</span>
@@ -1160,7 +1153,7 @@
               </div>
               <div class="settle-card-foot"><span class="settle-vch" id="vatVchNo"></span><button class="btn btn-sm btn-ghost" id="btnCarryVat">生成凭证</button></div>
             </div>
-            <div class="settle-card settle-card-checked" id="cardSurTax">
+            <div class="settle-card" id="cardSurTax">
               <div class="settle-card-head">
                 <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">计提附加税</span>
@@ -1173,9 +1166,9 @@
               </div>
               <div class="settle-card-foot"><span class="settle-vch" id="surTaxVchNo"></span><button class="btn btn-sm btn-ghost" id="btnAccrueSurTax">生成凭证</button></div>
             </div>
-            <div class="settle-card settle-card-disabled" id="cardIncTax">
+            <div class="settle-card" id="cardIncTax">
               <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" disabled /></label>
+                <label class="settle-card-check"><input type="checkbox" /></label>
                 <span class="settle-card-name">计提所得税</span>
                 <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
               </div>
@@ -1196,10 +1189,9 @@
               <span class="settle-year-arrow" id="settleYearArrow">&raquo;</span>
             </div>
             <div class="settle-month-nav" id="settleMonthNav"></div>
-            <label class="settle-option"><input type="checkbox" id="settleChkAudit"> 凭证审核后才允许结账</label>
             <div class="settle-close-ops">
               <button class="btn btn-primary btn-close-period" id="btnClosePeriod">检查并结账</button>
-              <button class="btn btn-ghost" id="btnSettleTmpl"><i class="ico ico-setting">&#9881;</i> 检查项设置</button>
+              <button class="btn btn-ghost" id="btnSettleCheck"><i class="ico ico-setting">&#9881;</i> 检查项设置</button>
             </div>
             <div class="settle-check-wrap" id="closeChecklist"></div>
             <p class="settle-close-notice" id="closeNotice"></p>
@@ -1229,7 +1221,6 @@
           </div>
         </div>
 
-        <div class="settle-audit" id="settleAuditTip"></div>
       </section>
 
       <div class="modal" id="settleTmplModal">
@@ -1240,13 +1231,17 @@
             <div class="settle-tmpl-sider">
               <div class="settle-tmpl-tree">
                 <div class="settle-tmpl-node settle-tmpl-node-group settle-tmpl-node-open" id="settleTmplGroupEnabled">
-                  <span class="settle-tmpl-arrow">▾</span><span>启用模板</span>
+                  <span class="settle-tmpl-arrow">▶</span><span>启用模板</span>
                 </div>
                 <ul class="settle-tmpl-list" id="settleTmplEnabled"></ul>
-                <div class="settle-tmpl-node settle-tmpl-node-group" id="settleTmplGroupDisabled">
-                  <span class="settle-tmpl-arrow">▸</span><span>禁用模板</span>
+                <div class="settle-tmpl-node settle-tmpl-node-group settle-tmpl-node-open" id="settleTmplGroupVch">
+                  <span class="settle-tmpl-arrow">▶</span><span>凭证模板</span>
                 </div>
-                <ul class="settle-tmpl-list" id="settleTmplDisabled"></ul>
+                <ul class="settle-tmpl-list" id="settleTmplVch"></ul>
+                <div class="settle-tmpl-node settle-tmpl-node-group" id="settleTmplGroupDisabled">
+                  <span class="settle-tmpl-arrow">▶</span><span>禁用模板</span>
+                </div>
+                <ul class="settle-tmpl-list settle-tmpl-list-hidden" id="settleTmplDisabled"></ul>
               </div>
               <div class="settle-tmpl-add" id="btnSettleTmplNew"><i class="iconcool tianjia"></i>新增模板</div>
             </div>
@@ -1255,8 +1250,9 @@
               <div class="settle-tmpl-form-panel" id="settleTmplFormPanel">
               <div class="settle-tmpl-head">
                 <div class="settle-tmpl-head-left">
-                  <div class="settle-tmpl-label">模板名称：</div>
-                  <input type="text" class="settle-tmpl-name-input" id="settleTmplFormName" placeholder="请输入模板名称" />
+                  <div class="settle-tmpl-title" id="settleTmplFormTitle" style="display:none"><span class="settle-tmpl-title-text" id="settleTmplFormTitleText"></span><span class="stm-badge" id="settleTmplFormBadge">系统</span></div>
+                  <div class="settle-tmpl-label" id="settleTmplFormNameLabel" style="display:none">模板名称：</div>
+                  <input type="text" class="settle-tmpl-name-input" id="settleTmplFormName" placeholder="请输入模板名称" style="display:none" />
                 </div>
                 <div class="settle-tmpl-head-right">
                   <span class="settle-tmpl-enable-label">启用</span>
@@ -1265,9 +1261,24 @@
                 </div>
               </div>
               <div class="settle-tmpl-form">
-                <div class="flex--3nLNX">
-                  <div class="label--315S5 w60">凭证字：</div>
-                  <select class="inp" id="settleTmplFormWord"></select>
+                <!-- 通用卡片头：凭证日期 / 凭证字 / 凭证摘要（金蝶样式，置于顶部） -->
+                <div class="stm-card-hd">
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5 w60">凭证日期：</div>
+                    <select class="inp" id="settleTmplFormDate">
+                      <option value="period">当期日期</option>
+                      <option value="periodEnd">期末最后一天</option>
+                    </select>
+                    <input type="text" class="inp" id="settleTmplFormDateText" style="display:none" readonly />
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5 w60">凭证字：</div>
+                    <select class="inp" id="settleTmplFormWord"></select>
+                  </div>
+                  <div class="flex--3nLNX">
+                    <div class="label--315S5 w60">凭证摘要：</div>
+                    <input type="text" class="inp" id="settleTmplSummaryText" placeholder="留空则用模板默认摘要" />
+                  </div>
                 </div>
 
                 <div id="settleTmplCostExtra" style="display:none">
@@ -1302,6 +1313,43 @@
                   </div>
                 </div>
 
+                <!-- 系统模板通用参数区（profit/dep/vat/surTax/incTax，按模板类型动态显示子项） -->
+                <div id="settleTmplSystemExtra" style="display:none">
+                  <div id="settleTmplProfitParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">转入科目：</div>
+                      <input class="inp" id="settleTmplProfitTarget" placeholder="默认 3103 本年利润" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplProfitSeparate" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">凭证分类：</div>
+                      <select class="inp" id="settleTmplProfitSeparateSel">
+                        <option value="true">收益与损益分开结转（两张）</option>
+                        <option value="false">收益与损益同时结转（一张）</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="settleTmplRateParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">税率(%)：</div>
+                      <input type="number" class="inp settle-tmpl-num" id="settleTmplRate" min="0" max="100" step="0.01" />
+                    </div>
+                  </div>
+                  <div id="settleTmplVatTargetParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">未交增值税科目：</div>
+                      <input class="inp" id="settleTmplVatTarget" placeholder="默认 222101" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplSurVatRateParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">增值税率(%)：</div>
+                      <input type="number" class="inp settle-tmpl-num" id="settleTmplSurVatRate" min="0" max="100" step="0.01" />
+                    </div>
+                  </div>
+                </div>
+
                 <!-- 预置摊销/自定义模板：分录表格（系统模板隐藏） -->
                 <div id="settleTmplCustomExtra" style="display:none">
                   <div class="settle-tmpl-grid">
@@ -1325,12 +1373,20 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button class="btn btn-danger" id="btnSettleTmplDelete" style="display:none">删除模板</button>
             <button class="btn btn-primary" id="btnSettleTmplSave">保存</button>
             <button class="btn" id="btnSettleTmplCancel">取消</button>
-          </div>
-        </div>
-      </div>
+            </div>
+            </div>
+            </div>
+            <div class="modal" id="settleCheckModal">
+            <div class="modal-box settle-check-box">
+            <div class="modal-title">结账检查项设置<button class="modal-x" id="btnSettleCheckClose">×</button></div>
+            <div class="settle-check-modal-body" id="settleCheckBody"></div>
+            <div class="modal-actions">
+            <button class="btn" id="btnSettleCheckCancel">关闭</button>
+            </div>
+            </div>
+            </div>
 
       <div class="modal ty-modal-container" id="vatEditModal">
         <div class="modal-box">
@@ -1635,8 +1691,7 @@
           <div class="set-row">
             <label>会计准则</label>
             <div class="set-value">
-              <span class="muted" id="sysStdLabel" style="line-height:28px"></span>
-              <button class="btn-link" id="btnChangeStandard" title="切换会计准则将迁移损益类科目编码（5xxx↔6xxx）并重灌报表规则，不可逆，需验证操作密码">切换</button>
+              <span class="muted" id="sysStdLabel"></span>
             </div>
           </div>
         </div>
@@ -1866,14 +1921,7 @@
       <div class="form-row">
         <label>启用期间</label><input id="nbStart" class="inp" type="month">
       </div>
-      <div class="form-row">
-        <label>会计准则</label>
-        <select id="nbStandard" class="inp">
-          <option value="old" selected>旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</option>
-          <option value="small2013">小企业会计准则（2013，收入/费用 6xxx）</option>
-        </select>
-      </div>
-      <p class="set-hint" style="margin-top:6px">启用期间 = 账套第一笔账所在月份，默认为本月；如账务从更早月份开始，请先在此选好起始月（建账后仍可在「系统设置 → 基本信息」调整）。创建后将自动带入对应准则的常用科目表；建议接着到「期初余额」录入期初数据。</p>
+      <p class="set-hint" style="margin-top:6px">1、创建新账套后将自动带入对应准则的常用科目表； 2、第二步请到「期初余额」录入期初数据。</p>
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnCreateBook">创建账套</button>
         <button class="btn" id="btnCancelNewBook">取消</button>
@@ -1928,21 +1976,6 @@
         <button class="btn" id="btnCsTest">测试连接</button>
         <button class="btn btn-primary" id="btnCsSave">保存</button>
         <button class="btn" id="btnCsCancel">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="stdChangeModal">
-    <div class="modal-box modal-compact">
-      <div class="modal-title">变更会计准则</div>
-      <p class="set-hint" style="margin:2px 0 12px">切换将迁移损益类科目编码（5xxx↔6xxx）于科目表 / 期初余额 / 凭证分录 / 现金流映射，并重灌报表取数规则。<b>不可逆</b>，强烈建议先做备份。此操作需验证操作密码。</p>
-      <div class="chk-group" style="flex-direction:column;gap:10px;margin-bottom:14px">
-        <label><input type="radio" name="stdNew" value="old"> 旧准则（企业会计制度，收入/费用 5xxx，与金蝶 KIS 一致）</label>
-        <label><input type="radio" name="stdNew" value="small2013"> 小企业会计准则（2013，收入/费用 6xxx）</label>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-primary" id="btnDoChangeStd">验证并切换</button>
-        <button class="btn" id="btnCancelStdChange">取消</button>
       </div>
     </div>
   </div>

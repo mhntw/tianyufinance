@@ -479,14 +479,110 @@
       if (typeof console !== 'undefined') console.warn('[AIS] 常用凭证模板读取失败', e);
     }
 
+    // ===== 期末处理模板（金蝶自动转账 GLServiceType + GLServiceTypeEntry）=====
+    // 金蝶 KIS 不内置固定的"结转损益/折旧/增值税/附加税/所得税"模板——这些由 KIS 后端硬编码；
+    // GLServiceType 里存的是用户自设的摊销、计提、利润分配等通用分录模板，跟我们 Settle 里的
+    // 自定义模板（ruleType='balance'）模型完全对齐。
+    // 导入策略：只导入 id 不在系统模板名单里的（系统模板硬编码更准），变成 custom=true 模板。
+    var settleTemplates = [];
+    try {
+      var sysIds = ['dep', 'cost', 'vat', 'surTax', 'incTax', 'profit']; // 我们的 6 个系统模板
+      var svcHdrs = getRows(reader, 'GLServiceType');
+      var svcLines = getRows(reader, 'GLServiceTypeEntry');
+      if (svcHdrs.length) {
+        var subjNameMap = {};
+        subjects.forEach(function (s) { subjNameMap[s.code] = s.name || ''; });
+        // 分录按 FID 分组
+        var linesByFid = {};
+        svcLines.forEach(function (r) {
+          var fid = r.FID; if (fid == null) return;
+          (linesByFid[fid] = linesByFid[fid] || []).push(r);
+        });
+        // FDC 金蝶方向 1=借方(D) 0=贷方(C)，FProportion 金额比例（金蝶按此比例分配源科目余额）
+        var fidToSysId = { 4: 'vat', 6: 'incTax', 3: 'surTax', 7: 'yearEnd' }; // 可映射到我们系统模板的跳过
+        svcHdrs.forEach(function (h) {
+          var fid = h.FID;
+          // 跳过能映射到我们系统模板的（硬编码更准）
+          if (fidToSysId[fid]) return;
+          var periods = String(h.FPeriod || '').trim(); // e.g. "1,2,3,...,12" 或 "12"
+          var name = (h.FName || '').toString().trim();
+          if (h.FName2) name = name + '（' + h.FName2 + '）'; // 计提税金（城建税）/利润分配（法定盈余）
+          var lines = linesByFid[fid] || [];
+          if (!lines.length) return;
+          var templateEntries = lines.map(function (l) {
+            var code = String(l.FAcctID || '').trim();
+            var dc = String(l.FDC || '0') === '1' ? 'D' : 'C';
+            return {
+              summary: (l.FExp || '').toString().trim() || name,
+              code: code,
+              name: subjNameMap[code] || '',
+              dc: dc,
+              amount: 0, // 金额留空，ruleType='balance' 模式下运行时按源科目余额计算
+              amountRatio: Number(l.FProportion || 0) || 0
+            };
+          }).filter(function (e) {
+            // 过滤掉科目号不存在于 subjects 的分录（金蝶老模板可能用旧准则编码，账套已转准则就不匹配）
+            return e.code && subjNameMap[e.code] !== undefined;
+          });
+          // 过滤后必须借贷两边都有（否则凭证永远不平）
+          var hasD = templateEntries.some(function(e){ return e.dc === 'D'; });
+          var hasC = templateEntries.some(function(e){ return e.dc === 'C'; });
+          if (!templateEntries.length || !hasD || !hasC) return;
+          var tmpl = {
+            id: 'ais_svc_' + fid,
+            name: name,
+            enabled: false,  // 默认禁用，用户启用后才有卡片
+            custom: true,
+            summary: name,
+            word: '记',
+            template: templateEntries,
+            hasEntries: templateEntries.length > 0,
+            ruleType: 'balance',        // 金蝶按 FProportion 从源科目取余额分配
+            months: periods,             // 生效期："1,2,...,12" 或 "12"
+            aisFID: fid                  // 源表行号，便于追溯
+          };
+          settleTemplates.push(tmpl);
+        });
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[AIS] 期末处理模板读取失败', e);
+    }
+
+    // 自动识别会计准则：看 subjects 里制造费用编码
+    // 两套准则损益类都是 5xxx，唯一差异 = 制造费用：
+    //   小企业准则 2013 → 4101
+    //   企业会计制度   → 4105
+    var detectedStandard = 'small2013'; // 默认小企业准则（金蝶 KIS 默认，绅蓝之星/添钰来客都是）
+    var has4101 = subjects.some(function(s){ return s.code === '4101'; });
+    var has4105 = subjects.some(function(s){ return s.code === '4105'; });
+    if (has4105 && !has4101) detectedStandard = 'old';
+
+    // 凭证字：扫描所有凭证实际使用过的字，全部预设并启用；默认"记"
+    var _vwUsed = {};
+    vouchers.forEach(function(v){ if (v.word) _vwUsed[v.word] = true; });
+    var voucherWords = ['记','收','付','转'].filter(function(w){ return _vwUsed[w]; });
+    // 如果 AIS 只用到"记"，但金蝶默认 4 个字都该预置，全部加上（用到的 enabled）
+    if (!voucherWords.length) voucherWords = ['记']; // 兜底
+    var defaultVw = voucherWords[0] || '记';
+    // 4 个金蝶默认凭证字，全部预置，实际用到的启用
+    var allWords = {};
+    ['记','收','付','转'].forEach(function(w){ allWords[w] = true; });
+    Object.keys(_vwUsed).forEach(function(w){ allWords[w] = true; });
+    voucherWords = Object.keys(allWords).map(function(w){
+      return { name: w, title: w + '账凭证', enabled: _vwUsed[w] ? true : false };
+    });
+
     var ledger = {
+      standard: detectedStandard,
       company: { name: companyName, startMonth: startMonth,  currency: 'RMB' },
-      param: { fxRate: 1 },
+      param: { fxRate: 1, voucherWord: defaultVw },
+      voucherWords: voucherWords,
       subjects: subjects,
       openingBalances: opening,
       vouchers: vouchers,
       closedPeriods: closedPeriods,
       vchTemplates: vchTemplates,   // 用户自定义常用凭证模板（仅结构，金额留空）
+      settleTemplates: settleTemplates,  // 期末处理模板（金蝶自动转账 GLServiceType 自设模板）
       fixedAssets: [],
       salary: [],
       meta: {
