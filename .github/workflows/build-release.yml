@@ -1,13 +1,8 @@
-# ============================================================
 # 自动发布（推 v* 标签触发）：Windows + macOS 双平台安装包进同一 Release
 #
-# 设计（稳定优先，避免三处易错点）：
-#   - 不单独建 Release job、不跨 job 传 release_id、不用 gh：
-#     Windows job 先跑并负责「找到或创建 Release」并上传；
-#     macOS job needs Windows 完成后，对同一 tag 的既有 Release 附加产物。
-#   - 两平台串行天然消除"并发抢建同一 Release"的竞态；幂等可重跑。
-#   - 手动预览请用另一个工作流「构建预览包（手动）」，只出 Artifacts。
-# ============================================================
+# 流程：Windows 先跑 → 创建 Release + 写 body + 上传 .exe
+#       macOS 后跑 → 附加 .dmg（不再写 body，避免覆盖）
+# 版本号自动同步：tag v0.6.0 → tauri.conf.json version: "0.6.0"
 name: 自动发布
 
 on:
@@ -19,13 +14,11 @@ permissions:
   contents: write
 
 jobs:
-  # Windows 先跑：若无该 tag 的 Release 则创建并上传 NSIS；有则直接附加
   build-windows:
-    name: 构建 Windows（创建/更新 Release）
+    name: 构建 Windows
     runs-on: windows-latest
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: 安装 Node.js 24
         uses: actions/setup-node@v5
@@ -34,11 +27,22 @@ jobs:
           cache: npm
           cache-dependency-path: tauri/package-lock.json
 
-      - name: 安装前端依赖（Tauri CLI）
+      - name: 同步版本号到 tauri.conf.json
+        run: |
+          node -e "
+            const fs=require('fs');
+            const p='tauri/src-tauri/tauri.conf.json';
+            const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+            cfg.version='${{ github.ref_name }}'.replace(/^v/,'');
+            fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+            console.log('version set to',cfg.version);
+          "
+
+      - name: 安装前端依赖
         working-directory: tauri
         run: npm ci
 
-      - name: 安装 Rust（stable）
+      - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust 增量缓存
@@ -46,7 +50,7 @@ jobs:
         with:
           workspaces: tauri/src-tauri -> target
 
-      - name: 构建 Windows 并上传到 Release
+      - name: 构建 Windows 并上传
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,21 +60,18 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 添钰财务管理系统 ${{ github.ref_name }}
           releaseBody: |
-            桌面安装包：
-            - Windows 64 位：`*-setup.exe`（NSIS）
-            - macOS（Apple Silicon）：`*.dmg`
-            macOS 包未签名，若被系统拦截请右键点击 →「打开」。
+            - Windows：`*-setup.exe`
+            - macOS：`*.dmg`
+            macOS 包未签名，首次打开请右键 →「打开」。
           releaseDraft: false
           prerelease: false
 
-  # macOS 后跑：Release 已被 Windows job 建立，直接附加 .dmg / .app
   build-macos:
-    name: 构建 macOS（上传到 Release）
+    name: 构建 macOS
     needs: build-windows
     runs-on: macos-latest
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: 安装 Node.js 24
         uses: actions/setup-node@v5
@@ -79,11 +80,22 @@ jobs:
           cache: npm
           cache-dependency-path: tauri/package-lock.json
 
-      - name: 安装前端依赖（Tauri CLI）
+      - name: 同步版本号到 tauri.conf.json
+        run: |
+          node -e "
+            const fs=require('fs');
+            const p='tauri/src-tauri/tauri.conf.json';
+            const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+            cfg.version='${{ github.ref_name }}'.replace(/^v/,'');
+            fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+            console.log('version set to',cfg.version);
+          "
+
+      - name: 安装前端依赖
         working-directory: tauri
         run: npm ci
 
-      - name: 安装 Rust（stable）
+      - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust 增量缓存
@@ -91,7 +103,7 @@ jobs:
         with:
           workspaces: tauri/src-tauri -> target
 
-      - name: 构建 macOS 并上传到 Release
+      - name: 构建 macOS 并上传
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,10 +112,6 @@ jobs:
           args: --bundles app,dmg
           tagName: ${{ github.ref_name }}
           releaseName: 添钰财务管理系统 ${{ github.ref_name }}
-          releaseBody: |
-            桌面安装包：
-            - Windows 64 位：`*-setup.exe`（NSIS）
-            - macOS（Apple Silicon）：`*.dmg`
-            macOS 包未签名，若被系统拦截请右键点击 →「打开」。
+          # 不写 releaseBody：Release 已由 Windows job 创建，此处仅附加 .dmg
           releaseDraft: false
           prerelease: false

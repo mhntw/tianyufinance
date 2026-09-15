@@ -39,3 +39,10 @@ docs/
 _ais_probe.json
 .codebuddy/
 .workbuddy/
+
+# 临时探针脚本（AIS 导入探测、一次性验证）
+tools/_*.js
+tools/scan_ais_templates.js
+
+# 临时调试文件
+full-page.html
