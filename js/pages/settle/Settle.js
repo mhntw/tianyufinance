@@ -171,8 +171,7 @@ function bindSettleEvents() {
     var est = S.costVoucherEstimate(month, tpl);
     var amt = U.num(tpl.costAmount) > 0 ? U.num(tpl.costAmount) : est.amount;
     if (amt < 0.005) return showToast('本期无销售成本可结转', 'error');
-    // 查重：连点会重复生成同额成本凭证（虚增成本），与调汇/税费类按钮一致走拦截。
-    // 按 v.kind 识别（结构识别），不再依赖摘要正则（对导入凭证恒不命中）。
+    // 查重：连点会重复生成同额凭证虚增成本；按 v.kind 识别（导入凭证无 summary，摘要正则恒不命中）。
     var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
     if (costExisted.length) {
       return showToast('本期已生成 ' + costExisted.length + ' 张结转销售成本凭证，请勿重复生成；如需重做请先删除旧凭证', 'error');
@@ -185,7 +184,7 @@ function bindSettleEvents() {
   onBtn('btnCarryVat', function () {
     var month = selMonth;
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
-    var r = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, date: tmplVoucherDate(month, tpl) });
+    var r = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, debitSubj: tpl.debitSubj, date: tmplVoucherDate(month, tpl) });
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已转出未交增值税：' + money(r.amount));
     refreshSettle(); syncAll();
@@ -194,7 +193,7 @@ function bindSettleEvents() {
     var month = selMonth;
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'surTax'; })[0] || {};
     var vatTpl0 = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
-    var r = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: vatTpl0.targetSubj || '222102' });
+    var r = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: tpl.vatTargetSubj || vatTpl0.targetSubj || '222102', expSubj: tpl.expSubj, paySubj: tpl.paySubj });
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已计提附加税：' + money(r.amount));
     refreshSettle(); syncAll();
@@ -202,7 +201,7 @@ function bindSettleEvents() {
   onBtn('btnAccrueIncTax', function () {
     var month = selMonth;
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'incTax'; })[0] || {};
-    var r = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
+    var r = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), expSubj: tpl.expSubj, paySubj: tpl.paySubj });
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已计提所得税：' + money(r.amount));
     refreshSettle(); syncAll();
@@ -210,8 +209,7 @@ function bindSettleEvents() {
   onBtn('btnReCarryForward', async function () {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
-    // 按 v.kind 定位旧结转凭证（结构识别）：此前用摘要正则，对导入账套恒找不到，
-    // 导致「重新结转」在导入账套上完全不可用（删不掉旧凭证，重做必被幂等拦截）。
+    // 按 v.kind 定位旧结转凭证（结构识别）；此前用摘要正则对导入账套恒找不到，重做被幂等拦截。
     var old = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_PL);
     // 确认文案按状态区分：未结转=首次结转，已结转=重做（删除旧凭证重新生成）
     var cmsg = old.length
@@ -233,8 +231,7 @@ function bindSettleEvents() {
     refreshSettle(); syncAll();
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
   });
-  // 年末结转本年利润（3103 → 3104 未分配利润）：此前 S.carryYearEnd() 已实现但零调用（死代码），
-  // 导致跨年时 3103 未清零、未分配利润失真。此处接入期末处理入口（仅 12 月可用）。
+  // 年末结转本年利润（3103 → 3104 未分配利润），仅 12 月可用。此前 carryYearEnd 已实现却零调用（死代码），跨年 3103 未清零、未分配利润失真，此处接入入口。
   onBtn('btnCarryYearEnd', async function () {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (String(month).substring(5, 7) !== '12') return showToast('仅 12 月需结转本年利润', 'error');
@@ -252,7 +249,7 @@ function bindSettleEvents() {
     var old = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.PROFIT_DIST);
     var cmsg = old.length
       ? '重新分配将删除本期已有的 ' + old.length + ' 张利润分配凭证并重新生成，确定继续？'
-      : '确认按净利润的 20% 提取盈余公积、30% 分配股利（金蝶默认比例）？\n余额将转入「利润分配-未分配利润」对应明细。';
+      : '确认按净利润的 20% 提取盈余公积、30% 分配股利（默认比例）？\n余额将转入「利润分配-未分配利润」对应明细。';
     if (!(await H.confirmAsync(cmsg, { title: old.length ? '重新分配利润' : '利润分配' }))) return;
     // 重新分配：先删除旧凭证，避免重复生成错账（同结转损益/本年利润）
     for (var i = 0; i < old.length; i++) {
@@ -273,9 +270,7 @@ function bindSettleEvents() {
     var r = S.closePeriod(month);
     if (!r.ok) {
       if (r.warnOnly && r.warns && r.warns.length) {
-        // store 对 warn 项（税金测算/折旧等「建议项」）要求 force 二次确认。
-        // 此前 UI 未处理 warnOnly：r.msg 为空 → 显示空红条且无法结账（缺陷）。
-        // 现展示 warn 明细并让用户选择是否强制结账。
+        // warn 项（税金测算/折旧等建议项）需 force 二次确认；此前 UI 未处理 warnOnly，r.msg 为空会显示空红条且无法结账。现展示 warn 明细并让用户决定是否强制结账。
         var wlist = r.warns.map(function (w) { return '· ' + (w.label || w.key || '') + (w.tip ? '：' + w.tip : ''); }).join('\n');
         if (!(await H.confirmAsync('本期存在以下提示项（不阻塞结账，建议先确认）：\n\n' + wlist + '\n\n仍要结账 ' + month + ' 吗？', { title: '结账提示确认' }))) return;
         var r2 = S.closePeriod(month, { force: true });
@@ -290,8 +285,7 @@ function bindSettleEvents() {
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
   });
   onBtn('btnReopenPeriod', async function () {
-    // 修复：反结账 tab 有自己的月份导航（selReopenMonth），原代码误用 selMonth（结账 tab 选中期），
-    // 会导致在反结账页选 3 月却反结账了结账 tab 选的月份（反错期间）。
+    // 反结账 tab 用自身月份导航 selReopenMonth；原代码误用 selMonth（结账 tab 选期），会在反结账页选 3 月却反结账结账 tab 选的月份。
     var month = selReopenMonth;
     if (!S.isPeriodClosed(month)) return showToast('该期未结账', 'error');
     // 预检：仅允许反结账最近一期（在用户输入原因前先告知约束，避免输入完才被拒）
@@ -315,7 +309,7 @@ function bindSettleEvents() {
     refreshSettle(); syncAll();
   });
 
-  // ===== 顶部批量操作按钮（对齐金蝶期末处理 Tab 顶部按钮栏）=====
+  // ===== 顶部批量操作按钮 =====
   onBtn('settleCheckAll', function () {
     var cb = $('settleCheckAll');
     var checked = cb.checked;
@@ -376,14 +370,14 @@ function bindSettleEvents() {
           var rC = S.genCostVoucher(month, Object.assign({}, tpl, { date: tmplVoucherDate(month, tpl) }), amtC);
           if (rC && rC.ok) okCount++; else { errCount++; msgs.push('结转销售成本：' + (rC ? rC.msg : '失败')); }
         } else if (g.id === 'vat') {
-          var rV = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, date: tmplVoucherDate(month, tpl) });
+          var rV = S.genVatVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, targetSubj: tpl.targetSubj, debitSubj: tpl.debitSubj, date: tmplVoucherDate(month, tpl) });
           if (rV.ok) okCount++; else { errCount++; msgs.push('转出未交增值税：' + rV.msg); }
         } else if (g.id === 'surTax') {
           var vatTplB = getSettleTemplates().filter(function (t) { return t.id === 'vat'; })[0] || {};
-          var rS = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: vatTplB.targetSubj || '222102' });
+          var rS = S.genSurTaxVoucher(month, { word: tpl.word, rate: tpl.rate, vatRate: tpl.vatRate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), vatTargetSubj: tpl.vatTargetSubj || vatTplB.targetSubj || '222102', expSubj: tpl.expSubj, paySubj: tpl.paySubj });
           if (rS.ok) okCount++; else { errCount++; msgs.push('计提附加税：' + rS.msg); }
         } else if (g.id === 'incTax') {
-          var rI = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl) });
+          var rI = S.genIncTaxVoucher(month, { word: tpl.word, rate: tpl.rate, summary: tpl.summaryText, date: tmplVoucherDate(month, tpl), expSubj: tpl.expSubj, paySubj: tpl.paySubj });
           if (rI.ok) okCount++; else { errCount++; msgs.push('计提所得税：' + rI.msg); }
         }
       } else {
@@ -491,15 +485,17 @@ function bindSettleCards() {
 }
 
 // 动态渲染自定义/预置摊销模板卡片：插入到 #settleProcessCards 中（结转损益之后），
-// 启用时显示、禁用时隐藏；每个卡片带 checkbox + 禁用/设置/删除 链接，与系统卡一致。
-// 列表末尾追加 "+ 新增自定义模板" 占位卡（金蝶风格）。
+// 每个卡片带 checkbox + 禁用/设置/删除 链接，与系统卡一致。
+// 列表末尾追加 "+ 新增自定义模板" 占位卡。
+// 注意：fromVchTpl 模板（从录凭证页同步来的日常凭证模板）不生成卡片，只在模板弹窗里管理。
 function renderCustomCards(procList, profitCard) {
   if (!procList) return;
   // 先移除上一次渲染的卡片（避免重复叠加）
   procList.querySelectorAll('.settle-card[data-custom]').forEach(function (el) { el.remove(); });
   procList.querySelectorAll('.settle-add-card').forEach(function (el) { el.remove(); });
-  // custom=true 包括预置摊销模板（preset=true）和用户新增模板
-  var customs = settleTmplList.filter(function (t) { return t.custom; });
+  // 只有 enabled=true 的自定义模板才在期末处理页生成卡片
+  // （系统 6 卡由 refreshSettle 单独渲染 HTML，永远显示）
+  var customs = settleTmplList.filter(function (t) { return t.custom && t.enabled; });
   // 排序：预置摊销模板在前，用户自定义在后，按 id 顺序
   customs.sort(function (a, b) {
     if (a.preset && !b.preset) return -1;
@@ -525,7 +521,7 @@ function renderCustomCards(procList, profitCard) {
       : (totalDr > 0 ? '未结转' : '未设置分录金额');
     var cardBodyHtml;
     if (done.length || totalDr > 0) {
-      // 有金额/已生成：显示已结转/未结转 两行统计（金蝶风格）
+      // 有金额/已生成：显示已结转/未结转 两行统计
       cardBodyHtml =
         '<div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val">' + money(carried) + '</span></div>' +
         '<div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val">' + money(todo) + '</span></div>';
@@ -534,10 +530,9 @@ function renderCustomCards(procList, profitCard) {
       cardBodyHtml = '<div class="settle-card-sub" style="color:var(--ty-text-3)">' + esc(t.summary || t.name) + '（请设置分录金额）</div>';
     }
     var card = document.createElement('div');
-    card.className = 'settle-card' + (enabled ? ' settle-card-checked' : ' settle-card-disabled');
+    card.className = 'settle-card' + (enabled ? '' : ' settle-card-disabled');
     card.setAttribute('data-custom', '1');
     card.setAttribute('data-id', t.id);
-    card.style.display = enabled ? '' : 'none';
     var presetTag = t.preset ? '<span class="settle-card-preset-tag">预置</span>' : '';
     card.innerHTML =
       '<div class="settle-card-head">' +
@@ -559,7 +554,7 @@ function renderCustomCards(procList, profitCard) {
     else procList.appendChild(card);
     insertAnchor = card;
   });
-  // "+ 新增自定义模板" 占位卡（金蝶风格，点击打开模板弹窗）
+  // "+ 新增自定义模板" 占位卡（点击打开模板弹窗）
   var addCard = document.createElement('div');
   addCard.className = 'settle-add-card';
   addCard.innerHTML =
@@ -594,9 +589,7 @@ function refreshSettle() {
   // 结账面板数据源（按所选期）
   var vs = S.periodVouchers(month);
   var est = S.profitStatement(month);
-  // 期末处理凭证识别：一律按 v.kind（结构识别），不再按摘要正则。
-  // 背景：  / Excel 导入的凭证没有凭证级 summary 字段（摘要只落在分录级），
-  // 摘要正则对导入凭证恒不命中，导致页面恒显示「未生成 / 待结转」、生成查重形同虚设。
+  // 期末处理凭证一律按 v.kind（结构识别）而非摘要正则：导入凭证无凭证级 summary，摘要正则恒不命中，页面恒显「未生成」、查重形同虚设。
   var K = S.VOUCHER_KINDS;
   function kindVs(list, kind) {
     return list.filter(function (v) { return S.voucherKind(v) === kind; });
@@ -658,9 +651,7 @@ function refreshSettle() {
         '<span class="sci-info">' + (done ? ('已生成 ' + cnt + ' 张') : r.hint) + '</span>' +
         '</div>';
     });
-    // 追加 store 的「结账硬性条件」检查项（借贷平衡/幽灵科目/损益结转/科目余额等）。
-    // closePeriod 内部会调 S.settleChecklist() 拦截 fail 项，此处仅高亮展示 fail/warn 项（ok 项折叠）。
-    // 处置策略配置移到「检查项设置」弹窗（btnSettleCheck）。
+    // 追加 store 硬性检查项（借贷平衡/幽灵科目/损益结转等）；closePeriod 内部拦截 fail 项，此处仅高亮 fail/warn（ok 折叠）。
     try {
       var chk = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
       chk.forEach(function (c) {
@@ -723,8 +714,7 @@ function refreshSettle() {
   // 反结账页：已结账月列表
   renderReopenMonthNav();
 
-  // 反结账按钮跟随「反结账页导航所选月」(selReopenMonth)，而非结账面板选期 month——
-  // 此前绑到结账面板导致切到反结账 tab 却显示结账 tab 选期的状态（如「未结账」禁用）。
+  // 反结账按钮跟随反结账页导航所选月 selReopenMonth，而非结账面板选期；此前绑到结账面板，切到反结账 tab 会显示结账 tab 选期状态。
   var btnReopen = $('btnReopenPeriod');
   if (btnReopen) {
     var reopenClosed = S.isPeriodClosed(selReopenMonth);
@@ -733,8 +723,7 @@ function refreshSettle() {
     btnReopen.title = selReopenMonth + (reopenClosed ? '（已结账，可反结账）' : '（未结账，无需反结账）');
   }
 
-  // 结转损益按钮文案随状态切换：未结转→「结转损益」，已结转且未锁→「重新结转」，已结账→禁用「已结转」
-  // （此前固定「重新结转」，未结转月点它会先弹「删除 0 张旧凭证再生成」，语义误导）
+  // 结转损益按钮文案随状态切换：未结转→「结转损益」，已结转且未锁→「重新结转」，已结账→「已结转」（此前固定「重新结转」，未结转月点会弹删除 0 张旧凭证，语义误导）。
   var rcb = $('btnReCarryForward');
   if (rcb) {
     rcb.disabled = closed;
@@ -848,7 +837,7 @@ function renderSettleMonthNav() {
       + (closed ? '<span class="settle-month-tag">已结账</span>' : (isCur ? '<span class="settle-month-tag cur">当前期</span>' : ''))
       + '</div></div>';
   }
-  // 菜单区包进滚动容器（.sidebarMenuWrapper--1lMd-：flex:1; over  }
+
   // 直接渲染月份方块网格（结账页月份导航，仅含 12 个月方块，不混入全局侧栏结构）
   nav.innerHTML = html;
   // 绑定点击：选中期，刷新结账面板
@@ -885,7 +874,7 @@ function renderReopenMonthNav() {
       + (closed ? '<span class="settle-month-tag">已结账</span>' : '')
       + '</div></div>';
   }
-  // 菜单区包进滚动容器（.sidebarMenuWrapper--1lMd-：flex:1; over  }
+
   // 直接渲染月份方块网格（反结账页月份导航，仅含 12 个月方块，未结账月置灰不可点）
   nav.innerHTML = html;
   Array.prototype.forEach.call(nav.querySelectorAll('.settle-month'), function (el) {
@@ -897,7 +886,7 @@ function renderReopenMonthNav() {
   });
 }
 
-// 通用：生成单张 demo 凭证（期末处理生成凭证后强制立即备份，防丢失/可回滚）
+// 通用：生成单张凭证（期末处理凭证生成后强制立即备份，防丢失/可回滚）
 // kind：期末业务类型标记（S.VOUCHER_KINDS），写入 v.kind 供后续查重/结账检查识别。
 // word：可选凭证字（自定义结账模板带自己的凭证字，如「记」）；不传则沿用历史默认「转」。
 function makeSimpleVoucher(month, summary, entries, kind, word, date) {
@@ -920,12 +909,8 @@ function tmplVoucherDate(month, t) {
   return U.lastDay(month);
 }
 
-// 期末处理「生成凭证」统一查重入口（财务大忌：重复点击生成多张同额凭证）。
-// 此前 结转成本/转出增值税/计提附加税/计提所得税 四个按钮直接 makeSimpleVoucher，无查重，
-// 连点 N 次会生成 N 张同额凭证，虚增费用与负债。此处统一拦截：
-// 本期已存在同类凭证则拒绝，须先删除旧凭证再重做。
-// 查重按 v.kind（结构识别）而非摘要正则——导入凭证无 summary，摘要匹配恒不命中。
-// 返回 { ok, v } 或 { ok:false, msg }
+// 期末处理「生成凭证」统一查重入口：按 v.kind 识别本期是否已存在同类凭证，已存在则拒绝（须先删旧凭证再重做），
+// 避免连点重复生成同额凭证虚增费用/负债。导入凭证无 summary，故用结构识别而非摘要正则。返回 { ok, v } 或 { ok:false, msg }
 function genOnceVoucher(month, kind, summary, entries, word, date) {
   // 已结账期间禁止再生成凭证（否则会向已锁定期间写入，破坏账务一致性）。
   // 对齐同文件其它期末处理按钮（结转损益/反结账）已有的 isPeriodClosed 拦截。
@@ -935,7 +920,7 @@ function genOnceVoucher(month, kind, summary, entries, word, date) {
     return { ok: false, msg: '本期已生成 ' + existed.length + ' 张同类凭证（' + (existed[0].word || '转') + '-' + existed[0].no + '），请勿重复生成；如需重做请先删除旧凭证', vouchers: existed };
   }
   var v = makeSimpleVoucher(month, summary, entries, kind, word, date);
-  // 修复：原实现忽略 addVoucher 返回，写盘被拒（借贷不平衡等）时仍提示成功。
+  // 写盘被拒（借贷不平衡等）时 addVoucher 返回失败，原实现忽略返回值仍提示成功，此处修正。
   if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '凭证生成失败，请稍后重试' };
   return { ok: true, v: v };
 }
@@ -1052,9 +1037,9 @@ function defaultSettleTemplates() {
   return [
     { id: 'dep', name: '计提折旧', enabled: true, summary: '计提本月固定资产折旧', template: [], hasEntries: false, summaryText: '计提折旧费用' },
     { id: 'cost', name: '结转销售成本', enabled: true, summary: '按收入比例结转销售成本', template: [], hasEntries: false, costRate: '80', costAmount: '' },
-    { id: 'vat', name: '转出未交增值税', enabled: true, summary: '结转未交增值税', template: [], hasEntries: false, rate: '13', summaryText: '转出{month}未交增值税', targetSubj: '222102' },
-    { id: 'surTax', name: '计提附加税', enabled: true, summary: '计提城建/教育费附加', template: [], hasEntries: false, rate: '12', summaryText: '计提{month}附加税', vatRate: '13' },
-    { id: 'incTax', name: '计提所得税', enabled: true, summary: '计提企业所得税', template: [], hasEntries: false, rate: '25', summaryText: '计提{month}所得税' },
+    { id: 'vat', name: '转出未交增值税', enabled: true, summary: '结转未交增值税', template: [], hasEntries: false, rate: '13', summaryText: '转出{month}未交增值税', targetSubj: '222102', debitSubj: '2221' },
+    { id: 'surTax', name: '计提附加税', enabled: true, summary: '计提城建/教育费附加', template: [], hasEntries: false, rate: '12', summaryText: '计提{month}附加税', vatRate: '13', expSubj: '5403', paySubj: '222129', vatTargetSubj: '222102' },
+    { id: 'incTax', name: '计提所得税', enabled: true, summary: '计提企业所得税', template: [], hasEntries: false, rate: '25', summaryText: '计提{month}所得税', expSubj: '5801', paySubj: '222105' },
     { id: 'profit', name: '结转损益', enabled: true, summary: '结转损益类科目至本年利润', template: [], hasEntries: false, targetSubj: '3103', summaryText: '结转{month}损益', separate: true }
   ];
 }
@@ -1074,6 +1059,11 @@ function syncTplEnabledToStore() {
   // 过滤已下线的期末调汇（fx）残留记录，避免写入账套后继续占用状态
   var arr = Array.isArray(S.state.settleTemplates) ? S.state.settleTemplates.slice() : [];
   arr = arr.filter(function (t) { return t && t.id !== 'fx'; });
+  // 先从 store 里移除已不在 settleTmplList 的模板（删除操作后同步清理）
+  var liveIds = {};
+  settleTmplList.forEach(function (t) { if (t && t.id) liveIds[t.id] = true; });
+  arr = arr.filter(function (t) { return t && liveIds[t.id]; });
+  // 再把当前所有模板的 enabled 状态写回 store
   settleTmplList.forEach(function (t) {
     var hit = null;
     for (var i = 0; i < arr.length; i++) {
@@ -1113,7 +1103,7 @@ function loadSettleTemplates() {
       });
     }
   } catch (e) {}
-  // 从 store 里的 settleTemplates 合并 custom=true 完整模板（金蝶 AIS 导入进来的 GLServiceType）
+  // 从 store 里的 settleTemplates 合并 custom=true 完整模板（导入账套带进来的期末处理模板）
   if (typeof S !== 'undefined' && S && S.state && Array.isArray(S.state.settleTemplates)) {
     var byId2 = {};
     list.forEach(function (t) { byId2[t.id] = t; });
@@ -1125,7 +1115,7 @@ function loadSettleTemplates() {
       }
     });
   }
-  // 凭证字规范化：任何模板 word 为空一律默认「记」（金蝶默认记账凭证）
+  // 凭证字规范化：任何模板 word 为空一律默认「记」
   list.forEach(function (t) { if (!t.word) t.word = '记'; });
   return list;
 }
@@ -1143,19 +1133,7 @@ function persistSettleTemplates() {
   syncTplEnabledToStore();
 }
 
-// 期末处理卡片 checkbox 与模板启用状态联动
-function applySettleTemplateStates() {
-  var map = { cardDepr: 'dep', cardCost: 'cost', cardVat: 'vat', cardSurTax: 'surTax', cardIncTax: 'incTax', cardProfit: 'profit' };
-  Object.keys(map).forEach(function (cid) {
-    var card = $(cid);
-    if (!card) return;
-    var tpl = settleTmplList.filter(function (t) { return t.id === map[cid]; })[0];
-    var enabled = tpl ? tpl.enabled : true;
-    var cb = card.querySelector('.settle-card-check input');
-    if (cb) { cb.checked = false; cb.disabled = false; }
-    card.style.display = enabled ? '' : 'none';
-  });
-}
+// applySettleTemplateStates 已合并进 refreshSettle（此前两处重复控制系统卡 display，refreshSettle 为权威），不再单独存在。
 
 // 结账模板弹窗（对账结设置）
 function openSettleTemplateModal() { renderSettleTmplList(); openModal('settleTmplModal'); }
@@ -1221,9 +1199,9 @@ function selectSettleTemplate(id, t0) {
     var show = {
       profit: { profitTarget: true, summaryText: true, separate: true },
       dep: { summaryText: true },
-      vat: { rate: true, vatTarget: true, summaryText: true },
-      surTax: { rate: true, surVatRate: true, summaryText: true },
-      incTax: { rate: true, summaryText: true },
+      vat: { rate: true, vatTarget: true, vatDebit: true, summaryText: true },
+      surTax: { rate: true, surVatRate: true, surTaxExp: true, surTaxPay: true, surTaxVat: true, summaryText: true },
+      incTax: { rate: true, incTaxExp: true, incTaxPay: true, summaryText: true },
       cost: {} // cost 用专属的 costExtra，不走 systemExtra
     }[t.id] || {};
     function toggle(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
@@ -1231,30 +1209,39 @@ function selectSettleTemplate(id, t0) {
     toggle('settleTmplProfitSeparate', !!show.separate);
     toggle('settleTmplRateParams', !!show.rate);
     toggle('settleTmplVatTargetParams', !!show.vatTarget);
+    toggle('settleTmplVatDebitParams', !!show.vatDebit);
     toggle('settleTmplSurVatRateParams', !!show.surVatRate);
+    toggle('settleTmplSurTaxExpParams', !!show.surTaxExp);
+    toggle('settleTmplSurTaxPayParams', !!show.surTaxPay);
+    toggle('settleTmplSurTaxVatParams', !!show.surTaxVat);
+    toggle('settleTmplIncTaxExpParams', !!show.incTaxExp);
+    toggle('settleTmplIncTaxPayParams', !!show.incTaxPay);
     // cost 的参数在 costExtra（已在 fillSettleTmplForm 里控制）；summaryText 已上移到通用卡片头（始终可见）
-    // 回填值
-    var pt = $('settleTmplProfitTarget'); if (pt) pt.value = t.targetSubj || '';
+    // 回填值（科目字段统一用 fillSubjectField 绑定联想选择器）
+    fillSubjectField('settleTmplProfitTarget', t.targetSubj || '');
     var ps = $('settleTmplProfitSeparateSel'); if (ps) ps.value = (t.separate !== false) ? 'true' : 'false';
     var rt = $('settleTmplRate'); if (rt) rt.value = t.rate || '';
-    var vt = $('settleTmplVatTarget'); if (vt) vt.value = t.targetSubj || '';
+    fillSubjectField('settleTmplVatTarget', t.targetSubj || '');
+    fillSubjectField('settleTmplVatDebit', t.debitSubj || '');
     var sv = $('settleTmplSurVatRate'); if (sv) sv.value = t.vatRate || '';
+    fillSubjectField('settleTmplSurTaxExp', t.expSubj || '');
+    fillSubjectField('settleTmplSurTaxPay', t.paySubj || '');
+    fillSubjectField('settleTmplSurTaxVat', t.vatTargetSubj || '');
+    fillSubjectField('settleTmplIncTaxExp', t.expSubj || '');
+    fillSubjectField('settleTmplIncTaxPay', t.paySubj || '');
   }
 }
 
-// 特殊模板字段填充（期末调汇 / 结转销售成本）
-// 结账模板科目选择：统一用唯一科目选择组件 bindSubjectPicker（输入框+联想）。
-// 此前是硬编码 8 个损益科目的下拉，科目表改了就不同步；现改为从 S.subjects() 取全部科目，
-// 并支持联想输入（对齐参考实现）。首次绑定一次（dataset 守卫），之后只回填 value。
-function fillCostSubjSelect(selId, selected) {
-  var sel = $(selId);
-  if (!sel) return;
-  if (!sel.dataset.comboBound) {
-    sel.dataset.comboBound = '1';
-    // 统一到唯一科目选择组件 bindSubjectPicker；选中即写回输入框（与旧 SubjectCombo 行为一致）
-    bindSubjectPicker(sel, { onPick: function (code) { sel.value = code; } });
+// 结账模板科目选择统一用 bindSubjectPicker（输入框+联想），从 S.subjects() 取全部科目。
+// 首次绑定一次，之后回填 value；同时处理所有结账模板的科目配置字段。
+function fillSubjectField(id, selected) {
+  var el = $(id);
+  if (!el) return;
+  if (!el.dataset.comboBound) {
+    el.dataset.comboBound = '1';
+    bindSubjectPicker(el, { onPick: function (code) { el.value = code; } });
   }
-  sel.value = selected || '';
+  el.value = selected || '';
 }
 
 function updateCostEstimate() {
@@ -1272,7 +1259,7 @@ function updateCostEstimate() {
 function fillSettleTmplForm(t) {
   var formPanel = $('settleTmplFormPanel');
   if (!formPanel || !t) return;
-  // 模板名称：系统模板显示为标题（金蝶样式，不可改名），自定义/预置为可编辑输入框
+  // 模板名称：系统模板显示为标题（不可改名），自定义/预置为可编辑输入框
   var isSystem = !t.custom && !t.preset;
   var nm = $('settleTmplFormName');
   var nmLabel = $('settleTmplFormNameLabel');
@@ -1304,9 +1291,9 @@ function fillSettleTmplForm(t) {
   var costExtra = $('settleTmplCostExtra');
   if (costExtra) costExtra.style.display = (t.id === 'cost') ? '' : 'none';
   if (t.id === 'cost') {
-    fillCostSubjSelect('settleTmplCostRevSubj', t.costRevSubj || '5001');
-    fillCostSubjSelect('settleTmplCostInvSubj', t.costInvSubj || '1405');
-    fillCostSubjSelect('settleTmplCostProdSubj', t.costProdSubj || '5001');
+    fillSubjectField('settleTmplCostRevSubj', t.costRevSubj || '5001');
+    fillSubjectField('settleTmplCostInvSubj', t.costInvSubj || '1405');
+    fillSubjectField('settleTmplCostProdSubj', t.costProdSubj || '5001');
     var rate = $('settleTmplCostRate'); if (rate) rate.value = t.costRate || '80';
     var amt = $('settleTmplCostAmt'); if (amt) amt.value = t.costAmount || '';
     var csm = $('settleTmplCostSummary'); if (csm) csm.value = t.costSummary || '';
@@ -1361,21 +1348,14 @@ function saveSettleTemplate(id, data) {
   persistSettleTemplates();
 }
 
-/* ============================================================
- * 结账模板「分录表格」（自定义模板：固定金额多行分录）
- * 背景：此前「新增模板」只能录名称 + 凭证字，分录表格（index.html #settleTmplNewBody）
- *   有 DOM、有样式（.tmpl-cell-inp/.tmpl-op），但没有任何 JS —— 即「阶段二」未落地，
- *   所以参考实现里那种「借 540112 主营业务成本_装修款 87,244.41 / 贷 180101…」的
- *   固定金额摊销类模板无处可存。此处补齐：
- *   · 行模型 newTplRows = [{summary, code, dr, cr}]（类似录凭证双金额列）
- *   · 落盘口径仍是 buildSettleTmplRow 的 {summary, code, dr, cr}，与历史数据完全兼容
- *   · 借贷平衡在「保存」与「生成凭证」两处都校验（财务安全：不平的模板绝不生成凭证）
- * ============================================================ */
+/* 结账模板「分录表格」：自定义模板的多行固定金额分录。
+ * 行模型 newTplRows={summary, code, dr, cr}，落盘口径 buildSettleTmplRow 与历史数据兼容；
+ * 借贷平衡在「保存」与「生成凭证」两处均校验（不平的模板绝不生成凭证）。 */
 var newTplRows = [];
 var editingCustomId = null; // 新建面板当前编辑的自定义模板 id；null = 新建
 
 // 行模型 {summary, code, dc:'D'|'C', amount, ruleType} → 落盘 {summary, code, dr, cr, ruleType}
-// 取数规则（金蝶四选一）
+// 取数规则（四选一）
 // 'none'       → 不设置取数（金额在模板分录里手填固定值，生成时带出，如每月固定电话费 500）
 // 'manual'     → 按统一金额(手填)分摊（模板级 totalAmount × 每行 ratio）
 // 'subject'    → 按统一金额(科目余额)分摊（S.subjectEndBalance × 每行 ratio）
@@ -1392,7 +1372,7 @@ function normRuleType(v) {
   if (s === 'fixed' || s === 'per_row') return 'per_row';
   if (s === 'none' || s === 'manual' || s === 'subject') return s;
   if (s === 'balance' || s === 'amount' || s === 'formula') return 'per_row';
-  return 'none'; // 金蝶默认：不设置取数
+  return 'none'; // 默认：不设置取数
 }
 
 // 行模型 → 落盘模型（统一走 buildSettleTmplRow）
@@ -1587,8 +1567,7 @@ function openDcPopover(idx, anchor) {
   setTimeout(function () { document.addEventListener('click', _dcPopDocClick, true); }, 0);
 }
 
-// ─── 模板级金额规则 popover（表头「设置」链接触发） ──────────────────
-// ─── 模板级取数规则 popover（表头「设置」链接触发） ──────────────────
+// 模板级取数规则 popover（表头「设置」链接触发）
 function openTplRulePopover(anchor) {
   closeTplRowSettingPopover();
   var tpl = findSettleTemplate(settleTmplSelectedId) || {};
@@ -1847,15 +1826,21 @@ function saveSettleTmplForm() {
   if (t.id === 'vat') {
     var rt = $('settleTmplRate'); if (rt) t.rate = rt.value;
     var vt = $('settleTmplVatTarget'); if (vt) t.targetSubj = vt.value.trim();
+    var vd = $('settleTmplVatDebit'); if (vd) t.debitSubj = vd.value.trim();
   }
   if (t.id === 'surTax') {
     var st = $('settleTmplRate'); if (st) t.rate = st.value;
     var sv = $('settleTmplSurVatRate'); if (sv) t.vatRate = sv.value;
+    var stexp = $('settleTmplSurTaxExp'); if (stexp) t.expSubj = stexp.value.trim();
+    var stpay = $('settleTmplSurTaxPay'); if (stpay) t.paySubj = stpay.value.trim();
+    var stvat = $('settleTmplSurTaxVat'); if (stvat) t.vatTargetSubj = stvat.value.trim();
   }
   if (t.id === 'incTax') {
     var it = $('settleTmplRate'); if (it) t.rate = it.value;
+    var itexp = $('settleTmplIncTaxExp'); if (itexp) t.expSubj = itexp.value.trim();
+    var itpay = $('settleTmplIncTaxPay'); if (itpay) t.paySubj = itpay.value.trim();
   }
-  // 凭证摘要（通用卡片头）：所有模板均可编辑并保存（金蝶样式，可改）
+  // 凭证摘要（通用卡片头）：所有模板均可编辑并保存
   var sm = $('settleTmplSummaryText'); if (sm) t.summaryText = sm.value;
   // 凭证日期（当期日期 / 期末最后一天）
   var dt = $('settleTmplFormDate'); if (dt) t.voucherDate = dt.value || 'period';
@@ -1870,7 +1855,6 @@ function saveSettleTmplForm() {
     if (t.preset && (!t.summary || t.summary === '')) t.summary = t.name;
   }
   persistSettleTemplates();
-  applySettleTemplateStates();
   renderSettleTmplTree();
   refreshSettle();
   showToast('已保存模板：' + t.name);
@@ -1983,8 +1967,7 @@ globalThis.__SETTLE__ = {
   renderSurTaxCalc: renderSurTaxCalc,
   renderIncTaxCalc: renderIncTaxCalc,
   renderSettleTmplList: renderSettleTmplList,
-  saveSettleTemplate: saveSettleTemplate,
-  applySettleTemplateStates: applySettleTemplateStates
+  saveSettleTemplate: saveSettleTemplate
 };
 
 export { refreshSettle };

@@ -3,10 +3,9 @@
  * check-period-contract.js —— 期间控件契约自检（发版前卡口）
  *
  * 背景：期间控件的「UI 交互」是全局共用的，但「默认期间是什么 / 值怎么填」
- *       一度由 16 个页面各自决定，其中 8 个是逐字拷贝 —— 典型的「改一处漏五处」。
- *       已收敛为：默认值由 index.html 的 data-default 声明、由组件单点解析、
- *       页面统一走 periodRangeValue(prefix)。本脚本把这套契约固化成机器检查，
- *       防止日后有人图省事又在各页面手写初始化。
+ *       一度由各页面各自决定、口径雷同。已收敛为：默认值由 index.html 的 data-default
+ *       声明、由组件单点解析、页面统一走 periodRangeValue(prefix)。本脚本把这套契约
+ *       固化成机器检查，防止日后又在各页面手写初始化。
  *
  * 检查项：
  *   1) 每个 data-period 占位符都必须声明 data-default（且取值合法）

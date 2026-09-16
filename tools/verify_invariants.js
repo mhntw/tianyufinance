@@ -275,7 +275,7 @@ function run(bookPath) {
     function sum(codes) {
       return (codes || []).reduce((a, c) => { const x = amt(c); return { cur: a.cur + x.cur, ytd: a.ytd + x.ytd }; }, { cur: 0, ytd: 0 });
     }
-    const fb = (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.reportRules.incomeStatement) || [];
+    const fb = (global.STANDARDS && global.STANDARDS.small2013 && global.STANDARDS.small2013.reportRules.incomeStatement) || [];
     const rules = (S.state.reportRules && S.state.reportRules.incomeStatement) || fb;
     const sub = {};
     for (const r of rules) {

@@ -394,7 +394,7 @@
         </div>
       </div>
 
-      <!-- 保存为凭证模板（摘要/科目必带，金额选填；对齐金蝶常用凭证） -->
+      <!-- 保存为凭证模板（摘要/科目必带，金额选填） -->
       <div class="modal" id="vchTplSaveModal">
         <div class="modal-box">
           <div class="modal-title">保存为凭证模板<button class="modal-x" id="btnVchTplSaveClose">×</button></div>
@@ -428,7 +428,7 @@
             </div>
             <div class="modal-tip">
               说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。
-              如发现异常，请穿透到对应科目/凭证核实，必要时回金蝶规范后重新导出账套。
+              如发现异常，请穿透到对应科目/凭证核实，必要时修正数据源后重新导入账套。
             </div>
           </div>
           <div class="modal-actions">
@@ -446,8 +446,8 @@
               <table class="ty-table" id="yearBoundaryTable"></table>
             </div>
             <div class="modal-tip">
-              说明：差异来源于金蝶年结时未达账、折旧未生成凭证、手动调整期初等。
-              ty 如实呈现账套原貌，不做掩盖；如需修正请回金蝶规范后重新导出。
+              说明：差异来源于年结未达账、折旧未生成凭证、手动调整期初等。
+              本软件如实呈现账套原貌，不做掩盖；如需修正请修正数据源后重新导入。
             </div>
           </div>
           <div class="modal-actions">
@@ -504,13 +504,15 @@
             <div data-period="sum" data-default="currentPeriod" data-on-change="__renderSum"></div>
             <button class="btn" data-print>打印</button>
         </div>
+        <div class="scroll-area">
         <div class="grid-wrap">
-          <!-- 副标题：凭证总张数 / 附件总张数（对齐金蝶同位置文案），由 renderSum 填充 -->
+          <!-- 副标题：凭证总张数 / 附件总张数，由 renderSum 填充 -->
           <div class="sum-stat" id="sumStat"></div>
           <table class="grid" id="sumGrid">
             <thead><tr><th>科目编码</th><th>科目名称</th><th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th></tr></thead>
             <tbody id="sumBody"></tbody>
           </table>
+        </div>
         </div>
       </section>
 
@@ -533,6 +535,8 @@
             <button class="btn" id="btnQDelete">删除</button>
         </div>
 
+        <div class="scroll-area">
+        <div class="grid-wrap">
         <table class="grid vq-grid" id="qGrid">
           <colgroup>
             <col style="width:40px"><col style="width:100px">
@@ -550,6 +554,8 @@
           </tr></thead>
           <tbody id="qBody"></tbody>
         </table>
+        </div>
+        </div>
       </section>
 
       <section class="page" id="page-general-ledger">
@@ -564,8 +570,9 @@
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnGlExport">导出</button>
         </div>
+        <div class="scroll-area">
         <table class="grid gl-grid" id="glGrid">
-          <!-- 金蝶式 8 列：科目编码/名称(合并行) | 期间 | 摘要 | 借方 | 贷方 | 方向 | 余额 -->
+          <!-- 明细账 8 列：科目编码/名称(合并行) | 期间 | 摘要 | 借方 | 贷方 | 方向 | 余额 -->
           <colgroup>
             <col style="width:104px">
             <col style="width:180px">
@@ -581,6 +588,7 @@
           </tr></thead>
           <tbody id="glBody"></tbody>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-detail-ledger">
@@ -621,10 +629,12 @@
             <button class="btn" data-print>打印</button>
         </div>
         <div class="open-check" id="mlTip">多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。</div>
+        <div class="scroll-area">
         <table class="grid ml-grid" id="mlGrid">
           <thead id="mlHead"></thead>
           <tbody id="mlBody"></tbody>
         </table>
+        </div>
       </section>
 
 
@@ -640,6 +650,7 @@
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTbExport">导出</button>
         </div>
+        <div class="scroll-area">
         <table class="grid tb-grid" id="tbGrid">
           <!-- 金额列须固定宽，文本列吸收剩余空间。
                勿改回各列均分：此前均分导致长科目名压到相邻金额列，且千分位金额放不下。 -->
@@ -662,6 +673,7 @@
           </tr></thead>
           <tbody id="tbBody"></tbody>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-report-balance">
@@ -671,6 +683,7 @@
             <button class="btn" id="btnBsExport">导出</button>
         </div>
         <div id="bsWip" class="bs-wip" style="display:none"></div>
+        <div class="scroll-area">
         <table class="grid bs-grid rpt-grid" id="bsGrid">
           <thead><tr class="grid-title" id="bsTitleRow"></tr>
             <tr>
@@ -679,6 +692,7 @@
           </tr></thead>
           <tbody id="bsBody"></tbody>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-report-profit">
@@ -687,12 +701,14 @@
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnPlExport">导出</button>
         </div>
+        <div class="scroll-area">
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="plGrid">
             <thead><tr class="grid-title" id="plTitleRow"></tr>
             <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
             <tbody id="plBody"></tbody>
           </table>
+        </div>
         </div>
       </section>
 
@@ -702,12 +718,14 @@
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnCfExport">导出</button>
         </div>
+        <div class="scroll-area">
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="cfGrid">
             <thead><tr class="grid-title" id="cfTitleRow"></tr>
             <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
             <tbody id="cfBody"></tbody>
           </table>
+        </div>
         </div>
       </section>
 
@@ -717,12 +735,14 @@
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTxExport">导出</button>
         </div>
+        <div class="scroll-area">
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="txGrid">
             <thead><tr class="grid-title" id="txTitleRow"></tr>
             <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月数</th><th class="col-amt">本年累计数</th></tr></thead>
             <tbody id="txBody"></tbody>
           </table>
+        </div>
         </div>
       </section>
 
@@ -888,6 +908,7 @@
             <button class="btn" id="btnDasExport">导出</button>
             <button class="btn" id="btnDepreciateAll">计提本月折旧</button>
         </div>
+        <div class="scroll-area">
         <table class="grid" id="dasGrid">
           <!-- 汇总表列 = 1 个分组列 + 7 个金额列（8 列），金额列须固定宽（否则千分位金额会折行）；
                分组列吸收剩余空间，窄屏由表格容器横滚。逐资产的明细在「折旧明细表」。 -->
@@ -901,6 +922,7 @@
           <tbody id="dasBody"></tbody>
           <tfoot id="dasFoot"></tfoot>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-asset-depr-detail" data-name="折旧明细表">
@@ -911,6 +933,7 @@
             <button class="btn" id="btnDadPrint" data-print>打印</button>
             <button class="btn" id="btnDadExport">导出</button>
         </div>
+        <div class="scroll-area">
         <table class="grid" id="dadGrid">
 
           <colgroup>
@@ -923,6 +946,7 @@
           <tbody id="dadBody"></tbody>
           <tfoot id="dadFoot"></tfoot>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-asset-change-log" data-name="资产变动记录">
@@ -934,6 +958,7 @@
             <button class="btn" id="btnAclPrint" data-print>打印</button>
             <button class="btn" id="btnAclExport">导出</button>
         </div>
+        <div class="scroll-area">
         <table class="grid" id="aclGrid">
           <thead>
             <tr class="grid-title" id="aclTitleRow"></tr>
@@ -944,6 +969,7 @@
           </thead>
           <tbody id="aclBody"></tbody>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-asset-depr-voucher" data-name="折旧凭证">
@@ -955,6 +981,7 @@
             <button class="btn" id="btnDvBatch">批量操作</button>
         </div>
         <div class="k-tip" id="dvTip">点击「生成折旧凭证」按当前期间计提折旧并生成凭证。</div>
+        <div class="scroll-area">
         <table class="grid" id="dvGrid">
           <!-- 金额列须固定宽（否则千分位金额会折行），文本列吸收剩余空间；表体过宽时横滚。 -->
           <colgroup>
@@ -983,6 +1010,7 @@
           <tbody id="dvBody"></tbody>
           <tfoot id="dvFoot"></tfoot>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-salary">
@@ -995,6 +1023,7 @@
             <button class="btn" id="btnOpenSalaryTpl">凭证模板</button>
             <button class="btn" data-print>打印</button>
         </div>
+        <div class="scroll-area">
         <table class="grid" id="salGrid">
           <colgroup>
             <col style="width:100px"><col><col style="width:120px">
@@ -1003,6 +1032,7 @@
           <thead><tr><th>期间</th><th>姓名</th><th>工资类别</th><th>应发</th><th>实发</th><th>操作</th></tr></thead>
           <tbody id="salBody"></tbody>
         </table>
+        </div>
       </section>
 
       <section class="page" id="page-salary-statistics">
@@ -1010,6 +1040,7 @@
             <div data-period="sst" data-default="currentPeriod" data-on-change="__renderSalaryStats"></div>
             <button class="btn" data-print>打印</button>
         </div>
+        <div class="scroll-area">
         <table class="grid" id="sstGrid">
           <colgroup>
             <col style="width:100px"><col style="width:140px"><col style="width:90px">
@@ -1018,6 +1049,7 @@
           <thead><tr><th>月份</th><th>工资类别</th><th>职员数</th><th class="ta-r">应发工资汇总</th><th class="ta-r">实发工资汇总</th></tr></thead>
           <tbody id="sstBody"></tbody>
         </table>
+        </div>
       </section>
 
       <!-- 工资页内弹窗：部门职员（原独立页 page-department-staff 收敛） -->
@@ -1112,7 +1144,7 @@
                 <button class="btn btn-sm btn-primary" id="btnReCarryForward">重新结转</button>
                 <!-- 年末结转本年利润（3103 → 3104 未分配利润）：仅 12 月显示 -->
                 <button class="btn btn-sm" id="btnCarryYearEnd" style="display:none" title="将本年利润余额结转至利润分配-未分配利润，避免跨年未分配利润失真">结转本年利润</button>
-                <button class="btn btn-sm" id="btnProfitDist" style="display:none" title="按净利润提取盈余公积并分配股利（金蝶默认比例）">利润分配</button>
+                <button class="btn btn-sm" id="btnProfitDist" style="display:none" title="按净利润提取盈余公积并分配股利（默认比例）">利润分配</button>
               </div>
             </div>
             <div class="settle-card" id="cardDepr">
@@ -1261,7 +1293,7 @@
                 </div>
               </div>
               <div class="settle-tmpl-form">
-                <!-- 通用卡片头：凭证日期 / 凭证字 / 凭证摘要（金蝶样式，置于顶部） -->
+                <!-- 通用卡片头：凭证日期 / 凭证字 / 凭证摘要（置于顶部） -->
                 <div class="stm-card-hd">
                   <div class="flex--3nLNX">
                     <div class="label--315S5 w60">凭证日期：</div>
@@ -1339,13 +1371,49 @@
                   <div id="settleTmplVatTargetParams" style="display:none">
                     <div class="flex--3nLNX">
                       <div class="label--315S5">未交增值税科目：</div>
-                      <input class="inp" id="settleTmplVatTarget" placeholder="默认 222101" autocomplete="off">
+                      <input class="inp" id="settleTmplVatTarget" placeholder="默认 222102" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplVatDebitParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">应交税费科目：</div>
+                      <input class="inp" id="settleTmplVatDebit" placeholder="默认 2221" autocomplete="off">
                     </div>
                   </div>
                   <div id="settleTmplSurVatRateParams" style="display:none">
                     <div class="flex--3nLNX">
                       <div class="label--315S5">增值税率(%)：</div>
                       <input type="number" class="inp settle-tmpl-num" id="settleTmplSurVatRate" min="0" max="100" step="0.01" />
+                    </div>
+                  </div>
+                  <div id="settleTmplSurTaxExpParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">税金及附加科目：</div>
+                      <input class="inp" id="settleTmplSurTaxExp" placeholder="默认 5403" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplSurTaxPayParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">应交附加税科目：</div>
+                      <input class="inp" id="settleTmplSurTaxPay" placeholder="默认 222129" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplSurTaxVatParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">增值税计税科目：</div>
+                      <input class="inp" id="settleTmplSurTaxVat" placeholder="默认 222102（未交增值税）" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplIncTaxExpParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">所得税费用科目：</div>
+                      <input class="inp" id="settleTmplIncTaxExp" placeholder="默认 5801" autocomplete="off">
+                    </div>
+                  </div>
+                  <div id="settleTmplIncTaxPayParams" style="display:none">
+                    <div class="flex--3nLNX">
+                      <div class="label--315S5">应交所得税科目：</div>
+                      <input class="inp" id="settleTmplIncTaxPay" placeholder="默认 222105" autocomplete="off">
                     </div>
                   </div>
                 </div>
@@ -1438,6 +1506,7 @@
           <button class="btn" id="btnSubjExport">导出</button>
           <button class="btn" data-print>打印</button>
         </div>
+        <div class="scroll-area">
         <div class="grid-wrap">
           <table class="grid pp-grid" id="subjGrid">
             <thead><tr>
@@ -1451,6 +1520,7 @@
             <tbody id="subjBody"></tbody>
           </table>
         </div>
+        </div>
         <div class="grid-foot" id="subjFoot"><span id="subjScopeTip"></span>共 <b id="subjTotalCount">0</b> 条</div>
       </section>
 
@@ -1462,6 +1532,7 @@
         </div>
         <div class="open-check" id="openCheck"></div>
         <div class="k-tip info">录入规则：年初余额为本年年初数；本年累计借/贷为年初至启用期间前的累计发生额；期初余额 = 年初余额 + 本年累计借 − 本年累计贷（按科目方向填入借/贷列）。</div>
+        <div class="scroll-area">
         <div class="grid-wrap">
           <table class="grid" id="openGrid">
             <colgroup>
@@ -1472,6 +1543,7 @@
             <thead><tr><th>科目编码</th><th>科目名称</th><th>方向</th><th>年初余额</th><th>本年累计借</th><th>本年累计贷</th><th>期初借方</th><th>期初贷方</th></tr></thead>
             <tbody id="openBody"></tbody>
           </table>
+        </div>
         </div>
       </section>
 
@@ -1603,6 +1675,7 @@
             <button class="btn" id="btnEdExport">导出</button>
         </div>
 
+        <div class="scroll-area">
         <div class="grid-wrap ed-grid-wrap">
           <table class="grid pp-grid" id="edGrid">
             <thead id="edGridHead"></thead>
@@ -1621,6 +1694,7 @@
               <span>条/页</span>
             </div>
           </div>
+        </div>
         </div>
       </section>
 
@@ -1754,7 +1828,7 @@
         <div class="card" id="cardCloudSync">
           <div class="card-head"><span>云同步</span></div>
           <div id="csUnset">
-            <p class="set-hint" style="margin-top:10px">用 WebDAV（坚果云等）在两台电脑间手动同步账套：一台点「云备份」，另一台点「云同步」。软件不在后台联网，也不会自动同步。</p>
+            <p class="set-hint cs-unset-hint">用 WebDAV（坚果云等）在两台电脑间手动同步账套：一台点「云备份」，另一台点「云同步」。软件不在后台联网，也不会自动同步。</p>
             <div class="page-actions"><button class="btn-link" id="btnCsConfig">配置</button></div>
           </div>
           <div id="csSet" style="display:none">
@@ -1781,13 +1855,13 @@
         <div class="card" id="healthCheckCard" style="display:none">
           <div class="card-head">
             <span>风险检测结果</span>
-            <button class="modal-x" id="btnHealthCheckCloseCard" style="float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#5f6368;line-height:1">×</button>
+            <button class="modal-x" id="btnHealthCheckCloseCard">×</button>
           </div>
-          <div id="healthCheckSummaryInPage" class="health-summary" style="margin:12px 12px 0"></div>
-          <div class="table-box" style="margin:0 12px 12px">
+          <div id="healthCheckSummaryInPage" class="health-summary"></div>
+          <div class="table-box">
             <table class="ty-table" id="healthCheckTableInPage"></table>
           </div>
-          <div class="modal-tip" style="margin:0 12px 16px;color:#5f6368;font-size:12px">
+          <div class="card-note">
             说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。如发现异常，请穿透到对应科目/凭证核实。
           </div>
         </div>
@@ -1796,13 +1870,13 @@
         <div class="card" id="yearBoundaryCard" style="display:none">
           <div class="card-head">
             <span>跨年一致性校验报告</span>
-            <button class="modal-x" id="btnYearBoundaryCloseCard" style="float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#5f6368;line-height:1">×</button>
+            <button class="modal-x" id="btnYearBoundaryCloseCard">×</button>
           </div>
-          <div class="table-box" style="margin:12px">
+          <div class="table-box">
             <table class="ty-table" id="yearBoundaryTableInPage"></table>
           </div>
-          <div class="modal-tip" style="margin:0 12px 16px;color:#5f6368;font-size:12px">
-            说明：本报告对比多年合并账套各年 .ais 的上年期末 vs 本年期初（按科目），差异源于金蝶手动调期初或年结未达账。差异超 1 元的科目标红显示。
+          <div class="card-note">
+            说明：本报告对比多年合并账套各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。差异超 1 元的科目标红显示。
           </div>
         </div>
 
@@ -1823,7 +1897,7 @@
               <span class="about-val flex">诗和远方</span>
             </div>
             <div class="about-line">
-              <span class="about-label">联系</span>
+              <span class="about-label">邮箱</span>
               <span class="about-val about-link" id="aboutMail" title="点击复制邮箱">tsmjg@icloud.com</span>
             </div>
             <div class="about-line">
@@ -1888,11 +1962,11 @@
              本卡不受账套覆盖/删除影响，可作历史对账。 -->
         <div class="card" id="cardSysEvents">
           <div class="card-head"><span>操作日志（跨账套）</span></div>
-          <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 0">
+          <div class="sys-events-bar">
             <button class="btn btn-sm" id="btnSysEventsRefresh">刷新</button>
-            <span class="muted" style="font-size:12px" id="sysEventsCount"></span>
+            <span class="muted" id="sysEventsCount"></span>
           </div>
-          <p class="muted" style="font-size:12px;margin:6px 18px 0">记录全部账套的操作日志与生命周期事件（新建/删除/导入/还原账套等），读取全局 changelog.json、保留最近 1000 条。即使某账套被覆盖恢复或删除，本卡记录也不受影响，可作历史对账；审计明细（改前/改后、反结账原因）请在左侧「操作日志（当前账套）」查看。</p>
+          <p class="muted sys-events-desc">记录全部账套的操作日志与生命周期事件（新建/删除/导入/还原账套等），读取全局 changelog.json、保留最近 1000 条。即使某账套被覆盖恢复或删除，本卡记录也不受影响，可作历史对账；审计明细（改前/改后、反结账原因）请在左侧「操作日志（当前账套）」查看。</p>
           <div class="grid-wrap">
             <table class="grid std-table" id="sysEventsTable">
               <thead><tr>
@@ -1921,7 +1995,11 @@
       <div class="form-row">
         <label>启用期间</label><input id="nbStart" class="inp" type="month">
       </div>
-      <p class="set-hint" style="margin-top:6px">1、创建新账套后将自动带入对应准则的常用科目表； 2、第二步请到「期初余额」录入期初数据。</p>
+      <p class="set-hint" style="margin-top:6px;padding-left:16px">
+        会计准则：小企业会计准则（2013）<br>
+        创建新账套后将自动带入对应准则的常用科目表；<br>
+        第二步请到「期初余额」录入期初数据。
+      </p>
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnCreateBook">创建账套</button>
         <button class="btn" id="btnCancelNewBook">取消</button>
@@ -2011,7 +2089,7 @@
         <div class="form-row"><label class="req">资产名称</label><input id="aName" class="inp"></div>
         <div class="form-row"><label class="req">固定资产科目</label><input id="aFaAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <!-- 使用部门已由「自由文本」改为下拉（option value = 部门**名称**，与卡片 fa.dept 同口径）：
-             自由文本无法与部门档案对齐，是「按部门筛选筛不到 / 部门跟金蝶对不上」的根源。 -->
+             自由文本无法与部门档案对齐，是「按部门筛选筛不到」的根源。 -->
         <div class="form-row"><label class="req">使用部门</label><select id="aDept" class="inp-sel"><option value="">请选择</option></select></div>
         <div class="form-row"><label class="req">开始使用日期</label><input id="aAcq" class="inp" type="date"></div>
         <div class="form-row"><label class="req">原值</label><input id="aOriginal" class="inp" type="number"></div>

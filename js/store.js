@@ -126,12 +126,11 @@
    *   由 Rust 端 Storage 引擎负责，无需浏览器 IndexedDB 兜底。
    * ============================================================ */
 
-  /* ---------- 默认科目表（旧准则模板） ----------
-   * 现以 js/standards.js 中 STANDARDS.old.subjects 为单一事实源（消除重复维护）；
-   * emptyState() 建账时按 state.standard 选准则深拷贝入账套，互不影响。
-   * 此处仅留兼容引用；用户可在「设置-科目」中增删改、加下级。
+  /* ---------- 默认科目表（小企业准则 2013 模板） ----------
+   * 以 js/standards.js 中 STANDARDS.small2013.subjects 为单一事实源；
+   * 所有新建账套、导入账套统一对齐小企业准则。
    */
-  var DEFAULT_SUBJECTS = (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.subjects) || [];
+  var DEFAULT_SUBJECTS = (global.STANDARDS && global.STANDARDS.small2013 && global.STANDARDS.small2013.subjects) || [];
 
   // 结转损益专用：收入/费用 映射到 本年利润（本年利润科目，默认 3103）
   var PROFIT_CODE = '3103';
@@ -146,7 +145,7 @@
   // 归期不再强依赖 date，无 date 的账套也能正确按月归集。
   function voucherMonth(v) {
     // 回退到原始逻辑：优先用 FDate（凭证日期）算期间。
-    // 金蝶 KIS 标准版绝大多数凭证 FDate=FPeriod（不跨期），此口径正确。
+    // 标准版账套绝大多数凭证 FDate=FPeriod（不跨期），此口径正确。
     // 跨期凭证（FDate 月份 ≠ FPeriod）暂由用户通过重新导入+GLSetup 正确识别启用期来避免。
     if (v.date) return monthOf(v.date);
     // 无 FDate 时，用 FPeriod 回退（新导入老数据可能没有 date）
@@ -279,7 +278,7 @@
 
   /* ---------- 默认资产类别（6 类，平均年限法） ----------
    * 【为什么从 Asset.js 搬到这里】这份预置原先只写在前端 Asset.js 的 assetCats() 里（懒创建），
-   * 而「category 存类别**编码**」这条契约只写在 addFixedAsset 的注释里。结果是：Excel/金蝶导入
+   * 而「category 存类别**编码**」这条契约只写在 addFixedAsset 的注释里。结果是：Excel/外部账套导入
    * 把「类别**名称**」直接写进了 category 字段 —— 显示看不出问题（_catName 查不到编码就原样返回），
    * 但按类别筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。
    * 归一（编码↔名称）与老账套回填都必须在**数据层**做，故把默认档案移到 store，前端只引用。
@@ -314,7 +313,7 @@
       payrolls: [],          // 工资记录
       salaryVchTpls: [],     // 工资凭证模板（计提/发放）
       vchTemplates: [],      // 日常凭证模板（常用业务结构，按账套保存）
-      settleTemplates: [],   // 期末处理自定义模板（金蝶 AIS GLServiceType 导入 / 用户自建）
+      settleTemplates: [],   // 期末处理自定义模板（外部账套导入 / 用户自建）
       depts: DEFAULT_DEPTS.map(function (s) { return Object.assign({}, s); }), // 部门职员种子（酒店三部门）
       assetCats: DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); }), // 资产类别档案（默认 6 类）
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
@@ -371,27 +370,12 @@
     return Promise.resolve({ ok: false });
   }
 
-  /* ---------- 准则自动判定 ----------
-   * 按损益类科目编码前缀判定：5xxx 为主体 → 旧准则（企业会计制度，5xxx 编码）；
-   * 6xxx 为主体 → 小企业会计准则（2013，6xxx 编码）。
-   * 用于导入账套 / 恢复老备份等无 standard 字段的账套，避免一律默认为旧准则标错。
-   * 判定依据与 store 的切换迁移映射（CODE_MAP_OLD_TO_2013：5001↔6001…）同源。
-   * 返回 'old' | 'small2013'；无法判定时返回 null（由调用方决定回退）。
+  /* ---------- 自动识别准则 ----------
+   * 已统一为小企业会计准则（2013），所有账套一律 small2013。
+   * 保留函数签名兼容现有 normalizeState 调用链。
    */
   function detectStandardBySubjects(subjects) {
-    if (!Array.isArray(subjects)) return null;
-    var c5 = 0, c6 = 0, has501 = false, has601 = false;
-    subjects.forEach(function (s) {
-      var c = s && s.code ? String(s.code) : '';
-      if (/^5\d{3}/.test(c)) { c5++; if (/^50\d{2}/.test(c)) has501 = true; }
-      else if (/^6\d{3}/.test(c)) { c6++; if (/^60\d{2}/.test(c)) has601 = true; }
-    });
-    // 有 6xxx 且不少于 5xxx → 小企业准则；明显 5xxx 主导或仅有特征科目 → 旧准则
-    if (c6 > 0 && c6 >= c5) return 'small2013';
-    if (c5 > 0) return 'old';
-    if (has601) return 'small2013';
-    if (has501) return 'old';
-    return null;
+    return 'small2013';
   }
 
   /* ---------- 利润表规则行 id 回填（老账套迁移，幂等） ----------
@@ -1018,7 +1002,7 @@
 
     // 删除账套（异步：必须先等真实文件删除完成、再重建索引，否则列表会因读盘竞态仍显示该账套）
     // 注意：此操作不再是"直接删除"，而是移入回收站 trash/，保留 7 天可还原。
-    // 账套是一整个店的账，一次手滑不该造成不可逆损失——这是本改动的核心目的。
+    // 账套是一整个店的账，删除改为移入回收站（保留 7 天可还原），避免一次手滑造成不可逆损失。
     removeBook: function (id) {
       var self = this;
       if (this.bookId === id) return Promise.resolve({ ok: false, msg: '不能删除当前账套' });
@@ -1197,8 +1181,7 @@
         (isOpen ? '▼' : '▶') + '</span>';
     },
     // 科目编码 → 当前名称（显示层唯一入口）。
-    // 口径对齐参考实现：凭证/报表显示的是科目表「实时名称」，科目改名后历史单据显示同步更新；
-    // 分录里存的 name 仅作兜底（科目已不存在时使用）。
+    // 口径：凭证/报表显示科目表实时名称，科目改名后历史单据显示同步更新；分录里存的 name 仅作兜底（科目已不存在时使用）。
     subjectName: function (code) {
       var s = this.subject(code);
       return s ? (s.name || '') : '';
@@ -1420,7 +1403,7 @@
       this.state.vchTemplates = this.state.vchTemplates || [];
       this.state.vchTemplates.push(tpl);
       // 同步到结账凭证模板（localStorage），让录凭证保存的模板也能在期末处理中使用
-      // （金蝶"保存为模板 → 自动出现在结账凭证模板"行为）
+      // （"保存为模板 → 自动出现在结账凭证模板"行为）
       try {
         var STL_KEY = 'settle_templates_v1';
         var _stl = JSON.parse(localStorage.getItem(STL_KEY) || '[]');
@@ -1430,7 +1413,7 @@
         var _settleEntry = {
           id: 'vch_' + tpl.id,          // 前缀区分系统模板（profit/dep/vat...）
           name: tpl.name,
-          enabled: true,
+          enabled: false,
           custom: true,
           summary: tpl.summary || '',
           word: this.state.param && this.state.param.voucherWord || '记',
@@ -1508,7 +1491,7 @@
         return { ok: false, msg: '凭证日期（' + _tMonth + '）不能晚于当前月份（' + _cur + '）' };
 
       var _selfId = _old.id;
-      // 凭证归属月份不可修改（对齐金蝶/用友）：如需调整期间，请删除后在正确月份重新录入。
+      // 凭证归属月份不可修改（会计通用规则）：如需调整期间，请删除后在正确月份重新录入。
       // 原因：凭证号、id（含月份后缀）、引用关系（固定资产/工资/原始凭证）都跟月份绑定，改月份会断审计链条。
       if (_tMonth !== _oMonth) return { ok: false, msg: '凭证归属月份不可修改。如需调整期间，请删除后在正确月份重新录入。' };
       var _changed = (_tWord !== _oWord) || (String(_tNo) !== String(_oNo));
@@ -1703,7 +1686,7 @@
             if (residual) {
               push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡');
             } else {
-              push('error', '资产负债表不平衡（非未结转损益导致）', detail + '；差额无法由未结转损益解释，可能源于期初录入不平或科目属性标注问题，建议回到金蝶规范后重新导出账套');
+              push('error', '资产负债表不平衡（非未结转损益导致）', detail + '；差额无法由未结转损益解释，可能源于期初录入不平或科目属性标注问题，建议回到数据源规范后重新导入账套');
             }
           }
         }
@@ -1986,7 +1969,7 @@
         if (r && r.ok !== false) savedVouchers.push(r);
         return r;
       };
-      // separate=true（默认，金蝶风格）：收入→3103（贷）一张、费用→3103（借）一张
+      // separate=true（默认）：收入→3103（贷）一张、费用→3103（借）一张
       if (opts.separate !== false) {
         var saved1 = null, saved2 = null;
         // 凭证 1：收入类 → 本年利润（3103 在贷方）
@@ -2070,8 +2053,8 @@
 
     /* ===================== 年末利润分配 ===================== */
     // 12 月结账前，结转本年利润（3103→3104）后，按净利润提取盈余公积、分配股利。
-    // 金蝶结账方案（GLServiceType FID=8/9/10）：法定盈余公积 10%、任意盈余公积 10%、应付股利 30%。
-    // 本软件合并法定/任意盈余公积为「盈余公积」20%、应付股利 30%（金蝶默认比例）；
+    // 结账方案（GLServiceType FID=8/9/10）：法定盈余公积 10%、任意盈余公积 10%、应付股利 30%。
+    // 本软件合并法定/任意盈余公积为「盈余公积」20%、应付股利 30%（默认比例）；
     // 账套无对应明细科目时仅对存在的科目生成分录（灵活适配小企业简化科目）。
     carryProfitDistribute: function (month) {
       if (!month || month.substring(5, 7) !== '12')
@@ -2103,7 +2086,7 @@
       });
       net = R(net);
       if (!(net > 0.005)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };
-      // 找科目：优先明细（金蝶 310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
+      // 找科目：优先明细（310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
       function findSub(kw, code) {
         var s = code ? self.subject(code) : null; if (s) return s;
         return self.subjects().filter(function (x) { return x.name && x.name.indexOf(kw) >= 0; })[0];
@@ -2683,8 +2666,8 @@
             if (codes.indexOf(e.code) >= 0) { ytdDr += num(e.dr); ytdCr += num(e.cr); }
           });
         });
-        // 损益类（收入/费用）期初余额恒为 0：按年结转清零，与金蝶科目余额表口径一致；
-        // 否则往月损益发生额会被累加进期初，导致「期初/期末」两列与金蝶对不上（本期/累计不受影响）。
+        // 损益类（收入/费用）期初余额恒为 0：按年结转清零，与标准科目余额表口径一致；
+        // 否则往月损益发生额会被累加进期初，导致「期初/期末」两列与标准口径对不上（本期/累计不受影响）。
         if (s.cls === 'revenue' || s.cls === 'expense') op = { dr: 0, cr: 0 };
         // 期末余额（按正常方向）
         var endDr = op.dr + periodDr, endCr = op.cr + periodCr;
@@ -2761,7 +2744,7 @@
     // 科目本期发生额 {dr, cr}——与 subjectEndBalance 完全同一取数契约：
     // ① 科目表存在该科目 → 直接取这一行（父行已上卷全部下级，禁止再加子行）；
     // ② 无该科目行（如只建了 100201）→ 回退为其下属末级行相加。
-    // 用途：首页「资金净收入」= 资金类科目本期借方(流入) − 本期贷方(流出)（金蝶口径）。
+    // 用途：首页「资金净收入」= 资金类科目本期借方(流入) − 本期贷方(流出)（标准口径）。
     subjectPeriodAmount: function (code, month) {
       var self = this;
       var rows = this.generalLedger(month) || [];
@@ -2866,17 +2849,20 @@
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_VAT);
       if (existed.length) return { ok: false, msg: '本期已转出未交增值税，请勿重复生成' };
+      var targetCode = opts.targetSubj || '222102';
+      var debitCode = opts.debitSubj || '2221';
+      if (!this.subject(targetCode)) return { ok: false, msg: '未交增值税科目（' + targetCode + '）不存在，请先在模板设置里修改科目，或在科目页添加' };
+      if (!this.subject(debitCode)) return { ok: false, msg: '应交税费科目（' + debitCode + '）不存在，请先在模板设置里修改或在科目页添加' };
       var netPL = this.periodProfitNet(month);
       var rate = num(opts.rate) || 13;
       var vatV = Math.max(0, num(netPL.rev) - num(netPL.exp)) * rate / 100;
       if (vatV < 0.005) return { ok: false, msg: '本期净利润为负或零，无需转出增值税' };
-      var targetCode = opts.targetSubj || '222102';
       var v = this.addVoucher({
         word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
         summary: opts.summary || ('转出' + month + '未交增值税'),
         kind: this.VOUCHER_KINDS.CARRY_VAT,
         entries: [
-          { code: '2221', name: '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
+          { code: debitCode, name: this.subject(debitCode) ? this.subject(debitCode).name : '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
           { code: targetCode, name: this.subject(targetCode) ? this.subject(targetCode).name : '未交增值税', summary: '转出未交增值税', dr: 0, cr: vatV }
         ]
       });
@@ -2891,9 +2877,15 @@
       if (existed.length) return { ok: false, msg: '本期已计提附加税，请勿重复生成' };
       // 附加税计税依据 = 本期实际计提/转出的「未交增值税」+「消费税」贷方发生额（与「查看金额计算逻辑」浮层口径一致）
       var vatTarget = opts.vatTargetSubj || '222102';
+      var expCode = opts.expSubj || '5403';
+      var payCode = opts.paySubj || '222129';
+      if (!this.subject(vatTarget)) return { ok: false, msg: '增值税科目（' + vatTarget + '）不存在，请先在模板设置里修改或在科目页添加' };
+      if (!this.subject(payCode)) return { ok: false, msg: '应交附加税科目（' + payCode + '）不存在，请先在模板设置里修改或在科目页添加' };
+      if (!this.subject(expCode)) return { ok: false, msg: '税金及附加科目（' + expCode + '）不存在，请先在模板设置里修改或在科目页添加' };
       var unpaySp = this.subjectPeriod(vatTarget, month);
       var unpayVat = Math.max(0, unpaySp ? num(unpaySp.periodCr) : 0);
-      var consumeSp = this.subjectPeriod('222121', month);
+      var consumeCode = opts.consumeSubj || '222121';
+      var consumeSp = this.subjectPeriod(consumeCode, month);
       var consumeTax = Math.max(0, consumeSp ? num(consumeSp.periodCr) : 0);
       var base = unpayVat + consumeTax;
       var surRate = num(opts.rate) || 12;
@@ -2904,8 +2896,8 @@
         summary: opts.summary || ('计提' + month + '附加税'),
         kind: this.VOUCHER_KINDS.ACCRUE_SURTAX,
         entries: [
-          { code: '5403', name: this.subject('5403') ? this.subject('5403').name : '税金及附加', summary: '计提附加税', dr: amt, cr: 0 },
-          { code: '222109', name: '应交附加税', summary: '计提附加税', dr: 0, cr: amt }
+          { code: expCode, name: this.subject(expCode) ? this.subject(expCode).name : '税金及附加', summary: '计提附加税', dr: amt, cr: 0 },
+          { code: payCode, name: this.subject(payCode) ? this.subject(payCode).name : '应交附加税', summary: '计提附加税', dr: 0, cr: amt }
         ]
       });
       if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提附加税失败' };
@@ -2917,6 +2909,10 @@
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
       var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.ACCRUE_INCTAX);
       if (existed.length) return { ok: false, msg: '本期已计提所得税，请勿重复生成' };
+      var expCode = opts.expSubj || '5801';
+      var payCode = opts.paySubj || '222105';
+      if (!this.subject(payCode)) return { ok: false, msg: '应交所得税科目（' + payCode + '）不存在，请先在模板设置里修改或在科目页添加' };
+      if (!this.subject(expCode)) return { ok: false, msg: '所得税费用科目（' + expCode + '）不存在，请先在模板设置里修改或在科目页添加' };
       // 所得税在「利润总额（税前）」上计提，而非净利润（净利润已扣所得税，会循环且恒为 0）
       var netPL = this.periodProfitNet(month);
       var rate = num(opts.rate) || 25;
@@ -2928,8 +2924,8 @@
         summary: opts.summary || ('计提' + month + '所得税'),
         kind: this.VOUCHER_KINDS.ACCRUE_INCTAX,
         entries: [
-          { code: '5801', name: this.subject('5801') ? this.subject('5801').name : '所得税费用', summary: '计提所得税', dr: amt, cr: 0 },
-          { code: '222115', name: '应交所得税', summary: '计提所得税', dr: 0, cr: amt }
+          { code: expCode, name: this.subject(expCode) ? this.subject(expCode).name : '所得税费用', summary: '计提所得税', dr: amt, cr: 0 },
+          { code: payCode, name: this.subject(payCode) ? this.subject(payCode).name : '应交所得税', summary: '计提所得税', dr: 0, cr: amt }
         ]
       });
       if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提所得税失败' };
@@ -2988,8 +2984,7 @@
       var expItems = self.subjects().filter(function (s) { return s.cls === 'expense' && !isCarryOver(s.code); });
       var items = [];
       // 汇总总额走「逐分录」累加（采用标准利润表口径：收入取贷方发生额、费用取借方发生额）。
-      // 修复：原实现遍历所有科目并用 rollCodes 上卷（父=自身+子目），若再对父+子都累加会翻倍，
-      // 导致 totalRevenue/totalExpense/netProfit 虚高一倍、结账页税费测算全部翻倍。
+      // 逐分录累加，避免原实现用 rollCodes 上卷时对父+子重复累加导致金额翻倍。
       var totalRevenue = 0, totalExpense = 0;
       self.periodVouchers(month).forEach(function (v) {
         v.entries.forEach(function (e) {
@@ -3041,10 +3036,10 @@
     },
     // 利润表（配置化行计算）：读 state.reportRules.incomeStatement 规则按行求值。
     // 返回 [{ id, label, codes, cur, ytd, isGrp }]：
-    //   cur = 本月金额，ytd = 本年累计（年初至该月），对应金蝶 currentBalance / cumulativeBalance。
+    //   cur = 本月金额，ytd = 本年累计（年初至该月），对应本月发生 / 本年累计。
     // 本方法是利润表的【唯一行计算实现】，「报表 → 利润表」渲染/导出与首页财务指标
     // （见 plSummary）共用，从根上杜绝「首页一套口径、利润表另一套」的漂移。
-    // 缺规则时回退 STANDARDS.old（兼容异常账套）。规则结构与语义 id 见 js/standards.js。
+    // 缺规则时回退 STANDARDS.small2013（兼容异常账套）。规则结构见 js/standards.js。
     incomeStatement: function (month) {
       var self = this;
       var pl = this.profitStatement(month);
@@ -3055,7 +3050,7 @@
         return (codes || []).reduce(function (a, c) { var x = amt(c); return { cur: a.cur + x.cur, ytd: a.ytd + x.ytd }; },
                                     { cur: 0, ytd: 0 });
       }
-      var fallback = (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.reportRules.incomeStatement) || [];
+      var fallback = (global.STANDARDS && global.STANDARDS.small2013 && global.STANDARDS.small2013.reportRules.incomeStatement) || [];
       var rules = (self.state.reportRules && self.state.reportRules.incomeStatement) || fallback;
       var subtotals = {}; // id -> {cur, ytd}，供后续 subtotal 引用 ref
       var out = [];
@@ -3077,10 +3072,10 @@
       return out;
     },
     // 首页财务指标取数：按【语义行 id】从利润表行取值，与「报表 → 利润表」共用同一份行计算。
-    // 对应金蝶/jinbooks：首页调利润表服务生成报表 → 按 itemCode 取该行 currentBalance。
-    // 期间语义（与金蝶 periodType 等价，故无需给报表引擎新增 periodType）：
-    //   单月（本期 / 上期）→ 取 cur，即本月金额（金蝶 periodType=MONTH 的 currentBalance）
-    //   整段（本年 / 去年）→ 取 ytd，即年初至该月累计（金蝶 periodType=YEAR 的口径）
+    // 对应：首页调利润表服务生成报表 → 按 itemCode 取该行 currentBalance。
+    // 期间语义（与通用报表期间类型等价，故无需给报表引擎新增 periodType）：
+    //   单月（本期 / 上期）→ 取 cur，即本月金额（期间类型=本月的发生额）
+    //   整段（本年 / 去年）→ 取 ytd，即年初至该月累计（期间类型=本年的累计口径）
     // 返回各项含 ids / codes：
     //   ids  → 实际命中的利润表行 id（供首页点金额跳利润表时高亮；「费用」命中三行，故为列表）
     //   codes → 各行取数科目的并集（供需要跳总账明细的场合）
@@ -3230,7 +3225,7 @@
       // 资产负债表项目规则：优先读账套 state.reportRules.balanceSheet（配置化），
       // 缺失时回退内置默认（与改造前硬编码等价，兼容异常账套）。
       var groups = (self.state.reportRules && self.state.reportRules.balanceSheet)
-        || (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.reportRules.balanceSheet)
+        || (global.STANDARDS && global.STANDARDS.small2013 && global.STANDARDS.small2013.reportRules.balanceSheet)
         || {};
       function fillGroup(g) {
         var items = (g && g.items ? g.items : []).map(fillItem);
@@ -3366,7 +3361,7 @@
         return n.indexOf(t.key) >= 0;
       }
       // 名称未命中时按标准编码回退（覆盖名称不规范的账套）
-      var order = ['222117','222113','222114','222111','222112','222122','222118','222119','222120','222121','222115','222116'];
+      var order = ['222117','222113','222114','222111','222112','222122','222118','222119','222120','222121','222105','222116'];
       taxNames.forEach(function (t, ti) {
         var s = firstBy(function (x) { return isDirectTaxSub(x) && taxMatch(t, x); });
         if (!s) s = codeObj(order[ti]);
@@ -3438,9 +3433,7 @@
       var ytd = {};     // 本年累计金额
       var add = function (bucket, id, amt) { if (id) bucket[id] = (bucket[id] || 0) + amt; };
       // 现金及现金等价物判定：父码 + 全部下级明细科目。
-      // 审计修复：真实账套的银行/POS 收付绝大多数记在明细子目上（如 100201 建行、1002001、1012004），
-      // 原实现仅精确匹配三父码，导致子目现金分录被误当「非现金」归入其他经营收付，
-      // 三项净额与「期末-期初现金净变动」严重脱钩（实测两账套每月差数万至数十万）。
+      // 真实账套的现金收付多记在明细子目（如 100201 建行），仅精确匹配三父码会把子目现金分录误归其他经营收付、使三项净额与现金净变动脱钩；故用前缀匹配 cashAccounts() 上卷。
       // 此处口径必须与 generalLedger 的 rollCodes 上卷一致（cashAccounts() 同为前缀匹配）。
       var CASH_ROOTS = ['1001', '1002', '1012'];
       var isCashCode = function (c) {
@@ -3475,9 +3468,7 @@
           var cr = num(e.cr), dr = num(e.dr);
           // 未映射或该方向未配置映射时，必须回落到「其他经营收/付」兜底，
           // 不得静默丢弃金额（否则 Σ三项净额 ≠ 现金净变动，恒等式被打破）。
-          // 审计修复：金额判断从 > 0 改为 != 0——真实账套存在负数红冲分录
-          // （如客房收入贷方 -126），按 > 0 会整笔漏归，恒等式同样断裂；
-          // 带符号归类后红冲自然抵减对应项目。
+          // 金额判断用 != 0 而非 > 0：真实账套存在负数红冲分录（如客房收入贷方 -126），按 > 0 会整笔漏归、破坏恒等式；带符号归类后红冲自然抵减对应项目。
           if (cr) {
             if (!m || !m.credit) add(bucket, 'cf_opother', cr);
             else add(bucket, m.credit, cr);     // 贷方发生额→该项目流入(+)，负数为红冲(-)
@@ -3554,7 +3545,7 @@
     },
     /* 把外来的「类别」值归一为**类别编码**（本系统唯一契约）。
      * 顺序：空 → ''；命中编码 → 原值；命中名称 → 对应编码；都命中不了 → 按该名称**新建**一条档案。
-     * 「新建」是为了迁移不丢信息：金蝶的资产类别未必正好是我们预置的 6 类，
+     * 「新建」是为了迁移不丢信息：外部账套的资产类别未必正好是我们预置的 6 类，
      * 若不新建，那张卡片的类别就永远筛不到、且编辑时会被清空（正是本次要修的病）。
      * 幂等：归一后的值是编码，再次调用在第一步就返回。 */
     normalizeAssetCategory: function (v) {
@@ -3578,9 +3569,9 @@
      *   部门字段存**名称** —— 卡片表单的「使用部门」是**自由文本输入**，addFixedAsset 也没有
      *   「部门编码」的契约，且全库消费方（卡片左树 / fDept 筛选 / 折旧汇总表「按部门汇总」）
      *   都是按**名称**比对。故这里归一为**名称**，code 只作档案内部标识。
-     * 【为什么要归一】和类别同一个病根：KIS .ais 导入**不带部门档案**（kis-import.js 全库 0 处提及），
-     *   本系统的 depts 一直是内置默认种子（前台/客房/餐厅）；而金蝶卡片表里的部门是
-     *   厨房/客房/酒店/酒店洗衣房 —— 于是「资产左树的部门」跟金蝶对不上、按部门筛选也筛不到。 */
+     * 【为什么要归一】和类别同一个病根：外部账套导入**不带部门档案**（kis-import.js 全库 0 处提及），
+     *   本系统的 depts 一直是内置默认种子（前台/客房/餐厅）；而外部账套卡片表里的部门是
+     *   厨房/客房/酒店/酒店洗衣房 —— 于是「资产左树的部门」跟外部账套对不上、按部门筛选也筛不到。 */
     depts: function () {
       if (!Array.isArray(this.state.depts) || !this.state.depts.length) {
         this.state.depts = DEFAULT_DEPTS.map(function (d) { return Object.assign({}, d); });
@@ -3588,7 +3579,7 @@
       return this.state.depts;
     },
     // 把外来的「部门」值归一为**部门名称**：空 → ''；命中名称 → 原值；命中编码 → 对应名称；
-    // 都命中不了 → 按该名称**新建**一条档案（金蝶的部门未必在我们默认种子里，不新建就永远选不到）。
+    // 都命中不了 → 按该名称**新建**一条档案（外部账套的部门未必在我们默认种子里，不新建就永远选不到）。
     // 幂等：归一后是名称，再次调用在第一步返回。
     normalizeDept: function (v) {
       var raw = String(v == null ? '' : v).trim();
@@ -3639,10 +3630,10 @@
       // 数值字段初始化（严格对齐卡片列）
       fa.code = fa.code || '';                       // 编码
       fa.name = fa.name || '';                       // 名称
-      // 类别：唯一契约是**类别编码**。导入（Excel/金蝶）给的多是类别名称，此处归一 ——
+      // 类别：唯一契约是**类别编码**。导入（Excel/外部账套）给的多是类别名称，此处归一 ——
       // 否则按类别筛选筛不到、编辑卡片时下拉选不中（保存会把类别清空）。见 normalizeAssetCategory。
       fa.category = this.normalizeAssetCategory(fa.category);
-      // 部门：契约是**部门名称**。导入（Excel/金蝶卡片表）给的是名称，此处归一 ——
+      // 部门：契约是**部门名称**。导入（Excel/外部账套卡片表）给的是名称，此处归一 ——
       // 档案里没有的部门会按名称补进 depts，否则资产左树/按部门筛选永远对不上。见 normalizeDept。
       fa.dept = this.normalizeDept(fa.dept);
       fa.acqDate = fa.acqDate || '';                  // 开始使用日期
@@ -3651,7 +3642,7 @@
       fa.accumDeprBegin = num(fa.accumDeprBegin);     // 期初累计折旧
       fa.accumDepr = num(fa.accumDepr);               // 期末累计折旧
       if (!fa.accumDepr && fa.accumDeprBegin) fa.accumDepr = fa.accumDeprBegin;   // 卡片新增只给期初时，期末以期初为起点
-      if (!fa.accumDeprBegin && fa.accumDepr) fa.accumDeprBegin = fa.accumDepr;   // 金蝶清单常有期末累计但无期初，默认期初=期末
+      if (!fa.accumDeprBegin && fa.accumDepr) fa.accumDeprBegin = fa.accumDepr;   // 外部账套清单常有期末累计但无期初，默认期初=期末
       fa.life = num(fa.life);                         // 预计使用期限（年）
       fa.salvage = num(fa.salvage);                  // 残值
       fa.salvageRate = fa.salvageRate !== undefined && fa.salvageRate !== '' ? num(fa.salvageRate)
@@ -3719,7 +3710,7 @@
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
       // 财务严谨：本系统**自己生成过**凭证的卡片禁止删除（避免账实不符），只能「清理」。
       // ⚠️ addVoucher 不在拦截之列：它存的是「卡片 ↔ 购入凭证」的**关联**——凭证本来就在账里
-      // （迁移账套里是金蝶导过来的），既不是本系统生成的，也不会因删掉卡片而消失，故不构成删除障碍。
+      // （迁移账套是外部导入的），既不是本系统生成的，也不会因删掉卡片而消失，故不构成删除障碍。
       // （若把它也算作「已生成凭证」，则导入卡片一经关联就再也删不掉，与「外部导入的卡片可删」相悖。）
       // 仅外部导入、尚未在本系统生成任何凭证的卡片（累计折旧只是导入数值、无实际过账）允许删除。
       if (fa && (fa.deprMonth || fa.cleanVoucher)) {
@@ -3877,7 +3868,7 @@
     },
     // 月折旧额（直线法，按月均摊剩余净值）
     // 关键：以「已折旧期间」为计数器，按 剩余净值 / 剩余寿命 计算，
-    // 这样导入/带历史卡片（金蝶折旧率可能不同）也能精确摊到（原值-残值），不会重提或超提。
+    // 这样导入/带历史卡片（原账套折旧率可能不同）也能精确摊到（原值-残值），不会重提或超提。
     assetMonthlyDepr: function (fa) {
       if (!fa.life || fa.life <= 0) return 0;
       var base = num(fa.original) - num(fa.salvage);
@@ -4041,10 +4032,7 @@
       return { ok: true };
     },
     // 某期间是否已生成工资计提/发放凭证
-    // 修复双重失效（此前该保护实际从未生效）：
-    // ① 摘要正则对导入凭证恒不命中（其无 v.summary）；
-    // ② v.period 归期判断错误——自生成凭证压根没有 period 字段，导入的 period 是数字 1~12，
-    // 与 'YYYY-MM' 比较恒为 false。改用 voucherMonth() 统一归期（与 periodVouchers 同口径）。
+    // 此前两处失效：摘要正则对导入凭证恒不命中（无 v.summary）；v.period 归期错误（自生成凭证无 period 字段，导入 period 为数字 1~12，与 'YYYY-MM' 恒不等）。改用 voucherMonth() 统一归期（与 periodVouchers 同口径）。
     hasPayrollVoucher: function (month) {
       var self = this;
       var K = this.VOUCHER_KINDS;
@@ -4220,7 +4208,7 @@
         else if (code === '2211') { debit = 'cf_payemp'; }                                          // 应付职工薪酬借方=付职工
         else if (code === '2221') { debit = 'cf_taxpay'; }                                          // 应交税费借方=交税
         else if (['5601','5602','5603','5604','5401','5402','5403','5601','5711','5601'].indexOf(code) >= 0) { debit = 'cf_opothp'; } // 各项费用借=支付其他经营
-        else if (['1601','1602','1603','1604','1605','1701','1702','1801'].indexOf(code) >= 0) { debit = 'cf_invpay'; credit = 'cf_fixgain'; } // 长期资产购建/处置
+        else if (['1601','1602','1604','1605','1701','1702','1801'].indexOf(code) >= 0) { debit = 'cf_invpay'; credit = 'cf_fixgain'; } // 长期资产购建/处置
         else if (['2001','2501','2502','2701','2711'].indexOf(code) >= 0) { credit = 'cf_finloan'; debit = 'cf_finrepay'; } // 借款借入/偿还
         else { credit = 'cf_opother'; debit = 'cf_opothp'; }                                         // 其余：收=其他经营收，付=其他经营付
         if (credit || debit) map[code] = { credit: credit, debit: debit };
@@ -4306,11 +4294,11 @@
       // 准则字段迁移：老账套无 standard/reportRules 时补默认并重灌规则快照。
       // 关键：必须在 def 填充【前】判断账套原本的 standard 是否缺失/无效——因为 def 本身默认 'old'，
       // 若先 for-in 填充再判断，就永远分不清「账套原本没有」与「原本就是 old」。
-      // 账套原本缺失/无效时，优先按科目编码自动判定（5xxx→old，6xxx→小企业2013），避免一律误标旧准则。
+      // 账套原本缺失/无效时，统一对齐小企业会计准则 2013。
       var hasStd = this.state && global.STANDARDS && global.STANDARDS[this.state.standard];
       if (!hasStd) {
         var autoStd = detectStandardBySubjects(this.state && this.state.subjects);
-        this.state.standard = (autoStd && global.STANDARDS[autoStd]) ? autoStd : 'old';
+        this.state.standard = (autoStd && global.STANDARDS[autoStd]) ? autoStd : 'small2013';
       }
       for (var k in def) {
         if (this.state[k] === undefined) this.state[k] = def[k];
@@ -4330,7 +4318,7 @@
         // 供自检/回归脚本读取（瞬态字段，不落盘）
         self._assetCatBackfilledN = fixed;
       })(this);
-      // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— KIS 导入不带部门档案，
+      // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— 外部账套导入不带部门档案，
       // 本系统 depts 只有默认种子（前台/客房/餐厅），而卡片里写的是厨房/酒店/酒店洗衣房，
       // 于是资产左树与「按部门筛选」对不上（筛选比的是 d.code，卡片存的是名称）。
       // 归一为**名称**并把档案里缺的部门补进去（值本身不变，只是让档案认得它）。
@@ -4372,7 +4360,7 @@
         this.state.voucherWords = [{ name: defName, title: defTitle, enabled: true }];
       }
       // 扫描所有凭证实际使用过的凭证字 → 全部加入 voucherWords 并启用
-      // （金蝶导入账套可能有收/付/转/记四个字，全部要保留和可见；param.voucherWord 只决定默认值）
+      // （外部导入账套可能有收/付/转/记四个字，全部要保留和可见；param.voucherWord 只决定默认值）
       var _usedWords = {};
       (this.state.vouchers || []).forEach(function (v) { if (v.word) _usedWords[v.word] = true; });
       var _vwChanged = false;

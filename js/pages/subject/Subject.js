@@ -52,8 +52,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return S.subjects().filter(function (s) {
       if (!searching) {
         // 分类口径：优先用导入的 grpCls（与界面一致），无则回退 cls。
-        // 说明：cls 是「取数口径」（结转损益/报表按它取数），grpCls 是「展示分类」，
-        // 两者分离是为了让分类显示对齐参考实现、同时不动任何取数逻辑。
+        // cls 是取数口径（结转损益/报表按它取数），grpCls 是展示分类；两者分离使分类显示可独立调整、不动取数逻辑。
         var cc = s.grpCls || s.cls;
         if (subjTabCls === 'asset') { if (cc !== 'asset') return false; }
         else if (subjTabCls === 'liability') { if (cc !== 'liability') return false; }
@@ -143,7 +142,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   }
   // 编码联想：suggestOnly 模式（只提示已存在科目/父科目，不覆盖新编码输入）
   var _subCodeComboBound = false;
-  // 科目 Excel 类别 → 本项目类别（对齐参考产品导出的「科目」sheet 列结构）
+  // 科目 Excel 类别 → 本项目类别（对齐产品导出的「科目」sheet 列结构）
   var TY_CAT_MAP = {
     '流动资产': 'asset', '非流动资产': 'asset',
     '流动负债': 'liability', '非流动负债': 'liability',
@@ -213,7 +212,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     subjModalBaseCls = s ? s.cls : '';
     subjModalShowCls = s ? (s.grpCls || s.cls) : 'asset';
     bindSubCodeCombo();
-    // 改名提示（对齐参考实现）：仅编辑已有科目时显示
+    // 改名提示：仅编辑已有科目时显示
     var nameTip = $('subjNameTip'); if (nameTip) nameTip.style.display = s ? '' : 'none';
     $('subjectModal').classList.add('show');
   }

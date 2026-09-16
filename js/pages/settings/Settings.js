@@ -135,8 +135,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
   function checkCashflowBalance() {
     var opening = S.getCashFlowOpening();
     // 现金科目期初余额：从 generalLedger 取启用月三行 obDr-obCr（父行已含子目上卷）。
-    // 审计修复：原实现读 S.subject(c).obDr——科目档案对象不存余额字段，恒为 0，
-    // 导致「试算平衡」永远拿 0 与录入合计比较，形同虚设。
+    // 原实现读 S.subject(c).obDr——科目档案对象不存余额字段、恒为 0，使「试算平衡」拿 0 与录入合计比较、形同虚设；此处改从 generalLedger 取启用月三行。
     var startM = (S.state.company && S.state.company.startMonth) || (S.allMonths()[0] || '');
     var cashOb = 0;
     if (startM) {

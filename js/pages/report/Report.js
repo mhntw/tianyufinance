@@ -19,7 +19,7 @@ const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
 const S = H.S || (EX && EX.store);
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
-// 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
+// 复用统一期间取值实现，避免多份拷贝失同步。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
 
@@ -147,11 +147,11 @@ function renderBs(month) {
     if (residual) {
       txt += '经核对，差额与本期利润表净利润（¥' + net.toFixed(2) +
              '）减去已转入「本年利润(3103)」的净额（¥' + carried.toFixed(2) +
-             '）基本相等，说明金蝶源账套「结转本期损益」未完整执行——损益科目仍有余额未结转至本年利润，' +
+             '）基本相等，说明源账套「结转本期损益」未完整执行——损益科目仍有余额未结转至本年利润，' +
              '这部分金额同时被计入资产侧与利润表，导致等式表面不平衡。完成结转损益后此处将自动平衡。';
     } else {
       txt += '差额不能直接由未结转损益解释，可能源于账套期初录入不平或科目属性标注问题，' +
-             '需回到金蝶规范后重新导出账套（.ais）刷新本软件数据。';
+             '需回到数据源规范后重新导出账套（.ais）刷新本软件数据。';
     }
     txt += '本软件如实呈现账套原貌，不做任何掩盖或伪造结转。';
     wip.textContent = txt;
@@ -411,9 +411,7 @@ function renderCf(month) {
   // 加：期初现金及现金等价物余额
   row('', '加：期初现金及现金等价物余额', no++, cf.opening, cf.opening, false);
   // 六、期末现金及现金等价物余额
-  // 审计修复：原实现用 opening+netInc 推算「期末」，会掩盖勾稽断裂（三项净额≠现金净变动时
-  // 页面依然自洽）。改为直接展示账面真实期末（generalLedger 现金三行），若与期初+净增不符
-  // 即说明数据链异常，宁可暴露不可掩盖；正常情况下两者应严格相等。
+  // 期末直接展示账面真实期末（generalLedger 现金三行），不再用 opening+netInc 推算——两者不符即说明数据链异常，宁可暴露不可掩盖。
   var ending = cf.ending;
   row('grp-row', '期末现金及现金等价物余额', no++, ending, ending, true);
 }

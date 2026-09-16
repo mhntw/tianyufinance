@@ -4,7 +4,7 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 const H = globalThis.__TY_HELPERS__ || {};
-// 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
+// 起止期间取值统一走 app.js 单点实现（含默认值兜底）。
 const periodRangeValue = H.periodRangeValue;
 const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
@@ -164,7 +164,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var slice = _assetFiltered.slice(start, start + _assetPageSize);
     slice.forEach(function (fa) {
       var tr = document.createElement('tr');
-      // 操作列：金蝶对应位置是图标，我方简化为蓝色可点击文字（样式见 css 的 .asset-ops）。
+      // 操作列：对应位置是图标，我方简化为蓝色可点击文字（样式见 css 的 .asset-ops）。
       // 四个动作之间不再靠源码里的空格分隔（换行/折叠时会忽宽忽窄），改由 CSS margin 统一间距。
       tr.innerHTML =
         '<td class="col-check"><input type="checkbox" class="aChk" data-id="' + fa.id + '"></td>' +
@@ -324,9 +324,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (m && !m.hidden && !e.target.closest('#btnAssetBatch') && !e.target.closest('#assetBatchMenu')) m.hidden = true;
   });
   // 「计提折旧」：按左侧期间计提本月折旧并生成折旧凭证。
-  // 此前这个按钮叫「生成凭证」且**身兼两职**（勾了已清理卡片就去生成清理凭证），
-  // 靠隐式条件切换，谁都猜不到；现拆开 —— 生成清理凭证归「批量操作 → 生成清理凭证」
-  // （它本来就是"先批量清理、再生成清理凭证"这条业务链的第二步），本按钮只做计提折旧。
+  // 本按钮只做计提折旧；生成清理凭证已拆到「批量操作 → 生成清理凭证」（原「生成凭证」按钮身兼两职、靠隐式条件切换不可预期）。
   $('btnAssetGenVoucher').addEventListener('click', function () {
     var month = $('aPeriod').value || currentPeriod();
     var r = S.depreciateMonth(month);
@@ -577,9 +575,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return rows;
   }
   /* ---------- 折旧两表的共用列定义与聚合（汇总表 / 明细表 / 两处导出都从这里取） ----------
-   * 汇总表与明细表此前列完全相同、都逐资产列示，看不出「汇总 vs 明细」的分工；
-   * 现在：汇总表一行一个类别（或部门）、只出合计；明细表逐资产、组末小计。
-   * 两表共用同一组金额列，避免列顺序或口径在两处各写一遍后再漂移。 */
+   * 汇总表一行一个类别/部门、只出合计；明细表逐资产、组末小计，二者分工清晰。
+   * 两表共用同一组金额列，避免列顺序或口径在两处各写一遍后漂移。 */
   var DEPR_AMT_COLS = [
     { h: '原值', k: 'orig' },
     { h: '期初累计折旧', k: 'ab' },
@@ -609,7 +606,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function renderDas(month) {
     var byDept = $('dasByDept').checked, showCleaned = $('dasShowCleaned').checked;
     if ($('dasMonthTh')) $('dasMonthTh').textContent = (month || currentPeriod()) + '折旧';
-    // 分组列的表头随「按部门汇总」切换（金蝶汇总表只有这一个文本列）
+    // 分组列的表头随「按部门汇总」切换（汇总表只有这一个文本列）
     var groupTh = $('dasGroupTh'); if (groupTh) groupTh.textContent = byDept ? '部门' : '类别';
     var groups = _deprGroups(month, byDept, showCleaned);
     var tb = $('dasBody'); tb.innerHTML = '';
@@ -663,7 +660,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function renderDad(month) {
     var showCleaned = $('dadShowCleaned').checked, showChange = $('dadShowChange').checked;
     if ($('dadMonthTh')) $('dadMonthTh').textContent = (month || currentPeriod()) + '折旧';
-    // 明细表口径（对齐金蝶）：按类别分组 → 组内逐资产明细行 + 组末「小计」→ 表末「合计」。
+    // 明细表口径：按类别分组 → 组内逐资产明细行 + 组末「小计」→ 表末「合计」。
     // 与「折旧汇总表」的分工由此确立：汇总表一行一类别、只出合计，明细表到每一张资产卡片。
     var groups = _deprGroups(month, false, showCleaned);
     var tb = $('dadBody'); tb.innerHTML = '';
@@ -956,7 +953,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     syncAll();
   });
 
-  /* 固定资产卡片页工具条「资产类别」弹窗入口（原独立页收敛为页内弹窗） */
+  /* 固定资产卡片页工具条「资产类别」弹窗入口 */
   (function () {
     var opener = $('btnAssetCatMgr');
     if (opener) opener.addEventListener('click', function () {

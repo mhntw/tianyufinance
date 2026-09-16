@@ -17,7 +17,7 @@ const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); retur
 
 // 科目名来自用户录入，渲染前需转义；title 用于列宽不足、名称被省略号截断时展示全名
 // HTML 转义：统一走 app.js 的单点实现（H.esc）。
-// 此前本文件存有一份逐字相同的拷贝，故收敛为引用。
+// 复用统一期间取值实现。
 const escHtml = H.esc;
 const escAttr = escHtml;
 
@@ -42,7 +42,7 @@ function safeFillAuxItem(sel, typeKey) {
 
 /* ===================== 总账 ===================== */
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
-// 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
+// 复用统一期间取值实现，避免多份拷贝失同步。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
 
@@ -52,8 +52,7 @@ var glFilterCodes = null;
 // 金额点击触发：按科目编码跳总账并定位
 // codes: 科目编码数组（多科目行全部带入）
 // month: 目标期间，一律传区间末月 —— 总账是单期口径，只按这一期取数。
-// 注：原签名还有第三参 toMonth（旧范围设计的残留）。首页「本年/去年」模式曾传 from~to，
-//     使 Start=年初、End=年末两端不等；已随单期契约收敛为单参，两端写同一个值。
+// 注：单期口径下只传区间末月，Start=End 同值（原范围签名第三参 toMonth 已废弃）。
 globalThis.__glJumpTo = function (codes, month) {
   var gi = document.getElementById('glCode');
   if (gi) gi.value = (codes || []).join(','); // 同步到筛选框，与手输筛选表现一致
@@ -318,7 +317,7 @@ function renderDlSegment(tb, code, month, vmap) {
   var d = S.detailLedger(code, month);
   if (!d) return false;
   var s = d.subject;
-  // 期初余额行：借贷方列永远显示空（金蝶口径——期初是"状态"不是"本期发生额"），
+  // 期初余额行：借贷方列永远显示空（期初是"状态"不是"本期发生额"），
   // 余额列+方向列才显示净额。
   var obNetDr = d.obDr - d.obCr;
   var obBal = Math.abs(obNetDr);
@@ -455,7 +454,7 @@ function renderMl(code, month, err) {
   }
   tip.className = 'open-check';
   tip.textContent = '多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。';
-  // 表头两行（对齐金蝶）：基础 7 列 rowspan 占满两行；第 1 行末是跨全部分栏列的父表头
+  // 表头两行：基础 7 列 rowspan 占满两行；第 1 行末是跨全部分栏列的父表头
   // 「借方」，第 2 行才是各分栏列头（编码 + 名称）。分栏列头长短不一，加 title 保证
   // 列宽不足时悬停仍能看到全名（CSS .ml-col-head 会截断）。
   var ML_BASE_HEADS = ['日期', '凭证字号', '摘要', '借方', '贷方', '方向', '余额'];
@@ -476,20 +475,20 @@ function renderMl(code, month, err) {
     return;
   }
   var subj = d.subject;
-  // 期初余额行：借贷方列永远空（金蝶口径），方向+余额列显示净额
+  // 期初余额行：借贷方列永远空，方向+余额列显示净额
   var obNetDr = d.obDr - d.obCr;
   var obBal = Math.abs(obNetDr);
   var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
   var tro = document.createElement('tr');
   tro.className = 'ml-seg';
-  // 各分栏列的期初余额（金蝶截图里这一行每个分栏列都有值，此前整行留空）。
+  // 各分栏列期初余额（此前整行留空）。
   // 取总账口径：generalLedger 的行已按 rollCodes 上卷（父行 = 自身 + 子目合计），
   // 与分栏列「命中本列及其下级」的取数范围一致；符号同样「借方为正、贷方为负」。
   var obByCode = {};
   S.generalLedger(month).forEach(function (gr) { obByCode[gr.code] = num(gr.obDr) - num(gr.obCr); });
-  // 期初行：借贷方列强制空（金蝶口径——期初是"状态"不是"本期发生额"），
+  // 期初行：借贷方列强制空（期初是"状态"不是"本期发生额"），
   // 只在方向+余额列显示净额，分栏列显示各下级科目的期初余额。
-  // 日期列取**区间首月 1 号**（金蝶截图里是 2026-07-01，此前我方留空）——
+  // 日期列取区间首月 1 号（此前留空）——
   // 期初是"区间首月月初"这个时点，标出日期才看得出锚在哪一天；单期口径下即 month-01。
   var obDate = /^\d{4}-\d{2}$/.test(String(month)) ? month + '-01' : '';
   var initCells = '<td>' + obDate + '</td><td></td><td>期初余额</td>' +
@@ -517,7 +516,7 @@ function renderMl(code, month, err) {
     cols.forEach(function (c) {
       var amt = '';
       if (entryCode && (entryCode === c.code || entryCode.indexOf(c.code) === 0)) {
-        // 有符号金额：借方为正、贷方为负（金蝶口径）。原实现 money(r.dr || r.cr)
+        // 有符号金额：借方为正、贷方为负（标准口径）。原实现 money(r.dr || r.cr)
         // 一律取正数，贷方发生额也显示为正，看表时分不出方向。
         amt = money(num(r.dr) - num(r.cr));
       }
@@ -553,7 +552,7 @@ export {
   refreshGl, refreshDl, refreshMl
 };
 
-// 总账导出：金蝶式 8 列 + 合并单元格（A/B 列按科目纵向合并 3 行）
+// 总账导出：标准 8 列 + 合并单元格（A/B 列按科目纵向合并 3 行）
 function exportGl() {
   var XLSX = globalThis.XLSX;
   if (!XLSX) { H.showToast('导出组件未加载', 'error'); return; }
@@ -606,7 +605,7 @@ globalThis.__exportGl = exportGl;
 var bGlExport = document.getElementById('btnGlExport');
 if (bGlExport) bGlExport.addEventListener('click', exportGl);
 
-// 明细账导出：金蝶式 9 列（科目编码/名称 + 日期/凭证字号/摘要/借/贷/余额/方向），
+// 明细账导出：标准 9 列（科目编码/名称 + 日期/凭证字号/摘要/借/贷/余额/方向），
 // 每个科目一段（期初余额 → 逐笔 → 本期合计 → 本年累计），与界面渲染口径一致。
 function exportDl() {
   var XLSX = globalThis.XLSX;

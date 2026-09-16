@@ -41,7 +41,7 @@ function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2)
 function isRed(val) {
   return (val !== '' && val != null && String(val).indexOf('-') >= 0 && !isNaN(parseFloat(val)));
 }
-// 金额转中文大写（金蝶/用友口径）：壹万捌仟捌佰壹拾伍元整 / 壹佰贰拾叁元肆角伍分
+// 金额转中文大写（通用财务口径）：壹万捌仟捌佰壹拾伍元整 / 壹佰贰拾叁元肆角伍分
 function numToChinese(n) {
   if (n == null || isNaN(n)) return '';
   var num = Math.round(parseFloat(n) * 100) / 100;
@@ -141,7 +141,7 @@ function clearAmtCells(tr, key) {
 function trOf(el) { return el ? el.closest('tr') : null; }
 function money(n) { return H.money ? H.money(n) : (U ? U.money(n) : String(n)); }
 // 用户自由录入文本渲染进 HTML / 属性前转义，避免破坏单元格结构
-// HTML 转义：统一走 app.js 的单点实现（H.esc），此前各页面各存一份逐字相同的拷贝。
+// HTML 转义统一走 H.esc（单点实现）。
 const escHtml = H.esc;
 const escAttr = escHtml;
 function num(v) { return H.num ? H.num(v) : (parseFloat(v) || 0); }
@@ -471,7 +471,7 @@ function setupVoucher() {
   if (root && root.dataset.ready) return;
   if (root) root.dataset.ready = '1';
 
-  bindAttachUpload();   // 附件上传（此前「上传附件」无任何绑定，点击无反应）
+  bindAttachUpload();   // 附件上传绑定
 
   // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
   // 同时：跨月时凭证号自动取下一月的编号（不跨月不变）
@@ -576,11 +576,11 @@ function setupVoucher() {
       vRows.splice(i, 1);
       renderVoucherRows();
     } else if (act === 'add') {
-      vRows.push(defaultVoucherRow());
+      vRows.splice(i, 0, defaultVoucherRow());
       renderVoucherRows();
       var tb = $('vRows');
-      var lastSum = tb.querySelector('tr:last-child .v-summary');
-      if (lastSum) lastSum.focus();
+      var newTr = tb.querySelectorAll('tr')[i];
+      if (newTr) { var s = newTr.querySelector('.v-summary'); if (s) s.focus(); }
     } else if (act === 'copy') {
       var src = vRows[i];
       var copy = defaultVoucherRow();
@@ -616,15 +616,79 @@ function setupVoucher() {
   }, true);
   $('vRows').addEventListener('focus', function (e) {
     var t = e.target;
+    // 摘要自动延续：聚焦到某行空摘要时，带入上一行摘要（多借多贷同业务共享摘要）
+    if (t.classList.contains('v-summary')) {
+      var si = +t.getAttribute('data-i');
+      if (si > 0 && !t.value.trim() && (vRows[si - 1].summary || '').trim()) {
+        t.value = vRows[si - 1].summary;
+        vRows[si].summary = t.value; // 直接同步，不触发重建 DOM 以免光标跳动
+      }
+      return;
+    }
     if (!t.classList.contains('amt-edit-input')) return;
     var td = t.closest('.has-input');
     if (td) td.classList.remove('amt-blur');
   }, true);
+  // 双击金额格（借/贷）：自动填入使整张凭证借贷平衡的差额（仅当该格为空时）。
+  // 金额格折叠态(.amt-blur)显示 .amt-bg、首次单击才聚焦显示输入框，两次点击落不同内层元素，
+  // 浏览器不会合成 dblclick，故用「同格两次单击 + <500ms」手动检测；并额外绑原生 dblclick 兜底
+  // （格子已聚焦时两次点击都落 input，原生 dblclick 会触发）。
+  function fillInto(inp, val) {
+    inp.focus();
+    inp.value = val.toFixed(2);
+    inp.dispatchEvent(new Event('input', { bubbles: true })); // 复用既有逻辑：清对侧 / 格式化 / 刷新合计
+    inp.blur();
+  }
+  var _lastFillT = 0;
+  function fillCellBalance(td) {
+    var now = Date.now();
+    if (now - _lastFillT < 400) return; // 防 click 双击检测与原生 dblclick 重复触发
+    var inp = td.querySelector('.amt-edit-input');
+    if (!inp) return;
+    var i = +inp.getAttribute('data-i');
+    var isDr = inp.classList.contains('v-dr');
+    var key = isDr ? 'dr' : 'cr';
+    var otherKey = isDr ? 'cr' : 'dr';
+    if (U.num(vRows[i][key]) > 0) { showToast('该金额已填，未覆盖', 'warn'); return; }
+    var drT = 0, crT = 0;
+    vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
+    var fill = isDr ? (crT - drT) : (drT - crT); // 整张凭证借贷平衡所需差额
+    if (fill <= 0.005) { showToast('借贷已平或方向不符，无需补平', 'ok'); return; }
+    // 目标行：优先当前空行；若当前行已有对方金额（同行不能既借又贷），则找/建一个空行放补平数
+    var target = i;
+    if (U.num(vRows[i][otherKey]) > 0) {
+      target = -1;
+      for (var k = 0; k < vRows.length; k++) {
+        if (k !== i && U.num(vRows[k][key]) === 0 && U.num(vRows[k][otherKey]) === 0) { target = k; break; }
+      }
+      if (target < 0) { vRows.push(defaultVoucherRow()); target = vRows.length - 1; renderVoucherRows(); }
+    }
+    var tInp = (target === i) ? inp
+      : document.querySelector('#vRows .col-amount.has-input[data-field="v-' + key + '"] .amt-edit-input[data-i="' + target + '"]');
+    if (!tInp) tInp = inp;
+    _lastFillT = Date.now();
+    fillInto(tInp, fill);
+    if (target !== i) showToast('已在第 ' + (target + 1) + ' 行补平借贷差额', 'ok');
+  }
+  var _lastAmtKey = null, _lastAmtT = 0;
   $('vRows').addEventListener('click', function (e) {
     var td = e.target.closest('.col-amount.has-input');
     if (!td) return;
     var inp = td.querySelector('.amt-edit-input');
-    if (inp) inp.focus();
+    var i = inp ? +inp.getAttribute('data-i') : -1;
+    var key = i + ':' + td.getAttribute('data-field');
+    var now = Date.now();
+    if (key === _lastAmtKey && (now - _lastAmtT) < 500) { // 双击：补平
+      _lastAmtKey = null; _lastAmtT = 0;
+      fillCellBalance(td);
+      return;
+    }
+    _lastAmtKey = key; _lastAmtT = now;
+    if (inp) inp.focus(); // 单击：聚焦显示输入框
+  });
+  $('vRows').addEventListener('dblclick', function (e) { // 兜底：格子已聚焦时原生 dblclick 可触发
+    var td = e.target.closest('.col-amount.has-input');
+    if (td) fillCellBalance(td);
   });
   var bSaveNew = $('btnSaveNewVoucher'); if (bSaveNew) bSaveNew.addEventListener('click', function () {
     var res = saveVoucher();
@@ -918,8 +982,10 @@ function saveVoucher() {
       if (!r.ok) { showToast(r.msg, 'warn'); return r; }
     } else {
       var ar = S.addVoucher(v);
-      if (!ar || !ar.ok) { showToast((ar && ar.msg) || '保存失败', 'warn'); return ar || { ok: false }; }
-      vEditId = v.id;
+      // addVoucher 成功时返回凭证对象本身（含 id），失败时返回 { ok: false, msg }；
+      // 因此用 ar.ok === false 判断失败，!ar.ok 会把成功路径也误判为失败。
+      if (!ar || ar.ok === false) { showToast((ar && ar.msg) || '保存失败', 'warn'); return ar || { ok: false }; }
+      vEditId = ar.id;
     }
     // 方案 B：凭证附件同步进原始凭证库（附件台账）。按 path 去重，编辑保存不会重复添加。
     if (vAttachFiles && vAttachFiles.length) {
@@ -1011,11 +1077,11 @@ function renderSum(start, end) {
   if (!start || !end) return;
   var map = {};
   // 起止区间内逐月累计（凭证汇总支持跨期）。
-  // 月份列表统一走 store 的 monthList：此前此处内联展开了一份，与 _shared.js 的实现重复
+  // 月份列表统一走 store.monthList（此前内联展开一份，与 _shared.js 重复）。
   // （且 `U.monthsBetween &&` 这个守卫是多余的——括号里的 IIFE 并没有用到它）。
   // monthList 在 start === end 时返回单元素数组，原「相等就只取一月」的分支已被它覆盖。
   var months = U.monthList(start, end);
-  // 副标题统计（对齐金蝶「凭证总张数：N张；附件总张数：N张」）：
+  // 副标题统计（凭证总张数/附件总张数）：
   // 张数 = 区间内凭证条数；附件张数 = 各凭证 attach 字段之和（非附件元信息数组长度，
   // 与凭证上「附件 ___ 张」是同一个值）。
   var vchCount = 0, attachCount = 0;
@@ -1128,7 +1194,7 @@ function queryVouchers(start, end, code) {
   if (!start || !end) return [];
   var vs = [];
   // 起止区间内逐月汇总（查凭证支持跨期）。
-  // 月份列表统一走 store 的 monthList：此前此处**又内联展开了一份**（Phase 1 收敛时漏掉的第 4 份）。
+  // 月份列表统一走 store.monthList（此前内联又展开了一份）。
   // monthList 对 start === end 也返回单元素数组，故原先的「相等则只取一月」分支已被它覆盖。
   U.monthList(start, end).forEach(function (month) {
     S.periodVouchers(month).forEach(function (v) { vs.push(v); });
@@ -1190,8 +1256,7 @@ function renderQuery(start, end) {
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
   if (!vs.length) { tb.innerHTML = '<tr><td colspan="12" class="empty-hint">本期无凭证</td></tr>'; return; }
-  // 科目名显示口径（对齐参考实现）：取科目表实时名称，科目改名后历史凭证显示同步更新；
-  // 分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
+  // 科目名显示口径：取科目表实时名称，科目改名后历史凭证显示同步更新；分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
   var maker = '本账套';
   vs.forEach(function (v) {
@@ -1300,7 +1365,7 @@ function tplSideOf(e) {
   if (cls === 'liability' || cls === 'equity' || cls === 'revenue') return 'cr';
   return 'dr';
 }
-// 打开「保存为模板」面板：逐条勾选是否携带金额（对应金蝶金额选填）
+// 打开「保存为模板」面板：逐条勾选是否携带金额（金额可填可不填）
 function openVchTplSave() {
   var m = $('vchTplSaveModal'); if (!m) return;
   var first = '';
@@ -1353,12 +1418,6 @@ function tplSubjectHit(code) {
 function resolveTplAccount(code, name) {
   var c0 = String(code || '');
   var r = tplSubjectHit(c0); if (r) return r;
-  if (globalThis.migrateSubjectCode) {
-    var a1 = globalThis.migrateSubjectCode(c0, 'old', 'small2013');
-    if (a1 !== c0) { r = tplSubjectHit(a1); if (r) return r; }
-    var a2 = globalThis.migrateSubjectCode(c0, 'small2013', 'old');
-    if (a2 !== c0) { r = tplSubjectHit(a2); if (r) return r; }
-  }
   var subs = (S.subjects ? S.subjects() : []) || [];
   if (!subs.length) return null;
   var pick = function (arr) {

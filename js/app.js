@@ -350,15 +350,13 @@
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
   function round2(n) { return Math.round(U.num(n) * 100) / 100; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  // 期间取值（单点实现）：此前 Report/Salary/Ledger/Cashier/CashJournal/CashierExtra
-  // 六个页面各存一份逐字相同的拷贝，改一处漏五处。现统一在此，页面经 H.periodRangeValue 引用。
+  // 期间取值单点实现：此前各页面各自实现、口径雷同，现统一在此，页面经 H.periodRangeValue 引用。
   // 口径：回填默认期间并同步触发器文本，返回该期间。期间控件是单期形态，两端恒等。
   // 第二参 def 已移除：16 个调用方无一传参，默认值一律取控件 data-default 的声明（见下）。
   function periodRangeValue(prefix) {
     var sInp = $(prefix + 'Start'), eInp = $(prefix + 'End');
     if (sInp && eInp) {
-      // 默认值取期间控件 data-default 声明的（声明在 index.html、解析在组件）：
-      // 页面不再各自决定"默认期间是什么"，此前 16 个页面里有 8 处是逐字拷贝，属"改一处漏五处"。
+      // 默认值取期间控件 data-default 声明（声明在 index.html、解析在组件），页面不再各自决定默认期间。
       // 末尾 || '' 是必要的：账套未加载时 currentPeriod() 可能为 null，
       // 而 input.value = null 会被 WebIDL 转成字符串 "null" 写进输入框。
       var def = (typeof globalThis.__PERIOD_DEFAULT_OF__ === 'function' ? globalThis.__PERIOD_DEFAULT_OF__(prefix) : '')
@@ -481,8 +479,7 @@
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
       closeModal: pick(closeModal), bookKey: pick(bookKey),
       currentPeriod: pick(currentPeriod), lastClosedPeriod: pick(lastClosedPeriod), num: U && U.num,
-      // 起止期间取值：此前 6 个页面各存一份逐字相同的实现，改一处漏五处。
-      // 统一在此提供单点实现，页面模块直接引用（见 PeriodRangePicker.js 注释）。
+      // 起止期间取值统一在此提供单点实现，页面模块直接引用（见 PeriodRangePicker.js）。
       periodRangeValue: pick(periodRangeValue),
       escHtml: pick(esc),   // escHtml 与 esc 本就是同一实现，统一以 esc 为准
       // 打印表头【内容】唯一来源（表名/编制单位/期间/单位），stdRptHeadHtml 与报表页 setRptHead 共用
@@ -828,7 +825,7 @@
    * 常用功能设置（弹窗分类 checkbox，可增减图标）
    * ============================================================ */
 
-  /** 所有可选菜单项（按参考截图完整分类） */
+  /** 所有可选菜单项（按功能分类） */
   var QUICK_MENU_ITEMS = [
     { group: '凭证', items: [
       { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',        color: '#5582f3' },
@@ -1517,8 +1514,7 @@
     goPage('voucher-query');
     var v = S.getVoucher(id);
     // 查凭证页的期间是 qPeriodStart / qPeriodEnd 一对（kis-period-range 组件的隐藏输入），
-    // 旧的单一 qPeriod 元素早已移除。此前这里直接 $('qPeriod').value 会抛
-    // TypeError: Cannot read properties of null，被全局兜底弹成「系统异常」。
+    // 旧的单一 qPeriod 元素已移除，改用 qPeriodStart/qPeriodEnd 一对隐藏输入（直接取 $('qPeriod') 会对 null 抛 TypeError）。
     var qS = $('qPeriodStart'), qE = $('qPeriodEnd');
     var month = v ? U.monthOf(v.date) : '';
     if (qS && month) qS.value = month;
@@ -1648,6 +1644,9 @@
     // 跳转后收起所有分组浮层（单例浮层一并隐藏，避免残留）
     hideNavPopover();
   }
+
+  // 表头吸顶已由方案 C（纯结构：操作栏为滚动区的静态兄弟、表头 sticky top:0）彻底解决，
+  // 任意栏高 / 重建 thead 均自动贴合，不再需要 JS 测量与 --actions-h 变量。
 
   // 页面显示名称（用于标签页）
   var PAGE_NAMES = {
@@ -1965,8 +1964,7 @@
       if ($('settlePaneReopen')) $('settlePaneReopen').style.display = 'none';
     } else {
       // 通用 hash 直达：命中已接入页面（PAGE_REFRESHERS / 报表四页）则直达，否则首页。
-      // 修复：此前只认 settle/opening/subject/tools 四 hash，导致账套管理等
-      // 设置子菜单页刷新直达时落到首页、section 从未激活而内容"丢失"（2026-08-14）。
+      // 此前只认 settle/opening/subject/tools 四 hash，设置子菜单页刷新直达会落到首页、内容"丢失"；现命中已接入页面（PAGE_REFRESHERS/报表四页）则直达，否则首页。
       var _h = (location.hash || '').replace(/^#/, '');
       var _direct = PAGE_REFRESHERS[_h] ||
         _h === 'original' || _h === 'expense-detail';

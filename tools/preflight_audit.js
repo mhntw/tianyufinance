@@ -158,7 +158,7 @@ function auditReports(st, months) {
     try { pl = S.profitStatement(m); } catch (e) { out.pl.push({ m, err: e.message }); }
     if (pl) {
       const rules = (st.reportRules && st.reportRules.incomeStatement)
-        || (global.STANDARDS && global.STANDARDS.old && global.STANDARDS.old.reportRules.incomeStatement) || [];
+        || (global.STANDARDS && global.STANDARDS.small2013 && global.STANDARDS.small2013.reportRules.incomeStatement) || [];
       const byCode = {};
       (pl.items || []).forEach((it) => { byCode[it.code] = it; });
       const amt = (c) => { const it = byCode[c]; return it ? num(it.cur) : 0; };

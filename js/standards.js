@@ -2,12 +2,10 @@
  * js/standards.js — 会计准则模板集（科目表 + 报表取数规则）
  *
  * 设计：
+ *   - 统一使用小企业会计准则（2013）
  *   - 每个准则自带「科目模板 + 报表规则模板」
- *   - 建账时按 key 选取，深拷贝写入账套 state（subjects / reportRules）
+ *   - 建账时深拷贝写入账套 state（subjects / reportRules）
  *     拷入 state 后即为「该账套的规则快照」，可逐账套独立编辑，互不影响
- *   - 'old' 准则的 subjects + reportRules 与改造前硬编码逐字等价
- *     （DEFAULT_SUBJECTS + store.js:2306-2374 + Report.js:250-299），
- *     现有账套迁移后报表数值 0 变化
  *
  * 挂载：globalThis.STANDARDS
  * 依赖：无（纯数据 + 浅函数）
@@ -15,114 +13,74 @@
 (function (global) {
   'use strict';
 
-  /* ---------- 企业会计制度（旧准则 2001）科目表 ----------
-   * 参考财政部 2001 年《企业会计制度》科目表；
-   * 但损益类统一采用 5001/5401/5601/5602/5603（小企业准则风格，也是金蝶 KIS 默认风格），
-   * 让两套准则损益类编码兼容；
-   * 唯一差异 = 制造费用：旧准则 4105 vs 小企业准则 4101。
-   */
-  var SUBJECTS_OLD = [
-    { code: '1001', name: '库存现金',       cls: 'asset',     normal: 'dr' },
-    { code: '1002', name: '银行存款',       cls: 'asset',     normal: 'dr' },
-    { code: '1012', name: '其他货币资金',   cls: 'asset',     normal: 'dr' },
-    { code: '1121', name: '应收票据',       cls: 'asset',     normal: 'dr' },
-    { code: '1122', name: '应收账款',       cls: 'asset',     normal: 'dr' },
-    { code: '1123', name: '预付账款',       cls: 'asset',     normal: 'dr' },
-    { code: '1221', name: '其他应收款',     cls: 'asset',     normal: 'dr' },
-    { code: '1231', name: '坏账准备',       cls: 'asset',     normal: 'cr' },
-    { code: '1401', name: '材料采购',       cls: 'asset',     normal: 'dr' },
-    { code: '1403', name: '原材料',         cls: 'asset',     normal: 'dr', qty: true, unit: '千克' },
-    { code: '1405', name: '库存商品',       cls: 'asset',     normal: 'dr', qty: true, unit: '件' },
-    { code: '1511', name: '长期股权投资',   cls: 'asset',     normal: 'dr' },
-    { code: '1601', name: '固定资产',       cls: 'asset',     normal: 'dr' },
-    { code: '1602', name: '累计折旧',       cls: 'asset',     normal: 'cr' },
-    { code: '1603', name: '固定资产减值准备', cls: 'asset',   normal: 'cr' },
-    { code: '1604', name: '在建工程',       cls: 'asset',     normal: 'dr' },
-    { code: '1605', name: '工程物资',       cls: 'asset',     normal: 'dr' },
-    { code: '1606', name: '固定资产清理',   cls: 'asset',     normal: 'dr' },
-    { code: '1701', name: '无形资产',       cls: 'asset',     normal: 'dr' },
-    { code: '1702', name: '累计摊销',       cls: 'asset',     normal: 'cr' },
-    { code: '1801', name: '长期待摊费用',   cls: 'asset',     normal: 'dr' },
-    { code: '1901', name: '待处理财产损溢', cls: 'asset',     normal: 'dr' },
-    { code: '2001', name: '短期借款',       cls: 'liability', normal: 'cr' },
-    { code: '2201', name: '应付票据',       cls: 'liability', normal: 'cr' },
-    { code: '2202', name: '应付账款',       cls: 'liability', normal: 'cr' },
-    { code: '2203', name: '预收账款',       cls: 'liability', normal: 'cr' },
-    { code: '2211', name: '应付职工薪酬',   cls: 'liability', normal: 'cr' },
-    { code: '2221', name: '应交税费',       cls: 'liability', normal: 'cr' },
-    { code: '2231', name: '应付利息',       cls: 'liability', normal: 'cr' },
-    { code: '2232', name: '应付利润',       cls: 'liability', normal: 'cr' },
-    { code: '2241', name: '其他应付款',     cls: 'liability', normal: 'cr' },
-    { code: '2401', name: '递延收益',       cls: 'liability', normal: 'cr' },
-    { code: '3001', name: '实收资本(或股本)', cls: 'equity', normal: 'cr' },
-    { code: '3002', name: '资本公积',       cls: 'equity', normal: 'cr' },
-    { code: '3101', name: '盈余公积',       cls: 'equity', normal: 'cr' },
-    { code: '3103', name: '本年利润',       cls: 'equity', normal: 'cr' },
-    { code: '3104', name: '利润分配',       cls: 'equity', normal: 'cr' },
-    { code: '4001', name: '生产成本',       cls: 'cost',    normal: 'dr' },
-    { code: '4105', name: '制造费用',       cls: 'cost',    normal: 'dr' },
-    { code: '5001', name: '主营业务收入',   cls: 'revenue', normal: 'cr' },
-    { code: '5051', name: '其他业务收入',   cls: 'revenue', normal: 'cr' },
-    { code: '5111', name: '投资收益',       cls: 'revenue', normal: 'cr' },
-    { code: '5301', name: '营业外收入',     cls: 'revenue', normal: 'cr' },
-    { code: '5401', name: '主营业务成本',   cls: 'expense', normal: 'dr' },
-    { code: '5402', name: '其他业务成本',   cls: 'expense', normal: 'dr' },
-    { code: '5403', name: '税金及附加',     cls: 'expense', normal: 'dr' },
-    { code: '5601', name: '销售费用',       cls: 'expense', normal: 'dr' },
-    { code: '5602', name: '管理费用',       cls: 'expense', normal: 'dr' },
-    { code: '5603', name: '财务费用',       cls: 'expense', normal: 'dr' },
-    { code: '5711', name: '营业外支出',     cls: 'expense', normal: 'dr' },
-    { code: '5801', name: '所得税费用',     cls: 'expense', normal: 'dr' }
-  ];
-
   /* ---------- 小企业会计准则（2013）科目表 ----------
    * 参考财政部 2011 年 11 月发布的《小企业会计准则》科目表；
-   * 资产/负债/权益编码 1xxx/2xxx/3xxx（与旧准则一致）；
-   * 成本类：生产成本 4001、制造费用 4101（与旧准则制造费用 4105 不同）；
+   * 资产/负债/权益编码 1xxx/2xxx/3xxx；成本类：4001 生产成本、4101 制造费用；
    * 损益类 5xxx（5001 主营业务收入 / 5401 主营业务成本 / 5601 销售费用 / 5602 管理费用 / 5603 财务费用）。
-   * 注意：小企业准则损益类编码也是 5xxx！之前误以为是 6xxx（那是 2006 企业会计准则的编码）。
-   *   因此两套准则损益类编码兼容，唯一差异 = 制造费用（old: 4105 vs small2013: 4101）。
    */
   var SUBJECTS_SMALL2013 = [
+    // ===== 资产类 =====
     { code: '1001', name: '库存现金',       cls: 'asset',     normal: 'dr' },
     { code: '1002', name: '银行存款',       cls: 'asset',     normal: 'dr' },
     { code: '1012', name: '其他货币资金',   cls: 'asset',     normal: 'dr' },
+    { code: '1101', name: '短期投资',       cls: 'asset',     normal: 'dr' },
     { code: '1121', name: '应收票据',       cls: 'asset',     normal: 'dr' },
     { code: '1122', name: '应收账款',       cls: 'asset',     normal: 'dr' },
     { code: '1123', name: '预付账款',       cls: 'asset',     normal: 'dr' },
+    { code: '1131', name: '应收股利',       cls: 'asset',     normal: 'dr' },
+    { code: '1132', name: '应收利息',       cls: 'asset',     normal: 'dr' },
     { code: '1221', name: '其他应收款',     cls: 'asset',     normal: 'dr' },
-    { code: '1231', name: '坏账准备',       cls: 'asset',     normal: 'cr' },
     { code: '1401', name: '材料采购',       cls: 'asset',     normal: 'dr' },
+    { code: '1402', name: '在途物资',       cls: 'asset',     normal: 'dr' },
     { code: '1403', name: '原材料',         cls: 'asset',     normal: 'dr', qty: true, unit: '千克' },
+    { code: '1404', name: '材料成本差异',   cls: 'asset',     normal: 'dr' },
     { code: '1405', name: '库存商品',       cls: 'asset',     normal: 'dr', qty: true, unit: '件' },
+    { code: '1407', name: '商品进销差价',   cls: 'asset',     normal: 'dr' },
+    { code: '1408', name: '委托加工物资',   cls: 'asset',     normal: 'dr' },
+    { code: '1411', name: '周转材料',       cls: 'asset',     normal: 'dr' },
+    { code: '1421', name: '消耗性生物资产', cls: 'asset',     normal: 'dr' },
+    { code: '1501', name: '长期债券投资',   cls: 'asset',     normal: 'dr' },
     { code: '1511', name: '长期股权投资',   cls: 'asset',     normal: 'dr' },
     { code: '1601', name: '固定资产',       cls: 'asset',     normal: 'dr' },
     { code: '1602', name: '累计折旧',       cls: 'asset',     normal: 'cr' },
-    { code: '1603', name: '固定资产减值准备', cls: 'asset',   normal: 'cr' },
     { code: '1604', name: '在建工程',       cls: 'asset',     normal: 'dr' },
     { code: '1605', name: '工程物资',       cls: 'asset',     normal: 'dr' },
     { code: '1606', name: '固定资产清理',   cls: 'asset',     normal: 'dr' },
+    { code: '1621', name: '生产性生物资产', cls: 'asset',     normal: 'dr' },
+    { code: '1622', name: '生产性生物资产累计折旧', cls: 'asset', normal: 'cr' },
     { code: '1701', name: '无形资产',       cls: 'asset',     normal: 'dr' },
     { code: '1702', name: '累计摊销',       cls: 'asset',     normal: 'cr' },
     { code: '1801', name: '长期待摊费用',   cls: 'asset',     normal: 'dr' },
     { code: '1901', name: '待处理财产损溢', cls: 'asset',     normal: 'dr' },
+    // ===== 负债类 =====
     { code: '2001', name: '短期借款',       cls: 'liability', normal: 'cr' },
     { code: '2201', name: '应付票据',       cls: 'liability', normal: 'cr' },
     { code: '2202', name: '应付账款',       cls: 'liability', normal: 'cr' },
     { code: '2203', name: '预收账款',       cls: 'liability', normal: 'cr' },
     { code: '2211', name: '应付职工薪酬',   cls: 'liability', normal: 'cr' },
     { code: '2221', name: '应交税费',       cls: 'liability', normal: 'cr' },
+    { code: '222102', name: '未交增值税',   cls: 'liability', normal: 'cr' },
+    { code: '222129', name: '应交附加税',   cls: 'liability', normal: 'cr' },
+    { code: '222105', name: '应交所得税',   cls: 'liability', normal: 'cr' },
     { code: '2231', name: '应付利息',       cls: 'liability', normal: 'cr' },
     { code: '2232', name: '应付利润',       cls: 'liability', normal: 'cr' },
     { code: '2241', name: '其他应付款',     cls: 'liability', normal: 'cr' },
     { code: '2401', name: '递延收益',       cls: 'liability', normal: 'cr' },
-    { code: '3001', name: '实收资本(或股本)', cls: 'equity', normal: 'cr' },
+    { code: '2501', name: '长期借款',       cls: 'liability', normal: 'cr' },
+    { code: '2701', name: '长期应付款',     cls: 'liability', normal: 'cr' },
+    // ===== 所有者权益类 =====
+    { code: '3001', name: '实收资本',       cls: 'equity', normal: 'cr' },
     { code: '3002', name: '资本公积',       cls: 'equity', normal: 'cr' },
     { code: '3101', name: '盈余公积',       cls: 'equity', normal: 'cr' },
     { code: '3103', name: '本年利润',       cls: 'equity', normal: 'cr' },
     { code: '3104', name: '利润分配',       cls: 'equity', normal: 'cr' },
+    // ===== 成本类 =====
     { code: '4001', name: '生产成本',       cls: 'cost',    normal: 'dr' },
     { code: '4101', name: '制造费用',       cls: 'cost',    normal: 'dr' },
+    { code: '4301', name: '研发支出',       cls: 'cost',    normal: 'dr' },
+    { code: '4401', name: '工程施工',       cls: 'cost',    normal: 'dr' },
+    { code: '4403', name: '机械作业',       cls: 'cost',    normal: 'dr' },
+    // ===== 损益类 =====
     { code: '5001', name: '主营业务收入',   cls: 'revenue', normal: 'cr' },
     { code: '5051', name: '其他业务收入',   cls: 'revenue', normal: 'cr' },
     { code: '5111', name: '投资收益',       cls: 'revenue', normal: 'cr' },
@@ -215,71 +173,15 @@
    *   { type:'subtotal', id, label, formula }   小计行：formula 求值
    * formula 元素：{ codes?, ref?, sign:'+'|'-' }  codes=按编码取数，ref=引用前述 subtotal id
    *
-   * id = 语义行标识（全表唯一，对应金蝶/jinbooks 的 itemCode）。用途：
+   * id = 语义行标识（全表唯一，对应报表 itemCode）。用途：
    *   首页财务指标按 id 从利润表行取数（store.plSummary），与利润表页共用同一份行计算，
    *   杜绝「首页一套口径、利润表另一套」的漂移。
    *   首页实际消费：revenue / cost / sellExp+adminExp+finExp / netProfit。
    *   其余（taxSur、营业外收支、所得税等）一并标注，便于后续扩展。
    * 注意：codes 为空的占位行不参与老账套 id 回填（多行同签名无法唯一匹配），
    *   其 id 目前仅作占位。
-   *
-   * 'old' 与改造前 Report.js:250-299 逐字等价；'small2013' 损益类也是 5xxx（财政部 2013 准则规定），
-   *   两套准则损益类编码完全兼容，唯一差异 = 制造费用（old=4105 vs small2013=4101）。
    */
-  function incomeStatementOld() {
-    return [
-      { id: 'revenue', label: '一、营业收入', codes: ['5001', '5051'] },
-      { id: 'cost', label: '减：营业成本', codes: ['5401', '5402'] },
-      { id: 'taxSur', label: '税金及附加', codes: ['5403'] },
-      { id: 'sellExp', label: '销售费用', codes: ['5601'] },
-      { id: 'adminExp', label: '管理费用', codes: ['5602'] },
-      { id: 'rdExp', label: '研发费用', codes: [] },
-      { id: 'finExp', label: '财务费用', codes: ['5603'] },
-      { id: 'otherIncome', label: '加：其他收益', codes: [] },
-      { id: 'investIncome', label: '投资收益（损失以“-”填列）', codes: ['5111'] },
-      { id: 'hedgeIncome', label: '净敞口套期收益（损失以“-”填列）', codes: [] },
-      { id: 'fvIncome', label: '公允价值变动收益（损失以“-”填列）', codes: [] },
-      { id: 'creditLoss', label: '信用减值损失（损失以“-”填列）', codes: [] },
-      { id: 'assetLoss', label: '资产减值损失（损失以“-”填列）', codes: [] },
-      { id: 'disposalIncome', label: '资产处置收益（损失以“-”填列）', codes: [] },
-      // 期间费用合计 = 销售费用 + 管理费用 + 财务费用（可选含研发费用）
-      // subtotal 行，让首页费用卡直接取这个合计值，而非硬编码三行相加。
-      // 好处：用户改利润表规则时（如给 rdExp 填 codes），费用卡自动跟随，不会漂移。
-      { type: 'subtotal', id: 'periodExpenseTotal', label: '期间费用合计',
-        formula: [
-          { codes: ['5601'], sign: '+' },
-          { codes: ['5602'], sign: '+' },
-          { codes: ['5603'], sign: '+' }
-        ] },
-      { type: 'subtotal', id: 'opProfit', label: '二、营业利润（亏损以“-”填列）',
-        formula: [
-          { codes: ['5001', '5051'], sign: '+' },
-          { codes: ['5401', '5402'], sign: '-' },
-          { codes: ['5403'], sign: '-' },
-          { codes: ['5601'], sign: '-' },
-          { codes: ['5602'], sign: '-' },
-          { codes: ['5603'], sign: '-' },
-          { codes: ['5111'], sign: '+' }
-        ] },
-      { id: 'nonOpRev', label: '加：营业外收入', codes: ['5301'] },
-      { id: 'nonOpExp', label: '减：营业外支出', codes: ['5711'] },
-      { type: 'subtotal', id: 'totalProfit', label: '三、利润总额（亏损以“-”填列）',
-        formula: [
-          { ref: 'opProfit', sign: '+' },
-          { codes: ['5301'], sign: '+' },
-          { codes: ['5711'], sign: '-' }
-        ] },
-      { id: 'incomeTax', label: '减：所得税费用', codes: ['5801'] },
-      { type: 'subtotal', id: 'netProfit', label: '四、净利润（亏损以“-”填列）',
-        formula: [
-          { ref: 'totalProfit', sign: '+' },
-          { codes: ['5801'], sign: '-' }
-        ] }
-    ];
-  }
-
   function incomeStatementSmall2013() {
-    // 小企业准则损益类也是 5xxx（与 old 准则损益类兼容）
     return [
       { id: 'revenue', label: '一、营业收入', codes: ['5001', '5051'] },
       { id: 'cost', label: '减：营业成本', codes: ['5401', '5402'] },
@@ -331,34 +233,6 @@
 
   /* ---------- 准则定义集 ---------- */
   var STANDARDS = {
-    old: {
-      key: 'old',
-      label: '企业会计制度（旧准则）',
-      subjects: SUBJECTS_OLD,
-      fxCode: '5603',                 // 期末调汇汇兑损益科目（财务费用）
-      carryProfitCode: '3103',        // 本年利润（结转损益目标）
-      carryResidualCode: '3104',      // 利润分配
-      // 业务科目角色 → 编码：自动凭证生成与默认值一律经 S.subjectRole(role) 解析，
-      // 不在业务代码中散落硬编码（费用类编码随准则 5xxx/6xxx 不同）。
-      roles: {
-        DEPR_FEE: '5602',             // 折旧费用（管理费用）
-        PAYROLL_FEE: '5602',          // 工资费用（管理费用）
-        ACC_DEPR: '1602',             // 累计折旧
-        FA_ASSET: '1601',             // 固定资产
-        FA_CLEAN: '1606',             // 固定资产清理
-        FA_IMPAIR: '1603',            // 固定资产减值准备
-        PAYROLL_PAYABLE: '2211',      // 应付职工薪酬
-        BANK: '1002',                 // 银行存款（工资发放）
-        PROFIT_YEAR: '3103',          // 本年利润
-        PROFIT_RESIDUAL: '3104',      // 利润分配
-        COST_PROD: '4001',            // 生产成本（结转成本借方）
-        COST_INV: '1405'              // 库存商品（结转成本贷方）
-      },
-      reportRules: {
-        balanceSheet: BALANCE_SHEET_RULES,
-        incomeStatement: incomeStatementOld()
-      }
-    },
     small2013: {
       key: 'small2013',
       label: '小企业会计准则（2013）',
@@ -366,14 +240,12 @@
       fxCode: '5603',                 // 财务费用（汇兑损益）
       carryProfitCode: '3103',
       carryResidualCode: '3104',
-      // 两套准则损益类编码兼容（都是 5xxx），roles 与 old 完全一致
       roles: {
         DEPR_FEE: '5602',             // 折旧费用（管理费用）
         PAYROLL_FEE: '5602',          // 工资费用（管理费用）
         ACC_DEPR: '1602',             // 累计折旧
         FA_ASSET: '1601',             // 固定资产
         FA_CLEAN: '1606',             // 固定资产清理
-        FA_IMPAIR: '1603',            // 固定资产减值准备
         PAYROLL_PAYABLE: '2211',      // 应付职工薪酬
         BANK: '1002',                 // 银行存款（工资发放）
         PROFIT_YEAR: '3103',          // 本年利润
@@ -387,18 +259,6 @@
       }
     }
   };
-
-  // 制造费用编码双向映射（唯一差异：old=4105 vs small2013=4101）；
-  // 损益类两套准则都是 5xxx，不需要映射；资产/负债/权益编码完全一致。
-  // 用于已有账套切换准则时的科目编码迁移（subjects + openingBalances + vouchers.entries）。
-  var CODE_MAP_OLD_TO_2013 = {
-    '4105': '4101'
-  };
-  var CODE_MAP_2013_TO_OLD = (function () {
-    var m = {};
-    Object.keys(CODE_MAP_OLD_TO_2013).forEach(function (k) { m[CODE_MAP_OLD_TO_2013[k]] = k; });
-    return m;
-  })();
 
   global.STANDARDS = STANDARDS;
   // 取某准则的深拷贝快照（subjects/reportRules 都深拷，避免账套间共享引用）
@@ -423,16 +283,10 @@
       reportRules: deep(s.reportRules)
     };
   };
-  // 损益编码迁移：old↔small2013，按映射表逐码替换（不改资产/负债/权益编码）
-  global.migrateSubjectCode = function (code, fromKey, toKey) {
-    if (fromKey === 'old' && toKey === 'small2013') return CODE_MAP_OLD_TO_2013[code] || code;
-    if (fromKey === 'small2013' && toKey === 'old') return CODE_MAP_2013_TO_OLD[code] || code;
-    return code;
-  };
 
   /* ---------- 系统凭证模板（软件内置「常规/业务」常用凭证） ----------
    * 形态与「常用凭证」一致：只存 摘要 + 科目 + 借贷方向，套用后填金额。
-   * 编码以 5xxx 损益码为基准（两套准则损益类编码兼容，都是 5xxx）。
+   * 编码以 5xxx 损益码为基准。
    * 属性：{ name, word, entries:[{summary, code, name, side:'dr'|'cr'}] }
    */
   var STANDARD_VCH_TEMPLATES = [

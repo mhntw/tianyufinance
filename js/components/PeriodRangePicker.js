@@ -7,7 +7,7 @@
  * 两端 hidden input 恒等（由 tools/check-period-contract.js 机器校验）。理由：
  *   ① 报表已用「本期 + 本年累计」两列表达了区间，控件不需要第二个自由度；
  *   ② 13/16 个页面只读结束期间，多一个用户可改的端点会让「改了没反应」这类问题反复出现；
- *   ③ 将来若要跨期，方向是加「粒度」（月/季/年，对齐金蝶 periodType）由粒度派生区间，
+ *   ③ 将来若要跨期，方向是加「粒度」（月/季/年）由粒度派生区间，
  *      而不是把起止两个端点加回来 —— 后者在资产负债表（时点报表）上无法给出有意义的起点。
  * 两端 input 仍保留：页面取数统一读 End（历史调用方众多），Start 作为契约校验的对照项。
  *
@@ -66,11 +66,8 @@ function currentPeriod() {
 }
 
 /* ---------------- 默认期间（由 data-default 声明，组件单点解析） ---------------- */
-// 背景：此前"默认期间是什么"由每个页面各自决定（currentPeriod 还是 lastClosedPeriod），
-//   16 个页面里 8 个是逐字拷贝 —— 正是「改一处漏五处」的典型。现统一由 index.html 的
-//   data-default 声明，组件单点解析；页面调用 periodRangeValue(prefix) 时不再传 def。
-// 解析时机刻意放在「页面读取时」而非「DOM 展开时」：展开发生在 main.js 早期，此时账套可能
-//   尚未加载完成，currentPeriod() 会拿到空值；放在读取时与页面渲染同步，取值才可靠。
+// 默认期间统一由 index.html 的 data-default 声明、组件单点解析；页面调用 periodRangeValue(prefix) 时不再传 def。
+// 解析时机放在「页面读取时」而非「DOM 展开时」：展开发生较早、账套可能尚未加载，currentPeriod() 会拿空值；读取时与渲染同步，取值才可靠。
 function wrapOfPrefix(prefix) {
   var sInp = $(prefix + 'Start');
   return sInp ? sInp.closest('.ty-period-range') : null;

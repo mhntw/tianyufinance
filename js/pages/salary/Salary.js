@@ -17,7 +17,7 @@ const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); retur
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
-// 此前本文件存有一份逐字相同的拷贝，改一处漏五处，故收敛为引用。
+// 复用统一期间取值实现，避免多份拷贝失同步。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
 
@@ -97,7 +97,7 @@ const periodRangeValue = H.periodRangeValue;
   }
   // 期间变更由期间控件的 data-on-change 直接回调（组件不派发 change 事件），此处无需再绑监听。
 
-  // 默认部门种子已收敛到 store（此前这里另存了一份逐字相同的拷贝，改一处漏一处）；
+  // 默认部门种子已收敛到 store（此前这里另存了一份相同实现）；
   // 本页只经 S.depts() 取用（缺省自动种子，与资产页同源）。
   function refreshDeptStaff() {
     S.depts();

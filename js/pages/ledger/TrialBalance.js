@@ -21,7 +21,7 @@ const H = globalThis.__TY_HELPERS__ || {};
 const periodRangeValue = H.periodRangeValue;
 
 // 科目名来自用户录入，渲染进 HTML / 属性前需转义，避免破坏结构
-// HTML 转义：统一走 app.js 的单点实现（H.esc），此前各页面各存一份逐字相同的拷贝。
+// HTML 转义统一走 H.esc（单点实现）。
 const escHtml = H.esc;
 const escAttr = escHtml;
 

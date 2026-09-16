@@ -16,22 +16,22 @@ const U = H.U || (typeof EX !== 'undefined' && EX.util) || { num: function (x) {
 
 function setEl(id, val) { const el = $(id); if (el) el.textContent = val; }
 
-/* ---------------- 首页指标口径常量（对齐金蝶） ----------------
+/* ---------------- 首页指标口径常量 ----------------
  * 资金类：库存现金 + 银行存款 + 其他货币资金
  * 短期应收：应收票据 + 应收账款 + 其他应收款（不含预付账款——钱已付，不会再有现金流入）
  * 短期应付：应付票据 + 应付账款 + 其他应付款（不含预收账款——钱已收，不会再有现金流出）
  */
 var FUND_CODES = ['1001', '1002', '1012'];
-// 短期应收/应付科目清单：对齐金蝶（jinbooks 是金蝶口径的开源复刻，默认配置
+// 短期应收/应付科目清单：对齐通用财务口径（开源复刻 jinbooks 默认配置
 // sys.default.shortTermAccountsReceivable / shortTermAccountsPayable）。
 // 判据是「未来会带来现金流入/流出的短期债权债务」：
 //   应收 = 1121 应收票据 + 1122 应收账款 + 1131 应收股利 + 1132 应收利息 + 1221 其他应收款
 //   应付 = 2201 应付票据 + 2202 应付账款 + 2211 应付职工薪酬 + 2231 应付利息
 //        + 2232 应付股利 + 2241 其他应付款
 // 刻意排除 1123 预付账款（钱已付，不会再有流出/流入）与 2203 预收账款（钱已收），
-// 与从真实账套反推金蝶数值的结论一致。
-// 已知偏差：金蝶/jinbooks 均未纳入 2221 应交税费（理论上属刚性短期支付义务），
-// 为与金蝶对账一致此处跟随；若将来要做更专业的口径，可视为可选项开启。
+// 与从真实账套反推通用数值的结论一致。
+// 已知偏差：通用财务口径与 jinbooks 均未纳入 2221 应交税费（理论上属刚性短期支付义务），
+// 为与通用口径对账一致此处跟随；若将来要做更专业的口径，可视为可选项开启。
 var SHORT_AR_CODES = ['1121', '1122', '1131', '1132', '1221'];
 var SHORT_AP_CODES = ['2201', '2202', '2211', '2231', '2232', '2241'];
 // 损益类指标（收入 / 成本 / 费用 / 净利润）在此【不再维护科目清单】：
@@ -69,11 +69,11 @@ function prevMonth(ym) {
   return y + '-' + (m < 10 ? '0' + m : '' + m);
 }
 // 期间区间 [from, to] 展开为月份数组（含首尾）。
-// 统一走 store 的 monthList（此前此处内联展开了一份，与 store/_shared/Voucher 三处重复）。
+// 月份列表统一走 store.monthList（此前内联展开一份，多处重复）。
 function monthsOf(p) {
   return U.monthList(p.from, p.to);
 }
-// 期间文案：与金蝶一致——月粒度显示「2026年08期」，年粒度显示「2026年」
+// 期间文案：月粒度显示「2026年08期」，年粒度显示「2026年」
 function ymText(ym) { return ym.slice(0, 4) + '年' + ym.slice(5, 7) + '期'; }
 function yearText(ym) { return ym.slice(0, 4) + '年'; }
 function resolvePeriod(mode) {
@@ -84,7 +84,7 @@ function resolvePeriod(mode) {
   switch (mode) {
     case 'lastPeriod':  return { end: prev, from: prev, to: prev, text: ymText(prev) };
     case 'currentYear': return { end: cur, from: y + '-01', to: cur, text: yearText(cur) };
-    // 存量指标取去年末时点；流量指标取去年 1~12 月整年累计（与金蝶 year 口径一致）
+    // 存量指标取去年末时点；流量指标取去年 1~12 月整年累计（与年度口径一致）
     case 'lastYear':    return { end: lastY + '-12', from: lastY + '-01', to: lastY + '-12', text: lastY + '年' };
     default:            return { end: cur, from: cur, to: cur, text: ymText(cur) };
   }
@@ -215,7 +215,7 @@ function fillMetrics() {
     return round2(sum);
   }
   // 展示一律用 signed（实际数带符号）：财务指标不许抹掉负号——
-  // fmt() 内部是 money(Math.abs(n))，会把「贷方余额/亏损/净流出」显示成正数，与金蝶不一致。
+  // fmt() 内部是 money(Math.abs(n))，会把「贷方余额/亏损/净流出」显示成正数，与标准口径不一致。
 
   // ---- 资金余额卡（存量：最新期末余额）----
   var totalFund = sumBalAt(FUND_CODES);
@@ -226,8 +226,8 @@ function fillMetrics() {
   setEl('periodFund', periodText);
 
   // 资金净收入 = 所选期间「资金收入 − 资金支出」（流量：区间累计）
-  // 金蝶口径：取数来自科目余额模块（综合本位币）→ 资金类科目借方发生额(流入) − 贷方发生额(流出)。
-  // 注意：这是「资金的收付差」，不是损益口径的净利润（旧实现误用当期净利润，与金蝶对不上）。
+  // 标准口径：取数来自科目余额模块（综合本位币）→ 资金类科目借方发生额(流入) − 贷方发生额(流出)。
+  // 注意：这是「资金的收付差」，不是损益口径的净利润（旧实现误用当期净利润，与标准口径对不上）。
   // 归属「净利润」卡片的期间选择（与净利润同属利润/现金流维度）
   var fundDr = 0, fundCr = 0;
   monthsOf(pProfit).forEach(function (m) {
@@ -238,12 +238,12 @@ function fillMetrics() {
   });
   setEl('mFundNet', signed(round2(fundDr - fundCr)));
 
-  // ---- 应收 / 应付（存量：最新期末余额；单科目，合计=明细之和，对齐金蝶首页卡片）----
+  // ---- 应收 / 应付（存量：最新期末余额；单科目，合计=明细之和，对齐首页卡片）----
   renderArapItems(latestPeriod, '1122', 'arapItemsAr', 'mReceivable', '应收');
   renderArapItems(latestPeriod, '2202', 'arapItemsAp', 'mPayable', '应付');
   setEl('periodArap', periodText);
 
-  // ---- 预计可用资金（存量：最新期末余额）= 现有资金 + 短期应收款 − 短期应付款（金蝶口径）----
+  // ---- 预计可用资金（存量：最新期末余额）= 现有资金 + 短期应收款 − 短期应付款（标准口径）----
   // 现有资金与资金余额卡同口径，直接复用 totalFund，不重复计算。
   // 余额方向：资产类(应收)借正贷负 → 正常为正；负债类(应付)正常是贷方余额，取反后为正显示。
   var shortAr = sumBalAt(SHORT_AR_CODES);
@@ -260,7 +260,7 @@ function fillMetrics() {
   //   净利润卡 → periodProfit（净利润 + 资金净收入）
   //   收入成本卡 → periodRevCost（收入 + 成本 + 毛利率）
   //   费用卡 → periodFee（费用 + 费用占收入比）
-  // 期间映射（等价金蝶 periodType）：
+  // 期间映射（等价通用报表期间类型）：
   //   本期 / 上期（单月）→ 取 cur，本月金额
   //   本年 / 去年（整段）→ 取 ytd，年初至末月累计
   var plIsYearProfit = (periodProfit === 'currentYear' || periodProfit === 'lastYear');
