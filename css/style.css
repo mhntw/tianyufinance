@@ -559,13 +559,13 @@ img, svg { display: block; max-width: 100%; }
 .sum-stat { padding: 0 14px 6px; font-size: var(--fs-xs); color: var(--ty-text-2); }
 .sum-stat:empty { padding: 0; }
 /* 科目页： 6 分类 Tab（资产/负债/共同/权益/成本/损益）+ 展开级次/隐藏禁用复选 */
-.subj-tabs { display: inline-flex; gap: 4px; align-items: center; }
+.subj-tabs { display: inline-flex; gap: 8px; align-items: center; }
 .subj-tab {
   border: 1px solid #D5DCE5;
   background: #fff;
   border-radius: 3px;
-  padding: 4px 14px;
-  font-size: 13px;
+  padding: 5px 14px;
+  font-size: var(--fs-sm);
   height: 28px;
   line-height: 1;
   color: var(--ty-text-2);
@@ -576,12 +576,12 @@ img, svg { display: block; max-width: 100%; }
 .subj-tab.active { background: var(--ty-btn); border-color: var(--ty-btn); color: #fff; }
 
 
-.subj-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.subj-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
 .subj-check input { accent-color: var(--ty-btn); }
 .subj-search {
   width: 170px; height: 28px; padding: 0 10px;
   border: 1px solid var(--ty-border-2); border-radius: 4px;
-  font-size: 13px; color: var(--ty-text); outline: none; background: #fff;
+  font-size: var(--fs-sm); color: var(--ty-text); outline: none; background: #fff;
 }
 .subj-search:focus { border-color: var(--ty-blue); }
 /* 凭证模板弹窗列表（jinbooks 风格：搜索条 + 分组行式列表） */
@@ -815,11 +815,11 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .filter-item { display: inline-flex; align-items: center; gap: 6px; }
-.filter-item label { font-size: 12px; color: var(--ty-text-2); white-space: nowrap; }
+.filter-item label { font-size: var(--fs-sm); color: var(--ty-text-2); white-space: nowrap; }
 /* 筛选项内的 select 走全局基类（select:not([class]）：自适应宽度+统一 min/max），
    此处不再为 select 重复定义宽度；仅 input 保留最小宽 */
 .filter-item input[type="text"],
-.filter-item input[type="number"] { height: 30px; min-width: 96px; border: 1px solid var(--ty-border-2); border-radius: 4px; padding: 0 6px; font-size: 12px; color: var(--ty-text); background: #fff; }
+.filter-item input[type="number"] { height: 30px; min-width: 96px; border: 1px solid var(--ty-border-2); border-radius: 4px; padding: 0 6px; font-size: var(--fs-sm); color: var(--ty-text); background: #fff; }
 .filter-item select[multiple] { height: auto; min-height: 28px; padding: 2px 4px; }
 /* 裸 select（报表筛选期间/科目等）宽度已并入上方全局基类（select:not([class])），
    此处仅保留焦点态边框 */
@@ -2138,22 +2138,26 @@ select:not([class]),
 .modal-box .form-row label {
   width: 82px;
   flex: 0 0 82px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--ty-text-2);
-  text-align: right;
+  text-align: left;
 }
 
-.modal-box .form-row .inp { flex: 1; width: auto; min-width: 0; font-size: 13px; }
+.modal-box .form-row .inp { flex: 1; width: auto; min-width: 0; font-size: var(--fs-sm); }
 /* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行，label 与内容需在一行内由
    内容区弹性换行——checkbox 组/组合 span 作为 flex:1 容器内部换行，label 保持在行首。
    不能对整行 flex-wrap（会把 label 和内容拆开导致「外币核算」断行）。 */
 /* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行的内容统一用 .chk-group 容器
    （flex:1 弹性换行），label 固定在行首不参与换行，避免「外币核算」断行、控件挤压。 */
-/* 紧凑表单弹窗（短 label）：标题左对齐 + 冒号 + 贴合内容，多行内容起点不追求对齐留白。
+/* 紧凑表单弹窗（短 label）：标题左对齐 + 冒号 + 12px gap 与 set-row 统一
    适用于 label 多为 2-4 字的弹窗；长 label 弹窗（如固定资产卡片）保持固定宽右对齐不启用。 */
-.modal-compact .form-row { gap: 0; }
+.modal-compact .form-row { gap: 12px; }
 .modal-compact .form-row > label { text-align: left; width: auto; flex: 0 0 auto; padding-right: 0; }
 .modal-compact .form-row > label::after { content: '：'; }
+/* 弹窗内说明文字：与 form-row 左边缘对齐（16px），上间距 12px 统一 */
+.modal-box .set-hint { padding: 12px 16px 0; margin: 0; }
+/* 云同步设置弹窗：服务器地址 URL 较长，加宽到 440px */
+#cloudSyncModal .modal-box { width: 440px; }
 /* 新增科目弹窗：宽度贴合内容（fit-content），保证每行一行排完且不过宽 */
 #subjectModal .modal-box { width: fit-content; min-width: 420px; }
 #subjectModal .form-row { flex-wrap: nowrap; }
@@ -2323,9 +2327,8 @@ select:not([class]),
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
   padding: 16px;
-  margin-top: 6px;
 }
 
 .modal-actions .btn:first-child {
@@ -5482,7 +5485,7 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 .card-head-op { margin-left: 10px; color: var(--ty-blue); font-size: 13px; cursor: pointer; user-select: none; }
 .card-head-op:hover { text-decoration: underline; }
 .card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--ty-bg-2); }
-.card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .card-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ty-text-3); white-space: nowrap; }
 .card-filter label input, .card-filter label select { height: 30px; min-width: 140px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-sm); color: var(--ty-text); background: #fff; }
 .card-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--ty-border-2); }
@@ -5533,6 +5536,15 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 /* 风险检测穿透链接 */
 .link-jump { display: inline-block; padding: 2px 8px; border-radius: 3px; background: var(--ty-btn-2, #e8f0fe); color: var(--ty-primary, #1a73e8); font-size: 12px; cursor: pointer; text-decoration: none; white-space: nowrap; }
 .link-jump:hover { background: var(--ty-btn-2-hover, #d2e3fc); }
+/* 操作日志表列宽：时间列最宽，操作人/类型/模块适中，详情自适应填满 */
+#logTable th:nth-child(1) { min-width: 160px; }
+#logTable th:nth-child(2) { min-width: 70px; }
+#logTable th:nth-child(3) { min-width: 80px; }
+#logTable th:nth-child(4) { min-width: 80px; }
+#sysEventsTable th:nth-child(1) { min-width: 160px; }
+#sysEventsTable th:nth-child(2) { min-width: 70px; }
+#sysEventsTable th:nth-child(3) { min-width: 90px; }
+#sysEventsTable th:nth-child(4) { min-width: 70px; }
 .log-pager { display: flex; align-items: center; gap: 8px; }
 .log-page { font-size: var(--fs-xs); color: var(--ty-text-3); min-width: 56px; text-align: center; }
 .log-pagesize { height: 28px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-xs); padding: 0 4px; }

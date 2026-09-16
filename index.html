@@ -1934,10 +1934,10 @@
           <div class="grid-wrap">
             <table class="grid std-table" id="logTable">
               <thead><tr>
-                <th style="min-width:160px">操作时间</th>
-                <th style="min-width:70px">操作人</th>
-                <th style="min-width:80px">操作类型</th>
-                <th style="min-width:80px">操作模块</th>
+                <th>操作时间</th>
+                <th>操作人</th>
+                <th>操作类型</th>
+                <th>操作模块</th>
                 <th>操作详情</th>
               </tr></thead>
               <tbody id="logBody"></tbody>
@@ -1970,10 +1970,10 @@
           <div class="grid-wrap">
             <table class="grid std-table" id="sysEventsTable">
               <thead><tr>
-                <th style="min-width:160px">操作时间</th>
-                <th style="min-width:70px">操作人</th>
-                <th style="min-width:90px">操作类型</th>
-                <th style="min-width:70px">操作模块</th>
+                <th>操作时间</th>
+                <th>操作人</th>
+                <th>操作类型</th>
+                <th>操作模块</th>
                 <th>操作详情</th>
               </tr></thead>
               <tbody id="sysEventsBody"></tbody>
@@ -2036,7 +2036,7 @@
   </div>
 
   <div class="modal" id="cloudSyncModal">
-    <div class="modal-box modal-compact">
+    <div class="modal-box">
       <div class="modal-title">云同步设置</div>
       <div class="form-row">
         <label>服务器地址</label><input id="csUrl" class="inp" placeholder="https://dav.jianguoyun.com/dav/">
@@ -2047,13 +2047,13 @@
       <div class="form-row">
         <label>应用密码</label><input id="csPass" class="inp" type="password" placeholder="坚果云「第三方应用」生成的应用密码">
       </div>
-      <p class="set-hint" id="csPassHint" style="display:none;margin:4px 0 0">应用密码已保存在本机（上面显示为星号），升级软件不会丢失；要更换请清空后输入新密码。</p>
-      <p class="set-hint" style="margin-top:6px">在坚果云网页端：账户信息 → 安全选项 → 第三方应用管理 → 添加应用密码。</p>
+      <p class="set-hint" id="csPassHint" style="display:none">应用密码已保存在本机（上面显示为星号），升级软件不会丢失；要更换请清空后输入新密码。</p>
+      <p class="set-hint">在坚果云网页端：账户信息 → 安全选项 → 第三方应用管理 → 添加应用密码。</p>
       <div class="modal-actions">
-        <button class="btn" id="btnCsClear">清空设置</button>
         <button class="btn" id="btnCsTest">测试连接</button>
         <button class="btn btn-primary" id="btnCsSave">保存</button>
         <button class="btn" id="btnCsCancel">取消</button>
+        <button class="btn" id="btnCsClear">清空设置</button>
       </div>
     </div>
   </div>
