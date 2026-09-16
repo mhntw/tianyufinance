@@ -46,3 +46,6 @@ tools/scan_ais_templates.js
 
 # 临时调试文件
 full-page.html
+
+# 变更记录含真实账套数据，不进仓库（已移父层 财务软件/CHANGELOG.md 管理）
+CHANGELOG.md
