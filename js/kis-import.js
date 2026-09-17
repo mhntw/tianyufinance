@@ -221,12 +221,20 @@
         vchOrder.push(v);
       }
       var code = (r.FAcctID || '').toString().trim();
+      var d = Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100;
+      var c = Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100;
+      // 金蝶红字（负数）分录处理：负借=贷方、负贷=借方、双方皆负（红字整张冲销）=双方取正。
+      // 否则负数 dr/cr 原样进总账，会让「试算平衡 / 科目余额表 / 报表」与金蝶对不上
+      // （红字被当成负借/负贷，余额方向翻到对方、合计还差一倍）。
+      if (d < 0 && c < 0) { d = -d; c = -c; }
+      else if (d < 0) { c = Math.round((c - d) * 100) / 100; d = 0; }
+      else if (c < 0) { d = Math.round((d - c) * 100) / 100; c = 0; }
       v.entries.push({
         code: code,
         name: acctName[code] || code,
         summary: (r.FExp || '').toString().trim(),
-        dr: Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100,
-        cr: Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100
+        dr: d,
+        cr: c
       });
     });
     // 排序口径与金蝶界面显示一致：先按【期间年月】分组（date 的 YYYY-MM），

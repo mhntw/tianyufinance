@@ -1521,7 +1521,7 @@ function updateNewTplTotal() {
     var ratioSum = round2(newTplRows.reduce(function (s, r) { return s + U.num(r.ratio); }, 0));
     out.innerHTML = '比例合计 <b>' + round2(ratioSum * 100) + '%</b>　';
     out.innerHTML += Math.abs(ratioSum - 1) < 0.005
-      ? '<span style="color:#16a34a">分摊完整 ✓</span>'
+      ? '<span style="color:var(--ty-green)">分摊完整 ✓</span>'
       : '<span style="color:var(--ty-red)">合计 ≠ 100%，请检查分摊比例</span>';
     return;
   }

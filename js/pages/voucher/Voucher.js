@@ -144,7 +144,15 @@ function money(n) { return H.money ? H.money(n) : (U ? U.money(n) : String(n)); 
 // HTML 转义统一走 H.esc（单点实现）。
 const escHtml = H.esc;
 const escAttr = escHtml;
-function num(v) { return H.num ? H.num(v) : (parseFloat(v) || 0); }
+// 金额解析：先剥离千分位逗号（半角,、全角，、顿号、）与货币符号/空格，并把全角小数点．归一为 .，
+// 避免中文输入法打出的 "1，23" / "1，0352.25" 被裸 parseFloat 在逗号处截断成 1。
+// 优先走桥接 H.num（与 store.num 口径一致），缺失时 fallback 也基于已清洗的字符串解析。
+function num(v) {
+  var s = (v == null ? '' : String(v))
+    .replace(/[,\uFF0C\u3001]/g, '').replace(/\uFF0E/g, '.')
+    .replace(/[¥￥\s]/g, '');
+  return H.num ? H.num(s) : (parseFloat(s) || 0);
+}
 // 第三参 ms 透传给桥接层 showToast（长文案需要更长停留时间，否则读不完）
 function showToast(msg, type, ms) { if (H.showToast) H.showToast(msg, type, ms); else console.warn('[toast]', msg); }
 function syncAll() { if (H.syncAll) H.syncAll(); }
@@ -499,7 +507,10 @@ function setupVoucher() {
       var field = t.classList.contains('v-dr') ? 'v-dr' : 'v-cr';
       var key = field.replace('v-', '');
       var td = t.closest('td');
-      var val = parseFloat(t.value) || 0;
+      // 金额统一走 num() 解析：自动剥离千分位逗号（1,234.56 → 1234.56），
+      // 否则裸 parseFloat 遇逗号截断（1,234 → 1），导致录入金额被莫名改小。
+      var cleanVal = String(t.value).replace(/[,\uFF0C\u3001]/g, '').replace(/\uFF0E/g, '.');
+      var val = num(cleanVal);
       vRows[i][key] = val;
       var otherKey = key === 'dr' ? 'cr' : 'dr';
       if (val > 0 && vRows[i][otherKey] !== '') {
@@ -507,7 +518,7 @@ function setupVoucher() {
         clearAmtCells(trOf(t), otherKey);
       }
       // 数字位灯：输入时高亮当前金额最高有效位（行内位格 + 对应列表头单位行）
-      var idx = highestDigitIndex(t.value);
+      var idx = highestDigitIndex(cleanVal);
       var bg = td && td.querySelector('.amt-bg');
       if (bg) bg.innerHTML = amtInnerHtml(val, true, idx, isRed(val), true, false);
       var thEl = $(field === 'v-dr' ? 'vThDr' : 'vThCr');
@@ -517,7 +528,7 @@ function setupVoucher() {
     }
     renderVoucherRows();
   });
-  // Enter 导航：录凭证键盘流 摘要→科目→借方→贷方→下一行摘要。
+  // Enter 导航：录凭证键盘流 摘要→科目→借方→贷方→下一行摘要；末行金额格(借或贷)回车则追加新行。
   // 金额格先触发 blur（完成金额格式化与位格显示，等价于鼠标点击其他区域），再跳到下一录入位。
   // 科目格：点输入框/整格弹出科目选择（bindSubjectPicker，扁平列表）。弹层内支持键盘
   // 导航（↑↓ 高亮、Enter 选中、Esc 关闭）；当弹层打开时 Enter 由弹层 stopPropagation 接管，
@@ -530,6 +541,19 @@ function setupVoucher() {
       e.preventDefault();
       t.blur(); // 触发失焦：金额 toFixed(2)、位格显示、清表头高亮
       var isDr = t.classList.contains('v-dr');
+      var i = +t.getAttribute('data-i');
+      var row = vRows[i] || {};
+      var hasAmt = (row.dr || 0) > 0 || (row.cr || 0) > 0;
+      var isLast = tr ? !tr.nextElementSibling : true;
+      // 末行金额格回车(借或贷,取已填那侧)→ 追加新行并聚焦新行摘要(契合"录完本行→换行"的录入习惯)
+      if (isLast && hasAmt && (isDr ? (row.cr || 0) === 0 : true)) {
+        vRows.push(defaultVoucherRow());
+        renderVoucherRows();
+        var tb = $('vRows');
+        var newTr = tb.querySelectorAll('tr')[vRows.length - 1];
+        if (newTr) { var s = newTr.querySelector('.v-summary'); if (s) s.focus(); }
+        return;
+      }
       var next = isDr
         ? (tr ? tr.querySelector('.v-cr') : null)
         : (tr && tr.nextElementSibling ? tr.nextElementSibling.querySelector('.v-summary') : null);
@@ -601,7 +625,8 @@ function setupVoucher() {
     var field = t.classList.contains('v-dr') ? 'v-dr' : 'v-cr';
     var key = field.replace('v-', '');
     var rawVal = t.value.trim();
-    var val = parseFloat(rawVal) || 0;
+    // 剥离千分位逗号（与录入实时解析保持一致），避免逗号导致 toFixed 前被截断
+    var val = num(rawVal.replace(/[,\uFF0C\u3001]/g, '').replace(/\uFF0E/g, '.'));
     if (val) {
       t.value = val.toFixed(2);
     } else {

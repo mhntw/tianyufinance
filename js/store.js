@@ -221,7 +221,7 @@
   function num(v) {
     if (v === undefined || v === null || v === '') return 0;
     if (typeof v === 'number') return v;
-    var s = String(v).replace(/,/g, '').replace(/[¥￥\s]/g, '');
+    var s = String(v).replace(/[,\uFF0C\u3001]/g, '').replace(/\uFF0E/g, '.').replace(/[¥￥\s]/g, '');
     var n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }

@@ -358,7 +358,7 @@ function renderDl(month) {
   tb.innerHTML = '';
   var sc = dlSubjectCodes();
   if (sc.err) {
-    tb.innerHTML = '<tr><td colspan="7" class="empty-hint" style="color:#D93026">' + escHtml(sc.err) + '</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" class="empty-hint" style="color:var(--ty-red)">' + escHtml(sc.err) + '</td></tr>';
     return;
   }
   if (!month) return;

@@ -119,7 +119,9 @@
         close();
         // 打开 exports 所在目录（父目录），跨平台经 Rust open_in_explorer
         var exportsPath = String(path);
-        var dir = exportsPath.replace(/\/?[^\/]*$/, ''); // 去掉末尾文件名
+        // 跨平台切出父目录：Windows 路径用反斜杠 \，macOS/Linux 用 /，
+        // 故同时匹配两种分隔符，避免 Windows 下把整条路径当文件名切掉导致打开失败。
+        var dir = exportsPath.replace(/[\\/][^\\/]*$/, ''); // 去掉末尾文件名
         var tauri = global.__TAURI__ && global.__TAURI__.core;
         if (tauri && tauri.invoke) {
           // 防空兜底：极端路径切不出父目录时不再调 open（避免「路径为空」死提示），改直接展示文件位置

@@ -49,3 +49,12 @@ full-page.html
 
 # 变更记录含真实账套数据，不进仓库（已移父层 财务软件/CHANGELOG.md 管理）
 CHANGELOG.md
+
+# 编辑器 / 工具自动生成的备份与临时副本（避免误提交进仓库，如 style.css.bak1）
+*.bak
+*.bak1
+*.bak2
+*.tmp
+*~
+*.swp
+*.swo

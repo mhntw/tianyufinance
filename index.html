@@ -565,8 +565,8 @@
               <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
             </div>
             <span id="glFilterHint" class="gl-filter-hint" hidden></span>
-            <label class="chk" style="margin-left:8px"><input type="checkbox" id="glExpandAll" checked onchange="__renderGl()"> 展开所有级次</label>
-            <label class="chk" style="margin-left:8px"><input type="checkbox" id="glHideZero"> 隐藏零行</label>
+            <label class="chk"><input type="checkbox" id="glExpandAll" checked onchange="__renderGl()"> 展开所有级次</label>
+            <label class="chk"><input type="checkbox" id="glHideZero"> 隐藏零行</label>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnGlExport">导出</button>
         </div>
@@ -804,7 +804,7 @@
               <div class="ykj-filter-item-box-label">清理凭证</div>
               <div class="ykj-filter-item-box-content"><select class="inp" id="fCleanVch"><option value="">所有</option><option value="1">已生成</option><option value="0">未生成</option></select></div>
             </div>
-            <label class="orig-holdup" style="margin-left:8px;"><input type="checkbox" id="fShowCleaned"> 显示已清理资产</label>
+            <label class="orig-holdup"><input type="checkbox" id="fShowCleaned"> 显示已清理资产</label>
           </div>
           <div class="orig-fold-bottom">
             <button class="btn btn-primary" id="btnAssetFilterQuery">查询</button>
@@ -1056,9 +1056,9 @@
       <div class="modal" id="deptStaffModal">
         <div class="modal-box modal-wide">
           <div class="modal-title">部门职员</div>
-          <div class="modal-actions" style="padding: 6px 16px 0;">
+          <div class="modal-actions modal-actions-tight">
             <button class="btn btn-primary" id="btnAddDept">新增部门</button>
-            <span style="flex:1"></span>
+            <span class="flex-gap"></span>
             <button class="btn" id="btnCloseDeptStaff">关闭</button>
           </div>
           <div class="asset-cat-scroll">
@@ -1078,13 +1078,13 @@
       <div class="modal" id="salaryTplModal">
         <div class="modal-box modal-wide">
           <div class="modal-title">工资凭证模板</div>
-          <div class="modal-actions" style="padding: 6px 16px 0;">
+          <div class="modal-actions modal-actions-tight">
             <button class="btn btn-primary" id="btnAddSalaryTpl">新增</button>
             <button class="btn" id="btnResetSalaryTpl">恢复默认</button>
-            <span style="flex:1"></span>
+            <span class="flex-gap"></span>
             <button class="btn" id="btnCloseSalaryTpl">关闭</button>
           </div>
-          <div class="k-tip info" style="margin: 6px 16px 0;">设置计提工资与发放工资凭证的制单规则，生成工资凭证时按模板取凭证字与摘要。</div>
+          <div class="k-tip info modal-tip">设置计提工资与发放工资凭证的制单规则，生成工资凭证时按模板取凭证字与摘要。</div>
           <div class="asset-cat-scroll">
             <table class="grid ag-theme-alpine" id="salaryTplGrid">
               <thead><tr>
@@ -1995,7 +1995,7 @@
       <div class="form-row">
         <label>启用期间</label><input id="nbStart" class="inp" type="month">
       </div>
-      <p class="set-hint" style="margin-top:6px;padding-left:16px">
+      <p class="set-hint">
         会计准则：小企业会计准则（2013）<br>
         创建新账套后将自动带入对应准则的常用科目表；<br>
         第二步请到「期初余额」录入期初数据。
@@ -2013,7 +2013,7 @@
       <div class="form-row">
         <label>新名称</label><input id="rbName" class="inp" placeholder="如：XX公司">
       </div>
-      <p class="set-hint" style="margin-top:6px">仅更改账套的显示名称（顶部栏与报表表头），不影响「启用期间」与任何账务数据。</p>
+      <p class="set-hint">仅更改账套的显示名称（顶部栏与报表表头），不影响「启用期间」与任何账务数据。</p>
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnRenameBookOk">保存</button>
         <button class="btn" id="btnCancelRenameBook">取消</button>
@@ -2027,7 +2027,7 @@
       <div class="form-row">
         <label>启用期间</label><input id="epStart" class="inp" type="month">
       </div>
-      <p class="set-hint" style="margin-top:6px">启用期间 = 账套记账起点。账套已有凭证/期初/结账数据时修改，仅影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。</p>
+      <p class="set-hint">启用期间 = 账套记账起点。账套已有凭证/期初/结账数据时修改，仅影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。</p>
       <div class="modal-actions">
         <button class="btn btn-primary" id="btnSaveEditStart">保存</button>
         <button class="btn" id="btnCancelEditStart">取消</button>
@@ -2130,11 +2130,11 @@
   <div class="modal" id="assetCatListModal">
     <div class="modal-box modal-wide">
       <div class="modal-title">资产类别</div>
-      <div class="modal-actions" style="padding: 6px 16px 0;">
+      <div class="modal-actions modal-actions-tight">
         <button class="btn btn-primary" id="btnNewCat">新增</button>
         <button class="btn" id="btnDelCat">停用</button>
         <button class="btn" id="btnResetCat">恢复默认</button>
-        <span style="flex:1"></span>
+        <span class="flex-gap"></span>
         <button class="btn" id="btnCloseAssetCatList">关闭</button>
       </div>
       <div class="asset-cat-scroll">

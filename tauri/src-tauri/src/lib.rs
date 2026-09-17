@@ -882,8 +882,35 @@ fn open_in_explorer(path: String) -> Result<(), String> {
     if path.trim().is_empty() {
         return Err("路径为空".to_string());
     }
-    open::that(&path).map_err(|e| format!("无法打开文件夹: {e}"))?;
-    Ok(())
+    let p = path.trim();
+    // 跨平台用系统文件管理器打开目录：
+    //   macOS -> `open`，Linux -> `xdg-open`，Windows -> `explorer`（路径统一为正斜杠→反斜杠）。
+    //   直接 open::that 目录在 Windows 上不会稳定唤起资源管理器，故 Windows 显式走 explorer。
+    #[cfg(target_os = "windows")]
+    {
+        let norm = p.replace('/', "\\");
+        std::process::Command::new("explorer")
+            .arg(&norm)
+            .status()
+            .map_err(|e| format!("无法打开文件夹: {e}"))?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(p)
+            .status()
+            .map_err(|e| format!("无法打开文件夹: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(p)
+            .status()
+            .map_err(|e| format!("无法打开文件夹: {e}"))?;
+        Ok(())
+    }
 }
 
 /// 用系统默认浏览器打开指定 URL（前端更新检查跳转 Release 页面用）。

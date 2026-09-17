@@ -502,7 +502,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     tbEl = tbEl || $('yearBoundaryTableInPage');
     if (!tbEl) return;
     if (!yearBoundaries || !yearBoundaries.length) {
-      tbEl.innerHTML = '<thead><tr><th>校验结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:#34a853">✓ 无跨年差异，所有年度期初与上年期末完全一致</td></tr></tbody>';
+      tbEl.innerHTML = '<thead><tr><th>校验结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:var(--ty-green)">✓ 无跨年差异，所有年度期初与上年期末完全一致</td></tr></tbody>';
       return;
     }
     var html = '<thead><tr><th style="width:16%">年份</th><th style="width:22%">科目编码</th><th style="width:18%">上年期末</th><th style="width:18%">本年期初</th><th style="width:14%">差异</th><th style="width:12%">差异率</th></tr></thead><tbody>';
@@ -511,7 +511,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       if (!diffs.length) {
         // 文案修正：b.checked 是「有差异科目数」（一致时=0），不能用它冒充核对总数；
         // 用 b.total（参与核对科目数，新导入器已写入），旧存档无 total 时只报「一致」不带数量。
-        html += '<tr class="ok-row"><td>' + b.fromYear + '→' + b.toYear + '</td><td colspan="5" style="color:#34a853">校验通过：' +
+        html += '<tr class="ok-row"><td>' + b.fromYear + '→' + b.toYear + '</td><td colspan="5" style="color:var(--ty-green)">校验通过：' +
           (b.total ? (b.total + ' 个科目期初与上年期末一致') : '期初与上年期末核对一致') + '（0 差异）✓</td></tr>';
         return;
       }
@@ -614,7 +614,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     }
     if (!tbEl) return;
     if (!r.checks || !r.checks.length) {
-      tbEl.innerHTML = '<thead><tr><th>检测结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:#34a853">✓ 未发现风险点，账套数据健康</td></tr></tbody>';
+      tbEl.innerHTML = '<thead><tr><th>检测结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:var(--ty-green)">✓ 未发现风险点，账套数据健康</td></tr></tbody>';
       return;
     }
     var html = '<thead><tr><th style="width:18%">检测项</th><th style="width:8%">等级</th><th style="width:30%">明细</th><th style="width:34%">说明</th><th style="width:10%">操作</th></tr></thead><tbody>';
