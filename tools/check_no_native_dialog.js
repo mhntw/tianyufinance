@@ -1,7 +1,9 @@
 // 静态检查：确认业务页面里不再有「裸」原生 confirm(/prompt(/alert( 调用。
 // 允许的例外：
 //   1) js/dialog-bridge.js 内的实现与其 fallback；
-//   2) 形如 window.confirm / window.prompt / window.alert 的显式调用（仅 bridge fallback 使用）；
+//   2) js/file-save-bridge.js：同为「桥接层」，其 alert( 只作 showToast 不可用时的
+//      最后兜底（导出完成/导出失败必须让用户看见），与 dialog-bridge 同理；
+//   3) 形如 window.confirm / window.prompt / window.alert 的显式调用（仅 bridge fallback 使用）；
 //   3) 字符串或注释中的出现；mdb-reader.js 为第三方库内部（其 message() 非弹窗）。
 // 运行：node tools/check_no_native_dialog.js
 
@@ -9,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..', 'js');
-const allowFiles = new Set(['dialog-bridge.js', 'mdb-reader.js']);
+const allowFiles = new Set(['dialog-bridge.js', 'file-save-bridge.js', 'mdb-reader.js']);
 
 function walk(dir) {
   let out = [];

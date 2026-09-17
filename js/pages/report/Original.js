@@ -25,7 +25,7 @@ function renderOriginalTree() {
         var ex = origTreeState.small.expand;
         html += '<li class="tree-parent' + (ex ? ' open' : '') + (g.sel ? ' selected' : '') + '" data-name="' + esc(g.name) + '"><span class="tree-arrow">' + (ex ? '▼' : '▶') + '</span>' + esc(g.name) + '<span class="tree-count">' + g.count + '</span></li>';
         if (ex) g.children.forEach(function (c) {
-          html += '<li class="tree-child' + (c.sel ? ' selected' : '') + '" data-name="' + esc(c.name) + '">' + esc(c.name) + '<span class="tree-count">' + c.count + '</span></li>';
+          html += '<li class="tree-child indent-3' + (c.sel ? ' selected' : '') + '" data-name="' + esc(c.name) + '">' + esc(c.name) + '<span class="tree-count">' + c.count + '</span></li>';
         });
       } else {
         html += '<li class="tree-leaf' + (g.sel ? ' selected' : '') + '" data-name="' + esc(g.name) + '">' + esc(g.name) + '<span class="tree-count">' + g.count + '</span></li>';

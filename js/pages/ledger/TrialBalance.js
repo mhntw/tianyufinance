@@ -106,10 +106,17 @@ function renderTb(month) {
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
     // 隐藏零行：期初借贷、本期借贷贷方、期末余额均为 0 时跳过（受 bookHideZero 控制）
     if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
-    const obD = r.obDr >= r.obCr ? r.obDr - r.obCr : 0;
-    const obC = r.obCr > r.obDr ? r.obCr - r.obDr : 0;
-    const eD = r.dir === '借' ? r.balance : 0;
-    const eC = r.dir === '贷' ? r.balance : 0;
+    // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与金蝶科目余额表口径一致：
+    // 贷方类科目（负债/权益/收入）出现借方余额时，金额在「贷方」列以负数显示
+    // （例：3104 利润分配为贷方科目，出现借方余额 → 期末贷方显示 -2,836,003.25）。
+    // 借正类科目同理：出现贷方余额时，金额在「借方」列以负数显示。
+    // 注：本期/本年累计发生额列仍按实际借贷方向填列（金蝶红字冲减差异另行处置，不在本次改动内）。
+    const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
+    const obD = r.normal === 'dr' ? obNet : 0;
+    const obC = r.normal === 'cr' ? obNet : 0;
+    const eNet = r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
+    const eD = r.normal === 'dr' ? eNet : 0;
+    const eC = r.normal === 'cr' ? eNet : 0;
     // 合计累加口径（与展开状态自洽，杜绝父/子重复）：
     // 有子且已展开 → 由子级明细贡献，父行不累加（父行已含子树，rollCodes 上卷会翻倍）；
     // 末级 或 有子但收起（子级不可见）→ 累加本行（收起时本行=该支子树总额）。
@@ -117,12 +124,12 @@ function renderTb(month) {
       sum.obD += obD; sum.obC += obC; sum.pD += r.periodDr; sum.pC += r.periodCr;
       sum.yD += r.ytdDr; sum.yC += r.ytdCr; sum.eD += eD; sum.eC += eC;
     }
-  // 行首小三角：用 store 公共函数统一生成 ▶▼ 文字
-    const arrow = S.subjectArrowHTML(code, !!hasKids[code], tbExpanded.has(code), 'tb-arrow');
-    const indent = S.subjectIndentHTML(tbDepth(pm, code));
-    const tr = document.createElement('tr');
-    // title 承载完整科目名：列宽有限时单元格以省略号截断，悬停仍可看到全名
-    tr.innerHTML = '<td class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(code) + '">' + escHtml(code) + '</a></td><td class="tb-name" title="' + escAttr(r.name) + '">' + indent + arrow + escHtml(r.name) +
+  // 行首小三角：用 store 公共函数统一生成 ▶▼ 文字；位置在「科目编码」列前（与明细账右侧科目树一致）
+  const arrow = S.subjectArrowHTML(code, !!hasKids[code], tbExpanded.has(code), 'tb-arrow');
+  const indent = S.subjectIndentHTML(tbDepth(pm, code));
+  const tr = document.createElement('tr');
+  // title 承载完整科目名：列宽有限时单元格以省略号截断，悬停仍可看到全名
+  tr.innerHTML = '<td class="mono">' + arrow + '<a href="#" class="link-gl-subject" data-code="' + escAttr(code) + '">' + escHtml(code) + '</a></td><td class="tb-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) +
       '</td><td class="ta-r mono">' + U.money(obD) + '</td><td class="ta-r mono">' + U.money(obC) +
       '</td><td class="ta-r mono">' + U.money(r.periodDr) + '</td><td class="ta-r mono">' + U.money(r.periodCr) +
       '</td><td class="ta-r mono">' + U.money(r.ytdDr) + '</td><td class="ta-r mono">' + U.money(r.ytdCr) +
@@ -168,10 +175,14 @@ export function exportTb() {
     // 树形折叠：与屏幕所见一致（祖先收起的不导出）
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
     if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
-    const obD = r.obDr >= r.obCr ? r.obDr - r.obCr : 0;
-    const obC = r.obCr > r.obDr ? r.obCr - r.obDr : 0;
-    const eD = r.dir === '借' ? r.balance : 0;
-    const eC = r.dir === '贷' ? r.balance : 0;
+    // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与屏幕 renderTb 同口径
+    // （与金蝶科目余额表一致：贷方类科目出现借方余额时，金额在「贷方」列以负数显示）。
+    const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
+    const obD = r.normal === 'dr' ? obNet : 0;
+    const obC = r.normal === 'cr' ? obNet : 0;
+    const eNet = r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
+    const eD = r.normal === 'dr' ? eNet : 0;
+    const eC = r.normal === 'cr' ? eNet : 0;
     // 合计口径与 renderTb 一致：末级或有子但收起才累加（展开父由子级贡献）
     if (!hasKids[code] || !tbExpanded.has(code)) {
       sum.obD += obD; sum.obC += obC; sum.pD += r.periodDr; sum.pC += r.periodCr;

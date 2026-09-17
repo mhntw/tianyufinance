@@ -51,6 +51,18 @@
   --ty-red:         #E64545;   /* 强调红（负值/警示） */
   --ty-green:       #17A45B;   /* 强调绿（正/通过） */
   --ty-orange:      #FA8C16;   /* 强调橙（提醒） */
+
+  /* ── 语义状态色：底 / 边 / 字 三件套（全站唯一来源）──
+     规则：状态色只在此定义，组件/页面一律引用 var(--st-…)，不得再写状态色十六进制。
+     新增提示/警示类 UI 直接挑对应状态；以后调色只改这几行。 */
+  --st-info-bg: #EAF5FF;   --st-info-bd: #C2E0FF;   --st-info-fg: var(--ty-blue-dark);
+  --st-info-tag-bd: #D0E4FF;
+  --st-tip-bg:  #FFF8E1;   --st-tip-bd:  #F0D58C;   --st-tip-fg:  #8a5a00;
+  --st-hl-bg:   #FFF3C4;   --st-hl-bd:   #FFE9A8;   --st-hl-fg:   #7A5B00;
+  --st-warn-bg: #FFF8EC;   --st-warn-bd: #F0AD4E;   --st-warn-fg: #8a5a00;
+  --st-danger-bg: #FCEDED; --st-danger-bd: #F0B4B4; --st-danger-fg: var(--ty-red);
+  --st-ok-bg:   #E6F4E6;   --st-ok-bd:   #A8DDBE;   --st-ok-fg:   #2E7D32;
+  --st-panel-bg: #F7F9FB;  --st-panel-bg2: #F5F8FC; --st-panel-bd: #D9DEE5;
   --ty-content-bg:  #F5F6F8;   /* 内容区外底色（工作区浅灰白） */
   --grid-line:      #e7e9eb;   /* 单元格网格线 #e7e9eb */
   --grid-text:      var(--ty-text);   /* 表格正文主色（复用 --ty-text） */
@@ -516,14 +528,13 @@ img, svg { display: block; max-width: 100%; }
 /* 项目利润/费用明细表：全站同步优化——表格铺满容器（与 .rpt-grid 一致），
    列宽由 table-layout:auto 按内容分布，名称列自适应不无限拉宽；
    超宽时由外层 .grid-wrap overflow-x:auto 横向滚动。 */
-.pp-grid { margin: 0; border-radius: 0; width: 100%; min-width: 0; table-layout: auto; }
+.pp-grid { margin: 0; border-radius: 0; }   /* 铺满与列宽走全局 .grid 标准 */
 .pp-grid thead th { position: sticky; top: 0; z-index: 2; }
-.pp-grid .col-name { width: auto; min-width: 120px; } /* 名称列按内容自适应，全局下限 120px 防竖排 */
-.pp-grid .col-no { width: 50px; min-width: 50px; text-align: center; }
-.pp-grid .col-amt { width: 150px; min-width: 150px; text-align: right; }
+/* 名称列宽度走全站列宽标准（内容自动），此处不再定义 */
+/* .pp-grid 的行次/金额列：对齐与宽度均走全局约定，此处不再重复定义 */
+.pp-grid .col-amt { text-align: right; }
 .pp-grid .pp-name-col { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-grid .pp-indent-1 { padding-left: 28px; }
-.pp-grid .pp-indent-2 { padding-left: 52px; }
+/* .pp-grid 的 pp-indent-1/2 已删除：全站缩进统一走 .indent-1…5（见「树形层级缩进」） */
 .pp-grid .pp-dots { color: var(--ty-text-3); }
 .pp-grid .pp-empty-row { height: 32px; }
 
@@ -553,8 +564,9 @@ img, svg { display: block; max-width: 100%; }
  * 局部滚动（flex:1 + min-height:0 + overflow:auto），否则超宽表格会把 .page 撑宽、
  * 把侧栏推到视口外。两种模式不可混用。 */
 .grid-wrap { display: block; width: 100%; max-width: 100%; vertical-align: top; overflow: visible; max-height: none; border: none; }
-/* 默认：grid-wrap 内的表格继承全局 .grid 的 width:100% 铺满容器（不再用 width:auto 压制）。
-.grid-wrap .grid { margin: 0; min-width: 0; table-layout: auto; }
+/* grid-wrap 内的表格：宽度/布局一律走全局 .grid 标准，这里只去掉外边距。
+   注：上方注释此前漏写结尾的注释闭合符，导致下面两条规则被当成注释吞掉（含 sticky 表头），现补上。 */
+.grid-wrap .grid { margin: 0; }
 .grid-wrap .grid thead th { position: sticky; top: 0; z-index: 2; }
 /* 表格底部计数条（「已选 X 条 / 共 N 条」） */
 .grid-foot { display: flex; justify-content: flex-end; align-items: center; padding: 8px 14px; font-size: var(--fs-xs); color: var(--ty-text-2); background: #fff; border: 1px solid var(--grid-line); border-top: none; }
@@ -605,7 +617,7 @@ img, svg { display: block; max-width: 100%; }
 .vch-tpl-sec::after { content: ''; flex: 1; height: 1px; background: #eceef1; }
 .vch-tpl-cnt { font-size: var(--fs-2xs); font-weight: 400; color: #9aa4b2; }
 .vch-tpl-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-radius: 6px; }
-.vch-tpl-row:hover { background: #eef4fd; }
+.vch-tpl-row:hover { background: var(--ty-blue-2); }   /* 悬停底走全站 hover token（原写死 #eef4fd） */
 .vch-tpl-main { flex: 1; min-width: 0; }
 .vch-tpl-name { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ty-text); }
 .vch-tpl-name b { font-weight: 600; }
@@ -644,26 +656,28 @@ img, svg { display: block; max-width: 100%; }
   border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
 }
 .vch-tpl-menu a { display: block; padding: 7px 14px; font-size: var(--fs-sm); color: var(--ty-text); text-decoration: none; white-space: nowrap; }
-.vch-tpl-menu a:hover { background: var(--ty-bg); color: var(--ty-blue); }
+.vch-tpl-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
 /* 科目页表格（ty-table：表头左对齐；checkbox 列 40px sticky left 0；操作列 96px sticky left 40px） */
-/* 横向超宽由自身横滚（overflow-x:auto），sticky left 列相对本容器固定；纵向交给 .page.active 整页滚动（避免双滚动条）。
-   注：overflow-y 保持 visible；无 max-height 限制故纵向不出滚动条。
-   共病修复：给内部 .grid 加 min-width:100%，列少时撑满容器，右侧竖线对齐容器右缘（与 pp-grid 同理）。 */
-#subjGrid { display: block; overflow-x: auto; overflow-y: visible; }
-#subjGrid .grid { width: 100%; min-width: 100%; table-layout: fixed; }
+/* 科目表：滚动全部交给外层 .scroll-area（全站「方案C 纯结构冻结」）。
+   ⚠️ 原来给 #subjGrid 写了 display:block + overflow-x:auto 想让它"自己横滚"，但按 CSS 规则
+   overflow-x:auto 会把 overflow-y 一并当作 auto —— 表格自己变成了滚动容器，
+   表头 sticky 吸附在这个【从不纵向滚动】的盒子上，效果就是表头跟着页面滚走
+   （实测：滚动后表头位置 141 → -355，而其它账簿页 141 → 140 正常吸附）。
+   横向超宽时同样由外层 .scroll-area 统一横滚，吸右的操作列依旧吸附在 .scroll-area 上。
+   另：原 #subjGrid .grid { table-layout:fixed } 是【无效选择器】（subjGrid 本身就是表格），已删除。 */
+#subjGrid { overflow: visible; }
 
-/* 操作列移到最右并改为吸右（原吸左第 2 列）；只留「编辑」故收窄到 64px
-   （首列勾选框已移除） */
-#subjGrid .col-op { width: 64px; text-align: left; position: sticky; right: 0; z-index: 3; }
-#subjGrid .col-code { width: 120px; }
-#subjGrid .col-name { width: auto; min-width: 200px; } /* 名称列自适应（原 335px 太宽） */
+/* 操作列移到最右并改为吸右（原吸左第 2 列）；首列勾选框已移除。
+   宽度不再指定：走全站列宽标准。 */
+#subjGrid .col-op { text-align: left; position: sticky; right: 0; z-index: 3; }
+/* 名称列/编码列宽度同样走全站标准（树形缩进由内容自然撑开） */
 /* sticky 单元格必须不透明，且跟随斑马纹/hover：否则横滚时透字、鼠标悬停时右侧出现白块 */
 #subjGrid tbody td.col-op { z-index: 1; background: #fff; }
 #subjGrid tbody tr:nth-child(even) td.col-op { background: var(--ty-th-bg); }
 #subjGrid tbody tr:hover td.col-op { background: var(--ty-row-hover); }
 
 /* 科目树形显示（默认一级收拢，行首箭头逐级展开） */
-#subjGrid .col-name { min-width: 280px; }
+/* 名称列宽度走全站列宽标准（内容自动），此处不再定义 */
 #subjBody tr.subj-hidden { display: none; }
 /* 科目页搜索态：搜索跨全部类别（当前分类不参与过滤），故分类 Tab 淡化提示 */
 .subj-tabs.subj-tabs-searching { opacity: .5; }
@@ -671,17 +685,16 @@ img, svg { display: block; max-width: 100%; }
 /* 尺寸/居中统一走文末「树形展开三角」规则，此处只留本页专属的间距与配色 */
 #subjBody .subj-arrow,
 #subjBody .subj-arrow-leaf { margin-left: 2px; }
-#subjBody .subj-arrow { cursor: pointer; color: var(--ty-text-2); user-select: none; border-radius: 3px; }
-#subjBody .subj-arrow:hover { color: var(--ty-blue); background: #eef4fd; }
+/* #subjBody .subj-arrow 的尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末），此处不再单独定义 */
 #subjBody .subj-name { white-space: nowrap; }
 /* 打印时把收拢的子级一并打全（与全平铺时代的纸面一致） */
 @media print {
   #subjBody tr.subj-hidden { display: table-row !important; }
 }
 /* 凭证字/币别（表头统一走全局 .grid 居中，仅金额/操作列按列类型对齐） */
-#vwGrid .col-op, #curGrid .col-op { width: 90px; text-align: left; }
-/* 币别汇率列：行内可编辑，限宽贴合表格 */
-#curGrid .cur-rate { width: 110px; text-align: right; }
+#vwGrid .col-op, #curGrid .col-op { text-align: left; }   /* 宽度走全站列宽标准 */
+/* 币别汇率列：行内可编辑，宽度走全站标准 */
+#curGrid .cur-rate { text-align: right; }
 /* 币别新增录入行：作为表格 tbody 首行，与下方数据行共用 .grid td 规格（行高34px/网格线） */
 .cur-add-row td { background: var(--ty-cur-add-bg); }
 /* 输入框撑满所在列，套用表格内嵌输入框规格（.grid td .inp：26px 高、白底、聚焦蓝边） */
@@ -782,6 +795,15 @@ img, svg { display: block; max-width: 100%; }
   min-height: 0;
   overflow: auto;
 }
+/* 滚动区嵌在卡片里时（现金流量两页）：卡片自身变弹性列，让内部滚动区吃满剩余高度，
+   于是"操作区/卡片头"固定不动，只有表格内容滚动，表头永远吸在滚动区顶部。
+   与 .page.active:has(.scroll-area) 配合：页面为弹性列 → 卡片 flex:1 → .scroll-area 滚动。 */
+.card:has(> .scroll-area) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
 /* .scroll-area 内：表头吸顶偏移固定为 0（滚动祖先即 .scroll-area 本身） */
 .scroll-area thead th,
 .scroll-area .grid thead th,
@@ -800,8 +822,12 @@ img, svg { display: block; max-width: 100%; }
 #page-operation-logs .grid thead th { top: 0; }
 
 
-/* 首行共享：任何首行容器自动粘顶 + 分隔线 */
-.page-actions {
+/* 首行共享：页面级操作栏自动粘顶 + 分隔线。
+   ⚠️ 只对【页面级】操作栏（section.page 的直接子元素）吸顶。卡片内嵌的 .page-actions
+   （如系统设置的「保存」按钮条）不是顶部吸顶栏，此前也被吸顶（sticky + z-index:10），
+   滚到下面时会盖住所在卡片的表格表头 —— 这正是"系统设置表头没固定"的成因。
+   改为直接子元素选择器后，卡片内嵌按钮条回归普通流，不再遮挡。 */
+section.page > .page-actions {
   position: sticky; top: 0; z-index: 10;
   border-bottom: 1px solid var(--ty-border);
 }
@@ -1097,13 +1123,13 @@ select:not([class]),
 .ed-subj-tag {
   display: inline-flex; align-items: center; gap: 4px;
   height: 22px; padding: 0 6px; font-size: var(--fs-xs);
-  background: var(--ty-blue-2); border: 1px solid #d0e4ff; border-radius: 2px;
+  background: var(--ty-blue-2); border: 1px solid var(--st-info-tag-bd); border-radius: 2px;
   color: var(--ty-text); white-space: nowrap;
 }
 .ed-subj-more {
   display: inline-flex; align-items: center; height: 22px; padding: 0 6px;
   font-size: var(--fs-xs); color: var(--ty-blue); background: #fff;
-  border: 1px solid #d0e4ff; border-radius: 2px; white-space: nowrap;
+  border: 1px solid var(--st-info-tag-bd); border-radius: 2px; white-space: nowrap;
 }
 .ed-subj-tag-close {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1125,7 +1151,7 @@ select:not([class]),
   width: max-content; min-width: 100%; max-width: calc(100vw - 24px);
   max-height: 320px;
   display: flex; flex-direction: column;
-  background: #EAF5FF; border: 1px solid #C2E0FF; border-radius: 3px;
+  background: var(--st-info-bg); border: 1px solid var(--st-info-bd); border-radius: 3px;
   box-shadow: 0 4px 14px rgba(2,36,51,.14); padding: 6px 6px 8px;
 }
 .ed-subj-pop[hidden] { display: none; }
@@ -1136,18 +1162,15 @@ select:not([class]),
   display: flex; align-items: center; padding: 0 4px; cursor: pointer; white-space: nowrap;
 }
 .ed-subj-row:hover { background: #D6EBFF; }
-.ed-subj-toggle {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; margin-right: 2px; color: #888; font-size: var(--fs-2xs);
-}
+.ed-subj-toggle { margin-right: 2px; }   /* 尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末） */
 .ed-subj-toggle.empty { visibility: hidden; }
 .ed-subj-toggle::before { content: '▶'; }
 .ed-subj-toggle.expanded::before { content: '▼'; }
 .ed-subj-row input[type="checkbox"] { margin: 0 6px 0 0; width: 14px; height: 14px; vertical-align: middle; cursor: pointer; }
-.ed-subj-children { padding-left: 18px; }
+.ed-subj-children { /* 缩进改走全站统一 .indent-2（18px），此处不再单写 padding */ }
 .ed-subj-foot {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0 0 22px; margin-top: 6px; border-top: 1px solid #C2E0FF;
+  padding: 8px 0 0 22px; margin-top: 6px; border-top: 1px solid var(--st-info-bd);
   font-size: var(--fs-xs); color: var(--ty-text);
 }
 .ed-subj-foot label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -1213,22 +1236,24 @@ select:not([class]),
 /* 最基础形态：整圈外框 + 内部网格线，collapse 共享边框 */
 /* ===================== 全局自适应列宽（全站表格统一生效） =====================
  *
- * 原理：只用了两条声明，取代了此前"逐表 colgroup + 手工 min-width"的整套做法。
- *   width: max-content → 表格宽度 = 内容所需宽度，浏览器自己算，永不被压缩
- *   min-width: 100%    → 内容窄于容器时仍铺满，视觉与以前一致（空表/窄表不变形）
- * 容器宽度不够时，由 .page.active 或 .grid-wrap 的 overflow-x:auto 横向滚动承接。
+ * 全站唯一标准，三个动作，零数值维护：
+ *   ① 铺满    ：width: 100%       —— 表格永远铺满容器
+ *   ② 自动列宽：table-layout: auto —— 每列先按自己的内容取自然宽度，页面不写任何列宽
+ *   ③ 补空白  ：铺满后多出来的空间，由浏览器在各列之间【按内容宽度比例】摊回
+ *               （即"按百分比补空白"，比例由内容决定，不需要手写百分比）
+ * 内容宽于容器时（如固定资产 31 列），表格自然超出并由 .grid-wrap 横向滚动承接。
  *
- * 为什么不再用「colgroup 固定宽 + 每张表手写 min-width」：
- *   1) 需为每张表计算并维护下限值，改一列就要同步改数字，极易漏改（已多次出错）
- *   2) fixed 布局下 width:100% 会把 colgroup 的像素宽当成比例重新分配，反而压缩
- *   3) 动态列表（多栏账 7+N 列）根本无法静态声明，只能靠 JS 补算
+ * 已废弃、不要再用的两种写法（都是列宽反复出问题的根源）：
+ *   ✗ 某一列 width:100%「独吞余量」→ 该列巨宽、其余列被压到极限
+ *     （实测：总账科目名称 690px vs 摘要 77px；资产负债表左右 614 vs 155 严重不对称）
+ *   ✗ 逐列固定 px（金额116/行次48/操作80…）→ 数值散落各页，同一类列在不同表宽窄不一
  *
- * 注意：max-content 下若不限制单元格宽度，长摘要/长名称会把表格撑到数千像素，
+ * 注意：auto 下若不限制单元格宽度，长摘要/长名称会把表格撑到数千像素，
  * 故下方配套了单元格 max-width + 省略号截断（见「单元格单行截断」）。
  */
 .grid {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
   font-family: var(--ty-font);   /* 全表统一字体（表头/正文一致） */
   table-layout: auto;
   /* separate + 0 间距：修复「border-collapse:collapse + position:sticky 表头」在 WebView 下的
@@ -1242,13 +1267,9 @@ select:not([class]),
   vertical-align: middle;
 }
 
-/* 以下几条既有规则特异性更高（0,2,0），会盖掉上面的 min-width:100%，
-   导致 .grid-wrap 内的表格不铺满容器。这里按同等特异性重新声明，确保全局生效。 */
-.grid-wrap .grid,
-.grid-wrap .pp-grid {
-  width: max-content;
-  min-width: 100%;
-}
+/* 【已删除】.grid-wrap .grid / .pp-grid 曾在此重新声明 width:max-content;
+   min-width:100%，用来盖掉更早的 width:auto 压制。现在全站只有一个列宽标准
+   （.grid 的 width:100% + table-layout:auto），不再需要按容器补声明。 */
 
 /* 单元格单行截断：给 max-content 设上限，避免长文本把表格撑得极宽。
    短内容（日期/编码/金额）远小于此值，不受影响；长内容截断为省略号。 */
@@ -1260,21 +1281,23 @@ select:not([class]),
   white-space: nowrap;
 }
 
-/* 名称列全局最小宽度下限：任何表的名称列都不会被 table-layout:auto 压到
-   仅容纳一个汉字（导致"销售费用"竖排）。极短不缩没，超宽仍由 .grid-wrap 横滚。
-   需要更宽名称列的表（如 #subjGrid 200px）用更高特异性覆盖即可。
-
-   【重要】此规则此前被误写在 .grid { } 块内部。CSS 嵌套语法下它会被解析成
-   ".grid .grid .col-name"（要求 .grid 内再套一层 .grid），实际永不匹配 —— 即本条
-   最小宽度从未生效，各表名称列仍会被压缩。而在不支持嵌套语法的旧 WebView 上，
-   该块自此处起的声明（table-layout/border-collapse/background/border 等）会被整段丢弃。
-   现将它移出块外，恢复为普通后代选择器 .grid .col-name。 */
-.grid .col-name { min-width: 120px; }
+/* 名称列最小宽度：统一由下方「全站表格列宽」约定的 .grid .col-name（140px）提供。
+   历史上此处另有一条 120px，与约定同角色却数值不同（且被约定按顺序覆盖成死规则），已删除。
+   名称列因此不会被 table-layout:auto 压到仅容纳一个汉字（"销售费用"竖排）；
+   极短不缩没，超宽仍由 .grid-wrap 横滚。需要更宽名称列的表见约定里的「例外清单」。 */
 
 /* 表头统一 token：全站表头高度 / 字号 / 内边距由这三处集中控制，任何表改一处即全站同步。
    对齐策略：默认居中；金额/数值列（.col-amt / .ta-r / .num）右对齐、操作列（.col-op）左对齐，
    即「按列类型统一」，跨页一致。 */
 :root { --grid-row-h: 37px; --th-fs: 14px; --grid-row-pad: 0 12px; }
+/* ============ 全站表格列对齐【唯一约定，改表先读这里】 ============
+ * 只有两类列，同一列的表头与内容使用同一个类（不依赖任何"默认居中"的隐含行为）：
+ *   ① 金额 / 数量 列      → 加 ta-r  → 表头与内容都「右」
+ *   ② 其余所有列          → 不加类  → 表头与内容都「左」（文本、日期、方向、行次、状态、操作…）
+ * 唯一例外：跨列分组表头（th[colspan]，如"期初余额"）居中。
+ * 兼容：历史类名 col-amt 视作金额列（与 ta-r 同义）；新代码一律只用 ta-r。
+ * 禁止再新增 col-no / col-center / num 之类对齐别名，也不要写内联 text-align。
+ * ================================================================== */
 /* 内部网格线：表头与单元格同色同线 */
 .grid th {
   height: var(--grid-row-h);
@@ -1285,12 +1308,49 @@ select:not([class]),
   color: var(--grid-text);
   font-weight: 400;
   font-size: var(--th-fs);
-  text-align: center;
+  text-align: left;                            /* 约定②：表头默认与内容一致（左） */
   white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 2;
 }
+/* 约定唯一例外：跨列分组表头居中 */
+.grid th[colspan] { text-align: center; }
+/* 跨行合并单元格（td[rowspan]）上下居中：这类单元格是"分组标签"（总账的科目编码/名称、
+   跨年校验的年份、体检表的检测项…），应当与它跨的那几行的整体高度居中。
+   ⚠️ 此前误判为"应与同组第一行顶对齐"写成 vertical-align: top，导致总账科目编码/名称
+   紧贴第一行、看上去整体偏上——已改回 middle（= 全站默认的上下居中）。 */
+.grid td[rowspan] { vertical-align: middle; }
+/* 金额/数量列的【表头】必须与内容同向（都右对齐）。
+   ⚠️ 此前只有一条通用 `.ta-r { text-align:right }`（0,1,0），特异性低于
+   `.grid th { text-align:left }`（0,1,1），于是账簿/凭证/资产等表的金额表头
+   实际渲染成左对齐，与同列右对齐的数字上下不齐（全站体检发现 61 列）。 */
+.grid th.ta-r,
+.grid th.col-amt,
+.grid th.col-amount { text-align: right; }
+
+/* ============ 全站表格列宽【唯一标准：页面一律不写列宽】 ============
+ * 列宽的全部规则就是上面 .grid 的三条（铺满 / 自动 / 按内容比例补空白），
+ * 这里不再定义任何列宽数值 —— 没有 token、没有角色宽度、没有例外清单。
+ *
+ * 各页只需给单元格打上「角色类」，宽度由内容自动决定：
+ *   col-check 复选框 / col-no 行次 / col-code 编码 / col-name 名称 /
+ *   col-summary 摘要 / col-amt(ta-r) 金额 / col-op 操作 / col-fill 长文本填充列
+ * 这些类现在只管「对齐」和「语义」，不再管宽度（宽度不区分角色，一律内容自适应）。
+ *
+ * 唯一例外：.voucher-grid（凭证录入）是固定版式单据，不走本标准，见该段。
+ * ====================================================================== */
+
+/* 吸收列（col-fill）：类名保留（页面仍在用它标记"信息量最大的长文本列"），
+ * 但【不再有任何宽度作用】—— 现在余量由所有列按内容比例共同分摊，不存在某一列独吞。
+ *
+ * 已知取舍（纯自动布局的必然结果，全站统一、不再为个别表开小灶）：
+ *   列少且内容都很短的表（操作日志、账套列表…）在宽屏上会被整体放大，
+ *   于是"三四个字"的列也会变宽。这是"自动列宽 + 按比例补空白"的代价，
+ *   换来的是：全站零列宽数值、任何页面都不需要维护列宽。 */
+
+/* 表尾空白列（col-spacer）、长文本列（col-fill）：类名保留，均不再有任何宽度作用。
+ * 现在全站只有一种分配方式：所有列按内容取自然宽，余量按内容比例摊回（见 .grid 标准）。 */
 
 .grid td {
   height: var(--grid-row-h);                             /* 与表头同高（token 统一） */
@@ -1351,9 +1411,9 @@ select:not([class]),
 .grid .grid-title .rpt-period {
   margin-top: 2px;
   font-size: var(--fs-2xs);
-  font-weight: normal;
+  font-weight: 400;
   letter-spacing: normal;
-  color: #888;
+  color: var(--ty-text-3);   /* 原写死 #888，走三级文字 token */
 }
 
 /* 【已删除：账簿表的 table-layout:fixed + width:100%】
@@ -1379,6 +1439,8 @@ select:not([class]),
  * 此前给 9 张账簿表单独写 white-space:nowrap。全局 `.grid td/th` 已统一处理，
  * 这里不再重复声明。 */
 .grid td.num input { text-align: right; }
+/* 初始余额表：金额输入框按约定①右对齐（.num 挂在 input 上、td 无类，故按表指定） */
+#openBody .inp { text-align: right; }
 
 .grid tfoot td {
   height: var(--grid-row-h);                              /* 与数据行同高，token 统一 */
@@ -1424,19 +1486,15 @@ select:not([class]),
   font-weight: 400;
 }
 /* 现金流量表 / 应交税金明细表明细项目（子项缩进） */
-.cf-sub { padding-left: 26px !important; color: var(--ty-text-2); }
-.cf-sub2 { padding-left: 14px !important; color: var(--ty-text); }
+.cf-sub { color: var(--ty-text-2); }   /* 缩进走全站统一 .indent-3（32px），原 padding-left:26px!important 已移除 */
+.cf-sub2 { color: var(--ty-text); }    /* 缩进走全站统一 .indent-2（18px），原 padding-left:14px!important 已移除 */
 
 /* ===== 报表标准类 .rpt-grid（全局一处定义，所有报表复用，自动同步格式） =====
    设计原则：只补充「铺满 + 最右占位美化」，**不重定义任何格子/边框**——
    格子线、外框、斑马纹、表头底色全部继承全局 .grid（已自带 border-collapse + td 右边线/下边线），
    因此与全局表格格式零冲突。
    使用方式：报表 <table> 直接挂 class="grid rpt-grid" 即可，无需再写任何 #id 特例。 */
-.rpt-grid {
-  width: 100%;            /* 铺满容器 */
-  min-width: 0;
-  table-layout: auto;     /* auto 布局：列宽按内容自适应后铺满，避免 fixed 在 colspan 表头下错乱 */
-}
+/* 铺满与列宽全部走全局 .grid 标准（原 width:100%/min-width:0/table-layout:auto 已删除） */
 /* 报表容器：不自己滚动，与 .grid-wrap 同理交给 .page.active 统一横滚 + 纵滚。
    （overflow-x:auto 会让 overflow-y:visible 被计算成 auto，容器变成无高度的滚动祖先，
    导致报表表头 position:sticky 失效。详见 .grid-wrap 处的说明。） */
@@ -1450,22 +1508,24 @@ select:not([class]),
 /* 列宽/对齐建议（auto 布局下为最小/建议宽，与全局 .grid 的字体/行高/边框完全解耦）：
    行次窄、金额列固定宽、名称列吸满剩余空间。
    这些 class（col-no/col-amt/col-name）由 Report.js 渲染时统一打上，与表 id 无关 → 自动同步。 */
-/* 报表网格线：与全局统一用 var(--grid-line)，消除报表专用色 #e4ecf4 */
-.rpt-grid td,
-.rpt-grid th { border-color: var(--grid-line); }
-.rpt-grid td { border-bottom: 1px solid var(--grid-line); border-right: 1px solid var(--grid-line); }
+/* 报表单元格网格线：与全局一致走 var(--grid-line)（消除报表专用色 #e4ecf4）。
+   ⚠️ 表头线【不再跟着一起改色】—— 全站表头线由 .grid th 统一用 --th-border / --th-border-r
+   （比表体线深一档，用于区分表头与正文）；报表此前把 th 也改成浅线，
+   导致报表表头线比其它所有表浅一格（全站体检发现）。 */
+.rpt-grid td { border-color: var(--grid-line); border-bottom: 1px solid var(--grid-line); border-right: 1px solid var(--grid-line); }
 
-.rpt-grid th.col-no,
-.rpt-grid td.col-no  { width: 64px;  min-width: 64px;  text-align: center; white-space: nowrap; }  /* 行次列居中 */
+/* 行次列：宽度走全站标准（自动），此处只保留 nowrap */
 .rpt-grid th.col-amt,
-.rpt-grid td.col-amt { width: 150px; min-width: 150px; white-space: nowrap; }
+.rpt-grid td.col-amt { white-space: nowrap; }  /* 宽度走全站标准 */
 .rpt-grid th.col-amt,
 .rpt-grid td.col-amt { text-align: right; }   /* 报表数字列整列右对齐（data-code=gbalance text-align:right） */
-.rpt-grid td.col-name{ width: auto; min-width: 120px; text-align: left; }
+.rpt-grid td.col-name{ text-align: left; }   /* 宽度与下限均走全局约定 */
 
-/* 报表金额单元格：字号与正文一致 14px（报表数据字不加粗）；对齐继承上方 col-amt 居中 */
+/* 报表表体字号：与全站其它表格一致（13px，走 .grid 的 --fs-sm），不再单独放大到 14px。
+   原规则：.rpt-grid td.ta-r / td.grp-amt { font-size: var(--fs-md) }（14px）——已删除，
+   表头仍按全站 token 用 14px（--th-fs），表体统一 13px。 */
 .rpt-grid td.ta-r,
-.rpt-grid td.grp-amt { font-size: var(--fs-md); }
+.rpt-grid td.grp-amt { white-space: nowrap; }   /* 只保留不换行（对齐与字号走全局） */
 
 /* 收支汇总表：直接复用全局 .grid 默认样式（自适应列宽、统一框线/底色），不另设特殊规则 */
 /* 分组小计标题行（流动资产：/营业收入：等）外观统一吃全局 .grid，此处不再重复定义 */
@@ -1487,14 +1547,14 @@ select:not([class]),
   line-height: 1.6;
 }
 .k-tip.info {
-  border-color: #d9dee5;
-  background: #f7f9fb;
+  border-color: var(--st-panel-bd);
+  background: var(--st-panel-bg);
   color: var(--ty-text-2);
 }
 .k-tip.warn, .bs-wip {
-  border-color: #f0ad4e;
-  background: #fff8ec;
-  color: #8a5a00;
+  border-color: var(--st-warn-bd);
+  background: var(--st-warn-bg);
+  color: var(--st-warn-fg);
 }
 
 /* 报表项目名（左对齐，供金额右对齐对照） */
@@ -1508,8 +1568,7 @@ select:not([class]),
 .ty-red { color: var(--ty-red); }
 
 /* 对齐与数字字体 */
-.ta-r { text-align: right; }
-.ta-c { text-align: center; }
+.ta-r, .col-amt, .col-amount { text-align: right; }   /* 约定①：金额/数量列（col-amt/col-amount 为历史同义类名） */
 
 /* 金额列：按标准，不用等宽字体，与正文同字体同字号，仅右对齐 */
 .mono { font-variant-numeric: tabular-nums; }
@@ -1524,14 +1583,11 @@ select:not([class]),
 .grid th.ta-r,
 .grid th.col-amt { white-space: nowrap; }
 
-/* 金额列最小宽度：保证千分位金额能完整放下（约 110px）；
-   窄屏由 .grid-wrap 横滚承接，而不是把数字压成两行。 */
-.grid th.col-amt,
-.grid td.col-amt { min-width: 110px; }
-
-/* 设置页「凭证字」和「账套管理」表：内容居中（id 精准选择，不影响其他表） */
-#vwGrid td, #vwGrid th,
-#bookGrid td, #bookGrid th { text-align: center; }
+/* 金额列宽度走全站列宽标准（内容自动；不在 CSS 里声明宽度）。
+ * ⚠️ 这里曾留下【悬挂选择器】`.grid th.col-amt,` 直接接在 `.link-del {` 之前 ——
+ * 两条选择器合并成一条 CSS 规则后，`.link-del` 的 color:red 也套到了金额列表头上，
+ * 全站所有金额列表头（利润表「本月金额/本年累计金额」、资产负债表「期末余额」…）都变成红色。
+ * 改这块时务必确认选择器与声明块成对，别把选择器留在注释旁边。 */
 
 .link-del {
   color: var(--ty-red);
@@ -1580,12 +1636,6 @@ select:not([class]),
 .asset-ops a:hover { text-decoration: underline; }
 
 /* 凭证分录行操作按钮（+ 📋 -） */
-.ops-cell {
-  background: #F0F6FF;
-  text-align: center;
-  vertical-align: middle;
-  width: 140px;
-}
 .row-ops {
   display: inline-flex;
   align-items: center;
@@ -1664,7 +1714,7 @@ select:not([class]),
 .voucher-btn .vb-sub { font-size: var(--fs-2xs); color: #8a9bb0; }
 .voucher-toolbar .btn-primary { background: var(--ty-btn); color: #fff; }
 .voucher-toolbar .btn-danger { color: var(--ty-red); border-color: var(--ty-red); }
-.voucher-toolbar .btn-danger:hover { background: #FCEDED; }
+.voucher-toolbar .btn-danger:hover { background: var(--st-danger-bg); }
 /* 说明：原 .btn-group + .btn-arrow 组合用于「按钮 + 下拉倒三角」，
    但查凭证页的审核/打印/导出/删除四个 ▾ 背后并无任何下拉菜单，属纯装饰且误导用户，
    已连同 HTML 一并移除。此处保留 .btn-group 供后续真正需要下拉的按钮复用。 */
@@ -1744,7 +1794,7 @@ select:not([class]),
   font-size: var(--fs-xs);
   color: var(--grid-text);
 }
-.vh-attach-item:hover { background: #f5f8fc; }
+.vh-attach-item:hover { background: var(--st-panel-bg2); }
 .vh-attach-name {
   flex: 1;
   overflow: hidden;
@@ -1792,16 +1842,18 @@ select:not([class]),
   height: var(--grid-row-h);
   font-size: var(--th-fs);
   vertical-align: middle;
-  text-align: center;
   background: var(--ty-th-bg);   /* 列标题浅蓝底，与全站表头同源（同吃 token，改一处全站同步） */
   /* 表头格子线与表体同色（覆盖全局 .grid th 的偏蓝边框），深浅粗细统一 */
   border-bottom: 1px solid var(--grid-line);
   border-right: 1px solid var(--grid-line);
 }
-/* 定宽列（与 1:1：序号70 摘要261 科目349 金额208×2 = 1096px） */
-.col-num { width: 70px; text-align: center; }
-.col-summary { width: 261px; }
-.col-account { width: 349px; }
+/* 定宽列（与 1:1：序号70 摘要261 科目349 金额208×2 = 1096px）。
+ * 作用域收进 .voucher-grid：这三个类是凭证录入表的专有列（fixed 布局的定宽拼图），
+ * 此前写成全局类，任何表一旦用上同名类就会被悄悄改宽 —— 是列宽的隐患源。
+ * （本表自 2026-09 起已排除在全站列宽标准之外，这段只作历史留档。） */
+.voucher-grid .col-num { width: 70px; text-align: center; }
+.voucher-grid .col-summary { width: 261px; }
+.voucher-grid .col-account { width: 349px; }
 /* 操作列已移除（按钮并入序列号列） */
 .col-action { display: none; }
 
@@ -2084,6 +2136,8 @@ select:not([class]),
   font-size: var(--fs-xs);
   border-bottom: 1px solid var(--ty-border);
 }
+/* hidden 属性优先（.open-check 自身不设 display，但显式声明更稳，与 .gl-filter-hint[hidden] 同款） */
+.open-check[hidden] { display: none; }
 
 .open-check.ok {
   color: var(--ty-green);
@@ -2181,7 +2235,7 @@ select:not([class]),
   padding-top: 10px;
   font-size: var(--fs-xs);
   line-height: 1.6;
-  color: var(--ty-text-weak, #888);
+  color: var(--ty-text-3);
   border-top: 1px solid #f0f0f0;
 }
 /* 记账员设置弹窗：醒目引导（提示填真实姓名） */
@@ -2271,7 +2325,7 @@ select:not([class]),
   gap: 0;
   padding: 8px 14px;
   border-bottom: 1px solid var(--ty-border);
-  background: var(--ty-bg-1);
+  background: var(--st-panel-bg);
 }
 .asset-cat-bar .cat-label { font-size: var(--fs-xs); color: var(--ty-text-2); margin-right: 10px; }
 .asset-cat-bar .cat-item {
@@ -2321,13 +2375,12 @@ select:not([class]),
 }
 .asset-grid-scroll thead th { position: sticky; top: 0; z-index: 2; }
 #assetGrid {
-  width: max-content;
   table-layout: auto;
   border: none;
 }
 /* 全局 .grid td/th 已统一 nowrap + 省略号截断，此处不再重复声明。
    操作列 / 凭证列左对齐，金额列右对齐（与 th 类一致） */
-#assetGrid td.col-check { text-align: center; }
+
 
 .modal-actions {
   display: flex;
@@ -2360,7 +2413,7 @@ select:not([class]),
 .calc-logic-box { width: 560px; max-width: calc(100vw - 32px); }
 .modal-title .modal-x {
   float: right; border: none; background: none; font-size: 20px; line-height: 42px;
-  color: var(--ty-text-weak); cursor: pointer; padding: 0;
+  color: var(--ty-text-3); cursor: pointer; padding: 0;
 }
 .modal-title .modal-x:hover { color: var(--ty-blue); }
 #surTaxCalcBody { padding: 14px 18px; max-height: 60vh; overflow: auto; font-size: var(--fs-sm); color: var(--ty-text); }
@@ -2382,17 +2435,17 @@ select:not([class]),
 .it-summary { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--ty-border); }
 .it-summary-label { color: var(--ty-text); white-space: nowrap; }
 .it-summary-val { font-weight: 400; min-width: 100px; text-align: right; }
-.it-summary-hint { color: var(--ty-text-weak); font-size: var(--fs-xs); white-space: nowrap; }
+.it-summary-hint { color: var(--ty-text-3); font-size: var(--fs-xs); white-space: nowrap; }
 .it-section-title { padding: 10px 18px 6px; font-weight: 400; color: var(--ty-text); border-top: 1px dashed var(--ty-border); margin-top: 2px; }
 .it-body { padding: 4px 0; }
 .it-row { display: flex; align-items: center; gap: 8px; padding: 5px 18px; line-height: 1.7; }
-.it-sub .it-label { color: var(--ty-text-weak); }
+.it-sub .it-label { color: var(--ty-text-3); }
 .it-label { flex: 0 0 auto; color: var(--ty-text); white-space: nowrap; }
 .it-right { flex: 1 1 auto; display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
 .it-val { min-width: 110px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ty-text); }
 .it-placeholder { color: var(--ty-text-3) !important; font-style: italic; font-size: var(--fs-xs); }
-.it-formula { color: var(--ty-text-weak); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.it-help { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; border: 1px solid var(--ty-border); color: var(--ty-text-weak); font-style: normal; font-size: var(--fs-2xs); cursor: help; vertical-align: middle; margin-left: 2px; }
+.it-formula { color: var(--ty-text-3); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.it-help { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; border: 1px solid var(--ty-border); color: var(--ty-text-3); font-style: normal; font-size: var(--fs-2xs); cursor: help; vertical-align: middle; margin-left: 2px; }
 
 /* 结账凭证模板设置弹窗（ty-modal：1134×675，左树右表单） */
 .settle-tmpl-box {
@@ -2414,7 +2467,7 @@ select:not([class]),
   width: 200px;
   flex: 0 0 200px;
   border-right: 1px solid var(--ty-border);
-  background: #f7f9fb;
+  background: var(--st-panel-bg);
   display: flex;
   flex-direction: column;
 }
@@ -2438,8 +2491,7 @@ select:not([class]),
 .settle-tmpl-node-group:hover { background: #eef2f7; }
 .settle-tmpl-arrow {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; font-size: var(--fs-xs); line-height: 1;
-  color: var(--ty-text-3); flex-shrink: 0; cursor: pointer;
+  flex-shrink: 0; cursor: pointer;   /* 尺寸/颜色统一到「展开折叠三角」唯一规范（见文末） */
   transition: transform 0.15s;
 }
 .settle-tmpl-list { list-style: none; margin: 0; padding: 0; }
@@ -2546,7 +2598,7 @@ select:not([class]),
   cursor: pointer;
   border-radius: 3px;
 }
-.settle-tmpl-del-btn:hover { background: rgba(var(--ty-red-rgb,220,38,38), 0.08); }
+.settle-tmpl-del-btn:hover { background: var(--st-danger-bg); }
 /* 启用开关（ty-switch 小号） */
 .settle-tmpl-switch {
   position: relative;
@@ -2710,11 +2762,23 @@ select:not([class]),
   border-radius: 4px;
   overflow-x: auto;
 }
+/* 宽度：填满弹窗主区（弹窗 1134 − 左侧模板树 200 − 主区内边距 56 ≈ 878px）。
+ * 此前写死 680px，右侧空出近 200px、列却挤在一起（科目列还被「余额：」提示再挤掉约 108px）。
+ * 窄屏保底 680px，超出由 .settle-tmpl-grid 的 overflow-x 横滚承接。 */
 .settle-tmpl-table {
-  width: 680px;
+  width: 100%;
+  min-width: 680px;
+  /* 列宽走全站统一标准（auto：内容自适应 + 余量按比例摊回）——本表不再声明任何列宽。
+   * 本表各格都是 width:100% 的输入框（对固有宽度的贡献约为 0），列宽因此稳定，
+   * 不会出现"边录入边挪列"的情况。 */
+  table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
 }
+/* fixed 布局下列宽由表头 width 决定，全局 `.grid td/th { max-width: 360px }`（为 auto 布局设的
+ * 内容上限）在这里会去钳住单元格，可能让列内出现空白。本表显式取消该上限。 */
+.settle-tmpl-table th,
+.settle-tmpl-table td { max-width: none; }
 /* 结账凭证模板表：行高 / 表头统一吃全局 .grid 规格（37px·14px·0 12px），无特例 */
 .settle-tmpl-table td {
   height: 37px;
@@ -2726,10 +2790,7 @@ select:not([class]),
   vertical-align: middle;
 }
 .settle-tmpl-table tbody tr:last-child td { border-bottom: none; }
-.settle-tmpl-table .col-op { width: 52px; text-align: center; }
-.settle-tmpl-table .col-summary { width: 140px; }
-.settle-tmpl-table .col-subject { width: 280px; }
-.settle-tmpl-table .col-dc { width: 56px; text-align: center; }
+/* 本表的列（操作/摘要/科目/方向/金额）宽度全部走全站标准，此处不再声明任何列宽 */
 .settle-tmpl-table .tmpl-dc-toggle {
   display: inline-block;
   cursor: pointer;
@@ -2740,6 +2801,21 @@ select:not([class]),
   user-select: none;
 }
 .settle-tmpl-table .tmpl-dc-toggle:hover { color: var(--ty-blue); background: #f0f7ff; }
+/* 科目列「余额：X」提示（信息同录凭证页的 .v-subj-bal，但这里是单行排布以适配 37px 行高）：
+ * 用一层 flex 包裹，输入框占满剩余宽度、提示靠右且不换行；无科目时（:empty）不占位。 */
+.settle-tmpl-table .tmpl-subj-wrap { display: flex; align-items: center; }
+.settle-tmpl-table .tmpl-subj-wrap .tmpl-cell-inp { flex: 1 1 auto; min-width: 0; }
+.tmpl-subj-bal {
+  flex: none;
+  margin-left: 4px;
+  max-width: 108px;
+  font-size: 11.5px;
+  color: var(--ty-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tmpl-subj-bal:empty { display: none; }
 
 /* 方向 popover */
 .tmpl-dc-popover {
@@ -2762,7 +2838,10 @@ select:not([class]),
 .tmpl-dc-opt:hover { background: #f0f7ff; color: var(--ty-blue); }
 .tmpl-dc-opt.active { color: var(--ty-blue); font-weight: 500; }
 /* 金额设置列：显示当前金额 + 蓝色「设置」链接 */
-.settle-tmpl-table .col-amount { width: 152px; text-align: right; }
+.settle-tmpl-table .col-amount { text-align: right; }   /* 宽度走全站标准 */
+/* 比例 / 金额输入框右对齐：原先写在各行内联 style 里，统一收到 CSS（对齐不写内联） */
+.settle-tmpl-table .tmpl-cell-inp[data-f="ratio"],
+.settle-tmpl-table .tmpl-cell-inp[data-f="amount"] { text-align: right; }
 .settle-tmpl-table .col-amount .tmpl-amount-val {
   margin-right: 8px;
   font-family: ui-monospace, Menlo, monospace;
@@ -2822,7 +2901,7 @@ select:not([class]),
   border-radius: 0;
 }
 .tmpl-cell-inp:hover,
-.tmpl-cell-sel:hover { background: #f5f8fc; }
+.tmpl-cell-sel:hover { background: var(--st-panel-bg2); }
 .tmpl-cell-inp:focus,
 .tmpl-cell-sel:focus {
   background: #fff;
@@ -2860,7 +2939,7 @@ select:not([class]),
 .settle-tmpl-rule-tip {
   margin-top: 6px;
   padding: 10px 14px;
-  background: #f7f9fb;
+  background: var(--st-panel-bg);
   border: 1px solid var(--ty-border);
   border-radius: 4px;
   font-size: var(--fs-xs);
@@ -3016,7 +3095,7 @@ select:not([class]),
 .backup-item { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--ty-border); border-radius: 4px; margin-bottom: 8px; font-size: var(--fs-sm); }
 .btn-xs { padding: 3px 10px; font-size: var(--fs-xs); }
 .btn-danger-xs { padding: 3px 10px; font-size: var(--fs-xs); color: var(--ty-red); border-color: var(--ty-red); background: #fff; }
-.btn-danger-xs:hover { background: #FCEDED; }
+.btn-danger-xs:hover { background: var(--st-danger-bg); }
 .book-ops .btn + .btn { margin-left: 6px; }
 
 /* ============================================================
@@ -3406,7 +3485,7 @@ select:not([class]),
 /* 存量卡片右上角期间（如"2026年08期"）：固定显示最新期末，稳定占位不漂移 */
 .drag-header .card-period {
   font-size: var(--fs-xs);
-  color: var(--ty-text-muted, #8c9a9f);
+  color: var(--ty-text-3);
   padding-right: var(--card-pad-x);
   white-space: nowrap;
   flex-shrink: 0;         /* 不收缩 */
@@ -3481,7 +3560,7 @@ select:not([class]),
   min-width: 0;
 }
 .formula-row .formula-cell .formula-label {
-  color: var(--ty-text-muted, #8c9a9f);
+  color: var(--ty-text-3);
   font-size: 10px;
   line-height: 1.2;
   white-space: nowrap;
@@ -3505,7 +3584,7 @@ select:not([class]),
   color: #3b82f6;
 }
 .formula-row .formula-sep {
-  color: var(--ty-text-muted, #8c9a9f);
+  color: var(--ty-text-3);
   font-size: var(--fs-2xs);
   font-weight: 500;
   line-height: 2.5;
@@ -4284,11 +4363,11 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   overflow: auto;
   padding: 6px 16px 16px;
 }
-.asset-cat-scroll .grid { min-width: 720px; }
+/* 弹窗内表格：列宽走全站标准（原按表写死的 min-width 720/900 已删除），
+   需要横向滚动时由外层 .asset-cat-scroll 承接 */
 /* 工资凭证模板弹窗内容较宽：加宽弹窗并允许横向滚动 */
 #salaryTplModal .modal-box { width: 1000px; max-width: calc(100vw - 32px); }
 #salaryTplModal .asset-cat-scroll { overflow: auto; }
-#salaryTplModal .grid { min-width: 900px; }
 
 /* 工具栏 */
 .settle-operate {
@@ -5183,7 +5262,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
     z-index: auto !important;
   }
   .grid tbody tr:hover td { background: #fff !important; }
-  .grid .ta-r, .grid .ta-c { text-align: right; }
+  .grid .ta-r, .grid .col-amt { text-align: right; }
   /* 数字着色（红字）在打印时保留但转深灰，避免浅红看不清 */
   .grid .amt-neg, .grid .num-neg { color: #000 !important; }
   /* 行勾选列 / 操作列在打印时隐藏 */
@@ -5258,9 +5337,9 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .link-voucher:hover,
 .link-gl-subject:hover { text-decoration: underline; }
 
-/* 利润表金额 -> 总账 跳转链接 */
-.pl-amt-link { color: var(--ty-blue); text-decoration: none; cursor: pointer; }
-.pl-amt-link:hover { text-decoration: underline; }
+/* 报表金额 -> 总账 跳转链接（利润表 / 资产负债表共用同一套样式：蓝色即可点） */
+.pl-amt-link, .bs-amt-link { color: var(--ty-blue); text-decoration: none; cursor: pointer; }
+.pl-amt-link:hover, .bs-amt-link:hover { text-decoration: underline; }
 /* 首页卡片金额可点击跳总账：默认保持深色（看板宜克制，不整片变蓝），
    鼠标悬停才提示「此处可点」 */
 .amt-link { cursor: pointer; }
@@ -5268,8 +5347,8 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 /* 总账“仅显示”提示条（位于期间旁） */
 .gl-filter-hint {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px; background: #FFF8E1; border: 1px solid #F0D58C;
-  border-radius: 4px; font-size: var(--fs-sm); color: #8a5a00; white-space: nowrap;
+  padding: 4px 10px; background: var(--st-tip-bg); border: 1px solid var(--st-tip-bd);
+  border-radius: 4px; font-size: var(--fs-sm); color: var(--st-tip-fg); white-space: nowrap;
 }
 .gl-filter-hint[hidden] { display: none; }
 .gl-filter-clear { color: var(--ty-blue); text-decoration: none; cursor: pointer; margin-left: 2px; }
@@ -5287,23 +5366,30 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   text-overflow: ellipsis;
 }
 .gl-seg {
-  padding-left: 18px !important;
+  /* 摘要列的段行（期初余额/本期合计/本年累计）不再缩进：与表头「摘要」齐平 */
   color: var(--ty-text-2);
   white-space: nowrap;
 }
+/* 明细账 / 多栏账的段行（同样是期初余额/本期合计/本年累计）与总账统一为次要文字色。
+   此前 .dl-seg / .ml-seg 这两个类在 CSS 里【完全没有定义】，段行是纯黑正文，
+   与总账的灰字段行不一致（全站体检发现）。 */
+.dl-seg,
+.ml-seg { color: var(--ty-text-2); }
+/* 期间/方向列不再单独居中：按「列对齐约定」与同列表头及明细账保持一致（左）。
+ * 此前这里 text-align:center，导致表头「期间/方向」左、内容居中，同列上下不齐。 */
 .gl-period {
-  text-align: center;
   color: var(--ty-text-3);
   font-size: var(--fs-xs);
   white-space: nowrap;
 }
 .gl-dir {
-  text-align: center;
   font-weight: 500;
   white-space: nowrap;
 }
-/* 段行外观统一吃全局 .grid（白底灰线、常规字重），此处仅保留缩进布局 */
-.dl-seg td:nth-child(3) { padding-left: 14px; }
+/* 总账三行结构的科目编码/名称是 rowspan="3" 的合并单元格，顶对齐规则已上移到
+   全站统一的 `.grid td[rowspan] { vertical-align: top }`（见「列对齐」约定块），此处不再单表声明。 */
+/* 段行外观统一吃全局 .grid（白底灰线、常规字重）。
+ * 摘要列的段行（期初余额/本期合计/本年累计）原先缩进 14px，现与表头「摘要」齐平。 */
 /* 多栏账（多栏帐.md，动态分栏列）
  *
  * 【曾出错的原因 —— 改动前务必先读】
@@ -5324,20 +5410,18 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .ml-grid { table-layout: auto; }   /* 宽度由全局 .grid 的 max-content + min-width:100% 决定 */
 /* 分栏列父表头（「借方」）：跨全部分栏列的第二行表头上一层，居中 + 略加粗细以示层级 */
 .ml-col-parent { text-align: center; font-weight: 500; }
-/* 分栏列头（下级科目编码 + 名称）：至少 110px，且长名称截断 + title 悬停查看全文，
-   避免长科目名把列撑得极宽。 */
+/* 分栏列头（下级科目编码 + 名称）：长名称截断 + title 悬停查看全文。
+   列宽走全站标准（原写死的 110px 已删除）。 */
 .ml-col-head {
-  min-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ml-seg td:nth-child(3) { padding-left: 14px; }
+/* 多栏账段行摘要同样与表头齐平（原缩进 14px 已移除） */
 /* 科目余额表树形显示（默认一级收拢，行首小三角逐级展开；与科目页同款交互） */
 #tbBody .tb-arrow,
-#tbBody .tb-arrow-leaf { margin-left: 2px; }
-#tbBody .tb-arrow { cursor: pointer; color: var(--ty-text-2); user-select: none; border-radius: 3px; }
-#tbBody .tb-arrow:hover { color: var(--ty-blue); background: #eef4fd; }
+#tbBody .subj-arrow-leaf { margin-left: 2px; }
+/* #tbBody .tb-arrow 的尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末），此处不再单独定义 */
 /* 合计行（.tb-total）外观统一吃全局 .grid，此处不再重复定义 */
 /* 长科目名：nowrap 保持单行（风格），超出用省略号截断，完整名称见 td 的 title 提示。
    配合 colgroup 给名称列留出的宽度生效；缺 overflow/ellipsis 时超长文本会溢出到相邻金额列。 */
@@ -5346,6 +5430,14 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 科目余额表对齐规格：
+ * 科目编码 / 科目名称 两列（表头 + 内容）左对齐；
+ * 其余金额列：表头居中（继承 .grid th 默认）、内容右对齐（.ta-r，保持默认不动）。 */
+/* 科目余额表表头是两行（第 1 行：科目编码/科目名称 + 四个分组；第 2 行：借方/贷方）。
+ * 两行原本都是 top:0 → 完全重叠，第二行被第一行盖住（现象：借方/贷方那行「不冻结」）。
+ * 让第二行吸附在第一行下方即可；行高即 --grid-row-h（全局 box-sizing:border-box，
+ * th 的 height 就是整行高，无需再加边框增量）。前两列 rowspan=2，不参与第二行。 */
+#tbGrid thead tr:nth-child(2) th { top: var(--grid-row-h); }
 
 
 .page-title { font-size: var(--fs-lg); font-weight: 400; color: var(--ty-text); margin: 0; }
@@ -5376,12 +5468,12 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .aux-main { flex: 1 1 auto; min-width: 0; }
 
 /* 通用数据表格：外观统一吃全局 .grid（白底灰线、常规字重），此处仅表头左对齐差异 + 字号 + 内容修饰 */
-.std-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.std-table .mono { font-family: var(--mono); }
+.std-table { border-collapse: separate; border-spacing: 0; }   /* 宽度走全局 .grid 标准 */
+.std-table .mono { /* 原 font-family: var(--mono) 已删：--mono 从未定义，且全站设计是"数字与正文同字体"，等宽只靠 tabular-nums */ }
 /* 表格空数据提示（全局统一：居中灰字；以 td.empty-hint 书写以覆盖 .grid td 单元格规则） */
-td.empty-hint { text-align: center; color: #999; padding: 24px; }
+td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   /* 文字色走 token */
 .std-table .num { text-align: right; }
-.std-table .center { text-align: center; }
+
 .std-table .num input.input-sm { text-align: right; }
 .page-tip { color: var(--ty-text-3); font-size: var(--fs-xs); margin: 4px 0 14px; line-height: 1.6; }
 
@@ -5482,12 +5574,12 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 .card .chk-row,
 .card .radio-row { padding-left: 106px; }
 /* 首页「云备份」提醒条：7 天节流、可忽略；平时不显示 */
-.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: #FFF7E0; border: 1px solid #F1DCA0; border-radius: 6px; font-size: var(--fs-sm); color: #7A5B00; line-height: 1.5; }
+.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: #FFF7E0; border: 1px solid #F1DCA0; border-radius: 6px; font-size: var(--fs-sm); color: var(--st-hl-fg); line-height: 1.5; }
 .home-backup-tip a { cursor: pointer; white-space: nowrap; }
 .home-backup-tip #btnBackupTipGo { color: #B07E00; font-weight: 600; text-decoration: underline; }
-.home-backup-tip #btnBackupTipGo:hover { color: #7A5B00; }
+.home-backup-tip #btnBackupTipGo:hover { color: var(--st-hl-fg); }
 .home-backup-tip #btnBackupTipClose { margin-left: auto; font-size: var(--fs-xl); color: #C9A24B; line-height: 1; }
-.home-backup-tip #btnBackupTipClose:hover { color: #7A5B00; }
+.home-backup-tip #btnBackupTipClose:hover { color: var(--st-hl-fg); }
 /* 从首页提醒跳转而来时，「云备份」按钮短暂高亮 */
 .btn-hl { outline: 2px solid #F0B429; outline-offset: 1px; }
 /* 卡片标题栏（含右侧操作按钮）：字号统一 14px（整数，与 sys-tab 同级） */
@@ -5498,37 +5590,37 @@ td.empty-hint { text-align: center; color: #999; padding: 24px; }
 /* card-head 右侧操作链接（蓝色文字，非按钮） */
 .card-head-op { margin-left: 10px; color: var(--ty-blue); font-size: var(--fs-sm); cursor: pointer; user-select: none; }
 .card-head-op:hover { text-decoration: underline; }
-.card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--ty-bg-2); }
+.card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--st-panel-bg); }
 .card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .card-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ty-text-3); white-space: nowrap; }
 .card-filter label input, .card-filter label select { height: 30px; min-width: 140px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-sm); color: var(--ty-text); background: #fff; }
 .card-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--ty-border-2); }
 .log-count { font-size: var(--fs-xs); color: var(--ty-text-3); }
 /* 反结账行红标（审计高危醒目） */
-tr.log-row-reopen { background: #FCEDED; }
+tr.log-row-reopen { background: var(--st-danger-bg); }
 tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
-.log-reason { margin-top: 4px; padding: 2px 6px; background: #FCEDED; border-left: 3px solid var(--ty-red); color: var(--ty-red); font-size: var(--fs-xs); }
+.log-reason { margin-top: 4px; padding: 2px 6px; background: var(--st-danger-bg); border-left: 3px solid var(--st-danger-fg); color: var(--st-danger-fg); font-size: var(--fs-xs); }
 /* 凭证回收站：简洁表格，黑字、还原蓝、宽度自适应 */
 .recycle-table { width: 100%; border-collapse: collapse; color: #000; font-size: var(--fs-sm); }
-.recycle-table th, .recycle-table td { border: 1px solid #e5e5e5; padding: 6px 10px; text-align: left; color: #000; font-weight: normal; }
+.recycle-table th, .recycle-table td { border: 1px solid var(--grid-line); padding: 6px 10px; text-align: left; color: var(--grid-text); font-weight: 400; }   /* 回收站表：线色/字色/字重走全站 token（原写死 #e5e5e5 / #000） */
 .recycle-table a.link-toggle { color: #1677ff; }
 /* 凭证增删改审计明细展开区 */
 .log-audit-toggle { margin-left: 8px; font-size: var(--fs-xs); }
-.log-audit-detail { margin-top: 6px; padding: 8px; background: var(--ty-bg-2); border: 1px solid var(--ty-border-2); border-radius: 4px; }
+.log-audit-detail { margin-top: 6px; padding: 8px; background: var(--st-panel-bg); border: 1px solid var(--ty-border-2); border-radius: 4px; }
 .log-audit-detail .la-section { margin-bottom: 6px; }
 .log-audit-detail .la-section:last-child { margin-bottom: 0; }
 .log-audit-detail .la-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: var(--fs-2xs); margin-right: 6px; }
-.log-audit-detail .la-before { background: #FCEDED; color: var(--ty-red); }
-.log-audit-detail .la-after { background: #E6F4E6; color: #2E7D32; }
-.log-audit-detail .la-pre { margin: 4px 0 0; padding: 6px 8px; background: #fff; border: 1px solid var(--ty-border-2); border-radius: 3px; font-family: var(--ty-mono-font, ui-monospace, Menlo, monospace); font-size: var(--fs-2xs); white-space: pre; line-height: 1.5; color: var(--ty-text); }
+.log-audit-detail .la-before { background: var(--st-danger-bg); color: var(--st-danger-fg); }
+.log-audit-detail .la-after { background: var(--st-ok-bg); color: var(--st-ok-fg); }
+.log-audit-detail .la-pre { margin: 4px 0 0; padding: 6px 8px; background: #fff; border: 1px solid var(--ty-border-2); border-radius: 3px; font-family: ui-monospace, Menlo, monospace; font-size: var(--fs-2xs); white-space: pre; line-height: 1.5; color: var(--ty-text); }
 /* 结构化动作标签 */
 .act-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 500; margin-left: 4px; vertical-align: middle; }
-.act-tag-create { background: #E6F4E6; color: #2E7D32; }       /* 新增-绿 */
-.act-tag-update { background: #FFF8E1; color: #F57C00; }      /* 修改-橙 */
-.act-tag-delete { background: #FCEDED; color: var(--ty-red); }  /* 删除-红 */
-.act-tag-restore { background: #E3F2FD; color: #1565C0; }     /* 还原-蓝 */
-.act-tag-purge { background: #ECEFF1; color: #455A64; }       /* 清除-灰 */
-.act-tag-reopen { background: #FCEDED; color: var(--ty-red); }  /* 反结账-红 */
+.act-tag-create { background: var(--st-ok-bg); color: var(--st-ok-fg); }       /* 新增-绿 */
+.act-tag-update { background: var(--st-tip-bg); color: var(--ty-orange); }      /* 修改-橙 */
+.act-tag-delete { background: var(--st-danger-bg); color: var(--st-danger-fg); }  /* 删除-红 */
+.act-tag-restore { background: var(--st-info-bg); color: var(--st-info-fg); }     /* 还原-蓝 */
+.act-tag-purge { background: var(--st-panel-bg); color: var(--ty-text-2); }       /* 清除-灰 */
+.act-tag-reopen { background: var(--st-danger-bg); color: var(--st-danger-fg); }  /* 反结账-红 */
 /* 资金体检报告样式 */
 .health-summary { border-radius: 4px; margin: 12px 0; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; padding: 12px; }
 .card-head .modal-x {
@@ -5548,17 +5640,9 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .tag-warn { background: #f9ab00; color: #fff; }
 .issue-text { color: var(--ty-text-3); font-size: var(--fs-xs); line-height: 1.5; }
 /* 风险检测穿透链接 */
-.link-jump { display: inline-block; padding: 2px 8px; border-radius: 3px; background: var(--ty-btn-2, #e8f0fe); color: var(--ty-primary, #1a73e8); font-size: var(--fs-xs); cursor: pointer; text-decoration: none; white-space: nowrap; }
-.link-jump:hover { background: var(--ty-btn-2-hover, #d2e3fc); }
-/* 操作日志表列宽：时间列最宽，操作人/类型/模块适中，详情自适应填满 */
-#logTable th:nth-child(1) { min-width: 160px; }
-#logTable th:nth-child(2) { min-width: 70px; }
-#logTable th:nth-child(3) { min-width: 80px; }
-#logTable th:nth-child(4) { min-width: 80px; }
-#sysEventsTable th:nth-child(1) { min-width: 160px; }
-#sysEventsTable th:nth-child(2) { min-width: 70px; }
-#sysEventsTable th:nth-child(3) { min-width: 90px; }
-#sysEventsTable th:nth-child(4) { min-width: 70px; }
+.link-jump { display: inline-block; padding: 2px 8px; border-radius: 3px; background: var(--st-info-bg); color: var(--ty-blue); font-size: var(--fs-xs); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.link-jump:hover { background: var(--st-info-bd); }
+/* 操作日志 / 系统事件表：列宽走全站标准（原按列序写死的 min-width 已删除） */
 .log-pager { display: flex; align-items: center; gap: 8px; }
 .log-page { font-size: var(--fs-xs); color: var(--ty-text-3); min-width: 56px; text-align: center; }
 .log-pagesize { height: 28px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-xs); padding: 0 4px; }
@@ -5601,7 +5685,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-batch-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 108px; padding: 4px 0;
   background: #fff; border: 1px solid var(--ty-border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, .12); z-index: 80; }
 .orig-batch-menu a { display: block; padding: 7px 14px; color: #333; text-decoration: none; font-size: var(--fs-sm); white-space: nowrap; }
-.orig-batch-menu a:hover { background: var(--ty-bg); color: var(--ty-primary); }
+.orig-batch-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
 .btn.ty-dropdown { position: relative; padding-right: 24px; }
 .btn.ty-dropdown::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; }
@@ -5627,15 +5711,14 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-tree .tree-parent { font-weight: 400; }
 .orig-tree .tree-parent .tree-arrow { display: inline-block; width: 16px; vertical-align: middle;
   border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--ty-text-3); }
-.orig-tree .tree-child { padding-left: 32px; color: var(--ty-text-2); font-weight: 400; }
+.orig-tree .tree-child { color: var(--ty-text-2); font-weight: 400; }   /* 缩进走全站统一 .indent-3（32px），原 padding-left:32px 已移除 */
 
 .orig-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-.orig-grid { border-radius: 0; flex: 1; min-height: 0; display: block; overflow: auto; min-width: 100%; }
+.orig-grid { border-radius: 0; flex: 1; min-height: 0; display: block; overflow: auto; }
 .orig-grid thead th { position: sticky; top: 0; z-index: 2; }
-.orig-grid .col-check { width: 34px; text-align: center; }
-.orig-grid .col-op { width: 110px; white-space: nowrap; }
-.orig-grid .col-amt { width: 120px; text-align: right; }
-.orig-grid .col-center { text-align: center; }
+/* 复选框列 / 金额列 / 操作列的宽度全部走全站标准，此处只保留必要行为 */
+.orig-grid .col-op { white-space: nowrap; }
+
 .orig-grid tbody td.col-op .op-link { color: var(--ty-blue); margin-right: 8px; cursor: pointer; }
 .orig-grid tbody td.col-op .op-link:hover { text-decoration: underline; }
 .orig-grid tbody td.col-op .op-more { color: var(--ty-text-3); cursor: pointer; }
@@ -5657,9 +5740,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .years .year-val { font-size: 22px; font-weight: 400; color: var(--ty-text); min-width: 64px; text-align: center; }
 .year-arrow { cursor: pointer; width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
 .year-arrow:hover { background: #f0f2f5; }
-.tri { display: inline-block; width: 0; height: 0; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
-.tri-left { border-right: 10px solid var(--ty-text-2); }
-.tri-right { border-left: 10px solid var(--ty-text-2); }
+/* .tri / .tri-left / .tri-right 已删除：全站无任何引用（死规则） */
 
 /* el-button 轻量复刻（/Element 蓝底主按钮） */
 .el-button { height: 32px; padding: 0 16px; border: 1px solid var(--ty-border); border-radius: 4px; background: #fff; color: var(--ty-text); font-size: var(--fs-sm); cursor: pointer; }
@@ -5676,18 +5757,14 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
    与全站其他报表一致铺满；表格本身 .pp-grid 已设 width:100%。 */
 /* 同样不设 overflow：与全局 .grid-wrap 一致，交给 .page.active 统一滚动（表头吸顶 + 无双滚动条） */
 #page-expense-detail > .grid-wrap { display: block; width: 100%; max-width: 100%; overflow: visible; }
-/* #edGrid 已挂 class="grid pp-grid"，外观吃全局 .grid，此处仅列宽 */
-.ed-grid .col-op { width: 80px; text-align: center; }
-.ed-grid .col-code { width: 90px; text-align: center; }
-.ed-grid .col-name { text-align: left; min-width: 180px; } /* 费用明细表名称列：月份列动态增长，下限比全局更宽；文本不换行由 .ed-tree-text 锁定 */
+/* #edGrid 已挂 class="grid pp-grid"：外观与列宽全部走全局标准，此处只保留对齐。 */
+.ed-grid .col-name { text-align: left; }
 .ed-grid .col-name .ed-tree-text { display: inline-block; white-space: nowrap; max-width: none; } /* 名称文本绝对不换行，列宽按最长内容撑开 */
-.ed-grid .col-amt { text-align: right; min-width: 110px; }
 
 .ed-tree-row { background: #fff; }
 .ed-tree-row:hover { background: var(--ty-blue-2); }
 .ed-tree-row .col-name { white-space: nowrap; } /* 整格不换行；子项 ed-tree-text 锁死，缩进/箭头 inline-block 横排 */
-.ed-tree-arrow { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-right: 6px; cursor: pointer; color: var(--ty-text-2); font-size: var(--fs-xs); }
-.ed-tree-spacer { display: inline-block; width: 14px; margin-right: 6px; }
+/* .ed-tree-arrow / .ed-tree-spacer 的尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末） */
 .ed-foot-row { background: #fff7e6; font-weight: 400; }
 .ed-foot-row .col-name { color: var(--ty-text); }
 
@@ -5822,11 +5899,11 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .backup-toolbar .tool-link { cursor: pointer; font-size: var(--fs-sm); }
 
 /* 明细账科目分组行（全部科目模式下区分各科目段） */
+/* 科目分组标题行：不再用蓝底（全站表内只有「表头」一种浅蓝底色，其余表都没有块状蓝底），
+   改用与总账段行/报表合计行同一套区分语言：上边框 + 次要文字色 + 常规字重。 */
 .dl-subj-head td {
-  background: #F2F7FD;
-  font-weight: 600;
-  color: var(--ty-text);
-  border-top: 1px solid var(--ty-border-2);
+  color: var(--ty-text-2);
+  border-top: 1px solid var(--grid-line);
 }
 
 /* 科目范围选择器浮层（输入框 + 科目树） */
@@ -5883,7 +5960,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 #page-detail-ledger.active { display: flex; }
 .dl-layout { flex: 1; min-height: 0; display: flex; align-items: stretch; overflow: hidden; }
 .dl-main { flex: 1; min-width: 0; display: block; overflow: auto; }
-.dl-main .grid { width: 100%; min-width: 100%; }
+/* .dl-main .grid 的铺满/列宽走全局标准，此处不再声明 */
 .dl-main table thead th { position: sticky; top: 0; z-index: 2; }
 
 /* 右侧面板：宽度随科目名最长行自适应（fit-content），超长封顶 300px；
@@ -5932,26 +6009,35 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   padding: 2px 6px;
   cursor: pointer; white-space: nowrap;
   color: var(--ty-text);
-  padding-left: calc(4px + (var(--lv, 1) - 1) * 14px);
+  /* 层级缩进由 indent-N 类提供（见下方「树形层级缩进」）。
+     原写法 padding-left: calc(4px + (var(--lv,1)-1)*14px) 因 JS 从未设置 --lv，
+     恒取兜底值 1 → 所有层级都是 4px（树形层级不缩进），故改为类。 */
 }
+/* ---------- 树形层级缩进（全站统一）----------
+   类名即层级：渲染时按深度加 indent-1…indent-5；一层 14px、起点 4px。
+   超过 5 级沿用第 5 级（当前最深为明细账科目树 4 级，够用）。
+   两种选择器都要写：
+     .indent-N        —— 非表格树（.dl-tn 行、左树 li、下拉子级 div）
+     .grid .indent-N  —— 表格单元格上的缩进（报表子项 td），需压过 .grid td 的内边距
+   数值集中在 --ind-N，改一处全站同步。 */
+:root { --ind-1: 4px; --ind-2: 18px; --ind-3: 32px; --ind-4: 46px; --ind-5: 60px; }
+.indent-1, .grid .indent-1 { padding-left: var(--ind-1); }
+.indent-2, .grid .indent-2 { padding-left: var(--ind-2); }
+.indent-3, .grid .indent-3 { padding-left: var(--ind-3); }
+.indent-4, .grid .indent-4 { padding-left: var(--ind-4); }
+.indent-5, .grid .indent-5 { padding-left: var(--ind-5); }
 .dl-tn:hover { background: var(--ty-blue-2, #EDF4FF); }
 .dl-tn-parent { font-weight: 500; }
-.dl-arrow {
-  flex: 0 0 12px; width: 12px; text-align: center;
-  color: var(--ty-text-2); font-size: 10px; cursor: pointer;
-}
+/* .dl-arrow 的尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末） */
 .dl-code {
   flex: 0 0 auto; color: var(--ty-text-3);
   font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
 }
 .dl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 当前科目：金色选中 */
-.dl-cur { background: #FFF3C4; color: #7A5B00; }
-.dl-cur .dl-code { color: #A47600; }
-.dl-cur:hover { background: #FFE9A8; }
-/* 搜索命中：浅蓝背景 + 左竖线 */
-.dl-hit { background: #F0F6FF; box-shadow: inset 2px 0 0 var(--ty-blue); }
-.dl-hit:hover { background: #E2EEFF; }
+.dl-cur { background: var(--st-hl-bg); color: var(--st-hl-fg); }
+.dl-cur .dl-code { color: var(--st-hl-fg); }
+.dl-cur:hover { background: var(--st-hl-bd); }
 .dl-hide { display: none; }
 
 /* 收起态：仅保留一条窄把，中间是「向左展开」图标 */
@@ -5989,31 +6075,36 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   .dl-main { overflow: visible; }
 }
 
-/* ============ 树形展开三角（全站统一尺寸/手感） ============
- * 覆盖：科目页 #subjBody、明细账快速切换树 .dl-arrow、费用明细表内 .ed-tree-arrow、
- *       费用明细科目弹层 .ed-subj-toggle、原始凭证分类树 .orig-tree 父级三角。
- * 口径：12px 实心 ▶/▼（比正文小一档、比原 10px 明显，不过分抢眼）+ 18×18 点击区。
- * 只统一外观与点击手感，不改动各页默认展开策略与点击语义（各页树语义不同，保持原状最稳）。
- * 说明：以下选择器与原规则同特异性，靠位置在后覆盖尺寸。
+/* ============ 展开/折叠三角【全站唯一外观规范，改三角先读这里】 ============
+ * 覆盖：科目表 #subjBody、科目余额表 #tbBody、明细账快速切换树 .dl-arrow、
+ *       费用明细表内 .ed-tree-arrow、费用明细科目弹层 .ed-subj-toggle、
+ *       原始凭证分类树 .orig-tree 父级三角、结算模板科目组 .settle-tmpl-arrow。
+ * 口径（唯一，2026-09 定）：
+ *   盒 12×12px、字号 10px 的实心 ▶（折叠）/ ▼（展开），由 store.subjectArrowHTML 统一输出；
+ *   默认色 --ty-text-3（浅灰，不抢眼）；鼠标悬停【只变蓝】，不加底色；
+ *   无子级用 .subj-arrow-leaf / .ed-tree-spacer 占位（同宽），保证同级文字对齐。
+ * 各处原有的尺寸与颜色（科目表 18px、科目余额表 12px、dl 10px、ed 14px、settle 18px、
+ *   悬停浅蓝底 #eef4fd、.ed-subj-toggle 的 #888 等）已全部删除，只保留各自的间距（margin）。
+ * 只统一外观与点击手感，不改各页默认展开策略与点击语义。
  */
-#subjBody .subj-arrow,
-#subjBody .subj-arrow-leaf,
-#tbBody .tb-arrow,
-#tbBody .tb-arrow-leaf,
-.dl-arrow,
-.ed-tree-arrow,
-.ed-subj-toggle,
-.orig-tree .tree-parent .tree-arrow {
+#subjBody .subj-arrow, #subjBody .subj-arrow-leaf,
+#tbBody .tb-arrow, #tbBody .subj-arrow-leaf,
+.dl-arrow, .ed-tree-arrow, .ed-subj-toggle,
+.orig-tree .tree-parent .tree-arrow,
+.settle-tmpl-arrow, .ed-tree-spacer {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; font-size: var(--fs-xs); line-height: 1;
+  width: 12px; height: 12px; font-size: 10px; line-height: 1;
+  color: var(--ty-text-3);
   vertical-align: middle; text-align: center;
 }
-.dl-arrow { flex: 0 0 18px; }                 /* 行内 flex 项：同步放宽基准宽度 */
+.dl-arrow { flex: 0 0 12px; }                 /* 行内 flex 项：与盒宽同步 */
 .ed-tree-arrow { margin-right: 6px; }         /* 保留原缩进间隙 */
-.ed-tree-spacer { width: 18px; }              /* 末级占位与箭头同宽，保证名称列对齐 */
-.dl-arrow, .ed-tree-arrow, .ed-subj-toggle:not(.empty), .tb-arrow, #subjBody .subj-arrow { cursor: pointer; }
-.dl-arrow:hover, .ed-tree-arrow:hover, .ed-subj-toggle:not(.empty):hover, .tb-arrow:hover { color: var(--ty-blue); }
-/* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加。
+.ed-tree-spacer { width: 12px; margin-right: 6px; }   /* 末级占位与箭头同宽，保证名称列对齐 */
+#subjBody .subj-arrow, #tbBody .tb-arrow, .dl-arrow, .ed-tree-arrow,
+.ed-subj-toggle:not(.empty), .settle-tmpl-arrow { cursor: pointer; }
+#subjBody .subj-arrow:hover, #tbBody .tb-arrow:hover, .dl-arrow:hover,
+.ed-tree-arrow:hover, .ed-subj-toggle:not(.empty):hover, .settle-tmpl-arrow:hover { color: var(--ty-blue); }
+/* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加，
    统一为字符三角（border 画法作废）；不设 color，避免覆盖「选中行白色三角」规则。 */
 .orig-tree .tree-parent .tree-arrow { border: none; margin-right: 2px; }
 

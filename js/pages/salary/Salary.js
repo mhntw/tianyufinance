@@ -41,7 +41,9 @@ const periodRangeValue = H.periodRangeValue;
       var pid = e.target.getAttribute('data-id');
       var r0 = S.removePayroll(pid);
       if (!r0.ok) return showToast(r0.msg, 'error');
-      renderSalary($('salPeriodEnd').value); showToast('已删除');
+      // 期间取自统一入口 periodRangeValue('salPeriod')：本页没有 salPeriodEnd 元素
+      // （原写法 $('salPeriodEnd').value 恒为 null 解引用 → 删工资必抛「系统异常」）
+      renderSalary(periodRangeValue('salPeriod')); showToast('已删除');
     }
   });
   $('btnNewSalary').addEventListener('click', function () {
@@ -53,17 +55,17 @@ const periodRangeValue = H.periodRangeValue;
     S.addPayroll({ month: $('sMonth').value, name: $('sName').value, category: $('sCat').value || '', should: U.num($('sShould').value), real: U.num($('sReal').value) });
     $('salaryModal').classList.remove('show');
     $('sName').value = ''; $('sShould').value = ''; $('sReal').value = ''; $('sCat').value = '';
-    renderSalary($('salPeriodEnd').value); showToast('工资已保存');
+    renderSalary(periodRangeValue('salPeriod')); showToast('工资已保存');
   });
   $('btnGenSalaryAccrual').addEventListener('click', function () {
-    var month = $('salPeriodEnd').value || currentPeriod();
+    var month = periodRangeValue('salPeriod') || currentPeriod();
     var r = S.genPayrollVoucher(month, 'accrual');
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已生成计提工资凭证 ' + r.voucher.word + '-' + r.voucher.no);
     syncAll();
   });
   $('btnGenSalaryPay').addEventListener('click', function () {
-    var month = $('salPeriodEnd').value || currentPeriod();
+    var month = periodRangeValue('salPeriod') || currentPeriod();
     var r = S.genPayrollVoucher(month, 'pay');
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已生成发放工资凭证 ' + r.voucher.word + '-' + r.voucher.no);
@@ -90,7 +92,7 @@ const periodRangeValue = H.periodRangeValue;
     list.forEach(function (r) {
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td>' + r.month + '</td><td>' + r.cat + '</td><td class="ta-c">' + r.n + '</td>' +
+        '<td>' + r.month + '</td><td>' + r.cat + '</td><td>' + r.n + '</td>' +
         '<td class="ta-r mono">' + money(r.should) + '</td><td class="ta-r mono">' + money(r.real) + '</td>';
       tb.appendChild(tr);
     });
@@ -184,18 +186,19 @@ const periodRangeValue = H.periodRangeValue;
     list.forEach(function (t, i) {
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td><input class="inp" data-id="' + t.id + '" data-f="name" value="' + esc(t.name) + '" style="width:150px"/></td>' +
-        '<td><select class="inp" data-id="' + t.id + '" data-f="vchType" style="width:110px">' +
+        // 列宽走全站标准：单元格内输入框一律撑满所在列（宽度由表格自动分配）
+        '<td><input class="inp" data-id="' + t.id + '" data-f="name" value="' + esc(t.name) + '"/></td>' +
+        '<td><select class="inp" data-id="' + t.id + '" data-f="vchType">' +
           '<option value="计提工资"' + (t.vchType === '计提工资' ? ' selected' : '') + '>计提工资</option>' +
           '<option value="发放工资"' + (t.vchType === '发放工资' ? ' selected' : '') + '>发放工资</option>' +
         '</select></td>' +
-        '<td><input class="inp" data-id="' + t.id + '" data-f="category" value="' + esc(t.category) + '" style="width:110px"/></td>' +
-        '<td><select class="inp" data-id="' + t.id + '" data-f="word" style="width:70px">' +
+        '<td><input class="inp" data-id="' + t.id + '" data-f="category" value="' + esc(t.category) + '"/></td>' +
+        '<td><select class="inp" data-id="' + t.id + '" data-f="word">' +
           wordOpts.replace('value="' + esc(t.word) + '"', 'value="' + esc(t.word) + '" selected') +
         '</select></td>' +
-        '<td class="center"><input type="checkbox" data-id="' + t.id + '" data-f="enabled"' + (t.enabled ? ' checked' : '') + '/></td>' +
+        '<td><input type="checkbox" data-id="' + t.id + '" data-f="enabled"' + (t.enabled ? ' checked' : '') + '/></td>' +
         '<td><input class="inp" data-id="' + t.id + '" data-f="memo" value="' + esc(t.memo || '') + '"/></td>' +
-        '<td class="center"><a class="link-del" data-id="' + t.id + '">删除</a></td>';
+        '<td><a class="link-del" data-id="' + t.id + '">删除</a></td>';
       tb.appendChild(tr);
     });
     if (!list.length) tb.innerHTML = '<tr><td colspan="7" class="empty-hint">暂无凭证模板</td></tr>';

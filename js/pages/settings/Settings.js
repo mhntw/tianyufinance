@@ -502,10 +502,11 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     tbEl = tbEl || $('yearBoundaryTableInPage');
     if (!tbEl) return;
     if (!yearBoundaries || !yearBoundaries.length) {
-      tbEl.innerHTML = '<thead><tr><th>校验结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:var(--ty-green)">✓ 无跨年差异，所有年度期初与上年期末完全一致</td></tr></tbody>';
+      tbEl.innerHTML = '<thead><tr><th>校验结果</th></tr></thead><tbody><tr><td class="empty-hint" style="color:var(--ty-green)">✓ 无跨年差异，所有年度期初与上年期末完全一致</td></tr></tbody>';
       return;
     }
-    var html = '<thead><tr><th style="width:16%">年份</th><th style="width:22%">科目编码</th><th style="width:18%">上年期末</th><th style="width:18%">本年期初</th><th style="width:14%">差异</th><th style="width:12%">差异率</th></tr></thead><tbody>';
+    // 列宽走全站标准（原表头内联 width:16%/22%/18%… 已删除，改由内容自动 + 按比例补空白）
+    var html = '<thead><tr><th>年份</th><th>科目编码</th><th class="ta-r">上年期末</th><th class="ta-r">本年期初</th><th class="ta-r">差异</th><th class="ta-r">差异率</th></tr></thead><tbody>';
     yearBoundaries.forEach(function (b) {
       var diffs = b.allDiffs || b.samples || [];
       if (!diffs.length) {
@@ -519,7 +520,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         var diffRate = d.prevEnd !== 0 ? (Math.abs(d.diff / d.prevEnd) * 100).toFixed(1) + '%' : '—';
         html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
         if (i === 0) {
-          html += '<td rowspan="' + diffs.length + '" class="grp-label" style="vertical-align:top">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';
+          html += '<td rowspan="' + diffs.length + '" class="grp-label">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';
         }
         html += '<td class="mono">' + esc(d.code) + (d.name ? ' ' + esc(d.name) : '') + '</td>';
         html += '<td class="mono ta-r">' + num(d.prevEnd).toFixed(2) + '</td>';
@@ -614,10 +615,11 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     }
     if (!tbEl) return;
     if (!r.checks || !r.checks.length) {
-      tbEl.innerHTML = '<thead><tr><th>检测结果</th></tr></thead><tbody><tr><td class="empty-hint" style="padding:24px;text-align:center;color:var(--ty-green)">✓ 未发现风险点，账套数据健康</td></tr></tbody>';
+      tbEl.innerHTML = '<thead><tr><th>检测结果</th></tr></thead><tbody><tr><td class="empty-hint" style="color:var(--ty-green)">✓ 未发现风险点，账套数据健康</td></tr></tbody>';
       return;
     }
-    var html = '<thead><tr><th style="width:18%">检测项</th><th style="width:8%">等级</th><th style="width:30%">明细</th><th style="width:34%">说明</th><th style="width:10%">操作</th></tr></thead><tbody>';
+    // 列宽走全站标准（原表头内联 width:18%/8%/30%/34%/10% 已删除）
+    var html = '<thead><tr><th>检测项</th><th>等级</th><th>明细</th><th>说明</th><th>操作</th></tr></thead><tbody>';
     r.checks.forEach(function (c) {
       var sev = c.severity === 'high' ? '<span class="tag tag-stop">高危</span>'
         : (c.severity === 'medium' ? '<span class="tag tag-warn">中危</span>' : '<span class="tag">低危</span>');
@@ -625,8 +627,8 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       items.forEach(function (it, i) {
         html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
         if (i === 0) {
-          html += '<td rowspan="' + items.length + '" class="grp-label" style="vertical-align:top">' + esc(c.title) + '<br><span class="muted">(' + items.length + ' 项)</span></td>';
-          html += '<td rowspan="' + items.length + '" style="vertical-align:top">' + sev + '</td>';
+          html += '<td rowspan="' + items.length + '" class="grp-label">' + esc(c.title) + '<br><span class="muted">(' + items.length + ' 项)</span></td>';
+          html += '<td rowspan="' + items.length + '">' + sev + '</td>';
         }
         var detail = '';
         var jump = '';
@@ -654,7 +656,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         }
         html += '<td>' + detail + '</td>';
         html += '<td class="issue-text">' + esc(it.issue || '') + '</td>';
-        html += '<td class="ta-c">' + jump + '</td>';
+        html += '<td>' + jump + '</td>';
         html += '</tr>';
       });
     });

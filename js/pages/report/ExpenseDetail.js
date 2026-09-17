@@ -119,7 +119,7 @@ function buildEDSubjectPop() {
       const hasChildren = n.children && n.children.length;
       const isExpanded = expanded.has(n.code) || !hasChildren;
       const toggleCls = hasChildren ? (isExpanded ? 'expanded' : '') : 'empty';
-      const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children">${walk(n.children)}</div>` : '';
+      const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
       return `<div class="ed-subj-node" data-code="${n.code}">
         <div class="ed-subj-row">
           <span class="ed-subj-toggle ${toggleCls}"></span>
@@ -441,10 +441,12 @@ function renderEDGrid(months, roots, totals, opts) {
 
   const colCount = 2 + months.length + (opts.showYearTotal ? 1 : 0) + (opts.showRatio ? 2 : 0);
 
-  // 表头：标题行收口到全局 setRptHead；列头行挂 edColHead（操作列已去掉，展开箭头在名称列内）
+  // 表头：标题行收口到全局 setRptHead；列头行挂 edColHead
+  // 列名按全站口径写全称「科目编码 / 科目名称」（原简写「编码 / 名称」）。
+  // 展开三角放在【科目编码列】的代码前，与科目余额表一致（原在名称列内，与余额表不一致）。
   const periodText = `${monthLabel(opts.start)} 至 ${monthLabel(opts.end)}`;
   head.innerHTML = '<tr class="grid-title" id="edTitleRow"></tr><tr id="edColHead"></tr>';
-  let colHtml = '<th class="col-code">编码</th><th class="col-name">名称</th>';
+  let colHtml = '<th class="col-code">科目编码</th><th class="col-name">科目名称</th>';
   months.forEach(m => { colHtml += `<th class="col-amt">${monthLabel(m)}</th>`; });
   if (opts.showYearTotal) colHtml += `<th class="col-amt">${months[0] ? months[0].split('-')[0] : ''}年合计</th>`;
   if (opts.showRatio) {
@@ -484,8 +486,8 @@ function renderEDGrid(months, roots, totals, opts) {
         ratioCells = `<td class="col-amt">${mom}</td><td class="col-amt">${yoy}</td>`;
       }
       rows.push(`<tr class="ed-tree-row" data-level="${n.level}">
-        <td class="col-code">${n.code ? `<a href="#" class="link-gl-subject" data-code="${n.code}">${n.code}</a>` : ''}</td>
-        <td class="col-name">${indent}${arrow}<span class="ed-tree-text">${name}</span></td>
+        <td class="col-code">${arrow}${n.code ? `<a href="#" class="link-gl-subject" data-code="${n.code}">${n.code}</a>` : ''}</td>
+        <td class="col-name">${indent}<span class="ed-tree-text">${name}</span></td>
         ${amountCells}${yearCell}${ratioCells}
       </tr>`);
       if (expanded && hasChildren) pushRows(n.children, depth + 1);

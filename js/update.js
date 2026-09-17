@@ -97,6 +97,29 @@
     openUrl(assetUrl || releaseUrl || REPO_RELEASE);
   }
 
+  // 在关于卡常驻一个可点击的「下载 vX →」入口，避免只依赖一闪而过的 toast
+  function surfaceDownload(latest, asset) {
+    var chk = document.getElementById('aboutCheckUpdate');
+    if (chk) {
+      chk.textContent = '下载 v' + latest.tag + ' →';
+      chk.style.cursor = 'pointer';
+      chk.onclick = function () { triggerDownload(asset ? asset.url : null, latest.url); };
+    }
+  }
+
+  // 让“发现新版本”提示点击后真正触发下载并收起 toast
+  function bindToastDownload(asset, latest) {
+    var tEl = document.getElementById('toast');
+    if (!tEl) return;
+    tEl.style.cursor = 'pointer';
+    tEl.onclick = function () {
+      tEl.onclick = null;
+      tEl.style.cursor = '';
+      tEl.className = 'toast';
+      triggerDownload(asset ? asset.url : null, latest.url);
+    };
+  }
+
   function checkUpdateManual() {
     var toast = window.showToast;
     if (toast) toast('正在检查更新…', '', 1500);
@@ -119,17 +142,10 @@
           return;
         }
         var asset = pickAsset(latest.assets);
+        surfaceDownload(latest, asset);
         if (toast) {
           toast('发现新版本 v' + latest.tag + '，点击下载 →', 'success', 0);
-          var tEl = document.getElementById('toast');
-          if (tEl) {
-            tEl.style.cursor = 'pointer';
-            tEl.onclick = function () {
-              tEl.onclick = null;
-              tEl.style.cursor = '';
-              triggerDownload(asset ? asset.url : null, latest.url);
-            };
-          }
+          bindToastDownload(asset, latest);
         } else {
           triggerDownload(asset ? asset.url : null, latest.url);
         }
@@ -156,18 +172,11 @@
         } catch (e) {}
 
         var asset = pickAsset(latest.assets);
+        surfaceDownload(latest, asset);
         var toast = window.showToast;
         if (toast) {
           toast('发现新版本 v' + latest.tag + '，点击下载 →', 'success', 0);
-          var tEl = document.getElementById('toast');
-          if (tEl) {
-            tEl.style.cursor = 'pointer';
-            tEl.onclick = function () {
-              tEl.onclick = null;
-              tEl.style.cursor = '';
-              triggerDownload(asset ? asset.url : null, latest.url);
-            };
-          }
+          bindToastDownload(asset, latest);
         }
         try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify({ t: Date.now(), version: latest.tag })); } catch (e) {}
       });

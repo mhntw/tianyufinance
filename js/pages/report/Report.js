@@ -12,8 +12,9 @@ const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
 const moneyRed = H.moneyRed || function (n) {
+  // 负数必须带负号（与金蝶一致）：只染红而丢掉负号会把负值误显示为正数。
   var s = money(Math.abs(n));
-  return n < 0 ? '<span class="ty-red">' + s + '</span>' : s;
+  return n < 0 ? '<span class="ty-red">-' + s + '</span>' : s;
 };
 const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
@@ -78,7 +79,7 @@ function renderBs(month) {
   function pushGroup(g) {
     aRows.push({ grp: g.title, end: g.subEnd, year: g.subYear });
     g.items.forEach(function (it) {
-      aRows.push({ label: it.label, end: it.end, year: it.year });
+      aRows.push({ label: it.label, end: it.end, year: it.year, codes: it.codes, minus: it.minus });
     });
   }
   pushGroup(G.assetCurrent);
@@ -88,7 +89,7 @@ function renderBs(month) {
   function pushLiaGroup(g) {
     lRows.push({ grp: g.title, end: g.subEnd, year: g.subYear });
     g.items.forEach(function (it) {
-      lRows.push({ label: it.label, end: it.end, year: it.year });
+      lRows.push({ label: it.label, end: it.end, year: it.year, codes: it.codes, minus: it.minus });
     });
   }
   pushLiaGroup(G.liaCurrent);
@@ -96,6 +97,20 @@ function renderBs(month) {
   lRows.push({ grp: '负债合计', end: bs.totalLiability, year: G.liaCurrent.subYear + G.liaNonCurrent.subYear });
   pushLiaGroup(G.equity);
   lRows.push({ grp: '所有者权益合计', end: bs.totalEquity, year: G.equity.subYear });
+  /* 期末余额单元格：带真实科目编码的明细行可点，跳总账下钻。
+   * 不绑的三种情况（口径与利润表一致）：
+   *   ① 合计/小计行（只有 grp，没有 codes）—— 计算行不绑；
+   *   ② 未配置科目的明细行（如「其他流动资产」codes 为空）—— 无科目可去；
+   *   ③ 金额为 0 的行 —— 点进去没有内容，避免误点。
+   * 抵减项（minus，如固定资产净值的 1602 累计折旧）一并带入跳转集合，
+   * 否则该行数值（1601 − 1602）无法在总账里对上。
+   * 年初余额列不绑：跳过去需落到总账「期初余额」行，而总账按期间定位，本期不做。 */
+  function bsEndCell(row) {
+    var codes = [].concat(row.codes || [], row.minus || []);
+    if (!codes.length || Math.abs(row.end) < 0.005) return amtCell(row.end);
+    return '<td class="ta-r"><a href="#" class="bs-amt-link" data-codes="' + codes.join(',') + '">' +
+           moneyRed(row.end) + '</a></td>';
+  }
   var max = Math.max(aRows.length, lRows.length);
   // 行次（资产负债表：资产侧 1..N、负债及所有者权益侧 N+1.. 整体连续编号）
   var noA = 0, noL = aRows.length;
@@ -104,19 +119,19 @@ function renderBs(month) {
     var tr = document.createElement('tr');
     if (a && a.grp !== undefined) {
       noA += 1;
-      tr.innerHTML = '<td class="grp-label">' + a.grp + '</td><td class="ta-c">' + noA + '</td>' + amtCell(a.end, 'grp-amt') + amtCell(a.year, 'grp-amt');
+      tr.innerHTML = '<td class="grp-label">' + a.grp + '</td><td>' + noA + '</td>' + amtCell(a.end, 'grp-amt') + amtCell(a.year, 'grp-amt');
     } else if (a) {
       noA += 1;
-      tr.innerHTML = '<td class="bs-name">' + a.label + '</td><td class="ta-c">' + noA + '</td>' + amtCell(a.end) + amtCell(a.year);
+      tr.innerHTML = '<td class="bs-name">' + a.label + '</td><td>' + noA + '</td>' + bsEndCell(a) + amtCell(a.year);
     } else {
       tr.innerHTML = '<td></td><td></td><td></td><td></td>';
     }
     if (l && l.grp !== undefined) {
       noL += 1;
-      tr.innerHTML += '<td class="grp-label">' + l.grp + '</td><td class="ta-c">' + noL + '</td>' + amtCell(l.end, 'grp-amt') + amtCell(l.year, 'grp-amt');
+      tr.innerHTML += '<td class="grp-label">' + l.grp + '</td><td>' + noL + '</td>' + amtCell(l.end, 'grp-amt') + amtCell(l.year, 'grp-amt');
     } else if (l) {
       noL += 1;
-      tr.innerHTML += '<td class="bs-name">' + l.label + '</td><td class="ta-c">' + noL + '</td>' + amtCell(l.end) + amtCell(l.year);
+      tr.innerHTML += '<td class="bs-name">' + l.label + '</td><td>' + noL + '</td>' + bsEndCell(l) + amtCell(l.year);
     } else {
       tr.innerHTML += '<td></td><td></td><td></td><td></td>';
     }
@@ -124,8 +139,8 @@ function renderBs(month) {
   }
   var totals = document.createElement('tr');
   totals.className = 'grp-row';
-  totals.innerHTML = '<td>资产总计</td><td class="ta-c">' + (noA + 1) + '</td>' + amtCell(bs.totalAsset) + '<td></td>' +
-                     '<td>负债和所有者权益总计</td><td class="ta-c">' + (noL + 1) + '</td>' + amtCell(bs.totalAll) + '<td></td>';
+  totals.innerHTML = '<td>资产总计</td><td>' + (noA + 1) + '</td>' + amtCell(bs.totalAsset) + '<td></td>' +
+                     '<td>负债和所有者权益总计</td><td>' + (noL + 1) + '</td>' + amtCell(bs.totalAll) + '<td></td>';
   tb.appendChild(totals);
 
   // 恒等式差额提示：资产 ≠ 负债+权益 时说明原因（数据如实呈现，不掩盖）
@@ -159,6 +174,24 @@ function renderBs(month) {
   } else {
     wip.style.display = 'none';
   }
+}
+
+// 资产负债表金额点击 -> 跳总账并定位对应科目（仅带真实科目编码的明细行可点，合计行不绑，
+// 与利润表 __plAmtJumpBound 同一套做法）。期间取页面期间控件的结束期间（单期口径）。
+// 顺带说明：首页「总资产」卡片走的是跳本表定位，再由本表行金额下钻总账，形成
+//     首页指标 → 资产负债表（定位本项目行）→ 点金额 → 总账明细
+// 的完整下钻链，与利润表那条链同构。
+if (!globalThis.__bsAmtJumpBound) {
+  globalThis.__bsAmtJumpBound = true;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('.bs-amt-link');
+    if (!a) return;
+    e.preventDefault();
+    var codes = (a.getAttribute('data-codes') || '').split(',').filter(Boolean);
+    if (!codes.length) return;
+    var month = periodRangeValue('bsPeriod');
+    if (globalThis.__glJumpTo) globalThis.__glJumpTo(codes, month);
+  });
 }
 
 // 资产负债表导出：与 renderBs 同源取数（S.balanceSheet），构造对照式 Excel（资产|行次|期末|年初 | 负债权益|行次|期末|年初）
@@ -234,7 +267,7 @@ function renderPl(month) {
         : moneyRed(v);
     }
     tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + r.label +
-                   '</td><td class="ta-c">' + no + '</td>' +
+                   '</td><td>' + no + '</td>' +
                    '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.cur) + '</td>' +
                    '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.ytd) + '</td>';
     tb.appendChild(tr);
@@ -362,10 +395,12 @@ function renderCf(month) {
   function row(cls, name, num, amt, y, bold) {
     var tr = document.createElement('tr');
     tr.className = cls || '';
-    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'ty-red' : 'ty-green');
-    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'ty-red' : 'ty-green');
+    // 用色约定（全站报表统一）：只有负数标红，正数走默认色。
+    // 此前这里写的是 amt<0 ? ty-red : ty-green —— 正数一律染绿，与利润表/资产负债表口径不一致。
+    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'ty-red' : '');
+    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'ty-red' : '');
     tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + name + '</td>' +
-      '<td class="ta-c">' + (num === '' ? '' : num) + '</td>' +
+      '<td>' + (num === '' ? '' : num) + '</td>' +
       '<td class="' + amtCls + '">' + money(amt) + '</td>' +
       '<td class="' + yCls + '">' + money(y) + '</td>';
     tb.appendChild(tr);
@@ -379,7 +414,7 @@ function renderCf(month) {
     // 大类标题行（无行次、无金额）
     var grp = document.createElement('tr');
     grp.className = 'grp-row';
-    grp.innerHTML = '<td class="grp-label">' + g.title + '</td><td class="ta-c"></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>';
+    grp.innerHTML = '<td class="grp-label">' + g.title + '</td><td></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>';
     tb.appendChild(grp);
     // 流入明细
     g.subs.forEach(function (id) {
@@ -469,11 +504,13 @@ function renderTx(month) {
   tx.rows.forEach(function (r) {
     var tr = document.createElement('tr');
     if (r.level === 0) tr.className = 'grp-row';
-    var nameCls = r.level === 2 ? 'cf-sub' : (r.level === 1 ? 'cf-sub2' : '');
-    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'ty-red' : 'ty-green');
-    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'ty-red' : 'ty-green');
+    // 层级缩进走全站统一尺度：一级 indent-2(18px)、二级 indent-3(32px)
+    var nameCls = r.level === 2 ? 'cf-sub indent-3' : (r.level === 1 ? 'cf-sub2 indent-2' : '');
+    // 用色约定（全站报表统一）：只有负数标红，正数走默认色
+    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'ty-red' : '');
+    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'ty-red' : '');
     tr.innerHTML = '<td class="' + nameCls + '">' + r.name + '</td>' +
-      '<td class="ta-c">' + (r.level === 2 ? r.rowNum : '') + '</td>' +
+      '<td>' + (r.level === 2 ? r.rowNum : '') + '</td>' +
       '<td class="' + amtCls + '">' + money(r.cur) + '</td>' +
       '<td class="' + yCls + '">' + money(r.ytd) + '</td>';
     tb.appendChild(tr);

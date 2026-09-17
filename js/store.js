@@ -1169,15 +1169,18 @@
       return count > 0;
     },
 
-    // 展开/折叠箭头 HTML（统一用文字 ▶▼，打印友好）
+    // 展开/折叠箭头 HTML（统一用文字 ▶▼，打印友好）—— 全站树形三角的唯一出口
     // hasKids: 是否有子科目；isOpen: 当前展开态（true=▼展开 / false=▶收起）
     // 返回：<span> 可点击三角 HTML，或占位 span（叶节点）
+    // 注：data-code 与 data-c 同时输出且同值 —— 各页点击委托读的属性名不统一
+    // （科目表/科目余额表读 data-code，费用明细表读 data-c），只输出一个会导致
+    // 另一处取不到 code（费用明细表点三角展不开）。二者同值，取哪个都对。
     subjectArrowHTML: function (code, hasKids, isOpen, extraCls) {
       if (!hasKids) return '<span class="subj-arrow-leaf"></span>';
       var cls = extraCls ? extraCls : 'subj-arrow';
       cls += isOpen ? '' : ' collapsed';
       var title = isOpen ? '收起下级科目' : '展开下级科目';
-      return '<span class="' + cls + '" data-code="' + code + '" title="' + title + '">' +
+      return '<span class="' + cls + '" data-code="' + code + '" data-c="' + code + '" title="' + title + '">' +
         (isOpen ? '▼' : '▶') + '</span>';
     },
     // 科目编码 → 当前名称（显示层唯一入口）。
@@ -3220,7 +3223,10 @@
         var e = 0, y = 0;
         (it.codes || []).forEach(function (c) { e += endBal(c); y += yearBal(c); });
         (it.minus || []).forEach(function (c) { e -= endBal(c); y -= yearBal(c); });
-        return { label: it.label, end: e, year: y };
+        // codes/minus 一并带出：报表页面据此提供「点金额跳总账」下钻。
+        // 抵减项（如固定资产净值 = 1601 − 1602）也一并带上，跳过去能同时看到
+        // 资产与其累计折旧，否则净值无法在总账里对上。
+        return { label: it.label, end: e, year: y, codes: it.codes || [], minus: it.minus || [] };
       }
       // 资产负债表项目规则：优先读账套 state.reportRules.balanceSheet（配置化），
       // 缺失时回退内置默认（与改造前硬编码等价，兼容异常账套）。
@@ -3880,6 +3886,48 @@
       var remainingBase = Math.max(0, base - accumulated);
       return remainingBase / remainingMonths;
     },
+    /* 某期间是否已存在折旧凭证 —— 「计提折旧」的防重复入账守卫。
+     * 识别口径（两条都刻意不依赖凭证 kind：外部导入的金蝶凭证没有 kind）：
+     *   期间内存在一张凭证，其中有【贷方】分录落在「累计折旧科目」上。
+     *   累计折旧科目的识别取三种并集，任一命中即可（科目码体系随账套/准则而变，只靠码相等太脆）：
+     *     ① 系统角色科目（subjectRole('ACC_DEPR')）
+     *     ② 各卡片自定义的累计折旧科目（fa.accDeprAcct）
+     *     ③ 分录名称含「累计折旧」，或科目码以①/②为前缀（末级子目）
+     * 命中返回凭证字号（如 '记-53'），未命中返回 ''。
+     * 【为什么只判贷方、不再判对方费用科目】曾按「贷 累计折旧 + 借 折旧费用科目」双条件判定，
+     * 结果实测漏判：金蝶账套的折旧费用科目是 5401006，与角色科目「管理费用」对不上，
+     * 导致守卫形同虚设。而「贷 累计折旧」本身已足够精确 —— 清理凭证是【借】累计折旧（方向相反），
+     * 天然不会命中。宁可偶发误拦（用户可手工入账），也不能漏拦导致重复计提。
+     * 【为什么必须挡】迁移账套的折旧凭证本来就在账里 —— 实测绅蓝之星 2024-09~2026-08
+     * 每月一张「借 折旧费用 / 贷 1602 累计折旧」，再计提一次 = 同一笔折旧入账两次，
+     * 1602 累计折旧翻倍、账实不符。 */
+    deprVoucherIn: function (month) {
+      var self = this;
+      var depCodes = {};
+      var roleSubject = this.subjectRole('ACC_DEPR');
+      if (roleSubject && roleSubject.code) depCodes[String(roleSubject.code)] = 1;
+      (this.state.fixedAssets || []).forEach(function (fa) {
+        if (fa.accDeprAcct) depCodes[String(fa.accDeprAcct)] = 1;
+      });
+      var keys = Object.keys(depCodes);
+      function isAccDeprCredit(e) {
+        if (num(e.cr) <= 0) return false;
+        var c = String(e.code);
+        if (depCodes[c]) return true;
+        if (String(e.name || '').indexOf('累计折旧') >= 0) return true;
+        for (var i = 0; i < keys.length; i++) {
+          if (keys[i] && c.indexOf(keys[i]) === 0) return true;
+        }
+        return false;
+      }
+      var hit = '';
+      (this.state.vouchers || []).forEach(function (v) {
+        if (hit) return;
+        if (String(v.date || '').slice(0, 7) !== month) return;
+        if ((v.entries || []).some(isAccDeprCredit)) hit = (v.word || '记') + '-' + (v.no != null ? v.no : '');
+      });
+      return hit;
+    },
     // 【冻结】计提折旧：幂等（重复计提不产生额外凭证）由 tools/verify_e2e_snapshot.js ② 守护，
     // 凭证借贷平衡由不变量 I1 兜底。纯可读性改动不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑 verify_e2e_snapshot.js 与 verify_invariants.js，全绿才算完成。
@@ -3893,6 +3941,13 @@
       var feeSubj = this.subjectRole('DEPR_FEE');
       if (!depSubj) return { ok: false, msg: '科目表缺少「累计折旧」科目，请先在科目页添加' };
       if (!feeSubj) return { ok: false, msg: '科目表缺少「管理费用」科目，请先在科目页添加' };
+      // 【防重复入账】本月若已有折旧凭证（含随账套导入的外部凭证），一律拒绝再计提。
+      // 迁移账套的折旧凭证随账套一起进来，重复计提会让累计折旧翻倍；而期末累计折旧
+      // 已按账面逐月滚算（见 pages/asset/Asset.js 的 _accumDeprAt），本就不需要补提。
+      var dupDepr = this.deprVoucherIn(month);
+      if (dupDepr) {
+        return { ok: false, msg: '该月已存在折旧凭证（' + dupDepr + '），不能重复计提 —— 固定资产折旧每月只计提一次' };
+      }
       var acq0 = month + '-01';
       var entries = [];
       var total = 0;

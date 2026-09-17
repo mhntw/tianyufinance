@@ -85,6 +85,15 @@
   // 导入：解析 xlsx 回卡片数组
   // 采用「表头别名映射」——既兼容本软件导出的 31 列表头，
   // 也兼容外部账套固定资产清单常见叫法（资产编码/资产名称/原值…）。
+  /* 使用期限的两套口径（外部账套混用，必须分清）：
+   *   年限组：使用年限 / 折旧年限 / 预计使用年限 … → 数值就是「年」
+   *   期数组：预计使用期数 / 预计使用期限 / 使用期数 … → 数值是「月」，要 ÷12
+   * 【踩坑记录】旧实现只看单元格里有没有"年"字：`(v && r.indexOf('年') < 0) ? v / 12 : v`。
+   * 于是「使用年限 = 5」（纯数字）被当成 5 期 → 0.42 年，月折旧由 1,000 变 12,000（放大 12 倍）。
+   * 现在改为【按命中的列名分组】判定，并加合理性兜底（见 lifeToYears）。
+   * 注：「使用期限」本身歧义（两种账套都在用），故归入年限组后由兜底纠正。 */
+  var LIFE_YEAR_ALIASES = ['使用年限', '折旧年限', '预计使用年限', '预计使用年数', '使用年数', '使用期限', 'life', 'usefulyears', 'usefullife'];
+  var LIFE_MONTH_ALIASES = ['预计使用期数', '预计使用期限', '使用期数', '折旧期数', '预计折旧期数'];
   var FA_ALIASES = {
     code:           ['编码', '资产编码', '卡片编号', '卡片编码', '代码', '编号', '资产代码', 'cardno', 'code'],
     name:           ['名称', '资产名称', '固定资产名称', 'cardname', 'name'],
@@ -94,8 +103,11 @@
     entryPeriod:    ['录入期间', '入账期间', '会计期间', 'entryperiod'],
     original:       ['原值', '资产原值', '固定资产原值', 'original', 'cost'],
     accumDeprBegin: ['期初累计折旧', '累计折旧期初', 'accumdeprbegin'],
-    accumDepr:      ['累计折旧', '期末累计折旧', '已提折旧', 'accumdepr'],
-    life:           ['使用年限', '预计使用期数', '预计使用期限', '预计使用年限', '使用期限', '折旧年限', '使用期数', 'life', 'usefulyears'],
+    // 顺序即优先级：「期末累计折旧」必须排在「累计折旧」之前 —— 两列并存时前者才是期末值
+    accumDepr:      ['期末累计折旧', '累计折旧', '已提折旧', 'accumdepr'],
+    life:           LIFE_YEAR_ALIASES.concat(LIFE_MONTH_ALIASES),
+    // 金蝶卡片列表导出带「月折旧额」：只作导入体检的交叉校验值，不落库（卡片月折旧由 assetMonthlyDepr 统一算）
+    monthDeprRef:   ['月折旧额', '月折旧', 'monthlydepr'],
     salvage:        ['残值', '净残值', '预计净残值', 'salvage'],
     salvageRate:    ['残值率', '净残值率', '预计残值率%', '残值率%', 'salvageRate', 'salvagerate'],
     impairment:     ['减值准备', 'impairment'],
@@ -128,15 +140,47 @@
   var FA_ALIAS_NORM = {};
   Object.keys(FA_ALIASES).forEach(function (f) { FA_ALIAS_NORM[f] = FA_ALIASES[f].map(faNorm); });
   // 根据表头行（数组）建立「字段 -> 列序号」映射；先精确匹配，再子串兜底
+  // 命中的列名是否属于「期数(月)」组
+  function lifeIsMonthAlias(alias) {
+    var a = faNorm(alias || '');
+    if (!a) return false;
+    for (var i = 0; i < LIFE_MONTH_ALIASES.length; i++) { if (faNorm(LIFE_MONTH_ALIASES[i]) === a) return true; }
+    return false;
+  }
+  /* 使用期限 → 年（唯一实现）。三步：
+   *   ① 单元格自带"年"字（如 "5年"）→ 按年；
+   *   ② 否则按【命中的列名分组】：年限组原样、期数组 ÷12；
+   *   ③ 合理性兜底：结果 >50 年 或 <0.5 年 时换另一种口径，换后合理就采用
+   *      —— 这一步专门兼容「使用期限 = 60」这类歧义列名（归在年限组，但 60 年不合理 → 按 60 期 = 5 年）。 */
+  function lifeToYears(rawVal, alias) {
+    var txt = String(rawVal == null ? '' : rawVal);
+    var v = cleanNum(txt);
+    if (!v) return 0;
+    var monthBase = (txt.indexOf('年') < 0) && lifeIsMonthAlias(alias);
+    var y = monthBase ? v / 12 : v;
+    if (y > 50 || y < 0.5) {
+      var alt = monthBase ? v : v / 12;
+      if (alt >= 0.5 && alt <= 50) y = alt;
+    }
+    return Math.round(y * 10000) / 10000;   // 保留 4 位：期数 14 → 1.1667 年 → ×12 仍精确回到 14
+  }
   function buildAssetColMap(headerArr) {
-    var fieldToCol = {}, colTaken = {};
-    (headerArr || []).forEach(function (cell, ci) {
-      if (colTaken[ci]) return;
-      var nh = faNorm(cell);
-      if (!nh) return;
-      Object.keys(FA_ALIAS_NORM).forEach(function (f) {
-        if (fieldToCol[f] !== undefined) return;
-        if (FA_ALIAS_NORM[f].indexOf(nh) >= 0) { fieldToCol[f] = ci; colTaken[ci] = true; }
+    var fieldToCol = {}, colTaken = {}, fieldAlias = {};
+    /* 精确匹配：**字段序在外、列序在内**，同一字段的多个同义列由【别名顺序】定优先级。
+     * 【为什么不能按列序先到先得】实测：文件同时含「累计折旧」和「期末累计折旧」两列时，
+     * 按列序命中的那一列赢、另一列被静默忽略 ——
+     *   表头 期初,累计折旧,期末 → 期末取到「累计折旧」列（可能不是期末值）；
+     *   表头 期初,期末,累计折旧 → 期末取到「期末累计折旧」列 ✓
+     * 同一份数据、仅列序不同就取到不同的值，属静默取错。改为别名顺序定优先级后，
+     * 「期末累计折旧」恒优先于「累计折旧」（见 FA_ALIASES.accumDepr 的顺序）。 */
+    Object.keys(FA_ALIAS_NORM).forEach(function (f) {
+      if (fieldToCol[f] !== undefined) return;
+      FA_ALIAS_NORM[f].forEach(function (alias) {
+        if (fieldToCol[f] !== undefined || !alias) return;
+        for (var ci = 0; ci < (headerArr || []).length; ci++) {
+          if (colTaken[ci]) continue;
+          if (faNorm(headerArr[ci]) === alias) { fieldToCol[f] = ci; colTaken[ci] = true; fieldAlias[f] = headerArr[ci]; return; }
+        }
       });
     });
     (headerArr || []).forEach(function (cell, ci) {
@@ -147,11 +191,11 @@
       Object.keys(FA_ALIAS_NORM).forEach(function (f) {
         if (fieldToCol[f] !== undefined) return;
         FA_ALIAS_NORM[f].forEach(function (a) {
-          if (a.length >= 2 && nh.indexOf(a) >= 0) { fieldToCol[f] = ci; colTaken[ci] = true; }
+          if (a.length >= 2 && nh.indexOf(a) >= 0) { fieldToCol[f] = ci; colTaken[ci] = true; fieldAlias[f] = cell; }
         });
       });
     });
-    return fieldToCol;
+    return { col: fieldToCol, alias: fieldAlias };
   }
   // 扫描工作表，找真正的表头行：含可识别字段关键字最多的那一行。
   // 外部账套导出常在表头前放标题行/副标题行（如「卡片」「云会计演示账套」），
@@ -177,7 +221,8 @@
     var aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: false });
     if (!aoa.length) return [];
     var headerIdx = findAssetHeaderRow(aoa);
-    var fieldToCol = buildAssetColMap(aoa[headerIdx]);
+    var colMap = buildAssetColMap(aoa[headerIdx]);
+    var fieldToCol = colMap.col, fieldAlias = colMap.alias;
     var get = function (field, row) {
       var ci = fieldToCol[field];
       return ci !== undefined ? (row[ci] == null ? '' : row[ci]) : '';
@@ -198,8 +243,8 @@
         original: cleanNum(get('original', arr)),
         accumDeprBegin: cleanNum(get('accumDeprBegin', arr)),
         accumDepr: cleanNum(get('accumDepr', arr)),
-        // 外部账套「预计使用期数」按"月/期"计；本软件 life 按"年"存。无"年"后缀的纯数字按 ÷12 折算。
-        life: (function () { var r = get('life', arr).toString(); var v = cleanNum(r); return (v && r.indexOf('年') < 0) ? v / 12 : v; })(),
+        // 使用期限折算为"年"：按命中的列名分组（年限组/期数组）+ 合理性兜底，见 lifeToYears
+        life: lifeToYears(get('life', arr), fieldAlias.life),
         // 残值：优先取文件「残值」列；若文件只给残值率%没给残值(外部账套常见)，按「原值×残值率%」补算，与卡片新增表单同逻辑，否则折旧基数会算错
         salvage: (function () {
           var s = cleanNum(get('salvage', arr));
@@ -226,6 +271,8 @@
         memo: get('memo', arr),
         periodUsed: cleanNum(get('periodUsed', arr)),
         yearDepr: cleanNum(get('yearDepr', arr)),
+        // 金蝶卡片列表导出的「月折旧额」：仅作导入体检的交叉校验值，落库前由导入方删除
+        monthDeprRef: cleanNum(get('monthDeprRef', arr)),
         faAcctId: get('faAcctId', arr),
         accDeprAcct: get('accDeprAcct', arr),
         deprFeeAcct: get('deprFeeAcct', arr),

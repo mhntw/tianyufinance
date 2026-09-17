@@ -2,30 +2,19 @@
 //
 // 交互：
 // - 树形层级：code 最长真前缀为父；可折叠/展开（箭头），末级无箭头
-// - 搜索：数字按「编码开头」，汉字按「名称包含」，字母按「名称首字母缩写前缀」命中高亮（整树保留）
+// - 搜索：数字按「编码开头」，其它按「编码/名称包含」；命中项 + 其祖先保留显示、
+//   其余过滤隐藏，并直接定位（滚动）到首个命中——不做高亮染色
 // - 点击任意行 → onPick(code)；当前科目行高亮，设置时自动展开父链并滚动到可见
 // - 面板可整体收起为右侧窄条，状态持久化
 //
-// 依赖：globalThis.$、js/pinyin-abbr.js（挂 __PINYIN_ABBR__）
+// 依赖：globalThis.$
 // 保持简单：DOM 一次性全量渲染（420 个科目以内无压力），显隐用 class 控制。
 
 const $ = globalThis.$ || function (id) { return document.getElementById(id); };
 
-function abbrOfName(name) {
-  const dict = (globalThis.__PINYIN_ABBR__) || {};
-  let out = '';
-  for (const ch of String(name)) {
-    if (/[a-zA-Z0-9]/.test(ch)) { out += ch.toLowerCase(); continue; }
-    const a = dict[ch];
-    if (a) out += a;
-  }
-  return out;
-}
-
-/** 行命中规则：纯数字=编码开头；纯字母=名称首字母前缀；其它(含汉字)=编码包含或名称包含 */
-function isHit(s, abbr, kw) {
+/** 行命中规则：纯数字=编码开头；其它=编码包含或名称包含 */
+function isHit(s, kw) {
   if (/^\d+$/.test(kw)) return String(s.code).indexOf(kw) === 0;
-  if (/^[a-z]+$/i.test(kw)) return abbr.indexOf(kw.toLowerCase()) === 0;
   return String(s.code).indexOf(kw) >= 0 || String(s.name).indexOf(kw) >= 0;
 }
 
@@ -38,16 +27,13 @@ export function createSubjectTree(opts) {
   const box = typeof opts.container === 'string' ? $(opts.container) : opts.container;
   if (!box) return null;
   const storageKey = opts.storageKey || 'dlSubjectTree';
-  // 弹层模式：bare=不渲染标题栏/收起按钮（仅树本体）；hideSearch=搜索由外部输入框驱动（setKeyword）
-  const bare = !!opts.bare;
-  const hideSearch = !!opts.hideSearch;
   const st = globalThis.localStorage || { getItem: function () { return null; }, setItem: function () {} };
 
   // 折叠状态不持久化：每次进入都重置为「只露父级科目」（行为）。
   // 不记忆展开状态，既避免旧存储残留，也和一致（它每次打开快速切换都是父级视图）。
   let collapsed = new Set();
   // 面板整体收起/展开才持久化
-  let panelClosed = bare ? false : (function () { try { return st.getItem(storageKey + '.closed') === '1'; } catch (e) { return false; } })();
+  let panelClosed = (function () { try { return st.getItem(storageKey + '.closed') === '1'; } catch (e) { return false; } })();
   const saveClosed = function () { try { st.setItem(storageKey + '.closed', panelClosed ? '1' : '0'); } catch (e) {} };
 
   const byCode = {};      // code -> node
@@ -62,7 +48,7 @@ export function createSubjectTree(opts) {
     roots.length = 0; all.length = 0;
     const subs = (typeof opts.getSubjects === 'function' ? opts.getSubjects() : []) || [];
     subs.forEach(function (s) {
-      byCode[String(s.code)] = { s: s, parent: null, kids: [], abbr: abbrOfName(s.name), line: null };
+      byCode[String(s.code)] = { s: s, parent: null, kids: [], line: null };
     });
     Object.keys(byCode).forEach(function (code) {
       const n = byCode[code];
@@ -88,7 +74,10 @@ export function createSubjectTree(opts) {
   /* ---------- 单行 ---------- */
   function buildLine(n) {
     const line = document.createElement('div');
-    line.className = 'dl-tn' + (n.kids.length ? ' dl-tn-parent' : '');
+    // 层级缩进走 indent-N 类（CSS 里的全站统一缩进尺度），不再依赖 css 变量 --lv
+    let depth = 1;
+    for (let p = n.parent; p; p = byCode[p] ? byCode[p].parent : null) depth++;
+    line.className = 'dl-tn' + (n.kids.length ? ' dl-tn-parent' : '') + ' indent-' + Math.min(depth, 5);
     const arrow = document.createElement('span');
     arrow.className = 'dl-arrow';
     arrow.textContent = n.kids.length ? '▶' : '';
@@ -133,22 +122,31 @@ export function createSubjectTree(opts) {
     return false;
   }
   function refreshVisible() {
+    if (kw) {
+      // 搜索态：只显示「命中项 + 其祖先」，其余过滤隐藏，并直接定位到首个命中。
+      const keep = new Set();
+      let firstLine = null;
+      for (let i = 0; i < all.length; i++) {
+        const n = all[i];
+        if (!isHit(n.s, kw)) continue;
+        keep.add(n.s.code);
+        if (!firstLine) firstLine = n.line;
+        let p = n.parent;
+        while (p) { keep.add(p); p = byCode[p] ? byCode[p].parent : null; }
+      }
+      for (let i = 0; i < all.length; i++) {
+        const n = all[i];
+        n.line.classList.toggle('dl-hide', !keep.has(n.s.code));
+        if (n.kids.length) n.arrowEl.textContent = '▼';
+      }
+      if (firstLine && firstLine.scrollIntoView) firstLine.scrollIntoView({ block: 'center' });
+      return;
+    }
     for (let i = 0; i < all.length; i++) {
       const n = all[i];
-      if (kw) n.line.classList.remove('dl-hide');                 // 搜索时整树保留
-      else if (ancestorCollapsed(n.s.code)) n.line.classList.add('dl-hide');
-      else n.line.classList.remove('dl-hide');
+      n.line.classList.toggle('dl-hide', ancestorCollapsed(n.s.code));
       if (n.kids.length) n.arrowEl.textContent = collapsed.has(n.s.code) ? '▶' : '▼';
     }
-  }
-  function applySearch() {
-    const k = kw;
-    for (let i = 0; i < all.length; i++) {
-      const n = all[i];
-      if (k) { if (isHit(n.s, n.abbr, k)) n.line.classList.add('dl-hit'); else n.line.classList.remove('dl-hit'); }
-      else n.line.classList.remove('dl-hit');
-    }
-    refreshVisible();
   }
 
   /* ---------- 面板骨架 ---------- */
@@ -157,8 +155,8 @@ export function createSubjectTree(opts) {
 
   const search = document.createElement('input');
   search.className = 'dl-panel-search';
-  search.placeholder = '搜编码 / 名称 / 拼音';
-  search.addEventListener('input', function () { kw = search.value.trim(); applySearch(); });
+  search.placeholder = '搜编码 / 名称';
+  search.addEventListener('input', function () { kw = search.value.trim(); refreshVisible(); });
 
   const body = document.createElement('div');
   body.className = 'dl-body';
@@ -169,30 +167,25 @@ export function createSubjectTree(opts) {
     if (!v && curCode && byCode[curCode]) byCode[curCode].line.scrollIntoView({ block: 'center' });
   }
 
-  if (!bare) {
-    const head = document.createElement('div');
-    head.className = 'dl-panel-head';
-    const t = document.createElement('span'); t.textContent = '快速切换';
-    const minBtn = document.createElement('button');
-    minBtn.type = 'button'; minBtn.className = 'dl-panel-min'; minBtn.title = '收起';
-    minBtn.textContent = '»';
-    head.appendChild(t); head.appendChild(minBtn);
+  const head = document.createElement('div');
+  head.className = 'dl-panel-head';
+  const t = document.createElement('span'); t.textContent = '快速切换';
+  const minBtn = document.createElement('button');
+  minBtn.type = 'button'; minBtn.className = 'dl-panel-min'; minBtn.title = '收起';
+  minBtn.textContent = '»';
+  head.appendChild(t); head.appendChild(minBtn);
 
-    const restoreBtn = document.createElement('button');
-    restoreBtn.type = 'button'; restoreBtn.className = 'dl-panel-restore'; restoreBtn.title = '展开科目快速切换';
-    restoreBtn.textContent = '«';
+  const restoreBtn = document.createElement('button');
+  restoreBtn.type = 'button'; restoreBtn.className = 'dl-panel-restore'; restoreBtn.title = '展开科目快速切换';
+  restoreBtn.textContent = '«';
 
-    box.appendChild(head);
-    if (!hideSearch) box.appendChild(search);
-    box.appendChild(body);
-    box.appendChild(restoreBtn);
+  box.appendChild(head);
+  box.appendChild(search);
+  box.appendChild(body);
+  box.appendChild(restoreBtn);
 
-    minBtn.addEventListener('click', function () { setPanelClosed(true); });
-    restoreBtn.addEventListener('click', function () { setPanelClosed(false); });
-  } else {
-    if (!hideSearch) box.appendChild(search);
-    box.appendChild(body);
-  }
+  minBtn.addEventListener('click', function () { setPanelClosed(true); });
+  restoreBtn.addEventListener('click', function () { setPanelClosed(false); });
 
   /* ---------- 对外 ---------- */
   return {
@@ -209,12 +202,6 @@ export function createSubjectTree(opts) {
         refreshVisible();
         byCode[curCode].line.scrollIntoView({ block: 'center' });
       }
-    },
-    // 由外部输入框驱动过滤（弹层模式 hideSearch 时，搜索框不显示，过滤走这里）
-    setKeyword: function (k) {
-      kw = String(k == null ? '' : k).trim();
-      if (search) search.value = kw;
-      applySearch();
     },
     refresh: function () { build(); renderAll(); refreshVisible(); }
   };

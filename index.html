@@ -334,10 +334,10 @@
             <thead>
               <tr>
                 <th class="col-num"></th>
-                <th class="col-summary">摘要</th>
+                <th class="col-summary col-fill">摘要</th>
                 <th class="col-account">科目</th>
                 <th class="col-amount dr" id="vThDr"></th>
-                <th class="amount cr" id="vThCr"></th>
+                <th class="amount cr ta-r" id="vThCr"></th>
               </tr>
             </thead>
             <tbody id="vRows"></tbody>
@@ -509,7 +509,7 @@
           <!-- 副标题：凭证总张数 / 附件总张数，由 renderSum 填充 -->
           <div class="sum-stat" id="sumStat"></div>
           <table class="grid" id="sumGrid">
-            <thead><tr><th>科目编码</th><th>科目名称</th><th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th></tr></thead>
+            <thead><tr><th>科目编码</th><th>科目名称</th><th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th><th class="col-spacer"></th></tr></thead>
             <tbody id="sumBody"></tbody>
           </table>
         </div>
@@ -538,17 +538,9 @@
         <div class="scroll-area">
         <div class="grid-wrap">
         <table class="grid vq-grid" id="qGrid">
-          <colgroup>
-            <col style="width:40px"><col style="width:100px">
-            <col style="width:104px">
-            <col><col style="width:200px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:60px"><col style="width:120px">
-            <col style="width:90px"><col style="width:90px">
-          </colgroup>
           <thead><tr>
             <th><input type="checkbox" id="qCheckAll"></th>
-            <th>日期</th><th class="vq-th-no" id="qThNo" title="点击按凭证字号排序">凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th>摘要</th><th>科目</th>
+            <th>日期</th><th class="vq-th-no" id="qThNo" title="点击按凭证字号排序">凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th class="col-fill">摘要</th><th class="col-fill">科目</th>
             <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
             <th>附件</th><th>原单据编号</th><th>制单人</th>
           </tr></thead>
@@ -572,19 +564,9 @@
         </div>
         <div class="scroll-area">
         <table class="grid gl-grid" id="glGrid">
-          <!-- 明细账 8 列：科目编码/名称(合并行) | 期间 | 摘要 | 借方 | 贷方 | 方向 | 余额 -->
-          <colgroup>
-            <col style="width:104px">
-            <col style="width:180px">
-            <col style="width:70px">
-            <col style="width:80px">
-            <col style="width:124px"><col style="width:124px">
-            <col style="width:48px">
-            <col style="width:124px">
-          </colgroup>
           <thead><tr>
-            <th>科目编码</th><th>科目名称</th><th>期间</th><th>摘要</th>
-            <th>借方</th><th>贷方</th><th>方向</th><th>余额</th>
+            <th>科目编码</th><th class="col-fill">科目名称</th><th>期间</th><th class="col-fill">摘要</th>
+            <th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th>
           </tr></thead>
           <tbody id="glBody"></tbody>
         </table>
@@ -600,13 +582,7 @@
         <div class="dl-layout">
           <div class="dl-main">
             <table class="grid" id="dlGrid">
-              <colgroup>
-                <col style="width:100px"><col style="width:104px">
-                <col>
-                <col style="width:124px"><col style="width:124px"><col style="width:124px">
-                <col style="width:60px">
-              </colgroup>
-              <thead><tr><th>日期</th><th>凭证字号</th><th>摘要</th><th>借方</th><th>贷方</th><th>余额</th><th>方向</th></tr></thead>
+              <thead><tr><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th class="ta-r">余额</th><th>方向</th></tr></thead>
               <tbody id="dlBody"></tbody>
             </table>
           </div>
@@ -652,24 +628,14 @@
         </div>
         <div class="scroll-area">
         <table class="grid tb-grid" id="tbGrid">
-          <!-- 金额列须固定宽，文本列吸收剩余空间。
-               勿改回各列均分：此前均分导致长科目名压到相邻金额列，且千分位金额放不下。 -->
-          <colgroup>
-            <col style="width:104px">
-            <col>
-            <col style="width:116px"><col style="width:116px">
-            <col style="width:116px"><col style="width:116px">
-            <col style="width:116px"><col style="width:116px">
-            <col style="width:116px"><col style="width:116px">
-          </colgroup>
           <thead><tr>
-            <th rowspan="2">科目编码</th><th rowspan="2">科目名称</th>
+            <th rowspan="2">科目编码</th><th class="col-fill" rowspan="2">科目名称</th>
             <th colspan="2">期初余额</th>
             <th colspan="2">本期发生额</th>
             <th colspan="2">本年累计发生额</th>
             <th colspan="2">期末余额</th>
           </tr><tr>
-            <th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th><th>借方</th><th>贷方</th>
+            <th class="ta-r">借方</th><th class="ta-r">贷方</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th class="ta-r">借方</th><th class="ta-r">贷方</th>
           </tr></thead>
           <tbody id="tbBody"></tbody>
         </table>
@@ -687,8 +653,8 @@
         <table class="grid bs-grid rpt-grid" id="bsGrid">
           <thead><tr class="grid-title" id="bsTitleRow"></tr>
             <tr>
-            <th class="col-name">资产</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
-            <th class="col-name">负债和所有者权益</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
+            <th class="col-name col-fill">资产</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
+            <th class="col-name col-fill">负债和所有者权益</th><th class="col-no">行次</th><th class="col-amt">期末余额</th><th class="col-amt">年初余额</th>
           </tr></thead>
           <tbody id="bsBody"></tbody>
         </table>
@@ -705,7 +671,7 @@
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="plGrid">
             <thead><tr class="grid-title" id="plTitleRow"></tr>
-            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
+            <tr><th class="col-name col-fill">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
             <tbody id="plBody"></tbody>
           </table>
         </div>
@@ -722,7 +688,7 @@
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="cfGrid">
             <thead><tr class="grid-title" id="cfTitleRow"></tr>
-            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
+            <tr><th class="col-name col-fill">项目</th><th class="col-no">行次</th><th class="col-amt">本月金额</th><th class="col-amt">本年累计金额</th></tr></thead>
             <tbody id="cfBody"></tbody>
           </table>
         </div>
@@ -739,7 +705,7 @@
         <div class="rpt-wrap">
           <table class="grid rpt-grid" id="txGrid">
             <thead><tr class="grid-title" id="txTitleRow"></tr>
-            <tr><th class="col-name">项目</th><th class="col-no">行次</th><th class="col-amt">本月数</th><th class="col-amt">本年累计数</th></tr></thead>
+            <tr><th class="col-name col-fill">项目</th><th class="col-no">行次</th><th class="col-amt">本月数</th><th class="col-amt">本年累计数</th></tr></thead>
             <tbody id="txBody"></tbody>
           </table>
         </div>
@@ -846,6 +812,15 @@
           </span>
         </div>
 
+        <!-- 导入体检提示条：导入固定资产卡片后，把「会静默出错」的情况显式列出来
+             （缺开始使用日期/使用期限、月折旧与金蝶不符、期初期末差额不是月折旧整数倍…）。
+             默认隐藏；由 Asset.js 的 renderAssetImportCheck() 填充。样式复用 .open-check / .open-check.warn。 -->
+        <div class="open-check" id="assetImportCheck" hidden></div>
+        <!-- 卡片 ↔ 总账对账提示条：卡片「期末累计折旧」合计 vs「累计折旧」科目的总账期末余额。
+             一致时隐藏（不打扰），一旦不符就显红并给出差额 —— 卡片被手工改过、有资产未建卡片、
+             计提没落账等情况都会在这里露出来。由 Asset.js 的 renderAssetReconcile() 维护。 -->
+        <div class="open-check" id="assetReconcileCheck" hidden></div>
+
         <div class="orig-body orig-body-sider-right">
           <div class="orig-sider" id="assetSider">
             <div class="orig-sider-box">
@@ -860,22 +835,14 @@
           <div class="orig-table-wrap">
             <div class="asset-grid-scroll">
             <table class="grid" id="assetGrid">
-              <colgroup>
-                <col class="c-check"><col class="c-op"><col><col><col><col><col><col>
-                <col class="c-amt"><col class="c-amt"><col class="c-amt"><col class="c-amt">
-                <col class="c-mid"><col class="c-mid"><col class="c-amt"><col class="c-amt">
-                <col class="c-amt"><col class="c-amt"><col class="c-amt"><col><col>
-                <col class="c-mid"><col><col><col><col>
-                <col class="c-vch"><col class="c-vch"><col class="c-vch"><col class="c-vch"><col>
-              </colgroup>
               <thead><tr>
                 <th class="col-check"><input type="checkbox" id="aCheckAll"></th>
-                <th>操作</th><th>编码</th><th>名称</th><th>类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
+                <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
                 <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
-                <th class="ta-c">预计使用期限</th><th class="ta-c">已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
+                <th>预计使用期限</th><th>已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
                 <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
                 <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
-                <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th>备注</th>
+                <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th class="col-fill">备注</th>
               </tr></thead>
               <tbody id="assetBody"></tbody>
               <tfoot id="assetFoot"></tfoot>
@@ -910,15 +877,8 @@
         </div>
         <div class="scroll-area">
         <table class="grid" id="dasGrid">
-          <!-- 汇总表列 = 1 个分组列 + 7 个金额列（8 列），金额列须固定宽（否则千分位金额会折行）；
-               分组列吸收剩余空间，窄屏由表格容器横滚。逐资产的明细在「折旧明细表」。 -->
-          <colgroup>
-            <col style="width:140px">
-            <col style="width:124px"><col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px"><col style="width:124px"><col style="width:124px">
-          </colgroup>
           <thead><tr class="grid-title" id="dasTitleRow"></tr>
-            <tr><th id="dasGroupTh">类别</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dasMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+            <tr><th class="col-fill" id="dasGroupTh">类别</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dasMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
           <tbody id="dasBody"></tbody>
           <tfoot id="dasFoot"></tfoot>
         </table>
@@ -936,13 +896,8 @@
         <div class="scroll-area">
         <table class="grid" id="dadGrid">
 
-          <colgroup>
-            <col style="width:100px"><col style="width:100px"><col><col style="width:110px">
-            <col style="width:124px"><col style="width:124px"><col style="width:124px">
-            <col style="width:124px"><col style="width:124px"><col style="width:124px"><col style="width:124px">
-          </colgroup>
           <thead><tr class="grid-title" id="dadTitleRow"></tr>
-          <tr><th>类别</th><th>编码</th><th>名称</th><th>部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dadMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+          <tr><th class="col-fill">类别</th><th>资产编码</th><th class="col-fill">资产名称</th><th>部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dadMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
           <tbody id="dadBody"></tbody>
           <tfoot id="dadFoot"></tfoot>
         </table>
@@ -963,8 +918,8 @@
           <thead>
             <tr class="grid-title" id="aclTitleRow"></tr>
             <tr>
-              <th>资产编码</th><th>资产名称</th><th>变动项</th><th>变动前内容</th>
-              <th>变动后内容</th><th>变动期间</th><th>修改人</th><th>变动时间</th>
+              <th>资产编码</th><th class="col-fill">资产名称</th><th>变动项</th><th class="col-fill">变动前内容</th>
+              <th class="col-fill">变动后内容</th><th>变动期间</th><th>修改人</th><th>变动时间</th>
             </tr>
           </thead>
           <tbody id="aclBody"></tbody>
@@ -983,29 +938,14 @@
         <div class="k-tip" id="dvTip">点击「生成折旧凭证」按当前期间计提折旧并生成凭证。</div>
         <div class="scroll-area">
         <table class="grid" id="dvGrid">
-          <!-- 金额列须固定宽（否则千分位金额会折行），文本列吸收剩余空间；表体过宽时横滚。 -->
-          <colgroup>
-            <col style="width:40px"><col style="width:96px">
-            <col style="width:100px"><col style="width:160px">
-            <col style="width:100px"><col style="width:100px">
-            <col style="width:110px"><col style="width:100px">
-            <col style="width:116px"><col style="width:124px"><col style="width:124px"><col style="width:110px">
-            <col style="width:100px"><col style="width:100px"><col style="width:110px"><col style="width:100px">
-            <col style="width:116px"><col style="width:116px"><col style="width:116px">
-            <col style="width:110px"><col style="width:80px">
-            <col style="width:80px"><col style="width:120px"><col style="width:120px">
-            <col style="width:90px"><col style="width:100px">
-            <col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:110px">
-            <col style="width:150px">
-          </colgroup>
           <thead><tr>
             <th class="col-check"><input type="checkbox" id="dvCheckAll"></th>
-            <th>操作</th><th>编码</th><th>名称</th><th>类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
+            <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
             <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
-            <th class="ta-c">预计使用期限</th><th class="ta-c">已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
+            <th>预计使用期限</th><th>已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
             <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
             <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
-            <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th>备注</th>
+            <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th class="col-fill">备注</th>
           </tr></thead>
           <tbody id="dvBody"></tbody>
           <tfoot id="dvFoot"></tfoot>
@@ -1025,11 +965,7 @@
         </div>
         <div class="scroll-area">
         <table class="grid" id="salGrid">
-          <colgroup>
-            <col style="width:100px"><col><col style="width:120px">
-            <col style="width:124px"><col style="width:124px"><col style="width:96px">
-          </colgroup>
-          <thead><tr><th>期间</th><th>姓名</th><th>工资类别</th><th>应发</th><th>实发</th><th>操作</th></tr></thead>
+          <thead><tr><th>期间</th><th>姓名</th><th class="col-fill">工资类别</th><th class="ta-r">应发</th><th class="ta-r">实发</th><th>操作</th></tr></thead>
           <tbody id="salBody"></tbody>
         </table>
         </div>
@@ -1042,11 +978,7 @@
         </div>
         <div class="scroll-area">
         <table class="grid" id="sstGrid">
-          <colgroup>
-            <col style="width:100px"><col style="width:140px"><col style="width:90px">
-            <col style="width:140px"><col style="width:140px">
-          </colgroup>
-          <thead><tr><th>月份</th><th>工资类别</th><th>职员数</th><th class="ta-r">应发工资汇总</th><th class="ta-r">实发工资汇总</th></tr></thead>
+          <thead><tr><th>月份</th><th class="col-fill">工资类别</th><th>职员数</th><th class="ta-r">应发工资汇总</th><th class="ta-r">实发工资汇总</th></tr></thead>
           <tbody id="sstBody"></tbody>
         </table>
         </div>
@@ -1063,11 +995,7 @@
           </div>
           <div class="asset-cat-scroll">
             <table class="grid" id="dsGrid">
-              <colgroup>
-                <col style="width:120px"><col><col style="width:100px">
-                <col style="width:150px"><col style="width:96px">
-              </colgroup>
-              <thead><tr><th>编码</th><th>名称</th><th>类型</th><th>上级</th><th>操作</th></tr></thead>
+              <thead><tr><th>部门编码</th><th class="col-fill">部门名称</th><th>类型</th><th>上级</th><th>操作</th></tr></thead>
               <tbody id="dsBody"></tbody>
             </table>
           </div>
@@ -1088,13 +1016,13 @@
           <div class="asset-cat-scroll">
             <table class="grid ag-theme-alpine" id="salaryTplGrid">
               <thead><tr>
-                <th style="width:160px">模板名称</th>
-                <th style="width:120px">凭证类型</th>
-                <th style="width:120px">工资类别</th>
-                <th style="width:80px">凭证字</th>
-                <th style="width:80px">启用</th>
-                <th>模板说明</th>
-                <th style="width:120px">操作</th>
+                <th class="col-fill">模板名称</th>
+                <th>凭证类型</th>
+                <th class="col-fill">工资类别</th>
+                <th>凭证字</th>
+                <th>启用</th>
+                <th class="col-fill">模板说明</th>
+                <th>操作</th>
               </tr></thead>
               <tbody id="salaryTplBody"></tbody>
             </table>
@@ -1511,7 +1439,7 @@
           <table class="grid pp-grid" id="subjGrid">
             <thead><tr>
               <th class="col-code">科目编码</th>
-              <th class="col-name">科目名称</th>
+              <th class="col-name col-fill">科目名称</th>
               <th>科目类别</th>
               <th>余额方向</th>
               <th>是否现金科目</th>
@@ -1535,12 +1463,7 @@
         <div class="scroll-area">
         <div class="grid-wrap">
           <table class="grid" id="openGrid">
-            <colgroup>
-              <col style="width:120px"><col><col style="width:70px">
-              <col style="width:124px"><col style="width:124px">
-              <col style="width:124px"><col style="width:124px"><col style="width:124px">
-            </colgroup>
-            <thead><tr><th>科目编码</th><th>科目名称</th><th>方向</th><th>年初余额</th><th>本年累计借</th><th>本年累计贷</th><th>期初借方</th><th>期初贷方</th></tr></thead>
+            <thead><tr><th>科目编码</th><th class="col-fill">科目名称</th><th>方向</th><th class="ta-r">年初余额</th><th class="ta-r">本年累计借</th><th class="ta-r">本年累计贷</th><th class="ta-r">期初借方</th><th class="ta-r">期初贷方</th></tr></thead>
             <tbody id="openBody"></tbody>
           </table>
         </div>
@@ -1618,7 +1541,7 @@
                 <tr>
                   <th class="col-check"><input type="checkbox" id="origCheckAll"></th>
                   <th class="col-op">操作</th>
-                  <th>附件名称</th>
+                  <th class="col-fill">附件名称</th>
                   <th>文件大小</th>
                   <th>关联凭证</th>
                   <th>记账期间</th>
@@ -1704,21 +1627,21 @@
       <section class="page" id="page-cashflow-init">
         <div class="card">
           <div class="card-head">
-            <span>现金流量初始余额</span>
+            <!-- 页签已显示页面名称，此处不再重复标题（原标题与页签文字完全相同） -->
             <div class="card-tools">
               <button class="btn btn-sm btn-primary" id="btnCfOpenSave">保存</button>
               <button class="btn btn-sm" id="btnCfOpenCheck">试算平衡</button>
               <button class="btn btn-sm" id="btnCfOpenExport">导出</button>
             </div>
           </div>
-          <div class="cf-open-wrap">
+          <div class="cf-open-wrap scroll-area">
             <table class="grid std-table ag-theme-alpine" id="cfOpenTable">
               <thead>
                 <tr>
-                  <th style="width:460px">项目</th>
-                  <th style="width:70px">行次</th>
-                  <th style="width:203px;text-align:right">期初余额</th>
-                  <th style="width:525px"></th>
+                  <th class="col-fill">项目</th>
+                  <th>行次</th>
+                  <th class="ta-r">期初余额</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="cfOpenBody"></tbody>
@@ -1728,16 +1651,16 @@
       </section>
 
       <section class="page" id="page-cashflow-project">
-        <div class="k-tip info">设置各科目对应的现金流量主表项目，并区分科目发生额在贷方（现金流入）与借方（现金流出）所归属的主表项目。</div>
-        <div class="card">
-          <div class="card-head"><span>科目 → 现金流量主表项目映射</span></div>
+        <!-- 本页原有的蓝色提示条与卡片标题「科目 → 现金流量主表项目映射」均已删除：
+             两者内容都与表头「贷方发生额（现金流入）/借方发生额（现金流出）」重复，且页签已表明页面用途。 -->
+        <div class="card scroll-area">
           <table class="grid std-table" id="cfMapTable">
             <thead>
               <tr>
-                <th style="width:100px">科目编码</th>
-                <th style="width:220px">科目名称</th>
-                <th style="width:120px">科目类别</th>
-                <th style="width:80px">方向</th>
+                <th>科目编码</th>
+                <th class="col-fill">科目名称</th>
+                <th>科目类别</th>
+                <th>方向</th>
                 <th>贷方发生额（现金流入）</th>
                 <th>借方发生额（现金流出）</th>
               </tr>
@@ -1749,6 +1672,8 @@
 
       <!-- 设置：数据与安全（账套备份与恢复 / 账套管理 / 操作日志） -->
       <section class="page" id="page-system-settings">
+        <!-- 方案C 纯结构冻结：整页内容作为唯一滚动区，卡片内表格表头吸顶（与账簿/报表页同一套） -->
+        <div class="scroll-area">
         <div class="card" id="cardSysInfo">
           <div class="card-head"><span>基本信息</span></div>
           <div class="set-row">
@@ -1774,7 +1699,7 @@
           <div class="card-head"><span>凭证字</span><span class="card-head-op" id="btnAddWord" role="button">新增</span></div>
           <div class="grid-wrap">
             <table class="grid" id="vwGrid">
-              <thead><tr><th>凭证字</th><th>打印标题</th><th class="col-op">操作</th></tr></thead>
+              <thead><tr><th>凭证字</th><th class="col-fill">打印标题</th><th class="col-op">操作</th></tr></thead>
               <tbody id="vwBody"></tbody>
             </table>
           </div>
@@ -1818,7 +1743,7 @@
           </div>
           <div class="grid-wrap">
             <table class="grid std-table" id="bookGrid">
-              <thead><tr><th style="min-width:120px">账套名称</th><th style="min-width:90px">启用期间</th><th style="min-width:70px">凭证数</th><th style="min-width:80px">状态</th><th style="min-width:200px">操作</th></tr></thead>
+              <thead><tr><th class="col-fill">账套名称</th><th>启用期间</th><th>凭证数</th><th>状态</th><th>操作</th></tr></thead>
               <tbody id="bookBody"></tbody>
             </table>
           </div>
@@ -1893,10 +1818,6 @@
               <span class="about-link" id="aboutCheckUpdate" role="button">检查更新</span>
             </div>
             <div class="about-line">
-              <span class="about-label">作者</span>
-              <span class="about-val flex">诗和远方</span>
-            </div>
-            <div class="about-line">
               <span class="about-label">邮箱</span>
               <span class="about-val about-link" id="aboutMail" title="点击复制邮箱">tsmjg@icloud.com</span>
             </div>
@@ -1904,10 +1825,11 @@
               <span class="about-label">源码</span>
               <a class="about-link" id="aboutGitHub" target="_blank">GitHub · 查看所有版本</a>
             </div>
-            <div class="about-copy">© 2024-2026 诗和远方 · 小微企业专属财务引擎</div>
+            <div class="about-copy">© 2024-2026 添钰财务管理系统</div>
           </div>
         </div>
 
+      </div>
       </section>
 
       <!-- 操作日志（独立页）：当前账套日志（审计明细）+ 跨账套操作日志（全局 changelog） -->
@@ -1938,7 +1860,7 @@
                 <th>操作人</th>
                 <th>操作类型</th>
                 <th>操作模块</th>
-                <th>操作详情</th>
+                <th class="col-fill">操作详情</th>
               </tr></thead>
               <tbody id="logBody"></tbody>
             </table>
@@ -1974,7 +1896,7 @@
                 <th>操作人</th>
                 <th>操作类型</th>
                 <th>操作模块</th>
-                <th>操作详情</th>
+                <th class="col-fill">操作详情</th>
               </tr></thead>
               <tbody id="sysEventsBody"></tbody>
             </table>
@@ -2139,17 +2061,11 @@
       </div>
       <div class="asset-cat-scroll">
         <table class="grid" id="catGrid">
-          <colgroup>
-            <col style="width:40px"><col style="width:96px">
-            <col style="width:110px"><col>
-            <col style="width:110px"><col style="width:110px"><col style="width:110px">
-            <col style="width:150px"><col style="width:150px"><col>
-          </colgroup>
           <thead>
             <tr>
               <th class="col-check"><input type="checkbox" id="catCheckAll"></th>
-              <th>操作</th><th>类别编码</th><th>类别名称</th><th>折旧方法</th><th>预计使用年限</th>
-              <th>预计净残值率%</th><th>固定资产科目</th><th>累计折旧科目</th><th>备注</th>
+              <th>操作</th><th>类别编码</th><th class="col-fill">类别名称</th><th>折旧方法</th><th>预计使用年限</th>
+              <th>预计净残值率%</th><th>固定资产科目</th><th>累计折旧科目</th><th class="col-fill">备注</th>
             </tr>
           </thead>
           <tbody id="catBody"></tbody>
@@ -2217,7 +2133,6 @@
   <script src="js/storage.js?v=dev"></script>
   <script src="js/standards.js?v=dev"></script>
   <script src="js/store.js?v=dev"></script>
-  <script src="js/pinyin-abbr.js?v=dev"></script>
   <script src="js/xlsx.full.min.js?v=dev"></script>
   <script src="js/ty-io.js?v=dev"></script>
   <script src="js/ty-menu-icons.js?v=dev"></script>

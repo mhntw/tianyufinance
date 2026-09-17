@@ -125,8 +125,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var tr = document.createElement('tr');
       if (hidden) tr.className = 'subj-hidden';
       tr.innerHTML =
-        '<td class="mono">' + s.code + '</td>' +
-        '<td class="col-name">' + indent + arrow + '<span class="subj-name">' + s.name + '</span></td>' +
+        // 三角放在【科目编码列】的编码前（与科目余额表一致）；名称列只留缩进 + 名称
+        '<td class="mono">' + arrow + s.code + '</td>' +
+        '<td class="col-name">' + indent + '<span class="subj-name">' + s.name + '</span></td>' +
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name + '</td>' +
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side + '</td>' +
         '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '✓' : '—') + '</td>' +

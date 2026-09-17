@@ -832,7 +832,7 @@ function renderVoucherSheetHtml() {
     + '<table>'
     + '<thead><tr><th>摘要</th><th>科目</th><th>借方金额</th><th>贷方金额</th></tr></thead>'
     + '<tbody>' + trs + '</tbody>'
-    + '<tfoot class="sum"><tr><td colspan="2" style="text-align:right">合计：</td>'
+    + '<tfoot class="sum"><tr><td colspan="2" class="ta-r">合计：</td>'
     + '<td class="c-amt">' + voucherSheetMoney(drT) + '</td><td class="c-amt">' + voucherSheetMoney(crT) + '</td></tr></tfoot>'
     + '</table>'
     + '<div class="foot"><span>制单人：' + voucherSheetEsc(maker) + '</span><span>审核人：</span><span></span></div>'
@@ -924,7 +924,7 @@ function renderBlankVoucherHtml() {
     + '<table>'
     + '<thead><tr><th>摘要</th><th>科目</th><th>借方金额</th><th>贷方金额</th></tr></thead>'
     + '<tbody>' + trs + '</tbody>'
-    + '<tfoot class="sum"><tr><td colspan="2" style="text-align:right">合计：</td><td class="c-amt"></td><td class="c-amt"></td></tr></tfoot>'
+    + '<tfoot class="sum"><tr><td colspan="2" class="ta-r">合计：</td><td class="c-amt"></td><td class="c-amt"></td></tr></tfoot>'
     + '</table>'
     + '<div class="foot2">' + sign('记账') + sign('审核') + '</div>'
     + '</div>';
@@ -1125,7 +1125,9 @@ function renderSum(start, end) {
     var m = map[s.code];
     if (!m || (m.dr === 0 && m.cr === 0)) return;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><a href="#" class="link-gl-subject" data-code="' + escAttr(s.code) + '">' + escHtml(s.code) + '</a></td><td>' + s.name + '</td><td class="ta-r mono">' + money(m.dr) + '</td><td class="ta-r mono">' + money(m.cr) + '</td>';
+    // 末列 col-spacer：本表只有「科目名称」一个长文本列，若让它吸收剩余会被撑得极宽；
+    // 改为让数据列全部保持内容宽、由表尾空白列吃掉剩余宽度（表头同样有这一列，见 index.html sumGrid）。
+    tr.innerHTML = '<td><a href="#" class="link-gl-subject" data-code="' + escAttr(s.code) + '">' + escHtml(s.code) + '</a></td><td>' + s.name + '</td><td class="ta-r mono">' + money(m.dr) + '</td><td class="ta-r mono">' + money(m.cr) + '</td><td class="col-spacer"></td>';
     tb.appendChild(tr);
   });
 }
@@ -1296,7 +1298,8 @@ function renderQuery(start, end) {
       var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>') : '';
       var makerCell = first ? maker : '';
       tr.innerHTML =
-        '<td style="text-align:center">' + chk + '</td>' +
+        // 复选框列不写内联对齐：对齐统一走「列对齐约定」（除金额列右对齐，其余左对齐）
+        '<td>' + chk + '</td>' +
         '<td>' + dateCell + '</td>' +
         '<td>' + noCell + '</td>' +
         // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
@@ -1346,7 +1349,8 @@ function refreshRecycleBin() {
   var list = (S.deletedVouchers ? S.deletedVouchers() : []);
   tb.innerHTML = '';
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#000">回收站为空</td></tr>';
+    // 空状态统一走全局 td.empty-hint（居中灰字），不再写内联对齐/字色
+    tb.innerHTML = '<tr><td colspan="6" class="empty-hint">回收站为空</td></tr>';
     return;
   }
   list.forEach(function (v) {

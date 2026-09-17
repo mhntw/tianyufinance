@@ -348,6 +348,10 @@
   function money(n) { return U.money(n); }
   function fmt(n) { return n == null ? '--' : money(Math.abs(n)); }
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
+  // 报表金额着色（负数）：与金蝶一致——负值显示为 "-1,234.56" 并标红。
+  // 历史实现 money(Math.abs(n)) 只染红、丢掉负号，导致资产负债表「未分配利润」等
+  // 负值被渲染成正数（如 -2,424,599.93 显示为红色 2,424,599.93），与金蝶符号相反。
+  function moneyRed(n) { return n < 0 ? '<span class="ty-red">-' + money(Math.abs(n)) + '</span>' : money(n); }
   function round2(n) { return Math.round(U.num(n) * 100) / 100; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   // 期间取值单点实现：此前各页面各自实现、口径雷同，现统一在此，页面经 H.periodRangeValue 引用。
@@ -387,7 +391,8 @@
     t.textContent = msg;
     t.className = 'toast show' + (type ? ' ' + type : '');
     clearTimeout(t._timer);
-    t._timer = setTimeout(function () { t.className = 'toast'; }, ms > 0 ? ms : 2200);
+    // ms===0 表示常驻（如更新提示的“点击下载”），直到被显式清除；其余按指定时长或默认 2200ms 后隐藏
+    if (ms !== 0) t._timer = setTimeout(function () { t.className = 'toast'; }, ms > 0 ? ms : 2200);
   }
   globalThis.showToast = showToast;
   function openModal(id) { var m = $(id); if (m) m.classList.add('show'); }
@@ -474,7 +479,7 @@
     // 避免某次迁移误删私有 helper 导致整页 ReferenceError 崩溃。
     var pick = function (v) { return (typeof v !== 'undefined') ? v : undefined; };
     globalThis.__TY_HELPERS__ = {
-      $: pick($), money: pick(money), fmt: pick(fmt), signed: pick(signed),
+      $: pick($), money: pick(money), fmt: pick(fmt), signed: pick(signed), moneyRed: pick(moneyRed),
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
       closeModal: pick(closeModal), bookKey: pick(bookKey),

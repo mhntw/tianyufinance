@@ -1376,14 +1376,19 @@ function normRuleType(v) {
 }
 
 // 行模型 → 落盘模型（统一走 buildSettleTmplRow）
-function uiRowToTpl(r) {
+// ⚠️ 分支必须按【模板的 ruleType】判断，不能按 `r.ratio != null` 判断 ——
+// tplToUiRow 读回时总会给 ratio 赋数字（非分摊模板赋 0），而 `0 != null` 恒为真，
+// 于是"手填金额"的行会被当成分摊行，amount 被静默丢掉 ——
+// 表现就是「自定义模板里填了金额，保存后不生效（金额永远是 0）」。
+function uiRowToTpl(r, ruleType) {
+  var rt = normRuleType(r.ruleType || ruleType || 'none');
   var o;
-  if (r.ratio != null) {
+  if (rt === 'manual' || rt === 'subject') {
     // 分摊规则：只存 ratio（百分比小数，如 0.3 表示 30%）
     o = buildSettleTmplRow({ summary: r.summary, code: String(r.code || '').trim(), dr: 0, cr: 0 });
     o.ratio = U.num(r.ratio);
   } else {
-    // 逐行指定：存 dc + amount → 拆成 dr/cr
+    // 不设置取数 / 逐行指定：存 dc + amount → 拆成 dr/cr
     var a = U.num(r.amount);
     o = buildSettleTmplRow({ summary: r.summary, code: String(r.code || '').trim(), dr: r.dc === 'C' ? 0 : a, cr: r.dc === 'C' ? a : 0 });
   }
@@ -1426,11 +1431,11 @@ function renderNewTplRows() {
       // 分摊规则：显示比例输入框（百分比）
       var pctVal = r.ratio != null ? (round2(r.ratio * 100)) : '';
       amtCell = '<div class="tmpl-amount-wrap">'
-        + '<input class="tmpl-cell-inp" data-f="ratio" value="' + pctVal + '" placeholder="0" style="text-align:right">%'
+        + '<input class="tmpl-cell-inp" data-f="ratio" value="' + pctVal + '" placeholder="0">%'
         + '</div>';
     } else {
       // 不设置取数 / 逐行指定：金额输入框（金额在模板里手填，生成时带出）
-      amtCell = '<input class="tmpl-cell-inp" data-f="amount" value="' + _tmplAmt(r.amount) + '" placeholder="0.00" style="text-align:right">';
+      amtCell = '<input class="tmpl-cell-inp" data-f="amount" value="' + _tmplAmt(r.amount) + '" placeholder="0.00">';
     }
     html += '<tr data-idx="' + i + '">'
       + '<td class="col-op">'
@@ -1438,7 +1443,7 @@ function renderNewTplRows() {
       +   '<span class="tmpl-op tmpl-op-del" data-op="del" title="删除本行"></span>'
       + '</td>'
       + '<td><input class="tmpl-cell-inp" data-f="summary" value="' + esc(r.summary) + '" placeholder="摘要"></td>'
-      + '<td><input class="tmpl-cell-inp" data-f="code" value="' + esc(codeText) + '" placeholder="输入科目编码或名称"></td>'
+      + '<td><span class="tmpl-subj-wrap"><input class="tmpl-cell-inp" data-f="code" value="' + esc(codeText) + '" placeholder="输入科目编码或名称"><span class="tmpl-subj-bal" data-i="' + i + '"></span></span></td>'
       + '<td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="' + r.dc + '">' + (r.dc === 'C' ? '贷' : '借') + '</span></td>'
       + '<td class="col-amount">' + amtCell + '</td>'
       + '</tr>';
@@ -1450,7 +1455,34 @@ function renderNewTplRows() {
       syncTplRowFromInput(inp);
     } });
   });
+  updateNewTplBals();
   updateNewTplTotal();
+}
+
+/* 每行科目余额提示（与录凭证页同款「余额：X」，见 pages/voucher/Voucher.js 的 syncAllSubjBals）。
+ * 口径差异：录凭证会把本张凭证已录金额算进去（因为它即将入账），模板是"计划"，故只显示
+ * 结账当选期间的科目余额本身，不含模板内金额。
+ * 借贷符号统一为"按科目正常方向为正"（贷方科目贷余为正），与科目余额表一致。 */
+function updateNewTplBals() {
+  var tb = $('settleTmplNewBody');
+  if (!tb) return;
+  var month = selMonth || currentPeriod();
+  var balMap = {};
+  try {
+    (S.generalLedger(month) || []).forEach(function (r) {
+      var b = Number(r.balance) || 0;
+      balMap[r.code] = (r.dir === '借' ? b : -b);
+    });
+  } catch (e) {}
+  newTplRows.forEach(function (r, i) {
+    var el = tb.querySelector('.tmpl-subj-bal[data-i="' + i + '"]');
+    if (!el) return;
+    var c = String(r.code || '');
+    var s = (c && S.subject) ? S.subject(c) : null;
+    if (!s) { el.textContent = ''; return; }
+    var disp = (s.normal === 'cr') ? -(balMap[c] || 0) : (balMap[c] || 0);
+    el.textContent = '余额：' + money(disp);
+  });
 }
 
 // 表格事件：加/删行走重建；输入就地同步
@@ -1487,6 +1519,47 @@ function bindNewTplBodyEvents() {
   var onEdit = function (e) { syncTplRowFromInput(e.target); };
   tb.addEventListener('input', onEdit);
   tb.addEventListener('change', onEdit);
+  // 金额失焦即格式化（千分位 + 两位小数），与录凭证页的显示习惯一致
+  tb.addEventListener('blur', function (e) {
+    var el = e.target;
+    if (!el || !el.getAttribute || el.getAttribute('data-f') !== 'amount') return;
+    syncTplRowFromInput(el);
+    var tr = el.closest('tr');
+    var idx = tr ? parseInt(tr.getAttribute('data-idx'), 10) : -1;
+    var v = U.num((newTplRows[idx] || {}).amount);
+    el.value = v ? money(v) : '';
+  }, true);
+  /* Enter 流转（与录凭证页同款，见 pages/voucher/Voucher.js 的 vRows keydown）：
+   *   摘要 → 科目 → 金额；末行填完金额回车 → 自动追加一行并聚焦新行摘要（"录完本行换行"的录入习惯）。
+   * 模板金额只有一列（按方向决定借贷），故金额格回车后直接换行，不再分借/贷两格。 */
+  tb.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var el = e.target;
+    var f = el && el.getAttribute ? el.getAttribute('data-f') : '';
+    if (!f) return;
+    var tr = el.closest('tr');
+    if (!tr) return;
+    e.preventDefault();
+    if (f === 'summary') { var c = tr.querySelector('input[data-f="code"]'); if (c) c.focus(); return; }
+    if (f === 'code') { var a = tr.querySelector('input[data-f="amount"], input[data-f="ratio"]'); if (a) a.focus(); return; }
+    if (f === 'amount' || f === 'ratio') {
+      el.blur();                                   // 先失焦：格式化金额并写回行模型
+      var idx = parseInt(tr.getAttribute('data-idx'), 10);
+      var cur = newTplRows[idx] || {};
+      if (!tr.nextElementSibling && String(cur.code || '').trim()) {
+        newTplRows.push({ summary: '', code: '', dc: cur.dc === 'D' ? 'C' : 'D', amount: 0, ratio: 0 });
+        renderNewTplRows();
+        var tb2 = $('settleTmplNewBody');
+        var ntr = tb2 ? tb2.querySelectorAll('tr')[newTplRows.length - 1] : null;
+        var s2 = ntr && ntr.querySelector('input[data-f="summary"]');
+        if (s2) s2.focus();
+        return;
+      }
+      var ntr2 = tr.nextElementSibling;
+      var s3 = ntr2 && ntr2.querySelector('input[data-f="summary"]');
+      if (s3) s3.focus();
+    }
+  });
 }
 
 function syncTplRowFromInput(el) {
@@ -1501,6 +1574,7 @@ function syncTplRowFromInput(el) {
     var raw = String(el.value || '').trim();
     // 编码 + 名称一起存，但只把空格前的编码写入 r.code
     r.code = raw.split(/\s+/)[0] || raw;
+    updateNewTplBals();      // 科目变了 → 该行「余额：」提示同步刷新
   }
   else if (f === 'dc') r.dc = (el.value === 'C') ? 'C' : 'D';
   else if (f === 'amount') r.amount = U.num(String(el.value || '').replace(/[,¥\s]/g, ''));
@@ -1679,7 +1753,11 @@ function closeTplRowSettingPopover() {
 
 // 收集有效分录（有科目编码的行）
 function collectCustomTplRows() {
-  return newTplRows.filter(function (r) { return String(r.code || '').trim(); }).map(uiRowToTpl);
+  // 带上当前模板的 ruleType：决定每行存「比例」还是存「金额」（详见 uiRowToTpl）
+  var curTpl = findSettleTemplate(settleTmplSelectedId);
+  var ruleType = normRuleType(curTpl ? curTpl.ruleType : 'none');
+  return newTplRows.filter(function (r) { return String(r.code || '').trim(); })
+    .map(function (r) { return uiRowToTpl(r, ruleType); });
 }
 
 // 分录校验：只要有金额，就必须一借一贷且借贷相等
@@ -1861,7 +1939,10 @@ function saveSettleTmplForm() {
 }
 
 // 模板弹窗事件绑定
-if ($('btnSettleTmpl')) $('btnSettleTmpl').addEventListener('click', openSettleTemplateModal);
+// 先取变量再守卫：原写法 `if ($('btnSettleTmpl')) $('btnSettleTmpl')…` 本身安全，
+// 但静态检查卡口（tools/test_stale_dom_refs.js）识别不了「if(...) 包着再取一次」的守卫 → 误报。
+var _btnSettleTmpl = $('btnSettleTmpl');
+if (_btnSettleTmpl) _btnSettleTmpl.addEventListener('click', openSettleTemplateModal);
 if ($('btnSettleTmplClose')) $('btnSettleTmplClose').addEventListener('click', closeSettleTemplateModal);
 // 弹窗启用开关：改了立即生效（persist + 刷新左侧分组 + 页面卡片）
 var _tmplEnCb = $('settleTmplFormEnabled');
