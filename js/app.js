@@ -371,6 +371,19 @@
     }
     return eInp ? eInp.value : '';
   }
+  // 区间期间取值：返回 {start, end}。供明细账等支持范围选择的页面使用。
+  // 同样会在首次调用时回填默认值（两端都取默认期间），之后由控件自身维护。
+  function periodRangeValues(prefix) {
+    var sInp = $(prefix + 'Start'), eInp = $(prefix + 'End');
+    if (sInp && eInp) {
+      var def = (typeof globalThis.__PERIOD_DEFAULT_OF__ === 'function' ? globalThis.__PERIOD_DEFAULT_OF__(prefix) : '')
+                || currentPeriod() || '';
+      sInp.value = sInp.value || def;
+      eInp.value = eInp.value || def;
+      if (window.__EXTRA_UPDATE_PERIOD_TRIGGER__) window.__EXTRA_UPDATE_PERIOD_TRIGGER__(prefix + 'Start', prefix + 'End');
+    }
+    return { start: sInp ? sInp.value : '', end: eInp ? eInp.value : '' };
+  }
   // 期间格式化：兼容 "YYYY-MM" 与 "YYYYMM" 两种账套月份格式 -> "YYYY年第N期"
   // 注：本账套月份统一为 "YYYY-MM"（见 store.allMonths/currentPeriod），
   // 旧实现按 "YYYYMM" 取 substring(4,6) 会把 "2026-07" 误解析为 "2026年第0期"，故先去连字符归一。
@@ -486,6 +499,7 @@
       currentPeriod: pick(currentPeriod), lastClosedPeriod: pick(lastClosedPeriod), num: U && U.num,
       // 起止期间取值统一在此提供单点实现，页面模块直接引用（见 PeriodRangePicker.js）。
       periodRangeValue: pick(periodRangeValue),
+      periodRangeValues: pick(periodRangeValues),
       escHtml: pick(esc),   // escHtml 与 esc 本就是同一实现，统一以 esc 为准
       // 打印表头【内容】唯一来源（表名/编制单位/期间/单位），stdRptHeadHtml 与报表页 setRptHead 共用
       rptHeadPartsHtml: pick(rptHeadPartsHtml),

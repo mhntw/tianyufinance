@@ -24,6 +24,11 @@ function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 function mkState(subjects, vouchers) {
   S.state = {};
   S.normalizeState();
+  // 本测试的凭证日期是 2026-05，而 normalizeState 会把 company.startMonth 默认成"当前月"，
+  // 于是 addVoucher 的「不得早于账套启用期间」闸门会整张拒掉这些凭证 —— 表现为 addVoucher 后
+  // 金额不变、断言失败。这里显式把启用月提前，让本测试专注在"凭证变更是否使总账缓存失效"。
+  S.state.company = S.state.company || {};
+  S.state.company.startMonth = '2026-01';
   S.state.subjects = subjects;
   S.state.vouchers = vouchers;
   S.state.openingBalances = {};

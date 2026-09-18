@@ -70,46 +70,41 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       $('assetDeptTree').appendChild(_assetTreeLeaf(d.name, d.name === _assetDeptSel, function (name) { _assetDeptSel = name; _assetPage = 1; renderAssetTree(); renderAssets(); }, d.name));
     });
   }
+  /* 固定资产页的「期间」单点来源：全站统一的期间选择器组件（index.html 里 data-period="asset"，
+   * 与总账/报表等页同一个 PeriodRangePicker）。组件就绪前或账套未加载时退回 currentPeriod()。
+   * 2026-09-18 统一：此前是裸的 <input type="month" id="aPeriod">，且口径割裂 ——
+   *   发凭证的动作（计提折旧、清理）读 $('aPeriod').value，
+   *   而表格显示的「期末累计折旧」固定读 currentPeriod()，于是改期间时表格数字不变、看起来像失效。
+   * 现在两者都走 _assetPeriod()，页面自洽：改期间，表格数字与计提期间一起变。 */
+  function _assetPeriod() { return periodRangeValue('assetPeriod') || currentPeriod(); }
   function refreshAssets() {
-    var ap = $('aPeriod'); if (ap && !ap.value) ap.value = currentPeriod();
-    var fc = $('fCategory'); if (fc && fc.options.length <= 1) assetCats().forEach(function (c) { var o = document.createElement('option'); o.value = c.code; o.textContent = c.name; fc.appendChild(o); });
-    // 部门下拉的 value 必须是**名称**（卡片 fa.dept 存名称；用 d.code 会导致选谁都是 0 张）
-    var fd = $('fDept');
-    if (fd && fd.options.length <= 1) S.depts().forEach(function (d) { var o = document.createElement('option'); o.value = d.name; o.textContent = d.name; fd.appendChild(o); });
+    // 期间选择器的默认值由组件按 data-default="currentPeriod" 自行回填，此处无需再处理。
+    // 类别 / 部门下拉已随「过滤」面板一并移除；这两个维度的筛选改由左侧树承担（点击即筛）。
     renderAssetTree();
     renderAssets();
   }
+  /* 卡片筛选：只剩两个来源 —— 左侧树（类别 / 部门，点击即筛）与顶部「显示已清理资产」。
+     2026-09-18 按用户要求移除了「过滤」折叠面板及其 11 项组合条件（编码、名称、日期区间、
+     折旧方法、凭证与否…）：本软件卡片量级小，那些条件几乎用不到，却带来"点了没反应"一类
+     的问题与无谓的维护负担。筛选逻辑本身保留 —— 左侧树仍要通过它生效。 */
   function _assetFilterList() {
-    var code = ($('fCode').value || '').trim();
-    var name = ($('fName').value || '').trim();
-    var cat = $('fCategory').value || _assetCatSel;
-    var dept = $('fDept').value || _assetDeptSel;
-    var method = $('fMethod').value;
-    var status = $('fStatus').value;
-    var addVch = $('fAddVch').value;
-    var cleanVch = $('fCleanVch').value;
-    var showCleaned = $('fShowCleaned').checked || $('fShowCleanedTop').checked;
-    var acqS = $('fAcqStart').value, acqE = $('fAcqEnd').value;
-    var entS = ($('fEntryStart').value || '').trim(), entE = ($('fEntryEnd').value || '').trim();
-    var clnS = ($('fCleanStart').value || '').trim(), clnE = ($('fCleanEnd').value || '').trim();
+    var cat = _assetCatSel;
+    var dept = _assetDeptSel;
+    var sw = $('fShowCleanedTop');
+    var showCleaned = !!(sw && sw.checked);
+    /* 期间过滤（2026-09-18 补，对齐金蝶：改期间时卡片清单也跟着变）：
+     * 期间早于购置月 → 资产尚未入账，不显示。
+     * 原先这里只过滤「清理」状态，于是 2026-06 才购置的卡在选 2026-03 时照样占一行，
+     * 且其原值、期末净值都被计入卡片页合计 —— 实测使「原值」合计虚增 3,550.00（恰为该卡
+     * 原值），与总账 1601 期末余额对不上。折旧表已在 _assetDeprRows 侧同步了该规则。
+     * 判据用 acqM > period（而非 >=）：当月购置的卡仍要出现，资产已入账，只是尚未开始计提。 */
+    var period = _assetPeriod();
     return S.state.fixedAssets.filter(function (fa) {
-      if (code && (fa.code || '').indexOf(code) < 0) return false;
-      if (name && (fa.name || '').indexOf(name) < 0) return false;
       if (cat && fa.category !== cat) return false;
       if (dept && fa.dept !== dept) return false;
-      if (method && fa.method !== method) return false;
-      if (status && fa.status !== status) return false;
-      if (addVch === '1' && !fa.addVoucher) return false;
-      if (addVch === '0' && fa.addVoucher) return false;
-      if (cleanVch === '1' && !fa.cleanVoucher) return false;
-      if (cleanVch === '0' && fa.cleanVoucher) return false;
-      if (acqS && (fa.acqDate || '') < acqS) return false;
-      if (acqE && (fa.acqDate || '') > acqE) return false;
-      if (entS && (fa.entryPeriod || '') < entS) return false;
-      if (entE && (fa.entryPeriod || '') > entE) return false;
-      if (clnS && (fa.cleanPeriod || '') < clnS) return false;
-      if (clnE && (fa.cleanPeriod || '') > clnE) return false;
       if (!showCleaned && fa.status === '清理') return false;
+      var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
+      if (acqM && acqM > period) return false;
       return true;
     });
   }
@@ -161,8 +156,18 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 资产卡片 27 列共用 td 拼接（卡片页 + 折旧凭证页复用）
   function _assetRowCells(fa) {
     var md = S.assetMonthlyDepr(fa);
-    // 期末累计折旧按当前期间滚算（与折旧汇总表/明细表同源），不再直接读卡片存值
-    var accumEnd = _accumDeprAt(fa, currentPeriod(), md);
+    /* 四个金额全部按「期间选择器的期间」滚算，对齐金蝶固定资产清单的口径：
+     *   期初累计 = 上一期间月末的累计；期末累计 = 本期间月末的累计；
+     *   期初/期末净值 = 原值 − 对应累计 − 减值准备。
+     * 2026-09-18 修正：此前「期初累计折旧」直接显示卡片存的 fa.accumDeprBegin。
+     * 那是**内部锚点值**（卡片录入时的基准月末余额），不是"上一期间末"，语义与金蝶的
+     * "期初"不符 —— 表现为切期间时该列不动，与金蝶不一致。现改为同样参与滚算。
+     * ⚠️ 卡片表单里的「期初累计折旧」输入框仍是锚点值（录入基准），两者口径不同属正常。 */
+    var pEnd = _assetPeriod();
+    var pBegin = _addMonths(pEnd, -1);                       // 期初 = 上一期间月末
+    var accumBegin = _accumDeprAt(fa, pBegin, md);
+    var accumEnd = _accumDeprAt(fa, pEnd, md);
+    var netBegin = Math.max(0, num(fa.original) - accumBegin - num(fa.impairment));
     var netEnd = Math.max(0, num(fa.original) - accumEnd - num(fa.impairment));
     return (
       '<td class="mono">' + (fa.code || '') + '</td>' +
@@ -172,7 +177,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       '<td>' + (fa.acqDate || '') + '</td>' +
       '<td>' + (fa.entryPeriod || '') + '</td>' +
       '<td class="ta-r mono">' + money(fa.original) + '</td>' +
-      '<td class="ta-r mono">' + money(fa.accumDeprBegin) + '</td>' +
+      '<td class="ta-r mono">' + money(accumBegin) + '</td>' +
       '<td class="ta-r mono">' + money(accumEnd) + '</td>' +
       '<td class="ta-r mono">' + money(md) + '</td>' +
       '<td>' + (fa.life ? fa.life + '年' : '') + '</td>' +
@@ -180,7 +185,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       '<td class="ta-r mono">' + money(fa.salvage) + '</td>' +
       '<td class="ta-r mono">' + num(fa.salvageRate).toFixed(2) + '</td>' +
       '<td class="ta-r mono">' + money(fa.impairment) + '</td>' +
-      '<td class="ta-r mono">' + money(fa.netValueBegin) + '</td>' +
+      '<td class="ta-r mono">' + money(netBegin) + '</td>' +
       '<td class="ta-r mono">' + money(netEnd) + '</td>' +
       '<td>' + (fa.method || '') + '</td>' +
       '<td>' + (fa.status || '正常') + '</td>' +
@@ -206,11 +211,15 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var slice = _assetFiltered.slice(start, start + _assetPageSize);
     slice.forEach(function (fa) {
       var tr = document.createElement('tr');
-      // 操作列：对应位置是图标，我方简化为蓝色可点击文字（样式见 css 的 .asset-ops）。
-      // 四个动作之间不再靠源码里的空格分隔（换行/折叠时会忽宽忽窄），改由 CSS margin 统一间距。
+      // 操作列：图标简化为蓝色可点击文字（样式见 css 的 .asset-ops）；
+      // 动作之间不靠源码空格分隔（换行/折叠时会忽宽忽窄），由 CSS margin 统一间距。
+      // 2026-09-18 修复：此前「删除」「清理 / 取消清理」的**渲染**被误删（点击处理一直都在），
+      // 行内只剩「编辑」—— 其中「取消清理」在其它任何入口都不存在，清理过的卡片无从撤销。
+      // 现按卡片状态二选一恢复；「复制」仍保持移除（那是有意精简，非误删）。
       tr.innerHTML =
         '<td class="col-check"><input type="checkbox" class="aChk" data-id="' + fa.id + '"></td>' +
-        '<td class="asset-ops"><a class="link-edit" data-asset-edit="' + fa.id + '">编辑</a><a class="link-copy" data-copy="' + fa.id + '">复制</a><a class="link-del" data-del="' + fa.id + '">删除</a>' +
+        '<td class="asset-ops"><a class="link-edit" data-asset-edit="' + fa.id + '">编辑</a>' +
+        '<a class="link-del" data-del="' + fa.id + '">删除</a>' +
         (fa.status === '清理'
           ? '<a class="link-unclean" data-unclean="' + fa.id + '">取消清理</a>'
           : '<a class="link-clean" data-clean="' + fa.id + '">清理</a>') + '</td>' +
@@ -221,13 +230,17 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var foot = $('assetFoot'); foot.innerHTML = '';
     if (total > 0) {
       var sOrig = 0, sB = 0, sE = 0, sM = 0, sS = 0, sI = 0, sNB = 0, sNE = 0;
-      var cp = currentPeriod();
+      // 与卡片行同源：四个金额都按「期初 = 上月末 / 期末 = 本月末」滚算（对齐金蝶口径）
+      var cp = _assetPeriod();
+      var cb = _addMonths(cp, -1);
       _assetFiltered.forEach(function (fa) {
         var md = S.assetMonthlyDepr(fa);
-        var ae = _accumDeprAt(fa, cp, md);   // 期末与卡片行同源（按当前期间滚算）
-        sOrig += num(fa.original); sB += num(fa.accumDeprBegin); sE += ae;
+        var ae = _accumDeprAt(fa, cp, md);   // 期末累计
+        var ab = _accumDeprAt(fa, cb, md);   // 期初累计
+        sOrig += num(fa.original); sB += ab; sE += ae;
         sM += md; sS += num(fa.salvage); sI += num(fa.impairment);
-        sNB += num(fa.netValueBegin); sNE += Math.max(0, num(fa.original) - ae - num(fa.impairment));
+        sNB += Math.max(0, num(fa.original) - ab - num(fa.impairment));
+        sNE += Math.max(0, num(fa.original) - ae - num(fa.impairment));
       });
       var trf = document.createElement('tr');
       trf.innerHTML = '<td></td><td>合计</td><td colspan="6"></td>' +
@@ -254,26 +267,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 工具条
   $('btnNewAsset').addEventListener('click', function () { _openAssetModal(null); });
   // 左树（类别/部门）点击筛选已在 renderAssetTree 内绑定
-  // 过滤条：点击「过滤」展开/收起面板
-  $('assetFilterToggle').addEventListener('click', function () {
-    var b = $('assetFilterFold'); b.style.display = b.style.display === 'none' ? 'block' : 'none';
-  });
-  $('assetFilterHoldup').addEventListener('click', function () { $('assetFilterFold').style.display = 'none'; });
-  // 顶部「显示已清理资产」与折叠区同步
-  $('fShowCleanedTop').addEventListener('change', function () { $('fShowCleaned').checked = this.checked; _assetPage = 1; renderAssets(); });
-  $('fShowCleaned').addEventListener('change', function () { $('fShowCleanedTop').checked = this.checked; _assetPage = 1; renderAssets(); });
-  $('btnAssetFilterReset').addEventListener('click', function () {
-    ['fCode','fName','fEntryStart','fEntryEnd','fCleanStart','fCleanEnd','fAcqStart','fAcqEnd'].forEach(function (id){ $(id).value=''; });
-    $('fCategory').value=''; $('fDept').value=''; $('fMethod').value=''; $('fStatus').value=''; $('fAddVch').value=''; $('fCleanVch').value='';
-    $('fShowCleaned').checked=false; $('fShowCleanedTop').checked=false;
-    _assetCatSel=''; _assetDeptSel=''; renderAssetTree();
-    _assetPage = 1; renderAssets();
-  });
-  $('btnAssetFilterQuery').addEventListener('click', function () { _assetPage = 1; renderAssets(); });
+  // 顶部「显示已清理资产」：原先还要与折叠面板里的同名勾选框互相同步，面板已移除，只留其一
+  $('fShowCleanedTop').addEventListener('change', function () { _assetPage = 1; renderAssets(); });
   $('btnAssetExport').addEventListener('click', function () {
     if (!_assetFiltered.length) return showToast('当前无可导出的卡片', 'error');
     var wb = TyIo.buildAssetWorkbook(_assetFiltered);
-    __safeExportExcel(wb, '固定资产卡片_' + currentPeriod())
+    __safeExportExcel(wb, '固定资产卡片_' + _assetPeriod())
       .then(function (path) { window.__fileSaveBridge.toastExported(path); })
       .catch(function (e) { showToast('导出失败：' + (e && e.message || e), 'error'); });
   });
@@ -336,41 +335,111 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     el.hidden = true;
     el.innerHTML = '';
   }
-  /* ---------- 卡片 ↔ 总账对账（2026-09-17） ----------
-   * 比对：卡片「期末累计折旧」合计  vs  科目「累计折旧」的总账期末余额（当前期间口径）。
-   * 【为什么用这条】卡片与总账是同一事实的两份记录：卡片按"期初 + 逐月折旧"滚算，总账来自凭证。
-   * 两者必须相等。不等就说明卡片被手工改过、有资产没建卡片、或计提没落账 —— 都是账面问题。
-   * 实测本账套（2026-08）：卡片 330,225.05 ↔ 总账 1602 期末 330,225.05 ✓。
-   * 口径说明：已「清理」的卡片不计入 —— 清理凭证已把该资产的累计折旧从账上转出（借 累计折旧），
-   * 卡片侧仍保留历史累计，属正常差异，不是不平。
-   * 容差 0.01（半分钱，与全局 EPS 一致）。 */
+  /* ---------- 卡片 ↔ 总账对账 ----------
+   * 卡片与总账是同一事实的两份记录，以下两条都必须相等：
+   *   ① 累计折旧：卡片「期末累计折旧」合计  vs 「累计折旧」科目的总账期末余额
+   *   ② 原值    ：卡片「原值」合计        vs  卡片所挂各固定资产科目的总账期末余额合计
+   *
+   * 【为什么必须补②】只做①时，「账上有资产却没有建卡片」这种错查不出来：这类资产的累计折旧是 0，
+   * 卡片侧与总账侧同时少一块、互不影响，①照样通过。实测（绅蓝之星 2026-08）：科目
+   * 1601001「家具设备」账面 787,047.41 而卡片只有 588,903.41，差 198,144.00（其中 204,184.00
+   * 是期初余额里从未拆成卡片的部分，−6,040.00 是一台已处置却仍标「正常」的空调），
+   * 累计折旧核对完全通过 —— 补了②才暴露出来。
+   *
+   * 核对口径（与列表、折旧表的可见集严格一致）：
+   *   · 已「清理」的卡片不计入 —— 清理凭证已把该资产从账上转出，卡片侧保留历史值属正常差异；
+   *   · 期间早于购置月的卡片不计入 —— 该资产尚未入账。
+   * 容差：①按卡片张数放大（两边舍入方式不同：卡片一次性舍入，总账按每张卡 round2 后相加）；
+   *       ②两侧都是精确录入值，固定 0.01。 */
   function _assetLedgerReconcile(month) {
-    var depSubj = S.subjectRole && S.subjectRole('ACC_DEPR');
-    if (!depSubj || !month) return null;
-    var cardTotal = 0;
-    (S.state.fixedAssets || []).forEach(function (fa) {
-      if (fa.status === '清理') return;                       // 见上：清理后账上已转出
-      cardTotal += _accumDeprAt(fa, month, S.assetMonthlyDepr(fa));
-    });
+    if (!month) return null;
     var rows = S.generalLedger(month) || [];
-    var r = rows.filter(function (x) { return String(x.code) === String(depSubj.code); })[0];
-    if (!r) return null;
-    var ledgerEnd = r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
-    var diff = Math.round((cardTotal - ledgerEnd) * 100) / 100;
-    return { month: month, cardTotal: cardTotal, ledgerTotal: ledgerEnd, diff: diff,
-      ok: Math.abs(diff) <= 0.01, subject: depSubj };
+    function endBalOf(code) {
+      var r = rows.filter(function (x) { return String(x.code) === String(code); })[0];
+      if (!r) return null;
+      return r.normal === 'dr' ? (num(r.endDr) - num(r.endCr)) : (num(r.endCr) - num(r.endDr));
+    }
+    // 参与核对的卡片（同页面可见口径）
+    var active = (S.state.fixedAssets || []).filter(function (fa) {
+      if (fa.status === '清理') return false;
+      var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
+      return !(acqM && acqM > month);
+    });
+
+    // ① 累计折旧
+    var depr = null;
+    var depSubj = S.subjectRole && S.subjectRole('ACC_DEPR');
+    if (depSubj) {
+      var cardTotal = 0;
+      active.forEach(function (fa) { cardTotal += _accumDeprAt(fa, month, S.assetMonthlyDepr(fa)); });
+      var ledgerEnd = endBalOf(depSubj.code);
+      if (ledgerEnd !== null) {
+        var d1 = Math.round((cardTotal - ledgerEnd) * 100) / 100;
+        var tol = Math.round((active.length * 0.01 + 0.01) * 100) / 100;
+        depr = { subject: depSubj, cardTotal: cardTotal, ledgerTotal: ledgerEnd, diff: d1,
+          tolerance: tol, ok: Math.abs(d1) <= tol };
+      }
+    }
+
+    // ② 原值：按卡片**实际挂的**固定资产科目分组核对。
+    //    不用「猜」固定资产科目 —— 1601 常有明细科目（1601001/1601002…），卡片可能挂在任一层，
+    //    直接取卡片上的 faAcctId 才准，也才能把差异定位到具体科目。
+    var byAcct = {}, orphan = { count: 0, amount: 0 }, cardOrig = 0;
+    active.forEach(function (fa) {
+      // 兼容脏数据：实测科目码会被拼成 "5401006,5401006"
+      var code = String(fa.faAcctId == null ? '' : fa.faAcctId).split(',')[0].trim();
+      var orig = num(fa.original);
+      cardOrig += orig;
+      if (code && S.subject(code)) byAcct[code] = (byAcct[code] || 0) + orig;
+      else { orphan.count++; orphan.amount += orig; }   // 未设科目 / 科目已不存在 → 无处核对
+    });
+    var ledgerOrig = 0, detail = [];
+    Object.keys(byAcct).forEach(function (c) {
+      var led = endBalOf(c) || 0;
+      ledgerOrig += led;
+      detail.push({ code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c],
+        ledger: led, diff: Math.round((byAcct[c] - led) * 100) / 100 });
+    });
+    detail.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
+    var d2 = Math.round((cardOrig - ledgerOrig) * 100) / 100;
+    var orig = { cardTotal: cardOrig, ledgerTotal: ledgerOrig, diff: d2, tolerance: 0.01,
+      ok: Math.abs(d2) <= 0.01, detail: detail, orphan: orphan };
+
+    return { month: month, depr: depr, orig: orig, ok: (!depr || depr.ok) && orig.ok };
   }
   // 每次渲染资产列表时刷新（一致则隐藏，不打扰）
   function renderAssetReconcile() {
     var el = $('assetReconcileCheck');
     if (!el) return;
-    var rc = _assetLedgerReconcile(currentPeriod());
+    var rc = _assetLedgerReconcile(_assetPeriod());
     if (!rc || rc.ok) { el.hidden = true; el.innerHTML = ''; return; }
+    var parts = [];
+    // ② 原值（先讲这条 —— 它指向"有资产没建卡片"这类结构性缺失，比折旧的偶发差异更要紧）
+    if (rc.orig && !rc.orig.ok) {
+      var worst = (rc.orig.detail || [])[0];
+      parts.push('<b>原值与总账不符</b>：卡片原值合计 <b>' + money(rc.orig.cardTotal) + '</b>，' +
+        '账上（' + esc(rc.month) + ' 期末）合计 <b>' + money(rc.orig.ledgerTotal) + '</b>，' +
+        '差额 <b>' + money(rc.orig.diff) + '</b>' +
+        '（负数为「账上有这笔资产、但没有对应的卡片」，正数为「有卡片而账上没有」）。' +
+        (worst ? '差异最大的科目：<b>' + esc(worst.code + ' ' + worst.name) + '</b>（卡片 ' +
+          money(worst.card) + ' / 账上 ' + money(worst.ledger) + '）。' : ''));
+      if (rc.orig.orphan && rc.orig.orphan.count) {
+        parts.push('另有 ' + rc.orig.orphan.count + ' 张卡片未指定固定资产科目（原值合计 ' +
+          money(rc.orig.orphan.amount) + '），无法参与核对，请先在卡片上补选科目。');
+      }
+    }
+    // ① 累计折旧
+    if (rc.depr && !rc.depr.ok) {
+      parts.push('<b>期末累计折旧与总账不符</b>：卡片合计 <b>' + money(rc.depr.cardTotal) + '</b>，' +
+        '科目「' + esc(rc.depr.subject.code + ' ' + rc.depr.subject.name) + '」' + esc(rc.month) +
+        ' 期末 <b>' + money(rc.depr.ledgerTotal) + '</b>，差额 <b>' + money(rc.depr.diff) +
+        '</b>（容差 ' + money(rc.depr.tolerance) + '，已按卡片张数计入逐张舍入的累计误差）。');
+    }
+    if (!parts.length) { el.hidden = true; el.innerHTML = ''; return; }
+    parts.push('常见原因：有资产未建卡片、期初余额未拆成明细资产、资产已处置但卡片未标「清理」、卡片被手工改过或计提未落账。');
     el.className = 'open-check warn';
     el.hidden = false;
-    el.innerHTML = '固定资产卡片与总账不符：卡片「期末累计折旧」合计 <b>' + money(rc.cardTotal) + '</b>，' +
-      '科目「' + esc(rc.subject.code + ' ' + rc.subject.name) + '」' + esc(rc.month) + ' 期末余额 <b>' + money(rc.ledgerTotal) + '</b>，' +
-      '差额 <b>' + money(rc.diff) + '</b>（正数=卡片多了）。常见原因：卡片被手工改过、有资产未建卡片、计提未落账或清理未处理。';
+    el.innerHTML = parts.join('<br>');
   }
   // 关闭按钮（一次性委托，避免每次导入重复绑定）
   if (!globalThis.__assetImportCheckBound) {
@@ -418,16 +487,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           // 【导入体检】不阻断导入，把"会静默出错"的项报出来（提示条 + 操作日志）
           var warns = _assetImportCheck(listAdd);
           listAdd.forEach(function (fa) { delete fa.monthDeprRef; delete fa.accumDeprRef; S.addFixedAsset(fa); });
-          // 导入后重置筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
-          ['fCode', 'fName', 'fCategory', 'fDept', 'fMethod', 'fStatus', 'fAddVch', 'fCleanVch',
-           'fAcqStart', 'fAcqEnd', 'fEntryStart', 'fEntryEnd', 'fCleanStart', 'fCleanEnd'].forEach(function (id) {
-            var el = $(id); if (el) el.value = '';
-          });
+          // 导入后清空左树筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
           _assetCatSel = ''; _assetDeptSel = ''; _assetPage = 1;
           var hasNonNormal = listAdd.some(function (fa) { return (fa.status || '正常') !== '正常'; });
-          ['fShowCleaned', 'fShowCleanedTop'].forEach(function (id) {
-            var el = $(id); if (el) el.checked = hasNonNormal;
-          });
+          var swTop = $('fShowCleanedTop'); if (swTop) swTop.checked = hasNonNormal;
           renderAssetTree(); renderAssets(); syncAll();
           renderAssetImportCheck(warns, listAdd.length, listDup.length);
           var msg = listAdd.length
@@ -470,7 +533,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 生成清理凭证（原「生成凭证」按钮勾了已清理卡片时走的那条路径，现归到批量操作里）。
       // 只挑「已清理且未生成清理凭证」的卡片，genCleanVoucher 自身对已生成过的会跳过（幂等）。
       // 与「计提折旧」一致：写凭证的动作不加二次确认。
-      var month = $('aPeriod').value || currentPeriod();
+      var month = _assetPeriod();
       var cleanIds = checked.filter(function (id) {
         var fa = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
         return fa && fa.status === '清理' && !fa.cleanVoucher;
@@ -482,18 +545,38 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       renderAssets(); syncAll();
     } else if (act === 'unlink') {
       // 错配回退：只解除「卡片 ↔ 购入凭证」的关联，**不动凭证本身**（凭证是账，不能因解关联而消失）
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认解除「新增资产凭证」的关联？\n只解除关联，不会删除或修改任何凭证。', { title: '解除关联' }))) return;
+      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认解除「新增资产凭证」的关联？\n只解除关联，不会删除或修改任何凭证。（此操作与删除折旧/清理凭证无关）', { title: '解除购入凭证关联' }))) return;
       var ur = S.unlinkAssetAcquisitions(checked);
       renderAssets(); syncAll();
       showToast(ur.n ? ('已解除 ' + ur.n + ' 张卡片的关联') : '所勾选的卡片本来就没有关联凭证');
     } else if (act === 'clean') {
-      var m2 = $('aPeriod').value || currentPeriod();
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量清理（清理期间 ' + m2 + '）？', { title: '批量清理' }))) return;
-      checked.forEach(function (id) { S.cleanFixedAsset(id, m2); });
+      // 与行内清理同一口径：批量标记 + 一张汇总清理凭证（genCleanVoucher 支持多卡合并成一张）；
+      // 生成失败则整体回滚标记，避免留下「已清理但无凭证」的悬空状态。
+      var m2 = _assetPeriod();
+      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量清理并生成清理凭证（清理期间 ' + m2 + '）？\n\n' +
+        '将生成一张汇总凭证：借 固定资产清理/累计折旧，贷 固定资产。\n' +
+        '注意：该凭证只转出账面价值，处置收入、清理费用与净损益结转需另行手工处理。\n\n' +
+        '清理后这些卡片会移入「显示已清理资产」视图并停止计提折旧；如需撤销，删除该凭证即可自动恢复。', { title: '批量清理' }))) return;
+      // 只记下「本次新标记」的卡片：失败回滚时只还原这些。
+      // 不能拿 checked 整体回滚 —— 勾选里可能混有「原本就已清理且有凭证」的卡片，
+      // 而 cancelCleanFixedAsset 现在会连同凭证一起撤销，那就误删了人家既有的清理凭证。
+      var newlyMarked = checked.filter(function (id) {
+        var f = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
+        return f && f.status !== '清理';
+      });
+      newlyMarked.forEach(function (id) { S.cleanFixedAsset(id, m2); });
+      var gv2 = S.genCleanVoucher(checked, m2);
+      if (!gv2.ok) {
+        newlyMarked.forEach(function (id) { S.cancelCleanFixedAsset(id); });
+        renderAssets(); syncAll();
+        return showToast('批量清理未完成：' + gv2.msg, 'error');
+      }
       renderAssets(); syncAll();
-      showToast('已批量清理 ' + checked.length + ' 张');
+      showToast('已清理 ' + gv2.count + ' 张，生成凭证 ' + ((gv2.voucher.word || '记') + '-' + gv2.voucher.no) +
+        '，金额 ' + money(gv2.total) + '（卡片已归入「显示已清理资产」）');
     } else {
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量删除？\n已计提折旧/已清理的卡片将无法删除。', { title: '批量删除' }))) return;
+      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量删除？\n\n' +
+        '已有折旧或清理记录的卡片无法删除（会提示改用「清理」处理）。', { title: '批量删除' }))) return;
       var delOk = 0, delFail = 0;
       checked.forEach(function (id) { var r = S.removeFixedAsset(id); if (r.ok) delOk++; else delFail++; });
       renderAssets(); syncAll();
@@ -504,13 +587,23 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var m = $('assetBatchMenu');
     if (m && !m.hidden && !e.target.closest('#btnAssetBatch') && !e.target.closest('#assetBatchMenu')) m.hidden = true;
   });
-  // 「计提折旧」：按左侧期间计提本月折旧并生成折旧凭证。
-  // 本按钮只做计提折旧；生成清理凭证已拆到「批量操作 → 生成清理凭证」（原「生成凭证」按钮身兼两职、靠隐式条件切换不可预期）。
-  $('btnAssetGenVoucher').addEventListener('click', function () {
-    var month = $('aPeriod').value || currentPeriod();
+  // 「计提折旧」：按左侧期间对【全部】应计提资产计提本月折旧并生成折旧凭证。
+  // 为什么不吃勾选：准则要求对所有应计提折旧的固定资产按月计提，不能挑着提（漏提即账实不符），
+  //   故本操作与勾选无关。但页面上「批量清理/批量删除/关联购入凭证」都遵循「勾了就只处理勾选的」，
+  //   用户极易形成同样预期 —— 因此仅在【有勾选】时弹确认明确告知范围，不勾选则直接执行（日常不打扰）。
+  $('btnAssetGenVoucher').addEventListener('click', async function () {
+    var month = _assetPeriod();
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.aChk:checked'));
+    if (checked.length) {
+      var total = (S.state.fixedAssets || []).length;
+      if (!(await H.confirmAsync(
+        '「计提折旧」按期间对全部应计提折旧的资产进行，与勾选无关（勾选不参与筛选）。\n\n' +
+        '本账套共 ' + total + ' 张卡片，系统会自动跳过已清理、已提满、本月已计提的资产。\n\n' +
+        '是否继续计提 ' + month + ' 的折旧？', { title: '计提折旧范围' }))) return;
+    }
     var r = S.depreciateMonth(month);
     if (!r.ok) return showToast(r.msg, 'error');
-    showToast('已生成折旧凭证 ' + r.voucher.word + '-' + r.voucher.no);
+    showToast('已计提 ' + month + ' 折旧，生成凭证 ' + ((r.voucher.word || '记') + '-' + r.voucher.no) + '，金额 ' + money(r.total) + '（' + r.count + ' 项资产）');
     renderAssets(); syncAll();
   });
   $('aPrev').addEventListener('click', function () { if (_assetPage > 1) { _assetPage--; renderAssets(); } });
@@ -520,45 +613,68 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   $('aPageSize').addEventListener('change', function () { _assetPageSize = num($('aPageSize').value); _assetPage = 1; renderAssets(); });
   $('aCheckAll').addEventListener('change', function (e) { document.querySelectorAll('.aChk').forEach(function (c) { c.checked = e.target.checked; }); });
+  // 折旧凭证页表头全选：HTML 里一直有 #dvCheckAll，但 JS 从未绑定 —— 点了不动。
+  // 口径与上面的 aCheckAll 完全一致（表头勾选 → 同步所有行内勾选框）。
+  $('dvCheckAll').addEventListener('change', function (e) {
+    document.querySelectorAll('.dvChk').forEach(function (c) { c.checked = e.target.checked; });
+  });
+  // 资产类别页表头全选：此前同样是「有元素、无绑定」。
+  $('catCheckAll').addEventListener('change', function (e) {
+    document.querySelectorAll('.catChk').forEach(function (c) { c.checked = e.target.checked; });
+  });
   $('assetBody').addEventListener('click', async function (e) {
     if (e.target.classList.contains('link-del')) {
       var delId = e.target.getAttribute('data-del');
       var delA = S.state.fixedAssets.filter(function (x) { return x.id === delId; })[0];
-      if (!(await H.confirmAsync('确定删除固定资产卡片「' + (delA ? delA.name : '') + '」吗？', { title: '删除资产卡片' }))) return;
+      if (!(await H.confirmAsync('确认删除固定资产卡片「' + (delA ? delA.name : '') + '」？\n\n' +
+        '已有折旧或清理记录的卡片无法删除（会提示改用「清理」处理）。', { title: '删除资产卡片' }))) return;
       var dr = S.removeFixedAsset(delId);
       if (!dr.ok) return showToast(dr.msg, 'error');
       renderAssets(); showToast('已删除卡片');
     } else if (e.target.classList.contains('link-edit')) {
       _openAssetModal(e.target.getAttribute('data-asset-edit'));
-    } else if (e.target.classList.contains('link-copy')) {
-      _copyAsset(e.target.getAttribute('data-copy'));
     } else if (e.target.classList.contains('link-clean')) {
+      // 清理一步式（对齐金蝶「清理」的语义）：标记清理 + 立即生成清理凭证。
+      // 必须「先标记再生成」—— genCleanVoucher 只处理 status=清理 的卡片；
+      // 生成失败则把标记回滚，避免留下「卡片显示已清理、账上资产还在」的账实不符。
+      // 边界：本凭证只做「账面价值转入固定资产清理」这一步，处置收入/清理费用/净损益结转
+      // 属会计判断，软件不代做（确认弹窗已明示）。
       var cid = e.target.getAttribute('data-clean');
       var cf = S.state.fixedAssets.filter(function (x) { return x.id === cid; })[0];
       if (!cf) return;
-      var cm = $('aPeriod').value || currentPeriod();
-      if (!(await H.confirmAsync('确定清理「' + cf.name + '」吗？\n清理期间：' + cm + '\n清理后该卡片状态变为「已清理」，可在「显示已清理资产」中查看，并可一键生成清理凭证。', { title: '清理资产' }))) return;
+      var cm = _assetPeriod();
+      if (!(await H.confirmAsync('确认清理「' + cf.name + '」？\n清理期间：' + cm +
+        '\n\n将同时生成清理凭证：借 固定资产清理/累计折旧，贷 固定资产。' +
+        '\n注意：该凭证只转出账面价值，处置收入、清理费用与净损益结转需另行手工处理。' +
+        '\n\n清理后该卡片会移入「显示已清理资产」视图（列表上方勾选可查看），不再计提折旧；' +
+        '如需撤销，删除该清理凭证即可，卡片会自动恢复为正常。', { title: '清理资产' }))) return;
       S.cleanFixedAsset(cid, cm);
+      var gv = S.genCleanVoucher([cid], cm);
+      if (!gv.ok) {
+        S.cancelCleanFixedAsset(cid); // 生成失败 → 回滚标记，不留「已清理但无凭证」的悬空状态
+        renderAssets(); syncAll();
+        return showToast('清理未完成：' + gv.msg, 'error');
+      }
+      var gvNo = (gv.voucher.word || '记') + '-' + gv.voucher.no;
       renderAssets(); syncAll();
-      showToast('已清理：' + cf.name + '（清理期间 ' + cm + '）');
+      showToast('已清理并生成凭证 ' + gvNo + '：' + cf.name + '（卡片已归入「显示已清理资产」，删除该凭证可撤销）');
     } else if (e.target.classList.contains('link-unclean')) {
-      var r = S.cancelCleanFixedAsset(e.target.getAttribute('data-unclean'));
+      // 取消清理 = 撤销整个处置动作：若该卡片已生成清理凭证，会连同凭证一起删除（账务回退）。
+      // 这是会动账的操作，故先在弹窗里说清"要删哪张凭证"再执行（凭证为软删，可在回收站还原）。
+      var unId = e.target.getAttribute('data-unclean');
+      var unFa = S.state.fixedAssets.filter(function (x) { return x.id === unId; })[0];
+      if (unFa && unFa.cleanVoucher) {
+        if (!(await H.confirmAsync('确认取消「' + unFa.name + '」的清理？\n\n' +
+          '将同时删除清理凭证 ' + unFa.cleanVoucher + '（账务一并回退）。', { title: '取消清理' }))) return;
+      }
+      var r = S.cancelCleanFixedAsset(unId);
       if (!r.ok) return showToast(r.msg, 'error');
       renderAssets(); syncAll();
-      showToast('已取消清理');
+      showToast(r.removedVoucher ? ('已取消清理，清理凭证 ' + r.removedVoucher + ' 已删除') : '已取消清理');
     }
   });
-  // 「复制」= 以原卡为基础生成新卡片：打开新增弹窗预填字段，编码清空重填、状态类字段复位
-  function _copyAsset(id) {
-    var fa = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-    if (!fa) return;
-    _openAssetModal(id);
-    $('aCode').value = '';
-    $('aStatus').value = '正常';
-    $('aCleanPeriod').value = '';
-    $('assetModal').setAttribute('data-asset-id', '');
-    showToast('已按「' + fa.name + '」预填新卡片，请修改编码后保存');
-  }
+  // （行内「复制」功能已于 2026-09-18 移除：固定资产业务中逐张复制卡片意义不大，
+  //   且行内操作越少越不易误点。新增卡片请用顶部「新增」。）
   // 固定资产表单的 7 个科目选择：统一用唯一科目选择组件 bindSubjectPicker（输入框+联想）。
   // 每个下拉带各自的前缀过滤（如固定资产只列 16 开头）。首次绑定一次（dataset 守卫），
   // 之后 _openAssetModal 只回填 value，避免每次打开重复挂监听。
@@ -586,11 +702,35 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var inp = $(id); if (inp) inp.value = (fa && fa[_acctFieldMap[id]]) || '';
     });
   }
+  var _editingDeprMonth = '';   // 编辑卡片时卡片自带的锚点月（有则优先于推导）
+  // 推导锚点月 =「开始使用月 + 已折旧期间」，与 _accumDeprAt 里外部导入卡的口径一致
+  function _anchorMonth() {
+    var acq = $('aAcq') ? $('aAcq').value : '';
+    var ym = acq ? String(acq).slice(0, 7) : '';
+    if (!/^\d{4}-\d{2}$/.test(ym)) return '';
+    return _addMonths(ym, U.num($('aPeriodUsed').value));
+  }
+  /* 辅助提示：把字段的隐含口径直接写出来。金蝶在这几个字段旁也有小字说明，ty 原先完全没有 ——
+   * 而「期初累计折旧」恰恰最需要说明：它必须是【锚点月末】的余额，时点填错就会与总账差整期折旧
+   * （卡片显示累计 vs 总账 1602，差额正好是一期月折旧额）。 */
+  function _updateHints() {
+    var o = U.num($('aOriginal').value), sr = U.num($('aSalvageRate').value), m = U.num($('aLife').value);
+    var hS = $('aSalvageHint');
+    if (hS) hS.textContent = o > 0 ? ('预计残值 ' + money(o * sr / 100)) : '';
+    var hA = $('aAccumHint');
+    if (hA) {
+      var anchor = _editingDeprMonth || _anchorMonth();
+      hA.textContent = anchor ? ('截至 ' + anchor + ' 月末' + (_editingDeprMonth ? '（最近计提月）' : '')) : '';
+    }
+    var hM = $('aMonthDeprHint');
+    if (hM) hM.textContent = (o > 0 && m > 0) ? '按原值、残值率、期数算出' : '';
+  }
   // 月折旧额联动：录入原值/残值率/期数后自动计算（form_perDepreciation）
   function _calcMonthDepr() {
     var o = U.num($('aOriginal').value), r = U.num($('aSalvageRate').value), m = U.num($('aLife').value);
-    if (!o || !m) { $('aMonthDepr').value = ''; return; }
+    if (!o || !m) { $('aMonthDepr').value = ''; _updateHints(); return; }
     $('aMonthDepr').value = ((o * (1 - r / 100)) / m).toFixed(2);
+    _updateHints();
   }
   function _openAssetModal(id) {
     // 填充类别下拉（仅一次）
@@ -634,7 +774,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aSalvageRate').value = fa ? fa.salvageRate : '';
     $('aLife').value = fa ? (fa.life * 12) : 60;    // 存储为年，表单显示月
     $('aPeriodUsed').value = fa ? (fa.periodUsed || 0) : 0;
-    $('aAccumDeprBegin').value = fa ? fa.accumDeprBegin : 0;
+    $('aAccumDeprBegin').value = fa ? num(fa.accumDeprBegin) : 0;
     $('aYearDepr').value = fa ? (fa.yearDepr || 0) : 0;
     $('aQty').value = fa ? (fa.qty || 1) : 1;
     $('aCategory').value = fa ? (fa.category || '') : '';
@@ -643,10 +783,21 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aUser').value = fa ? (fa.user || '') : '';
     $('aEntryPeriod').value = fa ? (fa.entryPeriod || '') : currentPeriod();
     $('aImpairment').value = fa ? fa.impairment : 0;
-    $('aStatus').value = fa ? (fa.status || '正常') : '正常';
-    $('aCleanPeriod').value = fa ? (fa.cleanPeriod || '') : '';
     $('aMemo').value = fa ? (fa.memo || '') : '';
-    _calcMonthDepr();
+    // 「状态」「清理期间」已不在表单里（对齐金蝶新增页）：新增一律「正常」，转清理走卡片行的
+    // 「清理」动作（会同时生成凭证）；编辑时 _collectAsset 也不再采集这两个字段，
+    // 所以卡片上的原值不会被覆盖。
+    // 新增时「资产清理科目」默认带出 1606（金蝶的默认值 1606 固定资产清理），省一次手选。
+    if (!fa) {
+      var cl = $('aCleanAcct');
+      if (cl && !cl.value) {
+        var cs = (S.state.subjects || []).filter(function (x) { return String(x.code) === '1606'; })[0];
+        if (cs) cl.value = String(cs.code);
+      }
+    }
+    // 编辑已计提过的卡片：锚点用卡片自带 deprMonth（最近计提月），优先于"购置月+已折旧期间"推导
+    _editingDeprMonth = (fa && fa.deprMonth) ? String(fa.deprMonth) : '';
+    _calcMonthDepr();   // 内部连带刷新辅助提示
     $('assetModal').setAttribute('data-asset-id', id || '');
     $('assetModal').classList.add('show');
   }
@@ -661,46 +812,67 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       accumDeprBegin: U.num($('aAccumDeprBegin').value), yearDepr: U.num($('aYearDepr').value),
       qty: U.num($('aQty').value), category: $('aCategory').value, spec: $('aSpec').value,
       location: $('aLocation').value, user: $('aUser').value, entryPeriod: $('aEntryPeriod').value,
-      impairment: U.num($('aImpairment').value), status: $('aStatus').value,
-      cleanPeriod: $('aCleanPeriod').value, memo: $('aMemo').value,
+      impairment: U.num($('aImpairment').value), memo: $('aMemo').value,
+      // 刻意不采集 status / cleanPeriod：表单已移除这两个字段（对齐金蝶）。
+      // 编辑时不覆盖卡片原值；新增时由 addFixedAsset 补默认（'正常' / ''）。
       salvage: U.num($('aOriginal').value) * U.num($('aSalvageRate').value) / 100
     };
   }
   $('btnCloseAsset').addEventListener('click', function () { $('assetModal').classList.remove('show'); });
-  ['aOriginal', 'aSalvageRate', 'aLife'].forEach(function (id) {
+  // aAcq / aPeriodUsed 也挂上：这两个字段决定锚点月，变动时需即时刷新期初累计折旧的时点提示
+  ['aOriginal', 'aSalvageRate', 'aLife', 'aAcq', 'aPeriodUsed'].forEach(function (id) {
     var el = $(id); if (el) el.addEventListener('input', _calcMonthDepr);
   });
-  function _saveAsset(mode) {
+  function _saveAsset() {
+    // 取值校验必须用**原始字符串**，不能校验 _collectAsset 的产物：那里已用 U.num() 转成数字，
+    // 空输入一律变成 0，于是 `=== ''` / `=== undefined` 永远为假 —— 原先三项"必填"因此形同虚设，
+    // 「期初累计折旧」留空会被静默按 0 保存（对已提过折旧的老资产等于把累计清零）。
+    var rawRate = $('aSalvageRate').value, rawLife = $('aLife').value;
+    var rawPeriod = $('aPeriodUsed').value, rawBegin = $('aAccumDeprBegin').value;
     var fa = _collectAsset();
-    // 必填校验（对齐卡片新增窗 required-mark 字段）
+    // 必填校验（星标对齐金蝶新增页）
     if (!fa.code) return showToast('请填写资产编码', 'error');
     if (!fa.name) return showToast('请填写资产名称', 'error');
     if (!fa.faAcctId) return showToast('请选择固定资产科目', 'error');
     if (!fa.dept) return showToast('请选择使用部门', 'error');
     if (!fa.acqDate) return showToast('请选择开始使用日期', 'error');
+    if (!fa.category) return showToast('请选择资产类别', 'error');   // 金蝶为必填，此处对齐
     if (!fa.original) return showToast('请填写原值', 'error');
     if (!fa.accDeprAcct) return showToast('请选择累计折旧科目', 'error');
     if (!fa.method) return showToast('请选择折旧方法', 'error');
     if (!fa.deprFeeAcct) return showToast('请选择折旧费用科目', 'error');
     if (!fa.cleanAcct) return showToast('请选择资产清理科目', 'error');
     if (!fa.purchaseAcct) return showToast('请选择资产购入对方科目', 'error');
-    if (fa.salvageRate === '' || fa.salvageRate === undefined) return showToast('请填写残值率%', 'error');
-    if (!fa.life) return showToast('请填写预计使用期数(月)', 'error');
-    if (fa.periodUsed === '' || fa.periodUsed === undefined) return showToast('请填写已折旧期间', 'error');
-    if (fa.accumDeprBegin === '' || fa.accumDeprBegin === undefined) return showToast('请填写期初累计折旧', 'error');
-    if (!fa.yearDepr && fa.yearDepr !== 0) return showToast('请填写本年已折旧', 'error');
-    if (!fa.qty) return showToast('请填写数量', 'error');
+    if (rawRate === '') return showToast('请填写残值率%', 'error');
+    if (rawLife === '' || U.num(rawLife) <= 0) return showToast('请填写预计使用期数(月)', 'error');
+    if (rawPeriod === '' || U.num(rawPeriod) < 0) return showToast('已折旧期间不能为空或负数', 'error');
+    if (rawBegin === '' || U.num(rawBegin) < 0) return showToast('期初累计折旧不能为空或负数', 'error');
+    // 范围校验（原先完全没有）：超限会写出"锚点落在未来 / 期数倒挂"的卡片，滚算结果不可用
+    if (U.num(rawPeriod) > U.num(rawLife)) {
+      return showToast('已折旧期间（' + U.num(rawPeriod) + '）不能大于预计使用期数（' + U.num(rawLife) + '）', 'error');
+    }
+    if (U.num(rawRate) < 0 || U.num(rawRate) > 100) return showToast('残值率应在 0 ~ 100 之间', 'error');
+    if (fa.original < 0) return showToast('原值不能为负数', 'error');
+    // 编码查重：同编码两张卡会让筛选、折旧汇总出现重复项（addFixedAsset 自身不做唯一性检查）
     var editId = $('assetModal').getAttribute('data-asset-id');
+    var dup = S.state.fixedAssets.filter(function (x) {
+      return String(x.code) === String(fa.code) && x.id !== editId;
+    })[0];
+    if (dup) return showToast('资产编码「' + fa.code + '」已被「' + (dup.name || '') + '」占用', 'error');
     if (editId) { S.updateFixedAsset(editId, fa); showToast('卡片已更新'); }
     else { S.addFixedAsset(fa); showToast('卡片已保存'); }
-    if (mode === 'add') { _openAssetModal(''); return; } // 保存并新增：清空再开
-    if (mode === 'copy') { $('aCode').value = ''; _openAssetModal(''); $('assetModal').setAttribute('data-asset-id', ''); return; } // 保存并复制：清空编码再开
+    /* 卡片清单按期间过滤购置日期后，新卡若开始使用日期晚于当前期间会立刻"看不见" ——
+     * 容易被当成没保存成功，故合并成一条提示告知去向（比自动切换期间更简单，也不夺静态决策权）。 */
+    var acqM = String(fa.acqDate || '').slice(0, 7);
+    var curPeriod = _assetPeriod();
+    if (acqM && acqM > curPeriod) {
+      showToast('卡片已' + (editId ? '更新' : '保存') + '；其开始使用日期为 ' + acqM +
+        '，在当前期间（' + curPeriod + '）的清单中不显示 —— 请切换到 ' + acqM + ' 或之后查看');
+    }
     $('assetModal').classList.remove('show');
     renderAssets(); syncAll();
   }
-  $('btnSaveAsset').addEventListener('click', function () { _saveAsset('close'); });
-  $('btnSaveCopyAsset').addEventListener('click', function () { _saveAsset('copy'); });
-  $('btnSaveAddAsset').addEventListener('click', function () { _saveAsset('add'); });
+  $('btnSaveAsset').addEventListener('click', _saveAsset);
 
   function refreshDas() {
     // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本
@@ -736,20 +908,35 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var prevOfStart = _addMonths(opts.startMonth || month, -1);
     var rows = S.state.fixedAssets.filter(function (fa) {
       if (!opts.showCleaned && fa.status === '清理') return false;
+      /* 期间早于购置月 → 该资产尚未入账，本表不应出现（2026-09-18 补）。
+       * 对齐金蝶：选前几个期间时看不到后期才购置的资产。
+       * 实测（添钰来客）：「010 沙发折叠床」购置月 2026-06，但本表此前只过滤了「清理」状态，
+       * 于是选 2026-03 时它照样占一行 —— 更糟的是它的原值、期末净值都被计入合计，
+       * 使「原值」合计虚增 3,550.00（恰为该卡原值），与总账 1601 期末余额对不上。
+       * 注意判据是 acqMonth > month 才排除：当月购置的卡**仍要显示**（资产已入账，
+       * 只是按「次月起提」本月折旧为 0），不能连带排除掉。 */
+      var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
+      if (acqM && acqM > month) return false;
       return true;
     }).map(function (fa) {
       var md = S.assetMonthlyDepr(fa);
-      // 本年折旧额：当年 1 月至当前期，按应计月份数近似（直线法每月相等）
-      var m0 = y + '-01';
-      var periodMonths = month ? (U.monthsBetween(m0, month) + 1) : 0;
-      var yearDepr = md * periodMonths;
       // 期初/期末累计折旧都按锚点月末滚算（唯一实现 _accumDeprAt），不再读卡片存值
       var accumBegin = _accumDeprAt(fa, prevOfStart, md);
       var accumEnd = _accumDeprAt(fa, month, md);
+      /* 期间折旧 = 累计的滚增，**不**用 assetMonthlyDepr 直接求和（2026-09-18 修正）。
+       * 原实现：yearDepr = md × 月份数；monthDepr 也在调用方按 md 求和 —— 都没有考虑
+       * 「购置晚于本月 / 已提满 / 本月已计提 / 次月起提」这些情形，与计提凭证口径分叉。
+       * 实测（添钰来客 2026-03~06）：报表本月折旧 10,866.63，而凭证与总账都是 10,810.42，
+       * 差 56.21 恰是一张「购置晚于本月」的卡（010 沙发折叠床）；本年折旧额同理差 281.07。
+       * 改用滚增后与总账 1602 只差逐张舍入的 0.01~0.03，彻底同源。
+       * 注意不要改用 assetDeprDue()：它含 "deprMonth === month → 0" 的**计提幂等保护**，
+       * 对已计提的历史期间会算出 0，而凭证里是有金额的。报表要的是账面滚增。 */
+      var monthDepr = Math.max(0, accumEnd - accumBegin);
+      var yearDepr = Math.max(0, accumEnd - _accumDeprAt(fa, _addMonths(y + '-01', -1), md));   // 年初前一个月末至今
       var netEnd = Math.max(0, num(fa.original) - accumEnd - num(fa.impairment));
       return {
         fa: fa,
-        monthDepr: md,
+        monthDepr: monthDepr,
         yearDepr: yearDepr,
         accumBegin: accumBegin,
         accumEnd: accumEnd,
@@ -922,14 +1109,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   }
   function refreshAssetCategory() { renderAssetCategory(); }
   $('btnResetCat').addEventListener('click', async function () {
-    if (!(await H.confirmAsync('恢复默认资产类别将覆盖当前已自定义的类别与折旧参数，确定继续？', { title: '恢复默认类别' }))) return;
+    if (!(await H.confirmAsync('恢复默认资产类别将覆盖当前已自定义的类别与折旧参数，确认继续？', { title: '恢复默认类别' }))) return;
     S.state.assetCats = null; renderAssetCategory(); showToast('已恢复默认类别');
   });
   $('btnNewCat').addEventListener('click', function () { _openCatModal(-1); });
   $('btnDelCat').addEventListener('click', async function () {
     var checked = [].slice.call(document.querySelectorAll('.catChk:checked')).map(function (c) { return num(c.getAttribute('data-i')); });
     if (!checked.length) return showToast('请先勾选要停用的类别', 'error');
-    if (!(await H.confirmAsync('确定停用选中的 ' + checked.length + ' 个资产类别？\n停用后新增资产不能再选该类，历史资产类别保留。', { title: '停用资产类别' }))) return;
+    if (!(await H.confirmAsync('确认停用选中的 ' + checked.length + ' 个资产类别？\n停用后新增资产不能再选该类，历史资产类别保留。', { title: '停用资产类别' }))) return;
     var list = assetCats();
     checked.forEach(function (i) { if (list[i]) list[i].enabled = false; });
     S.state.assetCats = list; renderAssetCategory(); showToast('已停用'); syncAll();
@@ -940,7 +1127,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var cat = assetCats()[i];
       var disabling = !(cat && cat.enabled === false);
       if (disabling) {
-        if (!(await H.confirmAsync('确定停用资产类别「' + (cat ? cat.name : '') + '」？', { title: '停用资产类别' }))) return;
+        if (!(await H.confirmAsync('确认停用资产类别「' + (cat ? cat.name : '') + '」？', { title: '停用资产类别' }))) return;
       }
       cat.enabled = disabling ? false : true;
       renderAssetCategory(); showToast(disabling ? '已停用' : '已启用'); syncAll();
@@ -979,10 +1166,32 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
 
   /* 资产变动记录：基于固定资产卡片生成「新增/录入」变动行 */
+  // 变动记录页的三个显示选项；默认值即页面初始状态（不汇总、不含已清理、显示变动信息）
+  var _aclOpts = { byDept: false, showCleaned: false, showChange: true };
   function buildAssetChangeLog(month) {
-    return S.state.fixedAssets.filter(function (fa) {
+    var list = S.state.fixedAssets.filter(function (fa) {
+      if (!_aclOpts.showCleaned && fa.status === '清理') return false;   // 「显示已清理」选项
       return !month || (fa.acqDate && fa.acqDate.slice(0, 7) === month);
-    }).map(function (fa) {
+    });
+    if (_aclOpts.byDept) {
+      // 「按部门汇总」：一行一个部门，给出该期间的卡片张数与原值合计。
+      // 表格是固定 8 列，故沿用列位：名称=部门、变动项=部门汇总、变动后=N 张 / 原值合计。
+      var byDept = {};
+      list.forEach(function (fa) {
+        var d = fa.dept || '(未分配部门)';
+        if (!byDept[d]) byDept[d] = { n: 0, orig: 0 };
+        byDept[d].n += 1;
+        byDept[d].orig += num(fa.original);
+      });
+      return Object.keys(byDept).sort().map(function (d) {
+        return {
+          code: '', name: d, item: '部门汇总', before: '',
+          after: byDept[d].n + ' 张 / 原值 ' + money(byDept[d].orig),
+          period: month || '', user: '', time: ''
+        };
+      });
+    }
+    return list.map(function (fa) {
       return {
         code: fa.code, name: fa.name, item: '资产录入', before: '—', after: '新增（原值 ' + money(fa.original) + '）',
         period: fa.acqDate ? fa.acqDate.slice(0, 7) : '', user: '系统', time: fa.acqDate || ''
@@ -998,6 +1207,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function aclMonth() { var e = $('aclPeriodEnd'); return e ? e.value : currentPeriod(); }
   // 期间变更由期间控件的 data-on-change 直接回调（组件不再派发 change 事件），此处无需再绑监听。
   // btnAclPrint 已加 data-print，由全局委托统一走 tyPrint()。
+  /* 资产变动记录页的三个显示选项（按部门汇总 / 显示已清理 / 显示变动信息）。
+   * 2026-09-18 修复：这三个勾选框在 HTML 里存在已久，但 JS 从未读取过它们的值 ——
+   * 用户点了完全没反应。此处补上状态与联动刷新。 */
+  $('aclByDept').addEventListener('change', function () { _aclOpts.byDept = this.checked; refreshAssetChangeLog(); });
+  $('aclShowCleaned').addEventListener('change', function () { _aclOpts.showCleaned = this.checked; refreshAssetChangeLog(); });
+  $('aclShowChange').addEventListener('change', function () { _aclOpts.showChange = this.checked; refreshAssetChangeLog(); });
   $('btnAclExport').addEventListener('click', function () {
     var month = aclMonth();
     var rows = buildAssetChangeLog(month);
@@ -1012,16 +1227,24 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   function renderAssetChangeLog(month) {
     var tb = $('aclBody'); tb.innerHTML = '';
+    // 「显示变动信息」：控制「变动项 / 变动前内容 / 变动后内容」三列（表头第 3~5 列）的显隐。
+    // 不勾选时只保留资产编码、名称与期间，可当纯清单看。
+    var headThs = document.querySelectorAll('#aclGrid thead tr:not(.grid-title) th');
+    var showChg = _aclOpts.showChange;
+    [2, 3, 4].forEach(function (i) { if (headThs[i]) headThs[i].style.display = showChg ? '' : 'none'; });
     var rows = buildAssetChangeLog(month);
     if (!rows.length) {
       tb.innerHTML = '<tr><td colspan="8" class="empty-hint">暂无变动记录</td></tr>';
       return;
     }
+    var hideStyle = showChg ? '' : ' style="display:none"';
     rows.forEach(function (r) {
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td class="mono">' + r.code + '</td><td>' + r.name + '</td><td>' + r.item + '</td>' +
-        '<td>' + r.before + '</td><td>' + r.after + '</td><td class="mono">' + r.period + '</td>' +
+        '<td class="mono">' + r.code + '</td><td>' + r.name + '</td>' +
+        '<td' + hideStyle + '>' + r.item + '</td>' +
+        '<td' + hideStyle + '>' + r.before + '</td><td' + hideStyle + '>' + r.after + '</td>' +
+        '<td class="mono">' + r.period + '</td>' +
         '<td>' + r.user + '</td><td class="mono">' + r.time + '</td>';
       tb.appendChild(tr);
     });
@@ -1070,9 +1293,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         '<td><a class="link-del" data-dv="' + fa.id + '">生成</a></td>' +
         _assetRowCells(fa);
       tb.appendChild(tr);
-      tot.orig += num(fa.original); tot.ab += num(fa.accumDeprBegin); tot.ae += num(fa.accumDepr);
+      // 与卡片行同源：_assetRowCells 已按「期初=上月末 / 期末=本月末」滚算，
+      // 合计必须用同一口径，否则会出现"各行之和不等于合计"（此前这里读的是卡片存值）。
+      var _p = _assetPeriod(), _pb = _addMonths(_p, -1);
+      var _ae = _accumDeprAt(fa, _p, md), _ab = _accumDeprAt(fa, _pb, md);
+      tot.orig += num(fa.original); tot.ab += _ab; tot.ae += _ae;
       tot.md += md; tot.s += num(fa.salvage); tot.im += num(fa.impairment);
-      tot.nb += num(fa.netValueBegin); tot.ne += num(fa.netValueEnd);
+      tot.nb += Math.max(0, num(fa.original) - _ab - num(fa.impairment));
+      tot.ne += Math.max(0, num(fa.original) - _ae - num(fa.impairment));
     });
     var foot = $('dvFoot'); foot.innerHTML = '';
     if (rows.length) {
@@ -1106,11 +1334,15 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       return c.closest('tr').querySelector('[data-dv]').getAttribute('data-dv');
     });
     if (!checked.length) return showToast('请先勾选要操作的卡片', 'error');
-    if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量删除？', { title: '批量删除' }))) return;
-    checked.forEach(function (id) { S.removeFixedAsset(id); });
+    if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量删除？\n\n' +
+      '已有折旧或清理记录的卡片无法删除（会提示改用「清理」处理）。', { title: '批量删除' }))) return;
+    // 与固定资产页的批量删除同口径：逐一统计成败。原实现不统计，被守卫拒绝的卡片也一并
+    // 播报「已批量删除 N 张」，属误报（用户以为删掉了，刷新后卡片还在）。
+    var dvOk = 0, dvFail = 0;
+    checked.forEach(function (id) { var r = S.removeFixedAsset(id); if (r.ok) dvOk++; else dvFail++; });
     var dv = $('dvPeriod');
     renderAssetDeprVoucher(dv ? dv.getAttribute('data-period') : currentPeriod()); syncAll();
-    showToast('已批量删除 ' + checked.length + ' 张');
+    showToast('已删除 ' + dvOk + ' 张' + (dvFail ? '，' + dvFail + ' 张因已有折旧/清理记录未删' : ''));
   });
   // 折旧凭证参数设置弹层
   $('btnDeprVchSetting').addEventListener('click', function () {

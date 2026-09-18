@@ -137,8 +137,9 @@ async function doPush(force) {
   if ((r.conflicts || []).length && !force) {
     var n = r.conflicts.length;
     var ok = await H.confirmAsync(
-      '云端有 ' + n + ' 本账套比本机新：\n' + r.conflicts.join('、') +
-      '\n\n继续会用本机覆盖它们（建议先点「云同步」取回）。\n确定继续备份吗？',
+      '云端有 ' + n + ' 本账套比本机新：\n\n' +
+      r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
+      '\n\n继续会用本机覆盖它们（建议先点「云同步」取回）。\n确认继续备份？',
       { title: '云备份' }
     );
     if (!ok) return;
@@ -159,8 +160,9 @@ async function doPull(force) {
   if ((r.conflicts || []).length && !force) {
     var n = r.conflicts.length;
     var ok2 = await H.confirmAsync(
-      '本机有 ' + n + ' 本账套比云端新：\n' + r.conflicts.join('、') +
-      '\n\n取回会用云端覆盖它们（覆盖前会自动留本机备份，可在「查看备份」回滚）。\n确定继续吗？',
+      '本机有 ' + n + ' 本账套比云端新：\n\n' +
+      r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
+      '\n\n取回会用云端覆盖它们（覆盖前会自动留本机备份，可在「查看备份」回滚）。\n确认继续？',
       { title: '云同步' }
     );
     if (!ok2) return;
@@ -188,7 +190,7 @@ function bindCloudSync() {
 
   if (bClr) bClr.addEventListener('click', async function () {
     var ok = await H.confirmAsync(
-      '清空后本机不再保留云端地址与账号，再次同步需重新填写。\n云端已备份的账套不会删除。\n确定清空吗？',
+      '清空后本机不再保留云端地址与账号，再次同步需重新填写。\n云端已备份的账套不会删除。\n确认清空？',
       { title: '清空云同步设置' }
     );
     if (!ok) return;

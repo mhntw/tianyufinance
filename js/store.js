@@ -1456,6 +1456,15 @@
       if (idx < 0) return { ok: false, msg: '模板不存在' };
       arr.splice(idx, 1);
       // 同步删除结账凭证模板里对应的条目（vchTplId 匹配）
+      // 【必须同时清 state.settleTemplates】saveVchTemplate 是「localStorage + state」双写，
+      // 此处若只清 localStorage：state 里的残留项（带 custom:true + 完整 template）会在下次
+      // loadSettleTemplates 时被重新合并回模板列表，形成「凭证模板已删、期末模板还在」的死卡，
+      // 而且 persistSettleTemplates 又会把它写回 localStorage —— 删了会自我复活。
+      if (Array.isArray(this.state.settleTemplates)) {
+        this.state.settleTemplates = this.state.settleTemplates.filter(function (s) {
+          return !(s.fromVchTpl && s.vchTplId === id);
+        });
+      }
       try {
         var STL_KEY2 = 'settle_templates_v1';
         var _stl2 = JSON.parse(localStorage.getItem(STL_KEY2) || '[]');
@@ -1528,6 +1537,117 @@
       return this.state.vouchers.filter(function (x) { return x.id === id; })[0] || null;
     },
     // 凭证被哪些业务单据引用（按 id 或凭证号匹配），返回引用来源名称数组；无引用返回空数组
+    /* ---------- 折旧凭证 ⇄ 固定资产卡片 联动回滚（2026-09-18） ----------
+     * 背景（实测事故）：计提折旧会更新卡片（accumDepr += 本期、periodUsed++、deprMonth = 本月），
+     * 但删除折旧凭证原先只把凭证软删，卡片累计折旧**没有回滚** —— 于是卡片比总账永久多一期折旧
+     * （实测：卡片 130,520.13 vs 总账 119,653.50，差额 10,866.63 恰好一期），
+     * 固定资产页随即弹出「卡片与总账不符」告警。
+     * 现改为：删除折旧凭证前，把引用它的卡片按「本期折旧额」回滚，并把快照挂到凭证上
+     *      （v.deprReverted）；还原凭证时按快照精确加回 —— 删除/还原双向可逆。
+     * 定位依据：fa.deprVoucher === 凭证号（计提时单点写入，不依赖凭证 kind，外部导入凭证同样适用）。
+     * 金额校验：回滚总额与凭证内「累计折旧贷方合计」不符时，差额并入最后一张卡片，保证账实严格一致。 */
+    _revertAssetDepr: function (v) {
+      var self = this;
+      var vno = (v.word || '') + '-' + (v.no != null ? v.no : '');
+      var month = voucherMonth(v);
+      var depSubj = this.subjectRole('ACC_DEPR');
+      var depCode = depSubj ? String(depSubj.code) : '';
+      var vchTotal = 0;
+      (v.entries || []).forEach(function (e) {
+        if (num(e.cr) > 0 && depCode && String(e.code) === depCode) vchTotal += num(e.cr);
+      });
+      var lines = [];
+      (this.state.fixedAssets || []).forEach(function (fa) {
+        if (!fa.deprVoucher || fa.deprVoucher !== vno) return;
+        var amt = round2(self.assetMonthlyDepr(fa));
+        if (amt <= 0) return;
+        lines.push({ fa: fa, amt: amt });
+      });
+      if (!lines.length) return null;
+      var sum = 0;
+      lines.forEach(function (l) { sum += l.amt; });
+      sum = round2(sum);
+      // 末尾月补足、历史脏数据会让单卡月折旧额与凭证金额差几分钱 —— 差额并入最后一张卡片对齐
+      if (vchTotal > 0 && Math.abs(sum - vchTotal) > EPS) {
+        var last = lines[lines.length - 1];
+        var fixed = round2(last.amt + (vchTotal - sum));
+        last.amt = fixed > 0 ? fixed : 0;
+      }
+      var snaps = [];
+      lines.forEach(function (l) {
+        if (l.amt <= 0) return;
+        var fa = l.fa;
+        snaps.push({ id: fa.id, code: fa.code, name: fa.name, amt: l.amt,
+          anchor: fa.deprMonth || '', vno: vno });
+        fa.accumDepr = Math.max(0, round2(num(fa.accumDepr) - l.amt));
+        fa.accumDeprBegin = fa.accumDepr;
+        fa.periodUsed = Math.max(0, num(fa.periodUsed || 0) - 1);
+        fa.yearDepr = Math.max(0, round2(num(fa.yearDepr || 0) - l.amt));
+        fa.netValueEnd = Math.max(0, round2(num(fa.original) - num(fa.accumDepr) - num(fa.impairment)));
+        fa.netValueBegin = fa.netValueEnd;
+        delete fa.deprVoucher;
+        // 锚点回退：清除显式锚点，交回「购置月 + 已折旧期间数」推导（periodUsed 已在上方减 1，
+        // 推导结果天然落在上一期）。切勿硬写 prevMonth(month)：外部导入卡（金蝶卡片模板）本来就
+        // 不带 deprMonth，靠推导定位锚点；硬塞一个显式值会与推导打架，实测让卡片与总账差一期
+        // （2026-09-18 告警的收尾残留正是此因）。无购置日的卡推导不出，才退回显式回退一月。
+        if (month && fa.deprMonth && String(fa.deprMonth) === String(month)) {
+          if (fa.acqDate) delete fa.deprMonth;
+          else fa.deprMonth = prevMonth(month);
+        }
+      });
+      return snaps.length ? snaps : null;
+    },
+    // 还原凭证时按删除时留下的快照把卡片折旧加回（与 _revertAssetDepr 严格对称）
+    _restoreAssetDepr: function (snaps) {
+      if (!snaps || !snaps.length) return;
+      var self = this;
+      snaps.forEach(function (s) {
+        var fa = (self.state.fixedAssets || []).filter(function (x) { return x.id === s.id; })[0];
+        if (!fa) return;
+        fa.accumDepr = round2(num(fa.accumDepr) + num(s.amt));
+        fa.accumDeprBegin = fa.accumDepr;
+        fa.periodUsed = num(fa.periodUsed || 0) + 1;
+        fa.yearDepr = round2(num(fa.yearDepr || 0) + num(s.amt));
+        fa.netValueEnd = Math.max(0, round2(num(fa.original) - num(fa.accumDepr) - num(fa.impairment)));
+        fa.netValueBegin = fa.netValueEnd;
+        if (s.anchor) fa.deprMonth = s.anchor;
+        if (s.vno) fa.deprVoucher = s.vno;
+      });
+    },
+    /* ---------- 清理凭证 ⇄ 固定资产卡片 联动回退（2026-09-18） ----------
+     * 与折旧凭证同一套设计（见 _revertAssetDepr），规范依据同为「账实相符」：
+     * 删除清理凭证 = 撤销该资产的处置业务 → 卡片必须回到「正常」状态、恢复可计提，
+     * 否则卡片显示已处置、账上固定资产却还在，账实不符。
+     * 同时解开原有死锁：
+     *   删清理凭证 → 提示「请先解除关联」；取消清理 → 提示「请先删除清理凭证」—— 互相锁死无解。
+     * 只回退 status / cleanPeriod / cleanVoucher 三个字段：
+     *   - periodUsed（已折旧期间数）不动：清理本身不改变已折旧期间数；
+     *   - 清理期间及之后漏提的折旧**不自动补提**：是否补提属会计政策判断，软件不擅自替会计决定。 */
+    _revertAssetClean: function (v) {
+      var vno = (v.word || '') + '-' + (v.no != null ? v.no : '');
+      var snaps = [];
+      (this.state.fixedAssets || []).forEach(function (fa) {
+        if (!fa.cleanVoucher || fa.cleanVoucher !== vno) return;
+        snaps.push({ id: fa.id, code: fa.code, name: fa.name,
+          status: fa.status || '\u6b63\u5e38', cleanPeriod: fa.cleanPeriod || '', vno: vno });
+        fa.status = '\u6b63\u5e38';
+        fa.cleanPeriod = '';
+        delete fa.cleanVoucher;
+      });
+      return snaps.length ? snaps : null;
+    },
+    // 还原凭证时按快照把卡片清理状态加回（与 _revertAssetClean 严格对称）
+    _restoreAssetClean: function (snaps) {
+      if (!snaps || !snaps.length) return;
+      var self = this;
+      snaps.forEach(function (s) {
+        var fa = (self.state.fixedAssets || []).filter(function (x) { return x.id === s.id; })[0];
+        if (!fa) return;
+        if (s.status) fa.status = s.status;
+        if (s.cleanPeriod) fa.cleanPeriod = s.cleanPeriod;
+        if (s.vno) fa.cleanVoucher = s.vno;
+      });
+    },
     _voucherRefs: function (id) {
       var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
       var vno = v ? ((v.word || '') + '-' + (v.no != null ? v.no : '')) : null;
@@ -1535,7 +1655,11 @@
       var self = this;
       function any(arr, cond) { return (arr || []).some(cond); }
       if (any(this.state.originals, function (o) { return o.voucherId === id || (vno && o.voucherNo === vno); })) hits.push('原始凭证');
-      if (any(this.state.fixedAssets, function (f) { return f.cleanVoucher === vno || f.deprVoucher === vno; })) hits.push('固定资产');
+      // 固定资产：折旧凭证与清理凭证**均不拦**，改为删除时自动回退卡片的业务状态
+      // （见 _revertAssetDepr / _revertAssetClean），账账、账实保持一致。
+      // 这里若继续拦，用户得先手工解锁，而界面上并没有能解锁这两个字段的入口
+      // （「解除购入凭证关联」清的是 addVoucher，管不到 deprVoucher / cleanVoucher）。
+      // 清理凭证那条尤其严重：删凭证要求先取消清理、取消清理要求先删凭证 —— 互相锁死无解。
       // 工资：工资模块按凭证类型（v.kind）+ 同期间识别凭证（工资记录无 voucherId 字段）。
       // 删掉工资凭证后工资数据仍在，会造成「工资已发但总账无凭证」的账实不符，故拦截提示先处理工资记录。
       // 原实现按摘要正则匹配，对导入凭证（无 v.summary）恒不命中，该保护从未生效。
@@ -1551,13 +1675,29 @@
         return { ok: false, msg: '该凭证所在月份已结账，不可删除' };
       // 财务严谨：校验凭证是否被业务单据引用（报销单/原始凭证/固定资产/工资等），有引用则禁删
       var ref = this._voucherRefs(id);
-      if (ref && ref.length) return { ok: false, msg: '该凭证已被' + ref.join('、') + '引用，请先解除关联后再删除' };
+      if (ref && ref.length) {
+        // 按引用类型给具体指引：原实现一律说「请先解除关联后再删除」，而固定资产类引用
+        // 根本不是靠「解除关联」解的（那按钮清的是购入凭证字段），会把人带进死胡同。
+        var REF_TIPS = {
+          '原始凭证': '请先在「原始凭证」页解除该凭证的关联',
+          '工资': '请先在工资模块删除对应工资记录'
+        };
+        var tips = ref.map(function (r) { return REF_TIPS[r] || ('请先处理「' + r + '」后再删除'); });
+        return { ok: false, msg: '该凭证已被' + ref.join('、') + '引用。' + tips.join('；') };
+      }
+      // 引用校验通过后才动卡片：回滚放在校验之后，避免「卡片回滚了、凭证却删不掉」把数据改坏。
+      // 折旧凭证软删前，先把引用它的卡片累计折旧回滚一期，快照挂在凭证上供还原时加回。
+      var deprReverted = this._revertAssetDepr(v);
+      // 清理凭证同理：撤销处置业务 → 卡片回到「正常」并可继续计提（见 _revertAssetClean）
+      var cleanReverted = this._revertAssetClean(v);
       var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
       // 软删除：打 deleted='y' 标记，凭证留在账套可还原（参考 jinbooks jbx_voucher.deleted 设计）
       // 所有凭证查询入口（periodVouchers/getVoucher 等）已过滤 deleted，账簿/报表不再计入
       v.deleted = 'y';
       v.deletedAt = fmtDateTime(new Date());
       v.deletedBy = curUser;
+      if (deprReverted) v.deprReverted = deprReverted;
+      if (cleanReverted) v.cleanReverted = cleanReverted;
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存
       this.persist();
       this.addLog('删除凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
@@ -1576,6 +1716,15 @@
       v.deleted = 'n';
       delete v.deletedAt;
       delete v.deletedBy;
+      // 与 removeVoucher 严格对称：还原凭证时，按删除时留存的快照把卡片业务状态加回
+      if (v.deprReverted && v.deprReverted.length) {
+        this._restoreAssetDepr(v.deprReverted);
+        delete v.deprReverted;
+      }
+      if (v.cleanReverted && v.cleanReverted.length) {
+        this._restoreAssetClean(v.cleanReverted);
+        delete v.cleanReverted;
+      }
       this._glCache = {};
       this.persist();
       var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
@@ -1643,7 +1792,10 @@
     /* ===================== 运行期自检（防算错） =====================
      * 「结账检查 / 试算平衡」：开机、选账套、结账后自动跑，
      * 任何一项不过即在顶部弹红字，绝不掩盖。返回 { ok, items:[{level,label,detail}] } */
-    runSelfTest: function () {
+    // month 可选：传了就检查指定期间（结账清单用），不传则检查当前期间（开机自检/横幅用）。
+    // 之所以要能传期间：结账清单必须与运行期自检共用同一套判定，否则两边口径一打架，
+    // 就会出现「横幅说账不平、结账说可以结」的死锁（历史教训，见 carryForwardProfit 注释）。
+    runSelfTest: function (month) {
       var self = this;
       var items = [];
       function push(level, label, detail) { items.push({ level: level, label: label, detail: detail || '' }); }
@@ -1670,9 +1822,9 @@
       if (badV > 0) {
         push('error', '存在借贷不平的凭证', '共 ' + badV + ' 张凭证借贷不相等，将导致账簿与报表失真');
       }
-      // 3、资产负债表恒等式（取当前期间）
+      // 3、资产负债表恒等式（默认取当前期间，入参优先）
       try {
-        var m = (typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || '');
+        var m = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (m) {
           var bs = this.balanceSheet(m);
           if (Math.abs(bs.totalAsset - bs.totalAll) >= 0.01) {
@@ -1698,7 +1850,7 @@
       }
       // 4、三表取数同源：利润表净利润 应等于 资产负债表「未分配利润」本年变动
       try {
-        var mp = (typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || '');
+        var mp = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (mp) {
           var pl = this.profitStatement(mp);
           var bs2 = this.balanceSheet(mp);
@@ -1797,9 +1949,8 @@
       CARRY_YE: 'carryYE',           // 结转本年利润（本年利润 → 利润分配，仅 12 月）
       DEPR: 'depr',                  // 计提固定资产折旧
       CARRY_COST: 'carryCost',       // 结转销售成本
-      CARRY_VAT: 'carryVat',         // 转出未交增值税
-      ACCRUE_SURTAX: 'accrueSurTax', // 计提附加税
-      ACCRUE_INCTAX: 'accrueIncTax', // 计提所得税
+      // CARRY_VAT / ACCRUE_SURTAX / ACCRUE_INCTAX 已随对应期末模板下线（2026-09-18），
+      // 不再定义。理由见 _detectVoucherKind 与 settleChecklist 处注释。
       PAYROLL_ACC: 'payrollAcc',     // 计提工资
       PAYROLL_PAY: 'payrollPay',     // 发放工资
       PROFIT_DIST: 'profitDist'      // 利润分配（提取盈余公积/分配股利，仅 12 月）
@@ -1829,8 +1980,30 @@
       if (hasRole('PROFIT_YEAR') && hasRole('PROFIT_RESIDUAL') && !hasPL) return K.CARRY_YE;
       // 2.5) 利润分配：利润分配科目 +（盈余公积或应付股利），且不含本年利润（含本年利润归 CARRY_YE）
       if (hasRole('PROFIT_RESIDUAL') && !hasRole('PROFIT_YEAR') && (hasRole('SURPLUS_RESERVE') || hasRole('DIVIDEND_PAYABLE'))) return K.PROFIT_DIST;
-      // 3) 计提折旧：折旧费用科目 + 累计折旧（累计折旧仅折旧业务使用，误判风险极低）
-      if (hasRole('DEPR_FEE') && hasRole('ACC_DEPR')) return K.DEPR;
+      // 3) 计提折旧：【与 deprVoucherIn() 严格同口径】贷方落在累计折旧科目 + 借方是费用类。
+      // 为什么不再依赖 DEPR_FEE 角色科目：金蝶迁移账套的折旧费用科目是 5401006「折旧」，
+      // 而 DEPR_FEE 角色在角色表未配置时会按关键词兜底匹配到「管理费用」，二者对不上，
+      // 于是导入的历史折旧凭证识别不出来 —— 表现为「结账清单说本期有待计提折旧，
+      // 点计提却被 deprVoucherIn 拦住说该月已存在折旧凭证」，两条路径互相矛盾。
+      // 安全性与 deprVoucherIn 相同论证：清理凭证是【借】累计折旧（方向相反），天然不会误命中。
+      var accDeprPrefixes = [];
+      var accDeprRole = self.subjectRole('ACC_DEPR');
+      if (accDeprRole) accDeprPrefixes.push(String(accDeprRole.code));
+      // 兼容多累计折旧科目账套（1602 / 1622 等），按名称兜底一并纳入
+      (self.state.subjects || []).forEach(function (s) {
+        if (/累计折旧/.test(String(s.name || ''))) {
+          var c = String(s.code);
+          if (accDeprPrefixes.indexOf(c) < 0) accDeprPrefixes.push(c);
+        }
+      });
+      var hasAccDeprCr = es.some(function (e) {
+        return num(e.cr) > 0 && accDeprPrefixes.some(function (c) { return String(e.code).indexOf(c) === 0; });
+      });
+      var hasExpenseDr = es.some(function (e) {
+        var s = self.subject(e.code);
+        return num(e.dr) > 0 && s && s.cls === 'expense';
+      });
+      if (hasAccDeprCr && hasExpenseDr) return K.DEPR;
       // 4) 结转销售成本：生产成本 + 库存商品
       if (hasRole('COST_PROD') && hasRole('COST_INV')) return K.CARRY_COST;
       // 5) 工资：应付职工薪酬 +（费用科目=计提 / 银行或现金=发放）；限短凭证，避免误判手工凭证
@@ -1838,15 +2011,10 @@
         if (hasRole('PAYROLL_FEE')) return K.PAYROLL_ACC;
         if (hasRole('BANK') || has('1001')) return K.PAYROLL_PAY;
       }
-      // 6) 计提所得税：所得税费用 5801（仅计提使用；缴纳时走 2221 不涉及 5801）
-      if (has('5801')) return K.ACCRUE_INCTAX;
-      // 7) 计提附加税：税金及附加 5403 + 应交税费明细
-      if (has('5403') && startsWith('2221')) return K.ACCRUE_SURTAX;
-      // 8) 转出未交增值税：借贷双方全部落在应交税费 2221 系列
-      // （实际缴税凭证必含银行/现金，不会误命中）
-      if (codeList.length >= 2 && codeList.every(function (c) { return c.indexOf('2221') === 0; })) {
-        return K.CARRY_VAT;
-      }
+      // 6/7/8 已随「转出未交增值税 / 计提附加税 / 计提所得税」三个期末模板一并下线（2026-09-18）。
+      // 下线理由：真实账套（绅蓝之星、添钰来客）经核对从未使用「转出未交增值税」；
+      // 附加税与所得税虽有真实计提，但计税口径（按利润×税率）与账套实际不符，
+      // 自动生成的金额不可信，误导风险 > 便利。税款一律由会计按实际申报数手工录入。
       return undefined;
     },
 
@@ -2006,7 +2174,9 @@
     // 12 月结账前，结转损益后需把「本年利润 3103」余额结平，
     // 转入「利润分配-未分配利润 3104」。盈利：借 3103 贷 3104；亏损反向。
     // 缺此步会导致跨年资产负债表「未分配利润」年初数失真（3103 未清零、未并入 3104）。
-    carryYearEnd: function (month) {
+    carryYearEnd: function (month, opts) {
+      opts = opts || {}; // 下面要用 opts.date（此前漏声明：函数签名只有 month，引用 opts 会抛
+      // ReferenceError，导致 12 月年结在「本年利润有余额」时直接崩溃 —— 空余额时提前 return 掩盖了它）
       if (!month || month.substring(5, 7) !== '12')
         return { ok: false, msg: '仅 12 月需结转本年利润' };
       if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
@@ -2131,7 +2301,13 @@
     },
     // 系统模板默认全部启用，用户可在设置里停用
     settleTplDefaultEnabled: function (id) {
-      var systemTpls = ['dep', 'cost', 'vat', 'surTax', 'incTax', 'profit'];
+      // vat / surTax / incTax 三个模板已下线（2026-09-18）
+      // cost（结转销售成本）默认关闭（2026-09-18）：实测真实账套该业务确实存在，
+      // 但借方科目是「5401 主营业务成本」的各明细（商品/客房/餐厅，各账套不同），
+      // 而本软件默认指向「4001 生产成本」（账套里零发生额），且金额靠收入比例测算不准。
+      // 与其猜错科目把成本记歪，不如默认关闭，由用户在期末处理页显式「启用」并指定科目后再用。
+      if (id === 'cost') return false;
+      var systemTpls = ['dep', 'cost', 'profit'];
       return systemTpls.indexOf(id) >= 0;
     },
     // 模板当前是否启用（读 state.settleTemplates，未保存时用默认）
@@ -2248,6 +2424,8 @@
       }
 
       // 3. 计提折旧（提示项：模板启用且本期有待折旧资产）
+      // 【模板禁用时不加入清单】：禁用意味着用户不打算用这个期末项，
+      // 再显示一条「模板已禁用」既无可操作信息、又占坑，属噪音（此前会加一个 ok 项）。
       if (self.settleTplEnabled('dep')) {
         var faNeed = self.state.fixedAssets.filter(function (fa) {
           return fa.status !== '清理' && fa.deprMonth !== month && self.assetMonthlyDepr(fa) > 0.004;
@@ -2256,55 +2434,25 @@
         if (!faNeed.length) add('dep', '计提折旧', 'ok', '本期无待折旧资产');
         else add('dep', '计提折旧', depCnt ? 'ok' : 'warn',
           depCnt ? ('折旧已计提 ' + depCnt + ' 张') : ('本期有 ' + faNeed.length + ' 项资产待计提折旧'));
-      } else {
-        add('dep', '计提折旧', 'ok', '模板已禁用');
       }
 
       // 4.（原期末调汇提示项已随外币功能下线移除，序号不再回填以免历史规则错位）
 
       // 5. 结转销售成本（提示项：模板启用且本期有收入）
+      // 【模板禁用时不加入清单】同 dep：cost 默认禁用，若仍塞一条 ok 项，
+      // 结账检查里会永远挂着一个「结转销售成本 · 模板已禁用」，与「已下线」观感无异。
       if (self.settleTplEnabled('cost')) {
         var costNeed = num(est.totalRevenue) >= EPS;
         var costCnt = kindCount(self.VOUCHER_KINDS.CARRY_COST);
         if (!costNeed) add('cost', '结转销售成本', 'ok', '本期无收入');
         else add('cost', '结转销售成本', costCnt ? 'ok' : 'warn',
           costCnt ? '成本已结转' : '本期有收入，建议结转销售成本');
-      } else {
-        add('cost', '结转销售成本', 'ok', '模板已禁用');
       }
 
-      // 6. 转出未交增值税（提示项：模板启用且本期有税）
-      if (self.settleTplEnabled('vat')) {
-        var vatAmt = Math.max(0, num(est.totalRevenue) - num(est.totalExpense)) * 0.13;
-        var vatCnt = kindCount(self.VOUCHER_KINDS.CARRY_VAT);
-        if (vatAmt < EPS) add('vat', '转出未交增值税', 'ok', '本期无未交增值税');
-        else add('vat', '转出未交增值税', vatCnt ? 'ok' : 'warn',
-          vatCnt ? '增值税已转出' : ('本期按（收入-费用）×13% 测算增值税 ' + money(vatAmt) + '，建议转出（仅供提醒，实际金额以申报为准）'));
-      } else {
-        add('vat', '转出未交增值税', 'ok', '模板已禁用');
-      }
-
-      // 7. 计提附加税（提示项：模板启用且本期有税）
-      if (self.settleTplEnabled('surTax')) {
-        var surTax = Math.max(0, num(est.totalRevenue) - num(est.totalExpense)) * 0.13 * 0.12;
-        var surCnt = kindCount(self.VOUCHER_KINDS.ACCRUE_SURTAX);
-        if (surTax < EPS) add('surTax', '计提附加税', 'ok', '本期无附加税');
-        else add('surTax', '计提附加税', surCnt ? 'ok' : 'warn',
-          surCnt ? '附加税已计提' : ('本期按增值税×12% 测算附加税 ' + money(surTax) + '，建议计提（仅供提醒，实际金额以申报为准）'));
-      } else {
-        add('surTax', '计提附加税', 'ok', '模板已禁用');
-      }
-
-      // 8. 计提所得税（提示项：模板启用且本期有利润）
-      if (self.settleTplEnabled('incTax')) {
-        var incTax = Math.max(0, num(est.netProfit)) * 0.25;
-        var incCnt = kindCount(self.VOUCHER_KINDS.ACCRUE_INCTAX);
-        if (incTax < EPS) add('incTax', '计提所得税', 'ok', '本期无所得税');
-        else add('incTax', '计提所得税', incCnt ? 'ok' : 'warn',
-          incCnt ? '所得税已计提' : ('本期按净利润×25% 测算所得税 ' + money(incTax) + '，建议计提（仅供提醒，实际金额以申报为准）'));
-      } else {
-        add('incTax', '计提所得税', 'ok', '模板已禁用');
-      }
+      // 6/7/8「转出未交增值税 / 计提附加税 / 计提所得税」三个期末模板已下线（2026-09-18），
+      // 不再纳入结账检查。理由见 _detectVoucherKind 处注释：账套从未使用增值税转出，
+      // 且按「利润×税率」测算的税额与实际申报口径不符，自动生成的金额不可信。
+      // 税款一律由会计按实际申报数手工录入凭证。
 
       // 9. 科目余额检查（标准结账守卫；小公司可在「检查项处置」里降级/关闭）
       // 取数口径复用 generalLedger（行已带 normal/endDr/endCr），与报表一致。
@@ -2317,7 +2465,10 @@
       // 现金/银行/其他货币资金期末为贷方余额（赤字）→ 硬性拦截
       var cashAccts = (self.cashAccounts ? self.cashAccounts() : []).map(function (s) { return s.code; });
       var negCash = cashAccts.filter(function (c) { var b = endBalOf(c); return b !== null && b < -EPS; });
-      if (negCash.length) add('cashNeg', '货币资金赤字', 'fail', '以下科目期末为贷方余额（赤字）：' + negCash.join('、') + '，请核查');
+      // 对齐金蝶：现金及现金等价物「期末余额是否存在异常」在金蝶默认【不参与检查】。
+      // 真实账套常见「已停用账户历史挂账」「POS 机在途资金」等合理贷方余额，若硬拦会让账永远结不掉。
+      // 故降级为提醒：仍显示在清单里提醒核查，但不阻止结账（用户可在「检查项处置」里升级为拦截）。
+      if (negCash.length) add('cashNeg', '货币资金赤字', 'warn', '以下科目期末为贷方余额（赤字）：' + negCash.join('、') + '，请核查（已停用账户挂账、POS 在途资金等属常见情况）');
       else add('cashNeg', '货币资金赤字', 'ok', '货币资金余额正常（无赤字）');
       // 应收(1122)/应付(2202) 出现反向余额 → 仅提醒（可能为重分类事项）
       var ar = endBalOf('1122');
@@ -2326,6 +2477,47 @@
       var ap = endBalOf('2202');
       if (ap !== null && ap < -EPS) add('apRev', '应付账款反向余额', 'warn', '应付账款为借方余额，可能为预付款项未重分类');
       else add('apRev', '应付账款反向余额', 'ok', '应付账款余额方向正常');
+
+      // 10. 财务初始余额试算平衡（硬性，对齐金蝶「关键性检查 → 未处理不允许结账」）
+      // 11. 资产负债表是否平衡（硬性，对齐金蝶「关键性检查 → 未处理不允许结账」）
+      // 判定完全复用运行期自检 runSelfTest(month) —— 单一实现，杜绝「横幅说不平、结账说能结」的打架。
+      //   · 期初借贷不平            → error → fail
+      //   · 资产负债表差额 ≈ 未结转损益净额 → warn（结转损益后自动平衡，由第 4 项 carry 兜底拦截）
+      //   · 其余资产负债表不平      → error → fail
+      var stt = this.runSelfTest(month);
+      function pickSelfTestItem(match, exclude) {
+        var hit = null;
+        (stt.items || []).forEach(function (it) {
+          if (hit) return;
+          var lb = String(it.label || '');
+          if (lb.indexOf(match) >= 0 && (!exclude || lb.indexOf(exclude) < 0)) hit = it;
+        });
+        return hit;
+      }
+      var stInit = pickSelfTestItem('期初余额借贷不平');
+      if (stInit) add('initBal', '财务初始余额试算', 'fail', stInit.detail || '期初余额借贷不平，请核对开账数据');
+      else add('initBal', '财务初始余额试算', 'ok', '期初余额借贷平衡');
+
+      // 排除「利润表与资产负债表勾稽偏差」—— 那一项是三表勾稽提示，不属本检查项
+      var stBs = pickSelfTestItem('资产负债表', '利润表');
+      if (stBs) add('bsBal', '资产负债表平衡', stBs.level === 'error' ? 'fail' : 'warn', stBs.detail || stBs.label);
+      else add('bsBal', '资产负债表平衡', 'ok', '资产 = 负债 + 所有者权益，恒等式成立');
+
+      // 12. 启用的自定义/凭证模板：本期是否已生成凭证（**仅提醒，绝不拦截结账**）
+      // 【为什么只 warn 不 fail】模板本期该不该用，取决于业务是否真实发生（如本月没电话费就不该有这笔凭证），
+      // 属「业务触发」而非「客观必做」（折旧、结转损益那种不做账就必错的才算），
+      // 用 fail 拦截会把正常月份误报为漏做，反而诱发「为消警报而硬提一笔」的错账。
+      // 判定口径与生成时完全对齐：genVoucherFromTpl 打的就是 kind='settleTpl:<模板id>'，不依赖摘要。
+      // 系统模板（dep/cost/profit）已有各自检查项，此处只处理自定义/凭证模板，避免重复。
+      (this.state.settleTemplates || []).forEach(function (t) {
+        if (!t || !t.id) return;
+        if (!(t.custom || t.fromVchTpl)) return;
+        if (!self.settleTplEnabled(t.id)) return;            // 未启用则不检查
+        var cnt = self.periodVouchersOfKind(month, 'settleTpl:' + t.id).length;
+        var label = t.name || '自定义模板';
+        if (cnt) add('tpl:' + t.id, label, 'ok', '已生成 ' + cnt + ' 张');
+        else add('tpl:' + t.id, label, 'warn', '本期尚未生成凭证（如本期确实无需此笔，可忽略）');
+      });
 
       return checks;
     },
@@ -2807,6 +2999,48 @@
         ytdDr: ytdDr, ytdCr: ytdCr
       };
     },
+    // 明细账（期间范围版）：期初 = startMonth 月初，明细 = startMonth → endMonth 逐月合并，
+    // 本期合计 = 区间汇总，本年累计 = 年初到 endMonth。与单期版 detailLedger 结构一致，
+    // 仅取数范围不同；渲染层统一吃同一份返回结构。
+    detailLedgerRange: function (code, startMonth, endMonth) {
+      var self = this;
+      var s = this.subject(code);
+      if (!s) return null;
+      var codes = this.rollCodes(code);
+      var op = this.openingOf(code, startMonth);
+      var rows = [];
+      var dr = op.dr, cr = op.cr;
+      var months = monthList(startMonth, endMonth);
+      months.forEach(function (m) {
+        self.periodVouchers(m).forEach(function (v) {
+          v.entries.forEach(function (e) {
+            if (codes.indexOf(e.code) < 0) return;
+            dr += num(e.dr); cr += num(e.cr);
+            var bal = 0, dir = '';
+            if (s.normal === 'dr') { bal = dr - cr; dir = bal >= 0 ? '借' : '贷'; bal = Math.abs(bal); }
+            else { bal = cr - dr; dir = bal >= 0 ? '贷' : '借'; bal = Math.abs(bal); }
+            rows.push({
+              date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
+              dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
+              qtyDr: num(e.qtyDr), qtyCr: num(e.qtyCr), aux: e.aux || null,
+              entryCode: e.code
+            });
+          });
+        });
+      });
+      // 本年累计（年初 ~ endMonth）
+      var ytdDr = 0, ytdCr = 0;
+      this.ytdVouchers(endMonth).forEach(function (v) {
+        v.entries.forEach(function (e) {
+          if (codes.indexOf(e.code) >= 0) { ytdDr += num(e.dr); ytdCr += num(e.cr); }
+        });
+      });
+      return {
+        subject: s, obDr: op.dr, obCr: op.cr, rows: rows,
+        periodDr: dr - op.dr, periodCr: cr - op.cr, endDr: dr, endCr: cr,
+        ytdDr: ytdDr, ytdCr: ytdCr
+      };
+    },
     // 科目本期借贷发生额（「结转生产成本设置」：收入科目自动汇总本期发生额）
     subjectPeriod: function (code, month) {
       var gl = this.generalLedger(month);
@@ -2844,94 +3078,6 @@
         return { ok: false, msg: (v && v.msg) || '结转成本失败' };
       }
       this.backupNow(); // 结转成本批量写凭证，强制立即备份
-      return { ok: true, voucher: v, amount: amt };
-    },
-    // 转出未交增值税
-    genVatVoucher: function (month, opts) {
-      opts = opts || {};
-      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
-      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_VAT);
-      if (existed.length) return { ok: false, msg: '本期已转出未交增值税，请勿重复生成' };
-      var targetCode = opts.targetSubj || '222102';
-      var debitCode = opts.debitSubj || '2221';
-      if (!this.subject(targetCode)) return { ok: false, msg: '未交增值税科目（' + targetCode + '）不存在，请先在模板设置里修改科目，或在科目页添加' };
-      if (!this.subject(debitCode)) return { ok: false, msg: '应交税费科目（' + debitCode + '）不存在，请先在模板设置里修改或在科目页添加' };
-      var netPL = this.periodProfitNet(month);
-      var rate = num(opts.rate) || 13;
-      var vatV = Math.max(0, num(netPL.rev) - num(netPL.exp)) * rate / 100;
-      if (vatV < 0.005) return { ok: false, msg: '本期净利润为负或零，无需转出增值税' };
-      var v = this.addVoucher({
-        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
-        summary: opts.summary || ('转出' + month + '未交增值税'),
-        kind: this.VOUCHER_KINDS.CARRY_VAT,
-        entries: [
-          { code: debitCode, name: this.subject(debitCode) ? this.subject(debitCode).name : '应交税费', summary: '转出未交增值税', dr: vatV, cr: 0 },
-          { code: targetCode, name: this.subject(targetCode) ? this.subject(targetCode).name : '未交增值税', summary: '转出未交增值税', dr: 0, cr: vatV }
-        ]
-      });
-      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '转出增值税失败' };
-      return { ok: true, voucher: v, amount: vatV };
-    },
-    // 计提附加税（城建税 7% + 教育费附加 3% + 地方教育附加 2% = 12%）
-    genSurTaxVoucher: function (month, opts) {
-      opts = opts || {};
-      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
-      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.ACCRUE_SURTAX);
-      if (existed.length) return { ok: false, msg: '本期已计提附加税，请勿重复生成' };
-      // 附加税计税依据 = 本期实际计提/转出的「未交增值税」+「消费税」贷方发生额（与「查看金额计算逻辑」浮层口径一致）
-      var vatTarget = opts.vatTargetSubj || '222102';
-      var expCode = opts.expSubj || '5403';
-      var payCode = opts.paySubj || '222129';
-      if (!this.subject(vatTarget)) return { ok: false, msg: '增值税科目（' + vatTarget + '）不存在，请先在模板设置里修改或在科目页添加' };
-      if (!this.subject(payCode)) return { ok: false, msg: '应交附加税科目（' + payCode + '）不存在，请先在模板设置里修改或在科目页添加' };
-      if (!this.subject(expCode)) return { ok: false, msg: '税金及附加科目（' + expCode + '）不存在，请先在模板设置里修改或在科目页添加' };
-      var unpaySp = this.subjectPeriod(vatTarget, month);
-      var unpayVat = Math.max(0, unpaySp ? num(unpaySp.periodCr) : 0);
-      var consumeCode = opts.consumeSubj || '222121';
-      var consumeSp = this.subjectPeriod(consumeCode, month);
-      var consumeTax = Math.max(0, consumeSp ? num(consumeSp.periodCr) : 0);
-      var base = unpayVat + consumeTax;
-      var surRate = num(opts.rate) || 12;
-      var amt = base * surRate / 100;
-      if (amt < 0.005) return { ok: false, msg: '本期附加税无需计提' };
-      var v = this.addVoucher({
-        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
-        summary: opts.summary || ('计提' + month + '附加税'),
-        kind: this.VOUCHER_KINDS.ACCRUE_SURTAX,
-        entries: [
-          { code: expCode, name: this.subject(expCode) ? this.subject(expCode).name : '税金及附加', summary: '计提附加税', dr: amt, cr: 0 },
-          { code: payCode, name: this.subject(payCode) ? this.subject(payCode).name : '应交附加税', summary: '计提附加税', dr: 0, cr: amt }
-        ]
-      });
-      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提附加税失败' };
-      return { ok: true, voucher: v, amount: amt };
-    },
-    // 计提所得税
-    genIncTaxVoucher: function (month, opts) {
-      opts = opts || {};
-      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
-      var existed = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.ACCRUE_INCTAX);
-      if (existed.length) return { ok: false, msg: '本期已计提所得税，请勿重复生成' };
-      var expCode = opts.expSubj || '5801';
-      var payCode = opts.paySubj || '222105';
-      if (!this.subject(payCode)) return { ok: false, msg: '应交所得税科目（' + payCode + '）不存在，请先在模板设置里修改或在科目页添加' };
-      if (!this.subject(expCode)) return { ok: false, msg: '所得税费用科目（' + expCode + '）不存在，请先在模板设置里修改或在科目页添加' };
-      // 所得税在「利润总额（税前）」上计提，而非净利润（净利润已扣所得税，会循环且恒为 0）
-      var netPL = this.periodProfitNet(month);
-      var rate = num(opts.rate) || 25;
-      var profit = Math.max(0, num(netPL.rev) - num(netPL.exp));
-      var amt = profit * rate / 100;
-      if (amt < 0.005) return { ok: false, msg: '本期利润为负或零，无需计提所得税' };
-      var v = this.addVoucher({
-        word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
-        summary: opts.summary || ('计提' + month + '所得税'),
-        kind: this.VOUCHER_KINDS.ACCRUE_INCTAX,
-        entries: [
-          { code: expCode, name: this.subject(expCode) ? this.subject(expCode).name : '所得税费用', summary: '计提所得税', dr: amt, cr: 0 },
-          { code: payCode, name: this.subject(payCode) ? this.subject(payCode).name : '应交所得税', summary: '计提所得税', dr: 0, cr: amt }
-        ]
-      });
-      if (!v || v.ok === false) return { ok: false, msg: (v && v.msg) || '计提所得税失败' };
       return { ok: true, voucher: v, amount: amt };
     },
     // 科目余额表（至某月末）
@@ -3705,8 +3851,12 @@
       r.impairment = num(r.impairment);
       r.netValueBegin = num(r.netValueBegin);
       r.netValueEnd = num(r.netValueEnd);
-      if (!r.accumDepr && r.accumDeprBegin) r.accumDepr = r.accumDeprBegin;
-      if (!r.accumDeprBegin && r.accumDepr) r.accumDeprBegin = r.accumDepr;
+      // 卡片表单只有「期初累计折旧」一个输入框（没有"期末"栏），二者语义恒等 ——
+      // 都是【锚点月末】的累计：_accumDeprAt（列表显示）读 accumDeprBegin，
+      // assetMonthlyDepr（实提）读 accumDepr。原实现仅在旧值为 0 时才同步，
+      // 于是用户一旦改了期初，两字段永久分离（实测：begin 1698.10 / accum 698.10），
+      // 页面显示与实提金额基于不同基数，越提越对不上。此处无条件跟随表单值同步。
+      r.accumDepr = r.accumDeprBegin;
       if (!r.netValueBegin && r.original > 0) r.netValueBegin = r.original - r.accumDeprBegin - r.impairment;
       if (!r.netValueEnd && r.original > 0) r.netValueEnd = r.original - r.accumDepr - r.impairment;
       this.persist();
@@ -3714,13 +3864,19 @@
     },
     removeFixedAsset: function (id) {
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-      // 财务严谨：本系统**自己生成过**凭证的卡片禁止删除（避免账实不符），只能「清理」。
-      // ⚠️ addVoucher 不在拦截之列：它存的是「卡片 ↔ 购入凭证」的**关联**——凭证本来就在账里
-      // （迁移账套是外部导入的），既不是本系统生成的，也不会因删掉卡片而消失，故不构成删除障碍。
-      // （若把它也算作「已生成凭证」，则导入卡片一经关联就再也删不掉，与「外部导入的卡片可删」相悖。）
-      // 仅外部导入、尚未在本系统生成任何凭证的卡片（累计折旧只是导入数值、无实际过账）允许删除。
-      if (fa && (fa.deprMonth || fa.cleanVoucher)) {
-        return { ok: false, msg: '该资产已在本系统生成凭证' + (fa.cleanVoucher ? '（含清理凭证）' : '（含折旧凭证）') + '，不可删除；请使用「清理」处理' };
+      // 财务严谨：卡片已有折旧/清理记录的禁止直接删除（删掉会让卡片辅助账凭空少一块累计折旧，
+      // 与总账 1602 立刻不符），只能走「清理」。
+      // ⚠️ 判断依据必须是【账面事实】，不能再用 deprMonth —— 它只是「最近一次计提月」：
+      //   ① 外部导入的卡可能本来就没有该字段；② 卡片锚点修复（清残留）也会清空它。
+      //   一旦它为空，守卫就整体失效 → 有折旧的卡片被静默放行删除。
+      //   2026-09-18 实测事故：002 电视（累计折旧 13,749.19）被删，卡片合计比总账少 13,749.19。
+      // ⚠️ addVoucher 仍不在拦截之列：它只是「卡片 ↔ 购入凭证」的关联，凭证本就在账里，
+      //   不因删卡片而消失（若把它算作「已生成凭证」，导入卡一经关联就再也删不掉）。
+      var hasDeprRecord = num(fa && fa.accumDepr) > 0 || num(fa && fa.periodUsed) > 0 || !!(fa && fa.deprVoucher);
+      if (fa && (hasDeprRecord || fa.cleanVoucher)) {
+        return { ok: false, msg: '该资产已有折旧/清理记录' +
+          (fa.cleanVoucher ? '（含清理凭证 ' + fa.cleanVoucher + '）' : '（累计折旧 ' + num(fa.accumDepr).toFixed(2) + '）') +
+          '，直接删除会使卡片辅助账与总账不符；请改用「清理」处理' };
       }
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
       this.persist();
@@ -3812,10 +3968,26 @@
       return { ok: true };
     },
     // 取消清理（误清理可恢复；已生成清理凭证须先删凭证）
+    // 取消清理 = 撤销整个处置动作：连清理凭证一起删（走 removeVoucher，内部回退卡片状态）。
+    // 只翻卡片状态不够 —— 卡片走正常路径必然带凭证，那样会被凭证挡住，等于死功能。
+    // 无凭证的（历史遗留清理态）→ 直接恢复卡片。
+    // ⚠️ 本方法会删凭证，只用于用户显式撤销；「清理失败后回滚刚标记的卡片」只能回滚本次新标记的
+    //   （彼时无凭证，走无凭证分支），否则会误删既有凭证（见 Asset.js 回滚处）。
     cancelCleanFixedAsset: function (id) {
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
       if (!fa) return { ok: false, msg: '卡片不存在' };
-      if (fa.cleanVoucher) return { ok: false, msg: '该卡片已生成清理凭证 ' + fa.cleanVoucher + '，请先删除清理凭证再取消清理' };
+      var vno = fa.cleanVoucher;
+      if (vno) {
+        var v = (this.state.vouchers || []).filter(function (x) {
+          return ((x.word || '记') + '-' + x.no) === vno && x.deleted !== 'y';
+        })[0];
+        if (v) {
+          var r = this.removeVoucher(v.id); // 内部 _revertAssetClean 负责把卡片恢复为「正常」
+          if (!r || r.ok === false) return { ok: false, msg: '无法取消清理：' + ((r && r.msg) || '清理凭证未删除成功') };
+          return { ok: true, removedVoucher: vno };
+        }
+        delete fa.cleanVoucher; // 凭证已不在账上（历史脏数据）→ 清掉悬空引用再恢复卡片
+      }
       fa.status = '正常';
       fa.cleanPeriod = '';
       this.persist();
@@ -3886,6 +4058,35 @@
       var remainingBase = Math.max(0, base - accumulated);
       return remainingBase / remainingMonths;
     },
+    /* 某资产在**某期间实际应提**的折旧额（0 = 该月不需计提）。
+     *
+     * 【为什么必须是唯一实现】原来这套判断只写在 depreciateMonth 里，而「折旧汇总表 / 折旧明细表」
+     * 的「本月折旧」列却是无条件对所有在用卡求 assetMonthlyDepr(fa) —— 于是两边口径分叉：
+     * 报表把"购置晚于本月 / 已提满 / 本月已计提 / 次月起提"的卡也算进去了。
+     * 实测（添钰来客 2026-03~06）：报表显示 10,866.63，而凭证与总账都是 10,810.42，
+     * 差额 56.21 正是一张「购置晚于本月」的卡（010 沙发折叠床）。
+     * 「本年折旧额」同理（报表用 md×月份数，忽略跳过，差 281.07）。
+     * 现抽出本函数，depreciateMonth 与两个折旧报表共用，口径不可能再漂移。
+     *
+     * 判断顺序与 depreciateMonth 保持一致（顺序本身有语义：先排除不存在的、再算金额）。 */
+    assetDeprDue: function (fa, month) {
+      if (!fa || !month) return 0;
+      if (fa.status === '清理') return 0;                      // 已清理不再计提
+      if (!fa.acqDate) return 0;
+      if (fa.deprMonth === month) return 0;                    // 本月已计提（幂等，防重复入账）
+      if (fa.acqDate >= lastDay(month)) return 0;              // 购置晚于本月，本月不提
+      var acqMonth = String(fa.acqDate).slice(0, 7);
+      var totalMonths = num(fa.life) * 12;
+      var monthsPosted = num(fa.periodUsed || 0);
+      if (monthsPosted >= totalMonths) return 0;               // 已提满
+      if (monthsBetween(acqMonth, month) < 1) return 0;        // 次月起提
+      var md = this.assetMonthlyDepr(fa);
+      if (md <= 0) return 0;
+      // 末月按剩余净值精确补足，保证累计折旧恰好落到（原值 - 残值）
+      var lastMonth = (monthsPosted + 1 >= totalMonths);
+      var amt = lastMonth ? Math.max(0, (num(fa.original) - num(fa.salvage)) - num(fa.accumDepr)) : md;
+      return amt > 0 ? amt : 0;
+    },
     /* 某期间是否已存在折旧凭证 —— 「计提折旧」的防重复入账守卫。
      * 识别口径（两条都刻意不依赖凭证 kind：外部导入的金蝶凭证没有 kind）：
      *   期间内存在一张凭证，其中有【贷方】分录落在「累计折旧科目」上。
@@ -3923,6 +4124,10 @@
       var hit = '';
       (this.state.vouchers || []).forEach(function (v) {
         if (hit) return;
+        // 必须排除软删凭证：与 periodVouchers 等所有「活动凭证」入口同口径。
+        // 否则用户删掉本期折旧凭证想重做时，守卫仍报「已存在折旧凭证（记-xx）」，
+        // 导致永远无法重新计提 —— 删除即死结。回收站里的凭证不算账上凭证。
+        if (v.deleted === 'y') return;
         if (String(v.date || '').slice(0, 7) !== month) return;
         if ((v.entries || []).some(isAccDeprCredit)) hit = (v.word || '记') + '-' + (v.no != null ? v.no : '');
       });
@@ -3953,33 +4158,29 @@
       var total = 0;
       var assetLines = [];
       this.state.fixedAssets.forEach(function (fa) {
-        if (fa.status === '清理') return; // 已清理资产不再计提折旧
-        if (!fa.acqDate) return;
-        // 幂等保护（财务大忌：同月重复计提）：fa.deprMonth 记录该资产最近一次计提月份，
-        // 本字段已被读取（doneMonths）与回写，但原逻辑漏了「本月已提则跳过」的判断，
-        // 导致重复调用会生成完全相同的折旧凭证（同额、同月）。
-        if (fa.deprMonth === month) return; // 本月已计提，跳过
-        // 次月起提
-        if (fa.acqDate >= lastDay(month)) return; // 购置晚于本月，不提
-        var acqMonth = fa.acqDate.slice(0, 7);
-        // 已提期间数=卡片「已折旧期间」计数器（导入/卡片新增填写，逐月递增）；不再用 deprMonth 反推，
-        // 否则历史卡会被当成全新资产从购置月起重提整段寿命而超提。
-        var totalMonths = fa.life * 12;
-        var monthsPosted = num(fa.periodUsed || 0);
-        if (monthsPosted >= totalMonths) return; // 已提满
-        if (monthsBetween(acqMonth, month) < 1) return; // 次月起提
-        var md = self.assetMonthlyDepr(fa); // 统一口径：剩余净值 / 剩余寿命（历史卡按月均摊剩余）
-        if (md <= 0) return;
-        // 末月按剩余净值精确补足，保证累计折旧恰好落到（原值-残值）
-        var accumulated = num(fa.accumDepr);
-        var remainingBase = Math.max(0, (num(fa.original) - num(fa.salvage)) - accumulated);
-        var lastMonth = (monthsPosted + 1 >= totalMonths);
-        var amt = lastMonth ? remainingBase : md;
+        // 判断与金额一并交给 assetDeprDue（唯一权威口径，折旧汇总表/明细表共用同一函数）。
+        // 原先前述 8 行判断 + 后述 5 行金额都写在这里，而报表侧又各写了一遍、且漏了跳过条件，
+        // 造成"报表显示 10,866.63 / 凭证与总账 10,810.42"的口径分叉（实测差 56.21 = 一张
+        // 「购置晚于本月」的卡）。含幂等保护：fa.deprMonth === month 时返回 0，不会重复入账。
+        var amt = self.assetDeprDue(fa, month);
         if (amt <= 0) return;
-        var fee = fa.deprFeeAcct ? self.subjectRole('DEPR_FEE', fa.deprFeeAcct) : feeSubj;
-        var dep = fa.accDeprAcct ? self.subjectRole('ACC_DEPR', fa.accDeprAcct) : depSubj;
-        if (!fee) fee = feeSubj; // 卡片配置科目无效时回退默认，避免生成悬空科目
-        if (!dep) dep = depSubj;
+        // 取卡片配置科目：先按「科目码真实存在」校验，再退回角色科目，最后用默认。
+        // 详见下方调用处的说明（脏科目码会让 subjectRole 静默兜底到无关科目）。
+        function pickConfiguredSubject(role, cfgCode, fallback) {
+          var code = String(cfgCode == null ? '' : cfgCode).split(',')[0].trim(); // 兼容 "5401006,5401006"
+          if (code) {
+            var s = self.subject(code);
+            if (s) return s;
+          }
+          return self.subjectRole(role) || fallback;
+        }
+        // 卡片上配置的科目码可能带脏数据（实测：导入时把同一编码重复拼接成 "5401006,5401006"）。
+        // 直接把这种值交给 subjectRole(role, preferred) 是危险的：preferred 解析不到时，
+        // 它不会返回 null，而是静默走「关键词兜底」—— 于是折旧费用被记到「管理费用」上，
+        // 与其余卡片所在的「折旧」科目分家，费用结构失真，且不报任何错。
+        // 故先按科目码真实存在性校验（并兼容逗号重复），确认无效才回退角色/默认科目。
+        var fee = pickConfiguredSubject('DEPR_FEE', fa.deprFeeAcct, feeSubj);
+        var dep = pickConfiguredSubject('ACC_DEPR', fa.accDeprAcct, depSubj);
         entries.push({ code: fee.code, name: fee.name, summary: '计提折旧-' + fa.name, dr: amt, cr: 0 });
         entries.push({ code: dep.code, name: dep.name, summary: '累计折旧-' + fa.name, dr: 0, cr: amt });
         total += amt;

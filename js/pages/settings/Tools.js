@@ -126,7 +126,7 @@ $('bookBody').addEventListener('click', async function (e) {
   } else if (dl) {
     // 删除改为移入回收站（保留 7 天可还原），不再是"一键不可逆"
     const nm = (S.listBooks().filter(function (b) { return b.id === dl; })[0] || {}).name || dl;
-    const ok = await H.confirmAsync('确定删除账套「' + nm + '」？\n删除后会在回收站保留 7 天，期间可随时还原。', { title: '删除账套' });
+    const ok = await H.confirmAsync('确认删除账套「' + nm + '」？\n删除后会在回收站保留 7 天，期间可随时还原。', { title: '删除账套' });
     if (!ok) return;
     S.removeBook(dl).then(function (rd) {
       if (!rd || !rd.ok) return showToast((rd && rd.msg) || '删除失败', 'error');
@@ -396,7 +396,7 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
   }
   if (t.id === 'btnEmptyTrash') {
     if (!(await H.askOpPassword('清空账套回收站'))) return;
-    const ok = await H.confirmAsync('确定清空回收站？其中的账套将永久删除，无法还原。', { title: '清空回收站' });
+    const ok = await H.confirmAsync('确认清空回收站？其中的账套将永久删除，无法还原。', { title: '清空回收站' });
     if (!ok) return;
     var r = await window.Storage.emptyTrash();
     showToast(r && r.ok ? ('已清空回收站（' + r.count + ' 项）') : '清空失败', (r && r.ok) ? 'success' : 'error');
@@ -454,7 +454,7 @@ $('backupList').addEventListener('click', async function (e) {
     return;
   }
   if (e.target.tagName !== 'BUTTON') return;
-  const ok = await H.confirmAsync('用该备份恢复当前账本？\n（备份仅用于软件故障 / 文件损坏等意外找回；\n账务差错请用「红字冲销 / 反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
+  const ok = await H.confirmAsync('确认用该备份恢复当前账本？\n（备份仅用于软件故障/文件损坏等意外找回；\n账务差错请用「红字冲销/反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
   if (!ok) return;
   // 覆盖前强制留快照：一旦恢复到的备份不对，可从快照回滚，不再是不可逆操作
   const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续恢复将无法撤回。是否仍要继续？');

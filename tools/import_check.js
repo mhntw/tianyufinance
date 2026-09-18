@@ -16,7 +16,7 @@ const path = require('path');
 
 global.window = global;
 global.Storage = { saveBook: () => Promise.resolve({ ok: true }), saveBackup: () => Promise.resolve({ ok: true }) };
-const S = require('/Users/chen/财务软件/ty/js/store.js').store;
+const S = require(path.join(__dirname, '..', 'js', 'store.js')).store;
 S.persist = () => {}; S.addLog = () => {}; S.backupNow = () => Promise.resolve(true);
 
 const args = process.argv.slice(2);

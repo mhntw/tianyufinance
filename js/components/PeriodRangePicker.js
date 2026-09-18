@@ -1,18 +1,16 @@
 /**
- * PeriodRangePicker —— 单期期间选择 popover
+ * PeriodRangePicker —— 期间选择 popover
  *
- * 设计原则：极简、且只做一件事——点 trigger，弹出 12 月 grid，选一个期间，调 on-change。
+ * 默认模式（单期）：点 trigger，弹出 12 月 grid，选一个期间，调 on-change。
+ *   两端 hidden input 恒等（start === end），控件产出单个「报告期」。
  *
- * 契约（已冻结，见 CHANGELOG 2026-09-13）：控件只产出一个「报告期」(YYYY-MM)，永不产出起止区间；
- * 两端 hidden input 恒等（由 tools/check-period-contract.js 机器校验）。理由：
- *   ① 报表已用「本期 + 本年累计」两列表达了区间，控件不需要第二个自由度；
- *   ② 13/16 个页面只读结束期间，多一个用户可改的端点会让「改了没反应」这类问题反复出现；
- *   ③ 将来若要跨期，方向是加「粒度」（月/季/年）由粒度派生区间，
- *      而不是把起止两个端点加回来 —— 后者在资产负债表（时点报表）上无法给出有意义的起点。
- * 两端 input 仍保留：页面取数统一读 End（历史调用方众多），Start 作为契约校验的对照项。
+ * 范围模式（data-range="true"）：支持选起止两个月份。
+ *   第一次点击设为起始期，第二次点击设为结束期（若结束 < 起始则自动交换）；
+ *   两端 hidden input 可能不同（start !== end），控件产出真正的区间。
  *
  * index.html 占位符写法：
- *   <div data-period="gl" data-default="currentPeriod" data-on-change="__renderGl"></div>
+ *   单期模式：<div data-period="gl" data-default="currentPeriod" data-on-change="__renderGl"></div>
+ *   范围模式：<div data-period="dl" data-default="currentPeriod" data-range="true" data-on-change="__renderDl"></div>
  *   generatePeriodRanges() 启动时自动展开为完整 DOM。
  */
 
@@ -25,11 +23,13 @@ function generatePeriodRanges() {
 
     var id = host.dataset.period;
     var onChange = host.dataset.onChange || '';
+    var def = host.dataset.default || 'currentPeriod';
+    var range = host.dataset.range === 'true' ? 'true' : '';
     var startId = id + 'PeriodStart';
     var endId = id + 'PeriodEnd';
 
     host.outerHTML =
-      '<div class="ty-period-range" data-period="' + id + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '">' +
+      '<div class="ty-period-range" data-period="' + id + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '" data-default="' + def + '"' + (range ? ' data-range="' + range + '"' : '') + '>' +
       '  <div class="ty-period-trigger" id="' + id + 'Trigger">' +
       '    <span class="ty-period-trigger-label">期间</span>' +
       '    <span class="ty-period-trigger-text is-placeholder" id="' + id + 'Text">请选择期间</span>' +
@@ -111,10 +111,22 @@ function allAvailablePeriods() {
 
 var state = {
   wrap: null,          // 当前打开的 .ty-period-range
-  year: 0,             // 当前显示的年份（单面板，已无起止两列）
-  selected: null,      // 当前选中的 yyyy-mm
+  year: 0,             // 当前显示的年份
+  selected: null,      // 单期模式：当前选中的 yyyy-mm
+  rangeStart: null,    // 范围模式：起始期
+  rangeEnd: null,      // 范围模式：结束期
   onChange: ''         // data-on-change 回调字符串
 };
+
+function isRangeMode() {
+  return !!(state.wrap && state.wrap.dataset.range === 'true');
+}
+
+function fmtRangeText(start, end) {
+  if (!start && !end) return '请选择期间';
+  if (start && end && start === end) return fmtPeriod(start);
+  return (start ? fmtPeriod(start) : '…') + ' ~ ' + (end ? fmtPeriod(end) : '…');
+}
 
 /* ---------------- pop 操作 ---------------- */
 
@@ -132,6 +144,9 @@ function renderGrid() {
   var availableSet = {};
   available.forEach(function (ym) { availableSet[ym] = 1; });
 
+  var range = isRangeMode();
+  var rs = state.rangeStart, re = state.rangeEnd;
+
   grid.innerHTML = '';
   for (var m = 1; m <= 12; m++) {
     (function (month) {
@@ -141,20 +156,85 @@ function renderGrid() {
       cell.className = 'ty-period-cell';
       cell.textContent = month + '期';
       cell.dataset.ym = ym;
-      if (ym === state.selected) cell.classList.add('selected');
+
+      if (range) {
+        // 范围模式：高亮 start/end/in-range
+        if (rs && ym === rs) cell.classList.add('range-start');
+        if (re && ym === re) cell.classList.add('range-end');
+        if (rs && re && ym > rs && ym < re) cell.classList.add('in-range');
+        if (rs && !re && ym === rs) cell.classList.add('selected');
+      } else {
+        if (ym === state.selected) cell.classList.add('selected');
+      }
+
       if (!availableSet[ym]) {
         cell.classList.add('disabled');
         cell.disabled = true;
       } else {
-        cell.addEventListener('click', function () {
-          state.selected = ym;
-          grid.querySelectorAll('.ty-period-cell.selected').forEach(function (el) { el.classList.remove('selected'); });
-          cell.classList.add('selected');
-          applySelection();
+        cell.addEventListener('click', function (e) {
+          e.stopPropagation(); // 防止冒泡到 document 的 click-outside 监听，导致 renderGrid 后 popover 被意外关闭
+          handleCellClick(ym);
         });
       }
       grid.appendChild(cell);
     })(m);
+  }
+
+  // 范围模式：更新 popover 顶部的提示/已选显示
+  updateRangeHeader();
+}
+
+function updateRangeHeader() {
+  var pop = getPop();
+  if (!pop) return;
+  var wrap = state.wrap;
+  if (!wrap || !isRangeMode()) {
+    // 移除 header（如果存在）
+    var oldHdr = pop.querySelector('.ty-period-range-hint');
+    if (oldHdr) oldHdr.remove();
+    return;
+  }
+  var rs = state.rangeStart, re = state.rangeEnd;
+  var hdr = pop.querySelector('.ty-period-range-hint');
+  if (!hdr) {
+    hdr = document.createElement('div');
+    hdr.className = 'ty-period-range-hint';
+    var panel = pop.querySelector('.ty-period-panel');
+    if (panel) panel.insertBefore(hdr, panel.firstChild);
+  }
+  if (!rs) hdr.textContent = '请选择起始期间';
+  else if (!re) hdr.textContent = '起始：' + fmtPeriod(rs) + '  请选择结束期间';
+  else hdr.textContent = '已选：' + fmtPeriod(rs) + ' ~ ' + fmtPeriod(re);
+}
+
+function handleCellClick(ym) {
+  if (!isRangeMode()) {
+    state.selected = ym;
+    applySelection();
+    return;
+  }
+  var rs = state.rangeStart, re = state.rangeEnd;
+  if (!rs) {
+    // 第一次点击 → 设为起始
+    state.rangeStart = ym;
+    state.rangeEnd = null;
+    renderGrid();
+  } else if (!re) {
+    // 第二次点击 → 设为结束；若 end < start 则自动交换
+    if (ym < rs) {
+      state.rangeStart = ym;
+      state.rangeEnd = rs;
+    } else if (ym === rs) {
+      state.rangeEnd = rs;
+    } else {
+      state.rangeEnd = ym;
+    }
+    applySelection();
+  } else {
+    // 已选完整范围后再次点击 → 重置为新起始
+    state.rangeStart = ym;
+    state.rangeEnd = null;
+    renderGrid();
   }
 }
 
@@ -164,11 +244,26 @@ function openPop(wrap) {
   state.wrap = wrap;
   state.onChange = wrap.dataset.onChange || '';
 
-  // 初始化选中值：从 hidden input 读，或者 currentPeriod
-  var startInput = $(wrap.dataset.startId);
-  var cur = (startInput && startInput.value) || currentPeriod();
-  state.selected = cur;
-  state.year = cur ? parseInt(cur.split('-')[0], 10) : new Date().getFullYear();
+  var sInp = $(wrap.dataset.startId);
+  var eInp = $(wrap.dataset.endId);
+  var sVal = sInp ? sInp.value : '';
+  var eVal = eInp ? eInp.value : sVal;
+
+  if (isRangeMode()) {
+    state.rangeStart = sVal || currentPeriod();
+    state.rangeEnd = eVal || state.rangeStart;
+    state.selected = null;
+    state.year = state.rangeStart
+      ? parseInt(state.rangeStart.split('-')[0], 10)
+      : new Date().getFullYear();
+  } else {
+    state.selected = sVal || currentPeriod();
+    state.rangeStart = null;
+    state.rangeEnd = null;
+    state.year = state.selected
+      ? parseInt(state.selected.split('-')[0], 10)
+      : new Date().getFullYear();
+  }
 
   renderGrid();
 
@@ -193,21 +288,33 @@ function closePop() {
 }
 
 function applySelection() {
-  if (!state.wrap || !state.selected) { closePop(); return; }
+  if (!state.wrap) { closePop(); return; }
   var wrap = state.wrap;
   var startInput = $(wrap.dataset.startId);
   var endInput = $(wrap.dataset.endId);
   var textEl = $(wrap.dataset.period + 'Text');
-  var ym = state.selected;
-  if (startInput) startInput.value = ym;
-  if (endInput) endInput.value = ym;
+
+  var sVal, eVal, displayText;
+  if (isRangeMode()) {
+    sVal = state.rangeStart;
+    eVal = state.rangeEnd;
+    if (!sVal || !eVal) return; // 范围模式需起止都有才能 apply
+    displayText = fmtRangeText(sVal, eVal);
+  } else {
+    sVal = state.selected;
+    eVal = state.selected;
+    displayText = fmtPeriod(sVal);
+  }
+
+  if (!sVal) { closePop(); return; }
+  if (startInput) startInput.value = sVal;
+  if (endInput) endInput.value = eVal;
   if (textEl) {
-    textEl.textContent = fmtPeriod(ym);
+    textEl.textContent = displayText;
     textEl.classList.remove('is-placeholder');
   }
   closePop();
-  // 回调按全局函数名查找（不用 eval）：eval 有 CSP unsafe-eval 限制、字符串注入面、
-  // 以及严格模式下的作用域差异，而 data-on-change 一律是 __renderXxx 这类全局函数名。
+  // 回调按全局函数名查找（不用 eval）
   if (state.onChange) {
     var fn = globalThis[state.onChange];
     if (typeof fn !== 'function') {
@@ -269,10 +376,14 @@ export function updatePeriodRangeTrigger(startId, endId) {
   var textEl = $(wrap.dataset.period + 'Text');
   var s = startEl.value;
   var e = endEl ? endEl.value : s;
-  if (!s || !textEl) return;   // textEl 缺失只影响文案，不该抛错打断调用方
-  // 单期控件两端恒等（契约），只显示一个期间。
-  // 取 end 值：页面取数一律读 End，万一两者不一致（违反契约）时显示与实际取数保持一致。
-  textEl.textContent = fmtPeriod(e || s);
+  if (!s || !textEl) return;
+
+  var range = wrap.dataset.range === 'true';
+  if (range && e && s !== e) {
+    textEl.textContent = fmtRangeText(s, e);
+  } else {
+    textEl.textContent = fmtPeriod(e || s);
+  }
   textEl.classList.remove('is-placeholder');
 }
 

@@ -62,7 +62,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (row.name === curDef) { showToast('默认凭证字不可停用，请先将其他凭证字设为默认'); return; }
         var disabling = !(row.enabled === false);
         if (disabling) {
-          if (!(await H.confirmAsync('确定停用凭证字「' + (row.title || row.name) + '」？\n停用后新增凭证不能再选该凭证字，历史凭证保留。', { title: '停用凭证字' }))) return;
+          if (!(await H.confirmAsync('确认停用凭证字「' + (row.title || row.name) + '」？\n停用后新增凭证不能再选该凭证字，历史凭证保留。', { title: '停用凭证字' }))) return;
         }
         row.enabled = disabling ? false : true;
         S.persist(); refreshVoucherWord();
@@ -74,7 +74,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         var row = S.state.voucherWords[i];
         if (!row) return;
         // 二次确认
-        if (!(await H.confirmAsync('确定删除凭证字「' + row.name + '」？\n未被任何凭证使用，可安全删除。', { title: '删除凭证字' }))) return;
+        if (!(await H.confirmAsync('确认删除凭证字「' + row.name + '」？\n未被任何凭证使用，可安全删除。', { title: '删除凭证字' }))) return;
         S.state.voucherWords.splice(i, 1);
         // 删的是默认字 → 回退到第一个启用项
         if (row.name === curDef) {
@@ -811,7 +811,7 @@ function refreshParam() {
                     (S.state.openingBalances && Object.keys(S.state.openingBalances).length) ||
                     (S.state.closedPeriods && S.state.closedPeriods.length);
       if (hasData) {
-        var ok = await H.confirmAsync('账套已有凭证 / 期初 / 结账数据。\n\n修改启用期间只影响期间下拉的起点与「启用期间」显示，\n不影响任何凭证与报表数据。\n\n确认将启用期间由「' + (old || '') + '」改为「' + v + '」？', { title: '修改启用期间' });
+        var ok = await H.confirmAsync('账套已有凭证、期初、结账数据。\n\n修改启用期间只影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。\n\n确认将启用期间由「' + (old || '') + '」改为「' + v + '」？', { title: '修改启用期间' });
         if (!ok) return;
       }
       c.startMonth = v;

@@ -137,6 +137,8 @@ for (const file of pageFiles) {
 // 若有人只改一端、或给两端写不同的值，就等于把范围语义悄悄加回来了 —— 那正是
 // 「总账页选了期间没反应」的成因：动的那一端不参与取数，表格自然毫无变化。
 // 已按此规则查出并修掉两处真实违规：__glJumpTo(首页「本年」传 from~to) 与 __plJumpToRow。
+// 注：PeriodRangePicker.js 组件自身跳过此检查 —— 组件是范围模式（data-range="true"）的
+// 唯一实现方，在 range 模式下主动写 start !== end 是合法行为。外部调用方仍需遵守恒等契约。
 const PERIOD_INPUT_WRITE = /\b([\w$]+)\.value\s*=\s*([^;]+)/g;
 const ALIAS_START = new Set(['sInp', 'startInput', 'startSel']);
 const ALIAS_END = new Set(['eInp', 'endInput', 'endSel']);
@@ -147,9 +149,11 @@ function periodSide(v) {
   return null;
 }
 
+const PICKER_ABS = path.resolve(PICKER_JS);
 const writes = { start: [], end: [] };
 for (const file of (fs.existsSync(JS_DIR) ? scanDir(JS_DIR) : [])) {
   if (file === __filename) continue;
+  if (file === PICKER_ABS) continue; // 组件自身跳过，range 模式下 start ≠ end 是合法行为
   read(file).split(/\r?\n/).forEach((line, i) => {
     for (const m of line.matchAll(PERIOD_INPUT_WRITE)) {
       const side = periodSide(m[1]);

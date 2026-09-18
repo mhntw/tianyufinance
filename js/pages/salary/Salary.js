@@ -131,7 +131,7 @@ const periodRangeValue = H.periodRangeValue;
         var d = S.state.depts[i];
         var disabling = !(d && d.enabled === false);
         if (disabling) {
-          if (!(await H.confirmAsync('确定停用部门「' + (d ? d.name : '') + '」？\n停用后新增资产/工资等不能再选该部门，历史数据保留。', { title: '停用部门' }))) return;
+          if (!(await H.confirmAsync('确认停用部门「' + (d ? d.name : '') + '」？\n停用后新增资产/工资等不能再选该部门，历史数据保留。', { title: '停用部门' }))) return;
         }
         d.enabled = disabling ? false : true;
         S.persist(); renderDeptStaff();

@@ -45,6 +45,11 @@ function safeFillAuxItem(sel, typeKey) {
 // 复用统一期间取值实现，避免多份拷贝失同步。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
+// 区间期间取值：返回 {start, end}，供明细账等支持范围选择的页面使用。
+const periodRangeValues = H.periodRangeValues || function (prefix) {
+  var e = periodRangeValue(prefix);
+  return { start: e, end: e };
+};
 
 // 利润表金额跳转来的总账科目过滤（Set(code) | null）：仅显示对应编码，跳转目标强制显示
 var glFilterCodes = null;
@@ -272,15 +277,15 @@ function dlFirstUsedCode() {
   return min;
 }
 function refreshDl() {
-  var month = periodRangeValue('dlPeriod');
+  var range = periodRangeValues('dlPeriod');
   if (!dlAutoFirstDone) {
     dlAutoFirstDone = true;
     if (dlCurCode == null) {
       var first = dlFirstUsedCode();
-      if (first) { dlCurCode = first; renderDl(month); return; }
+      if (first) { dlCurCode = first; renderDl(range); return; }
     }
   }
-  renderDl(month);
+  renderDl(range);
 }
 // 跨页跳转：总账等页点「科目编码」→ 切到明细账并定位该科目（明细账单科目模式）
 globalThis.__dlJumpTo = function (code) {
@@ -317,8 +322,13 @@ function voucherLinkCell(r, vm) {
     ? '<a href="#" class="link-voucher" data-id="' + escAttr(vId) + '">' + escHtml(r.word) + '-' + escHtml(r.no) + '</a>'
     : escHtml(r.word) + '-' + escHtml(r.no);
 }
-function renderDlSegment(tb, code, month, vmap) {
-  var d = S.detailLedger(code, month);
+function renderDlSegment(tb, code, range, vmap) {
+  var d;
+  if (range && range.start && range.end && range.start !== range.end && typeof S.detailLedgerRange === 'function') {
+    d = S.detailLedgerRange(code, range.start, range.end);
+  } else {
+    d = S.detailLedger(code, range && range.end ? range.end : (range && range.start ? range.start : null));
+  }
   if (!d) return false;
   var s = d.subject;
   // 余额列按「科目正常方向」带符号（与金蝶科目余额表同口径）：实际余额方向与科目正常方向
@@ -368,7 +378,7 @@ function renderDlSegment(tb, code, month, vmap) {
   return true;
 }
 
-function renderDl(month) {
+function renderDl(range) {
   var tb = $('dlBody'); if (!tb) return;
   tb.innerHTML = '';
   var sc = dlSubjectCodes();
@@ -376,7 +386,7 @@ function renderDl(month) {
     tb.innerHTML = '<tr><td colspan="7" class="empty-hint" style="color:var(--ty-red)">' + escHtml(sc.err) + '</td></tr>';
     return;
   }
-  if (!month) return;
+  if (!range || !range.start || !range.end) return;
   // 全部科目：按科目分组依次列出，每组自带期初/合计/累计（汇总行是科目级概念，不能跨科目合并）
   var codes = sc.codes
     ? S.subjects().filter(function (s) { return sc.codes.has(String(s.code)); }).map(function (s) { return s.code; })
@@ -385,10 +395,12 @@ function renderDl(month) {
   var vmap = voucherVmap();
   var shown = 0;
   codes.forEach(function (c) {
-    if (renderDlSegment(tb, c, month, vmap)) shown++;
+    if (renderDlSegment(tb, c, range, vmap)) shown++;
   });
   if (!shown) {
-    tb.innerHTML = '<tr><td colspan="7" class="empty-hint">本期无明细记录</td></tr>';
+    var emptyText = (range.start && range.end && range.start !== range.end)
+      ? '所选期间范围无明细记录' : '本期无明细记录';
+    tb.innerHTML = '<tr><td colspan="7" class="empty-hint">' + emptyText + '</td></tr>';
   }
   // 右侧科目快速切换树：账套变化重建 + 单一科目查询时高亮当前行
   dlTreeSyncCurrent(sc);
@@ -634,8 +646,9 @@ function exportDl() {
   if (!XLSX) { H.showToast('导出组件未加载', 'error'); return; }
   var safeExport = globalThis.__safeExportExcel;
   if (!safeExport) { H.showToast('导出功能不可用', 'error'); return; }
-  var month = periodRangeValue('dlPeriod');
-  if (!month) { H.showToast('请先选择期间', 'warn'); return; }
+  var range = periodRangeValues('dlPeriod');
+  if (!range.end) { H.showToast('请先选择期间', 'warn'); return; }
+  var isRange = range.start && range.end && range.start !== range.end;
   var rows = [['科目编码', '科目名称', '日期', '凭证字号', '摘要', '借方', '贷方', '余额', '方向']];
   // dlCurCode 为 null = 「全部科目」模式（与界面 renderDl 一致），否则仅当前科目
   var codes = dlCurCode
@@ -643,7 +656,12 @@ function exportDl() {
     : (S.subjects() || []).map(function (s) { return s.code; });
   var shown = 0;
   codes.forEach(function (code) {
-    var d = S.detailLedger(code, month);
+    var d;
+    if (isRange && typeof S.detailLedgerRange === 'function') {
+      d = S.detailLedgerRange(code, range.start, range.end);
+    } else {
+      d = S.detailLedger(code, range.end);
+    }
     if (!d) return;
     var s = d.subject;
     var obNet = num(d.obDr) - num(d.obCr);
@@ -669,8 +687,11 @@ function exportDl() {
     { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 6 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, '明细账');
-  safeExport(wb, '明细账_' + month);
-  H.showToast('已导出明细账_' + month, 'success');
+  var fname = isRange
+    ? '明细账_' + range.start + '_' + range.end
+    : '明细账_' + range.end;
+  safeExport(wb, fname);
+  H.showToast('已导出' + fname, 'success');
 }
 globalThis.__exportDl = exportDl;
 var bDlExport = document.getElementById('btnDlExport');

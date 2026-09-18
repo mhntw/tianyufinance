@@ -725,7 +725,7 @@ function setupVoucher() {
   });
   var bDel = $('btnDeleteVoucher'); if (bDel) bDel.addEventListener('click', async function () {
     if (!vEditId) return;
-    if (!(await H.confirmAsync('确定删除该凭证？', { title: '删除凭证' }))) return;
+    if (!(await H.confirmAsync('确认删除该凭证？', { title: '删除凭证' }))) return;
     var r = S.removeVoucher(vEditId);
     if (!r.ok) return showToast(r.msg, 'error');
     syncAll();
@@ -1196,7 +1196,7 @@ var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click',
   var cks = document.querySelectorAll('#qBody .row-check:checked');
   if (!cks.length) { showToast('请先勾选要删除的凭证', 'warn'); return; }
   // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码，仅二次确认
-  if (!(await H.confirmAsync('确定删除选中的 ' + cks.length + ' 张凭证？', { title: '删除凭证' }))) return;
+  if (!(await H.confirmAsync('确认删除选中的 ' + cks.length + ' 张凭证？', { title: '删除凭证' }))) return;
   var n = 0, fail = 0, failMsg = '';
   cks.forEach(function (c) {
     var r = S.removeVoucher(c.getAttribute('data-id'));
@@ -1608,7 +1608,7 @@ function applyVchTpl(t) {
       }
       applyVchTpl(t);
     } else if (del) {
-      H.confirmAsync('确定删除该模板？', { title: '删除凭证模板' })
+      H.confirmAsync('确认删除该模板？', { title: '删除凭证模板' })
         .then(function (ok) {
           if (!ok) return;
           var r = S.removeVchTemplate(del.getAttribute('data-id'));

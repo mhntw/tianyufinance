@@ -4,48 +4,41 @@ const H = globalThis.__TY_HELPERS__ || {};
 
 var origCheckedIds = [];
 var origFilter = { name: '', bigType: '', smallType: '', vouchered: '', audit: '', isInvoice: '', group: '' };
-var origSiderTab = 'small';
-var origTreeState = { small: { expand: true }, period: { expand: false } };
+// 分页状态（2026-09-18 补）：页面上一直有「条/页」下拉与上一页/下一页按钮，
+// 但 JS 从未读取过它们 —— 分页控件形同虚设、点了没反应。默认 500 条/页，与下拉框首项一致。
+var _origPage = 1;
+var _origPageSize = 500;
+// （原左侧「附件小类」树及其渲染函数 renderOriginalTree 已于 2026-09-18 连同侧栏一并移除：
+//   该树只有 5 个固定节点（全部/发票/差旅发票/购货发票/合同），筛选价值有限，且是全站唯一
+//   的「侧栏 + 表格」并列结构。页面现收敛为「操作栏 + 单个表格」，筛选入口只剩操作栏的
+//   附件名称搜索框。origFilter 里的 bigType/smallType 字段保留（renderOriginal 仍会读它们，
+//   只是不再有 UI 去设置，值为空即不筛）。）
 
-function renderOriginalTree() {
-  var ul = $('origTree'); if (!ul) return;
-  var list = S.originals();
+// 分页渲染：与费用明细账的 renderEDPagination 同一套写法，保证两页观感与行为一致
+function renderOrigPagination(total) {
+  var totalEl = $('origTotal');
+  var pagesEl = $('origPages');
+  if (!totalEl || !pagesEl) return;
+  totalEl.textContent = '共 ' + total + ' 条';
+  var totalPages = Math.max(1, Math.ceil(total / _origPageSize));
+  if (_origPage > totalPages) _origPage = totalPages;
   var html = '';
-  if (origSiderTab === 'small') {
-    var groups = [
-      { name: '全部', count: list.length, sel: origFilter.smallType === '' && origFilter.bigType === '' },
-      { name: '发票', count: list.filter(function (o) { return o.smallType === '差旅发票' || o.smallType === '购货发票'; }).length, cls: 'parent', sel: origFilter.bigType === '发票', children: [
-        { name: '差旅发票', count: list.filter(function (o) { return o.smallType === '差旅发票'; }).length, sel: origFilter.smallType === '差旅发票' },
-        { name: '购货发票', count: list.filter(function (o) { return o.smallType === '购货发票'; }).length, sel: origFilter.smallType === '购货发票' }
-      ] },
-      { name: '合同', count: list.filter(function (o) { return o.smallType === '合同'; }).length, sel: origFilter.bigType === '合同' }
-    ];
-    groups.forEach(function (g) {
-      if (g.cls === 'parent') {
-        var ex = origTreeState.small.expand;
-        html += '<li class="tree-parent' + (ex ? ' open' : '') + (g.sel ? ' selected' : '') + '" data-name="' + esc(g.name) + '"><span class="tree-arrow">' + (ex ? '▼' : '▶') + '</span>' + esc(g.name) + '<span class="tree-count">' + g.count + '</span></li>';
-        if (ex) g.children.forEach(function (c) {
-          html += '<li class="tree-child indent-3' + (c.sel ? ' selected' : '') + '" data-name="' + esc(c.name) + '">' + esc(c.name) + '<span class="tree-count">' + c.count + '</span></li>';
-        });
-      } else {
-        html += '<li class="tree-leaf' + (g.sel ? ' selected' : '') + '" data-name="' + esc(g.name) + '">' + esc(g.name) + '<span class="tree-count">' + g.count + '</span></li>';
-      }
-    });
-  } else {
-    var periods = {};
-    list.forEach(function (o) { periods[o.period] = (periods[o.period] || 0) + 1; });
-    var keys = Object.keys(periods).sort().reverse();
-    if (!keys.length) keys = [currentPeriod() || ''];
-    keys.forEach(function (p) {
-      var on = (origFilter.period || currentPeriod() || '') === p;
-      html += '<li class="tree-leaf' + (on ? ' selected' : '') + '" data-name="' + esc(p) + '">' + esc(p) + '<span class="tree-count">' + (periods[p] || 0) + '</span></li>';
-    });
+  html += '<li class="' + (_origPage === 1 ? 'disabled' : '') + '" data-page="' + (_origPage - 1) + '" title="上一页"><button><i class="tyicon tyicon-arrow-left"></i></button></li>';
+  for (var i = 1; i <= totalPages; i++) {
+    html += '<li class="' + (i === _origPage ? 'active' : '') + '" data-page="' + i + '" title="' + i + '"><button>' + i + '</button></li>';
   }
-  ul.innerHTML = html;
+  html += '<li class="' + (_origPage === totalPages ? 'disabled' : '') + '" data-page="' + (_origPage + 1) + '" title="下一页"><button><i class="tyicon tyicon-arrow-right"></i></button></li>';
+  pagesEl.innerHTML = html;
 }
 
 export function renderOriginal() {
   var tb = $('origBody'); if (!tb) return;
+  // 事件绑定：renderOriginal 每次进入本页、每次筛选都会被调用，而 bindOriginal 内部有
+  // _origBound 守卫，所以只会真正绑定一次（与 renderExpenseDetail 里调 bindED 同一约定）。
+  // ⚠️ 原先这里漏了这行 —— bindOriginal 成了从未执行过的"孤儿函数"，导致本页**全部交互失效**：
+  //    过滤开关点不开、收起无效、6 个筛选下拉与查询按钮全都无反应。页面上只表现为
+  //    "点了没反应"，不报错、不影响渲染，因此长期未被发现。
+  bindOriginal();
   if (globalThis.setRptHead) globalThis.setRptHead('origTitleRow', '原始凭证', 7, origFilter.period || currentPeriod() || '');
   tb.innerHTML = '';
   var list = S.originals();
@@ -57,12 +50,14 @@ export function renderOriginal() {
   if (origFilter.isInvoice) list = list.filter(function (o) { return o.isInvoice === origFilter.isInvoice; });
   if (origFilter.group) list = list.filter(function (o) { return o.group === origFilter.group; });
 
-  var tot = $('origTotal'); if (tot) tot.textContent = '共 ' + list.length + ' 条';
+  // 分页：先按总量重画分页条，再只渲染当前页（此前无分页，控件点了没反应）
+  renderOrigPagination(list.length);
   if (!list.length) {
     tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     return;
   }
-  list.forEach(function (o) {
+  var _start = (_origPage - 1) * _origPageSize;
+  list.slice(_start, _start + _origPageSize).forEach(function (o) {
     var tr = document.createElement('tr');
     tr.setAttribute('data-id', o.id);
     tr.innerHTML =
@@ -80,10 +75,10 @@ export function renderOriginal() {
     if (delA) delA.addEventListener('click', async function () {
       var id = this.getAttribute('data-id');
       var name = this.getAttribute('data-name') || '';
-      if (!(await H.confirmAsync('确定删除原始凭证「' + name + '」？\n删除后该电子档案将从台账移除，不影响已生成的凭证。', { title: '删除原始凭证' }))) return;
+      if (!(await H.confirmAsync('确认删除原始凭证「' + name + '」？\n删除后该电子档案将从台账移除，不影响已生成的凭证。', { title: '删除原始凭证' }))) return;
       var r = S.removeOriginal(id);
       if (!r.ok) { showToast(r.msg, 'warn'); return; }
-      renderOriginal(); renderOriginalTree();
+      renderOriginal();
     });
   });
 }
@@ -117,56 +112,42 @@ function bindOriginal() {
   var page = $('page-original');
   if (!page || page._origBound) return;
   page._origBound = true;
-  var refresh = function () { renderOriginal(); renderOriginalTree(); };
+  // 筛选条件变化后回到第 1 页（否则会停在旧页码上看到空白）
+  var refresh = function () { _origPage = 1; renderOriginal(); };
 
-  $('origFilterToggle').onclick = function () {
-    var fold = $('origFilterFold');
-    fold.style.display = fold.style.display === 'none' ? 'block' : 'none';
-    $('origFilterToggle').classList.toggle('active', fold.style.display === 'block');
-  };
-  $('origHoldup').onclick = function () {
-    var fold = $('origFilterFold');
-    fold.style.display = 'none'; $('origFilterToggle').classList.remove('active');
-  };
-
-
-  $('origName').oninput = function () { origFilter.name = this.value.trim(); };
-  $('origBigType').onchange = function () { origFilter.bigType = this.value; refresh(); };
-  $('origSmallType').onchange = function () { origFilter.smallType = this.value; refresh(); };
-  $('origVouched').onchange = function () { origFilter.vouchered = this.value; refresh(); };
-  $('origAudit').onchange = function () { origFilter.audit = this.value; refresh(); };
-  $('origIsInvoice').onchange = function () { origFilter.isInvoice = this.value; refresh(); };
-  $('origGroup').onchange = function () { origFilter.group = this.value; refresh(); };
-  $('btnOrigQuery').onclick = refresh;
-  $('btnOrigReset').onclick = function () {
-    origFilter = { name: '', bigType: '', smallType: '', vouchered: '', audit: '', isInvoice: '', group: '' };
-    ['origName', 'origBigType', 'origSmallType', 'origVouched', 'origAudit', 'origIsInvoice', 'origGroup'].forEach(function (id) { var el = $(id); if (el) el.value = ''; });
-    refresh();
-  };
+  // 「过滤」折叠面板已于 2026-09-18 按用户要求移除：其展开开关、6 个筛选下拉、查询/重置
+  // 按钮一并删除。筛选入口保留两个 ——
+  //   ①「附件名称」搜索框（常显，输入即写入 origFilter.name）
+  //   ② 左侧「附件小类 / 记账期间」树：点击直接写 origFilter.bigType / smallType / period
+  // renderOriginal 里的筛选逻辑保持不变（左侧树仍依赖它生效）。
+  // 附件名称搜索（操作栏内，与打印/导出同行）：按名称筛表格数据，输入即刷新。
+  // 注意它筛的是**表格**（origFilter.name → renderOriginal 的 filter），不是左侧树。
+  var on = $('origName');
+  if (on) on.addEventListener('input', function () {
+    origFilter.name = this.value.trim();
+    _origPage = 1;            // 搜索后回到第 1 页，避免停在越界页码上看到空白
+    renderOriginal();
+  });
+  // 分页控件（此前完全没绑定，是「有元素、无 JS」的空壳）：「条/页」下拉 + 上一页/下一页/页码
+  var ps = $('origPageSize');
+  if (ps) ps.addEventListener('change', function () {
+    _origPageSize = parseInt(this.value, 10) || 500;
+    _origPage = 1;
+    renderOriginal();
+  });
+  var pg = $('origPages');
+  if (pg) pg.addEventListener('click', function (e) {
+    var li = e.target.closest('li');
+    if (!li || li.classList.contains('disabled') || li.classList.contains('active')) return;
+    var p = parseInt(li.getAttribute('data-page'), 10);
+    if (!isNaN(p)) { _origPage = p; renderOriginal(); }
+  });
 
   // 注：btnOrigPrint 已带 data-print，由全局委托统一走 tyPrint()，此处不再单独绑定（避免双击/双弹）。
   $('btnOrigExport').onclick = exportOrig;
 
-  $('origSiderTabs').addEventListener('click', function (e) {
-    var t = e.target.closest('.tab'); if (!t) return;
-    origSiderTab = t.getAttribute('data-tab');
-    document.querySelectorAll('#origSiderTabs .tab').forEach(function (x) { x.classList.toggle('active', x === t); });
-    renderOriginalTree();
-  });
-  $('origTree').addEventListener('click', function (e) {
-    var li = e.target.closest('li'); if (!li) return;
-    if (li.classList.contains('tree-parent')) {
-      var nm = li.getAttribute('data-name');
-      if (nm === '发票') origTreeState.small.expand = !origTreeState.small.expand;
-      renderOriginalTree(); return;
-    }
-    var nm2 = li.getAttribute('data-name');
-    if (nm2 === '全部') { origFilter.smallType = ''; origFilter.bigType = ''; }
-    else if (nm2 === '发票') { origFilter.bigType = '发票'; origFilter.smallType = ''; }
-    else if (nm2 === '合同') { origFilter.bigType = '合同'; origFilter.smallType = ''; }
-    else { origFilter.smallType = nm2; origFilter.bigType = ''; }
-    refresh();
-  });
+  // （原 #origSiderTabs 的 tab 切换绑定、以及 #origTree 的节点点击绑定，
+  //   均已随侧栏与「附件小类」树一并移除，2026-09-18）
 
   var all = $('origCheckAll');
   if (all) all.addEventListener('change', function () {
