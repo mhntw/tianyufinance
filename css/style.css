@@ -72,6 +72,7 @@
   --nav-w-collapsed: 50px;   /*  .sidebarCollapsed--JImxl{width:50px}：收起后仅留图标宽度 */
   --nav-w-active: var(--nav-w);   /* 当前侧栏宽度（JS 在收起时切为 collapsed 值） */
   --ty-white: #fff;   /* 纯白（背景/文字/边框通用），收敛原先散落的 #fff 字面量 */
+  --ty-black: #000;   /* 纯黑（阴影/描边等），收敛原 6 处 #000 */
 }
 
 *, *::before, *::after { box-sizing: border-box; }   /* 原 jdy-base.css 并入：伪元素同样 border-box */
@@ -622,12 +623,12 @@ img, svg { display: block; max-width: 100%; }
   padding: 0 10px; border: 1px solid var(--ty-border-2); border-radius: 6px; background: var(--ty-white);
 }
 .vch-tpl-searchbox:focus-within { border-color: var(--ty-blue); box-shadow: 0 0 0 2px rgba(24, 110, 240, .08); }
-.vch-tpl-search-ic { font-size: var(--fs-lg); color: #9aa4b2; line-height: 1; }
+.vch-tpl-search-ic { font-size: var(--fs-lg); color: var(--ty-text-3); line-height: 1; }
 .vch-tpl-search { flex: 1; border: none; outline: none; font-size: var(--fs-sm); color: var(--ty-text); background: none; }
 .vch-tpl-list { max-height: 56vh; overflow: auto; margin-top: 8px; padding: 0 2px 2px; }
 .vch-tpl-sec { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: var(--fs-sm); font-weight: 600; color: #576a83; }
 .vch-tpl-sec::after { content: ''; flex: 1; height: 1px; background: #eceef1; }
-.vch-tpl-cnt { font-size: var(--fs-2xs); font-weight: 400; color: #9aa4b2; }
+.vch-tpl-cnt { font-size: var(--fs-2xs); font-weight: 400; color: var(--ty-text-3); }
 .vch-tpl-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-radius: 6px; }
 .vch-tpl-row:hover { background: var(--ty-blue-2); }   /* 悬停底走全站 hover token（原写死 #eef4fd） */
 .vch-tpl-main { flex: 1; min-width: 0; }
@@ -643,19 +644,19 @@ img, svg { display: block; max-width: 100%; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .vch-tpl-seg { white-space: nowrap; }
-.vch-tpl-seg .muted { color: #9aa4b2; }
+.vch-tpl-seg .muted { color: var(--ty-text-3); }
 .vch-tpl-drc { font-style: normal; font-weight: 600; color: #D93026; margin-right: 3px; }
 .vch-tpl-sep { margin: 0 7px; color: #d3d9e0; }
 .vch-tpl-miss { margin-top: 3px; font-size: var(--fs-xs); color: #D93026; line-height: 1.6; }
 .vch-tpl-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
-.vch-tpl-empty-my { font-size: var(--fs-xs); color: #9aa4b2; text-align: center; padding: 4px 0 2px; }
+.vch-tpl-empty-my { font-size: var(--fs-xs); color: var(--ty-text-3); text-align: center; padding: 4px 0 2px; }
 /* 保存为凭证模板面板 */
 #vchTplSaveModal .modal-box { width: 480px; max-width: calc(100vw - 32px); }
 .vch-tpl-save-meta { display: flex; flex-direction: column; gap: 10px; }
 .vch-tpl-save-meta label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: #576a83; }
 .vch-tpl-save-meta .inp { height: 32px; border: 1px solid var(--ty-border-2); border-radius: 6px; padding: 0 10px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
 .vch-tpl-save-meta .inp:focus { border-color: var(--ty-blue); box-shadow: 0 0 0 2px rgba(24,110,240,.08); outline: none; }
-.vch-tpl-save-sub { font-size: var(--fs-xs); color: #9aa4b2; margin: 10px 0 6px; }
+.vch-tpl-save-sub { font-size: var(--fs-xs); color: var(--ty-text-3); margin: 10px 0 6px; }
 .vch-tpl-save-fields { display: flex; gap: 18px; margin: 2px 0 0; }
 .vch-tpl-save-fields .vtsf { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--ty-text); cursor: default; }
 .vch-tpl-save-fields .vtsf input { width: 16px; height: 16px; }
@@ -4002,7 +4003,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   align-items: center !important;
   justify-content: center !important;
   font-size: var(--fs-md) !important;
-  color: var(--ty-text) !important;   /* 统一顶栏主色，去掉各块散落的 #000/var(--ty-nav-text)/#606266 */
+  color: var(--ty-text) !important;   /* 统一顶栏主色，去掉各块散落的 var(--ty-black)/var(--ty-nav-text)/#606266 */
   height: 48px !important;
   line-height: 48px !important;
   padding: 0 !important;
@@ -4027,7 +4028,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   display: inline-block !important;
   width: 1px !important;
   height: 18px !important;
-  background-color: #dcdfe6 !important;
+  background-color: var(--ty-border) !important;
   margin: 0 8px !important;
   vertical-align: middle !important;
   position: relative !important;
@@ -4065,7 +4066,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   padding: 0 10px 0 12px !important;
   margin: 0 !important;
   background: var(--ty-white) !important;
-  border: 1px solid #dcdfe6 !important; /* el-select 边框色 */
+  border: 1px solid var(--ty-border) !important; /* el-select 边框色 */
   border-radius: 4px !important;        /* el-select 圆角 */
   cursor: pointer !important;
   outline: none !important;
@@ -4117,7 +4118,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   position: fixed;
   z-index: 1300;
   background: var(--ty-white);
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--ty-border);
   border-radius: 4px;
   box-shadow: 0 6px 18px rgba(0,0,0,.12);
   padding: 4px 0;
@@ -4210,7 +4211,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   height: 32px;                 /* 与账套选择框 32px 等高（含边框，* 全局已 border-box） */
   box-sizing: border-box;
   background: var(--ty-white);
-  border: 1px solid #dcdfe6;   /* 与账套选择框边框色统一（Element el-select 边框） */
+  border: 1px solid var(--ty-border);   /* 与账套选择框边框色统一（Element el-select 边框） */
   border-radius: 4px;           /* 与账套选择框圆角统一 */
   padding: 0 4px 0 10px;
   margin-right: 6px;
@@ -5124,14 +5125,14 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   /* 激活页标题（卡片头文字）作为打印表头 */
   .page.active .card-head {
     display: block !important;
-    border-bottom: 2px solid #000;
+    border-bottom: 2px solid var(--ty-black);
     margin-bottom: 8px;
     padding-bottom: 4px;
   }
   /* 报表打印专用抬头：屏幕隐藏，此处显示（复刻：表名 + 编制单位/报表日期/单位：元） */
   .rpt-print-head {
     display: block !important;
-    color: #000;
+    color: var(--ty-black);
     margin: 0 0 6px 0;
     padding: 0 2px;
   }
@@ -5143,13 +5144,13 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
     font-weight: 400;
     text-align: center;
     margin-bottom: 6px;
-    color: #000;
+    color: var(--ty-black);
   }
   .rpt-print-head .rph-line {
     display: flex;
     justify-content: space-between;
     font-size: var(--fs-xs);
-    color: #000;
+    color: var(--ty-black);
   }
   /* 卡片整体缩进仅用于屏幕，打印态还原为无内缩 */
   .page.active .card { padding: 0; }
@@ -5268,7 +5269,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   .grid tbody tr:hover td { background: var(--ty-white) !important; }
   .grid .ta-r, .grid .col-amt { text-align: right; }
   /* 数字着色（红字）在打印时保留但转深灰，避免浅红看不清 */
-  .grid .amt-neg, .grid .num-neg { color: #000 !important; }
+  .grid .amt-neg, .grid .num-neg { color: var(--ty-black) !important; }
   /* 行勾选列 / 操作列在打印时隐藏 */
   .grid col.c-check, .grid col.c-op,
   .grid th.col-check, .grid td.col-check,
@@ -5605,8 +5606,8 @@ tr.log-row-reopen { background: var(--st-danger-bg); }
 tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .log-reason { margin-top: 4px; padding: 2px 6px; background: var(--st-danger-bg); border-left: 3px solid var(--st-danger-fg); color: var(--st-danger-fg); font-size: var(--fs-xs); }
 /* 凭证回收站：简洁表格，黑字、还原蓝、宽度自适应 */
-.recycle-table { width: 100%; border-collapse: collapse; color: #000; font-size: var(--fs-sm); }
-.recycle-table th, .recycle-table td { border: 1px solid var(--grid-line); padding: 6px 10px; text-align: left; color: var(--grid-text); font-weight: 400; }   /* 回收站表：线色/字色/字重走全站 token（原写死 #e5e5e5 / #000） */
+.recycle-table { width: 100%; border-collapse: collapse; color: var(--ty-black); font-size: var(--fs-sm); }
+.recycle-table th, .recycle-table td { border: 1px solid var(--grid-line); padding: 6px 10px; text-align: left; color: var(--grid-text); font-weight: 400; }   /* 回收站表：线色/字色/字重走全站 token（原写死 #e5e5e5 / var(--ty-black)） */
 .recycle-table a.link-toggle { color: #1677ff; }
 /* 凭证增删改审计明细展开区 */
 .log-audit-toggle { margin-left: 8px; font-size: var(--fs-xs); }
