@@ -146,6 +146,32 @@ function v(id, word, no, date, entries) {
     assert.strictEqual(r.length, 1);
   });
 
+  /* ---- 区间相关的边界（2026-09-19 查凭证开放起止期间后补）---- */
+  await step('区间起止相同时与单期等价', function () {
+    const { sandbox } = makeEnv(pv);
+    const single = sandbox.queryVouchers('2026-02', '2026-02', '');
+    const range = sandbox.queryVouchers('2026-01', '2026-02', '');
+    assert.deepStrictEqual(plain(single.map(x => x.id)), ['b'], '单期只取 2 月');
+    assert.deepStrictEqual(plain(range.map(x => x.id)), ['a', 'b'], '区间含 1、2 月');
+  });
+
+  await step('起期晚于止期时返回空（不抛错，也不返回全部）', function () {
+    const { sandbox } = makeEnv(pv);
+    const r = sandbox.queryVouchers('2026-03', '2026-01', '');
+    assert.strictEqual(r.length, 0, '反序区间应返回空数组，而非静默返回全部数据');
+  });
+
+  await step('跨年区间可正确展开（账簿类无「本年累计」列，跨年无口径冲突）', function () {
+    const 跨年 = {
+      '2025-11': [v('x1', '记', 1, '2025-11-05', [{ code: '1001', name: '库存现金', dr: 10, cr: 0 }])],
+      '2026-01': [v('x2', '记', 1, '2026-01-05', [{ code: '1001', name: '库存现金', dr: 20, cr: 0 }])],
+    };
+    const { sandbox } = makeEnv(跨年);
+    const r = sandbox.queryVouchers('2025-11', '2026-01', '');
+    assert.strictEqual(r.length, 2, '应同时命中 2025-11 与 2026-01');
+    assert.deepStrictEqual(plain(r.map(x => x.id)), ['x1', 'x2'], '按月顺序展开');
+  });
+
   await step('科目过滤只保留含该科目的凭证', function () {
     const { sandbox } = makeEnv(pv);
     /* 第三个参数是**科目码集合（Set）**，不是字符串 —— queryVouchers 内部直接交给
@@ -213,6 +239,35 @@ function v(id, word, no, date, entries) {
     sandbox.exportQuery();
     assert.strictEqual(captured.sheets, null);
     assert.ok(captured.toasts.some(t => /请先选择查询期间/.test(t.msg)));
+  });
+
+  /* ---- 静态契约：哪些页面允许「区间期间」（2026-09-19 讨论后固化）----
+   *
+   * 取舍标准：**只有「看流水」的账簿类可以给区间**。判据是该页有没有「本年累计」列——
+   * 有这一列的（报表、总账），一旦允许跨自然年的区间，「本年累计」就失去法定口径
+   * （准则要求按自然年归集），属实质隐患，故一律保持单期。
+   *
+   * 这条契约的作用：防止将来有人"顺手"给某个报表也加上 data-range。数值类断言
+   * 未必能立刻发现，但口径已经错了。 */
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const periodTag = key => {
+    const m = html.match(new RegExp('<div[^>]*data-period="' + key + '"[^>]*>'));
+    return m ? m[0] : '';
+  };
+  await step('契约：明细账(dl)与查凭证(q)启用区间模式', function () {
+    ['dl', 'q'].forEach(k => {
+      const tag = periodTag(k);
+      assert.ok(tag, '找不到 data-period="' + k + '" 的控件');
+      assert.ok(/data-range="true"/.test(tag), k + ' 应带 data-range="true"');
+    });
+  });
+  await step('契约：报表类与总账保持单期（含「本年累计」列，跨年区间会使该列口径失效）', function () {
+    ['bs', 'pl', 'cf', 'tx', 'gl'].forEach(k => {
+      const tag = periodTag(k);
+      if (!tag) return;   // 该控件不存在则跳过（不误报）
+      assert.ok(!/data-range="true"/.test(tag),
+        k + ' 不应带 data-range —— 该页含「本年累计」列，跨年区间会让它失去法定口径');
+    });
   });
 
   console.log('\n结果：' + passed + ' 通过, ' + failed + ' 失败');

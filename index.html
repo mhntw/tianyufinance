@@ -480,7 +480,12 @@
       <section class="page" id="page-voucher-query">
 
         <div class="page-actions">
-            <div data-period="q" data-default="currentPeriod" data-on-change="__renderQuery"></div>
+            <!-- 查凭证：起止期间可选（data-range）——
+                 与「明细账」同性质（看流水），且三层早已就绪：renderQuery(start,end)、
+                 exportQuery()、queryVouchers(start,end,codes) 全部按区间实现，
+                 只是 UI 一直锁在单期。加 data-range 后组件允许两端独立选择，无需改 JS。
+                 注：本页无「本年累计」列，跨年区间无口径冲突。 -->
+            <div data-period="q" data-default="currentPeriod" data-range="true" data-on-change="__renderQuery"></div>
             <div class="ykj-filter-item-box">
               <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
