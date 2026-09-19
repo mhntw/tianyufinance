@@ -22,6 +22,23 @@ async function step(name, fn) {
 const VOUCHER_PATH = path.join(__dirname, '..', 'js', 'pages', 'voucher', 'Voucher.js');
 const src = fs.readFileSync(VOUCHER_PATH, 'utf8');
 
+/* matchSubjectCode 不在 Voucher.js 里 —— 它由第 19 行的 ESM import 从 SubjectPicker.js 引入，
+ * 因此「按名字在 src 中正则提取」永远找不到它（import 进来的标识符不在源码文本中定义）。
+ * 这里单独从组件文件里提取，与 monthList 的处理同理：让被测代码走真实实现而非简化版。 */
+const PICKER_PATH = path.join(__dirname, '..', 'js', 'components', 'SubjectPicker.js');
+const pickerSrc = fs.readFileSync(PICKER_PATH, 'utf8');
+function extractFrom(source, name) {
+  const re = new RegExp('function ' + name + '\\s*\\([^)]*\\)\\s*\\{');
+  const m = source.match(re);
+  if (!m) throw new Error('未找到函数 ' + name);
+  let i = source.indexOf('{', m.index), depth = 0, end = -1;
+  for (let j = i; j < source.length; j++) {
+    if (source[j] === '{') depth++;
+    else if (source[j] === '}') { depth--; if (depth === 0) { end = j; break; } }
+  }
+  return source.slice(m.index, end + 1);
+}
+
 // 从源码中提取目标函数（按大括号配对）
 function extract(name) {
   const re = new RegExp('function ' + name + '\\s*\\([^)]*\\)\\s*\\{');
@@ -46,6 +63,7 @@ function makeEnv(periodVouchers) {
   const sandbox = {
     console,
     Array, Object, JSON, String, Number, parseInt, parseFloat, isNaN,
+    Set,   // qSubjectCodes 内部用 new Set()，沙箱必须显式提供（vm 不自动继承宿主全局）
     XLSX: {
       utils: {
         book_new() { return { __wb: true }; },
@@ -56,13 +74,38 @@ function makeEnv(periodVouchers) {
     __safeExportExcel(wb, fname) { captured.fname = fname; return Promise.resolve('/p'); },
     showToast(msg, type) { captured.toasts.push({ msg, type }); },
     $: (id) => els[id] || null,
-    U: { num: (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; } },
-    S: { periodVouchers: (m) => (periodVouchers[m] || []).slice() },
+    U: {
+      num: (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; },
+      /* monthList：与 store.js 的同名函数**逐行同源**（展开月份区间，含 01~12 校验）。
+         此前只 mock 了 U.num，queryVouchers 内部调 U.monthList 时报「is not a function」。
+         直接复制实现而非简化，是为了让被测代码走真实口径 —— 若 store 的 monthList 变了，
+         这里也应同步（两处都在注释里标注了出处）。 */
+      monthList: (start, end) => {
+        const out = [];
+        const s = String(start == null ? '' : start), e = String(end == null ? '' : end);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(s) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(e)) return out;
+        let y = +s.slice(0, 4), m = +s.slice(5, 7);
+        const ey = +e.slice(0, 4), em = +e.slice(5, 7);
+        while (y < ey || (y === ey && m <= em)) {
+          out.push(y + '-' + String(m).padStart(2, '0'));
+          m++; if (m > 12) { m = 1; y++; }
+        }
+        return out;
+      }
+    },
+    S: {
+      periodVouchers: (m) => (periodVouchers[m] || []).slice(),
+      subjects: () => (els.__subjects || [])   // qSubjectCodes 用；用例未设时为空
+    },
     qSortDir: 0
   };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(
+    // qSubjectCodes 与 queryVouchers/exportQuery 同处 Voucher.js 顶层，被它们调用；
+    // 只提取后两者时，调用 qSubjectCodes 会解析到沙箱全局而报「is not defined」。
+    extract('qSubjectCodes') + '\n' +
+    extractFrom(pickerSrc, 'matchSubjectCode') + '\n' +   // 来自 SubjectPicker.js（ESM import）
     extract('queryVouchers') + '\n' + extract('exportQuery') + '\n' +
     'globalThis.queryVouchers = queryVouchers; globalThis.exportQuery = exportQuery;',
     sandbox
@@ -105,7 +148,11 @@ function v(id, word, no, date, entries) {
 
   await step('科目过滤只保留含该科目的凭证', function () {
     const { sandbox } = makeEnv(pv);
-    const r = sandbox.queryVouchers('2026-01', '2026-02', '6001');
+    /* 第三个参数是**科目码集合（Set）**，不是字符串 —— queryVouchers 内部直接交给
+       matchSubjectCode(codes, code)，后者调用 codes.has()。页面里两处真实调用
+       （Voucher.js:1225 / 1262）传的都是 qSubjectCodes().codes（Set 或 null）。
+       早先测试传字符串 '6001'，于是报「codes.has is not a function」。 */
+    const r = sandbox.queryVouchers('2026-01', '2026-02', new Set(['6001']));
     assert.strictEqual(r.length, 1);
     assert.strictEqual(r[0].id, 'b');
   });

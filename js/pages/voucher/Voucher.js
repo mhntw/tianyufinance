@@ -1196,6 +1196,10 @@ if (qCheckAll) qCheckAll.addEventListener('change', function () {
 
 // 取当前查询条件下的凭证列表（跨期逐月汇总 + 科目过滤 + 字号排序）。
 // 抽成独立函数，供列表渲染与 Excel 导出复用，保证「所见即所导」。
+/* 第三个参数是**科目码集合**（Set 或 null），不是单个科目字符串 ——
+   内部直接把它交给 matchSubjectCode(codes, code)，后者调用 codes.has()。
+   传字符串会抛「codes.has is not a function」。参数名沿用历史命名 code。
+   页面内调用点：1225 / 1262（均传 qSubjectCodes().codes）。 */
 function queryVouchers(start, end, code) {
   if (!start || !end) return [];
   var vs = [];
