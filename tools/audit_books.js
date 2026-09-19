@@ -20,11 +20,33 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-// 账套目录：默认项目 data/books；可用 --dir=<路径> 指定（例如桌面应用的真实数据目录：
-//   ~/Library/Application Support/添钰财务/books）
+const os = require('os');
+// 账套目录解析优先级：
+//   1) --dir=<路径>       显式指定，最高优先
+//   2) 桌面应用的真实数据目录（Tauri 应用数据目录，见 js/storage.js 顶部注释）
+//   3) 项目内 data/books   开发态 / 旧版
+// 【为什么必须探测第 2 项】桌面版账套落在系统「应用数据目录」，而本脚本原先只默认
+// 项目内 data/books —— 该目录在桌面版并不存在，于是恒输出「未找到账套」，
+// 审计形同虚设（自检工具跑不起来 ＝ 没有）。已实测桌面版路径下 456 张凭证可正常审计。
+function detectAppDataBooks() {
+  const home = os.homedir();
+  const cands = [];
+  if (process.platform === 'darwin') {
+    cands.push(path.join(home, 'Library', 'Application Support', '添钰财务', 'books'));
+  } else if (process.platform === 'win32') {
+    const appdata = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    cands.push(path.join(appdata, '添钰财务', 'books'));
+  } else {
+    const xdg = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share');
+    cands.push(path.join(xdg, '添钰财务', 'books'));
+  }
+  for (const c of cands) { try { if (fs.existsSync(c)) return c; } catch (e) {} }
+  return null;
+}
 const ARGV = process.argv.slice(2);
 const DIR_ARG = (ARGV.find(a => a.indexOf('--dir=') === 0) || '').slice(6);
-const BOOKS_DIR = DIR_ARG ? path.resolve(DIR_ARG) : path.join(ROOT, 'data', 'books');
+const BOOKS_DIR = DIR_ARG ? path.resolve(DIR_ARG)
+  : (detectAppDataBooks() || path.join(ROOT, 'data', 'books'));
 const EPS = 0.01;
 
 const FUND_CODES = ['1001', '1002', '1012'];   // 库存现金 / 银行存款 / 其他货币资金

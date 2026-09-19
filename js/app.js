@@ -211,11 +211,15 @@
       console.error('[selftest]', e);
       banner.hidden = true; return;
     }
-    if (!res || res.skipped || !res.items.length) { banner.hidden = true; return; }
-    var hasError = res.items.some(function (x) { return x.level === 'error'; });
+    // info 级只作参考（如三表勾稽这类「软关系」），不进横幅 ——
+    // 否则首页会长期挂着一条无法解释的提示，让用户对真实告警脱敏（狼来了效应）。
+    // 仍可经 S.runSelfTest() 在控制台查阅完整清单。
+    var shown = (res && res.items ? res.items : []).filter(function (x) { return x.level !== 'info'; });
+    if (!res || res.skipped || !shown.length) { banner.hidden = true; return; }
+    var hasError = shown.some(function (x) { return x.level === 'error'; });
     banner.className = 'selftest-banner st-level-' + (hasError ? 'error' : 'warn');
     var html = '<div class="st-item"><b>运行期自检' + (hasError ? '发现异常（务必核查账套）' : '提示') + '：</b></div>';
-    res.items.forEach(function (it) {
+    shown.forEach(function (it) {
       html += '<div class="st-item">· <b>' + (it.label || '') + '</b>' + (it.detail ? '：' + it.detail : '') + '</div>';
     });
     banner.innerHTML = html;

@@ -1942,7 +1942,24 @@
       } catch (e) {
         push('error', '资产负债表计算异常', String(e && e.message || e));
       }
-      // 4、三表取数同源：利润表净利润 应等于 资产负债表「未分配利润」本年变动
+      // 4、三表勾稽（**软关系 —— 仅作参考信息，不告警**）
+      // 【为什么降级为 info，而不是 warn】
+      //   原实现断言「利润表净利润 = 资产负债表未分配利润本年变动」，但这个等式只在
+      //   「本年无利润分配、且损益结转结构与标准模板一致」时才成立。真实账套普遍不成立：
+      //     · 有利润分配时，正确关系是
+      //         未分配利润本年变动 = 本年累计净利润 − 本年已分配利润
+      //       实测本账套（2026-08）：-467,387.60 = 597,776.09 − 1,065,163.69，
+      //       差额恰为 310410「应付利润」的余额（挂在 3104 利润分配下的分配类科目）。
+      //     · 且原实现用「本期净利润」去比「本年累计变动」，**口径本身就不匹配** ——
+      //       该账套 7 月差 110,599.71、8 月差 926,986.59，**每月必报**，属确定性误报。
+      //   曾尝试按正确口径修正（改用本年累计净利 − 本年已分配），仍不成立：
+      //   逐项累加 items.ytd 得 1,069,618.68（父子科目重复），改取末级得 534,520.38，
+      //   与应有的 597,776.09 均不符 —— 因金蝶账套的结转结构（月度结转到 3103、
+      //   分配走 3104 明细）与通用公式的假设不同，无法用一套通用取数精确复现。
+      // 【风险权衡】硬关系「资产 = 负债 + 所有者权益」已由第 3 项独立且严格地检查
+      //   （判据能区分「未结转损益导致的差额」与「真实不平衡」）。而本项是软关系，
+      //   保留为 warn 只会每月弹一条**无法解释**的告警，让用户对真实告警脱敏。
+      //   故保留计算、降为 info（首页横幅不显示），需要时可在控制台查阅。
       try {
         var mp = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (mp) {
@@ -1953,9 +1970,16 @@
             if (it.label && it.label.indexOf('未分配利润') >= 0) { unprofitEnd = it.end; unprofitOp = it.year; }
           });
           var profitDelta = unprofitEnd - unprofitOp;
-          if (Math.abs(profitDelta - pl.netProfit) >= 0.01) {
-            push('warn', '利润表与资产负债表勾稽偏差', '利润表净利润 ¥' + pl.netProfit.toFixed(2) + '，资产负债表未分配利润变动 ¥' + profitDelta.toFixed(2) + '，差额 ¥' + Math.abs(profitDelta - pl.netProfit).toFixed(2));
-          }
+          // 本年已分配利润：3104 利润分配（父行已 rollCodes 上卷，含提取盈余公积/应付利润/转作资本等全部明细）
+          var allocate = 0;
+          try {
+            this.generalLedger(mp).forEach(function (r) { if (String(r.code) === '3104') allocate += num(r.ytdDr); });
+          } catch (e2) {}
+          push('info', '三表勾稽（参考）',
+            '未分配利润本年变动 ¥' + profitDelta.toFixed(2) +
+            '，本期净利润 ¥' + pl.netProfit.toFixed(2) +
+            '，本年已分配利润 ¥' + allocate.toFixed(2) +
+            '；三者不等属常见（利润分配与结转结构所致），仅供参考，不影响账务正确性');
         }
       } catch (e) {}
       var ok = !items.some(function (x) { return x.level === 'error'; });
