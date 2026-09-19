@@ -636,8 +636,15 @@
       var payload = JSON.stringify(this.state);
       // 兜底落真实文件（Storage 引擎：Rust 写 <应用数据目录>/添钰财务/）
       if (typeof window.Storage !== 'undefined') {
-        if (needBook) window.Storage.saveBook(bid, payload).catch(function () {});
-        if (needBk) window.Storage.saveBackup(bid, this.state).catch(function () {});
+        /* 页面关闭兜底：此刻无法再给用户任何 UI 提示（窗口正在销毁），静默是合理的；
+           但仍留一条日志 —— 否则「关页面时最后几笔没落盘」将完全无迹可查。
+           正常路径的失败告警由 _persist 的 __onPersistError 机制承担（见上）。 */
+        if (needBook) window.Storage.saveBook(bid, payload).catch(function (e) {
+          console.warn('[exit-flush] 关闭时主账本兜底写入失败：' + (e && e.message || e));
+        });
+        if (needBk) window.Storage.saveBackup(bid, this.state).catch(function (e) {
+          console.warn('[exit-flush] 关闭时备份兜底写入失败：' + (e && e.message || e));
+        });
       }
       // 数据真相源在磁盘，无需再写 localStorage 缓存；仅持久化当前账套指针即可。
       setCurBookId(bid);
