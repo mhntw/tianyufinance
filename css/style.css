@@ -353,7 +353,17 @@ img, svg { display: block; max-width: 100%; }
      各项之间出现很大的间距，观感不协调（真实菜单是紧凑靠上的）。
      改为 flex-start，菜单项按内容高度紧凑自上而下排列；底部留白由滚动区自然承载。 */
   justify-content: flex-start;
-  padding: 6px 4px;
+  /* 菜单块之间的呼吸间距（2026-09-19 优化「7 大板块上下拥挤」）——
+     根因：.nav-group-title 的 14px padding 是**块内部**留白（撑出 50px 高的点击区），
+     而 .nav-group 原为空规则，块与块之间**间距为 0**。于是 hover / active 时
+     相邻两个圆角蓝块直接相贴，整列看下来是「连续色块」而非「分开的条目」，故显得拥挤。
+     这里用 flex gap 在块之间补出真实间隙：
+       · 只在块之间生效，首项前 / 末项后不加（不像 margin 方案需要 .nav-group:first-child 特例清零）；
+       · gap 仅作用于 flex 子项 —— 二级菜单是独立单例浮层（position:fixed），
+         并非 .nav-group 子元素，不受影响（已核对 app.js 的 DOM 生成）。
+     8px ≈ 条目高度(50px) 的 16%，是纵向菜单的舒适区间；侧栏可用高度充裕（7 项共约 406px）。 */
+  gap: 8px;
+  padding: 6px 6px;   /* 左右 4→6px：与条目 10px 圆角相衬，蓝块两侧不再贴边 */
 }
 
 /* 收起（.sidebarCollapsed--JImxl 宽 50px）：菜单文字 JS 置空不渲染，本地等效仅隐藏 .nav-text；
@@ -511,7 +521,7 @@ img, svg { display: block; max-width: 100%; }
   padding: 4px 24px 1px 4px;   /*  wrapper--3kKIA: padding:4px 120px 1px 4px —— 灰底通栏贴左右边缘，左4px贴边、右24px与卡片右缘对齐（右120px为"管理"按钮留白，本项目无该按钮用24px） */
   height: 36px;
   box-sizing: border-box;
-  background: var(--ty-content-bg);   /* 统一浅灰：页签条与卡片头/新增凭证同色，去除灰蓝 var(--ty-blue-2) */
+  background: var(--ty-blue-2);   /* 统一浅蓝：页签条与卡片头/新增凭证同色（表头同款浅蓝） */
   border-top: 1px solid var(--ty-blue-2);
   position: relative;
   flex-shrink: 0;
@@ -3303,7 +3313,7 @@ label.req::before {
   height: 64px;
   padding: 0 16px;
   box-sizing: border-box;
-  background: var(--ty-content-bg);             /* 统一浅灰：新增凭证卡与页签条/卡片头同色，去浅蓝渐变 */
+  background: var(--ty-blue-2);                 /* 统一浅蓝：新增凭证卡与页签条/卡片头同色（表头同款浅蓝） */
   border-radius: 12px;
   cursor: pointer;
   color: var(--ty-text);
@@ -3450,10 +3460,10 @@ label.req::before {
   height: 100%;
 }
 
-/* 卡片头部（drag-header：浅灰底 #f5f6f8、44px 高、圆角上 8px、两端对齐，
+/* 卡片头部（drag-header：浅蓝底、44px 高、圆角上 8px、两端对齐，
    header 自身无 padding，左右内距由 .title / 右侧控件各自的 10px 20px 承担）
    注：44px 而非参考产品的 30px——头部需容纳 14px 的期间下拉（jinbooks 用 el-select 可压到 30px，
-   原生 select 加上下 padding 后 30px 放不下）；底色沿用浅灰，与页签条/新增凭证同色。 */
+   原生 select 加上下 padding 后 30px 放不下）；底色沿用浅蓝，与页签条/新增凭证/表头同色。 */
 /* 卡片头部：左 title 自动吸收剩余空间，右期间控件稳定占位不漂移 */
 .drag-header {
   display: flex;
@@ -3461,7 +3471,7 @@ label.req::before {
   /* justify-content 默认 flex-start 即可：左侧 title 自然占据左位，
      右侧元素靠 margin-left: auto 推到右边，比 space-between 更稳
      （space-between 在只有两个子元素时其实和 flex-start + margin-left:auto 等价） */
-  background: var(--ty-content-bg);
+  background: var(--ty-blue-2);   /* 卡片头浅蓝：与表头/页签条/新增凭证同色 */
   height: 44px;
   line-height: 44px;
   padding: 0;
@@ -6131,9 +6141,9 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .about-link { color: var(--ty-blue); cursor: pointer; }
 .about-link:hover { text-decoration: underline; }
 .about-copy {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
-  color: var(--ty-text-3);
+  padding: 12px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ty-text-2);
 }
 
 
