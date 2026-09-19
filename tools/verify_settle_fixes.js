@@ -122,3 +122,40 @@ console.log('  （跳过：目标函数已随出纳模块移除）');
 console.log('\n============================');
 console.log(bad === 0 ? '全部通过：#5查重/#8年末结转接入/#9硬性检查展示/#10空值兜底' : '存在 ' + bad + ' 处不符');
 process.exitCode = bad === 0 ? 0 : 1;
+
+/* ============================================================
+ * 结转模板摘要的 {month} 占位符替换
+ *
+ * 【背景】实测账套里存在摘要为「计提{month}固定资产折旧」的折旧凭证 ——
+ * 看着像模板没生效。实际是该占位符在历史版本中从未被替换，修复后新增的凭证已正常；
+ * 那条是修复前生成的历史数据（全账套仅 1 张）。
+ *
+ * 【为什么这里可以直接提取函数】tplSummary 是纯函数（只依赖 String.replace），
+ * 没有 DOM / 全局依赖，所以能安全地抠出来单独验证 —— 不像那些依赖链复杂、
+ * 一改就静默失效的渲染函数。
+ * ============================================================ */
+(function () {
+  const src = fs.readFileSync(path.resolve(__dirname, '../js/pages/settle/Settle.js'), 'utf8');
+  const m = src.match(/function tplSummary\s*\([^)]*\)\s*\{/);
+  if (!m) { ck(false, '能在 Settle.js 中找到 tplSummary'); return; }
+  let i = src.indexOf('{', m.index), depth = 0, end = -1;
+  for (let j = i; j < src.length; j++) {
+    if (src[j] === '{') depth++;
+    else if (src[j] === '}') { depth--; if (depth === 0) { end = j; break; } }
+  }
+  const tplSummary = new Function(src.slice(m.index, end + 1) + '; return tplSummary;')();
+
+  ck(tplSummary({ summaryText: '计提{month}固定资产折旧' }, '2026-08') === '计提2026-08固定资产折旧',
+    '{month} 被替换为实际期间');
+  ck(tplSummary({ summaryText: '{month}结转{month}' }, '2026-08') === '2026-08结转2026-08',
+    '多个 {month} 全部替换（非只换首个）');
+  ck(tplSummary({ summary: '结转{month}损益' }, '2026-01') === '结转2026-01损益',
+    'summaryText 缺省时回退到 summary');
+  ck(tplSummary({ name: '计提折旧' }, '2026-01') === '计提折旧',
+    '两者都缺省时回退到 name');
+  ck(tplSummary({ summaryText: '计提{month}折旧' }, '') === '计提折旧',
+    'month 为空时替换为空串（不留下 {month} 字面量）');
+  ck(tplSummary(null, '2026-01') === '', 'null 模板返回空串（不抛错）');
+  ck(!/\{month\}/.test(tplSummary({ summaryText: '计提{month}固定资产折旧' }, '2026-08')),
+    '结果中不再残留 {month} 字面量');
+})();
