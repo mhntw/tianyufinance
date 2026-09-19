@@ -387,7 +387,14 @@ export function updatePeriodRangeTrigger(startId, endId) {
   textEl.classList.remove('is-placeholder');
 }
 
+/* 幂等保护（2026-09-19）——
+ * initEvents() 在 document 上注册点击监听，若本函数被调用两次，监听会重复注册：
+ * 表现为「点一下浮层打开、立刻又被第二个监听关掉」，且不报错、极难定位。
+ * 当前只在 js/main.js 调用一次，但那是调用侧的约定；组件自身应保证幂等。 */
+var _periodPickerInited = false;
 export function initPeriodRangePicker() {
+  if (_periodPickerInited) return;
+  _periodPickerInited = true;
   generatePeriodRanges();
   initEvents();
 }

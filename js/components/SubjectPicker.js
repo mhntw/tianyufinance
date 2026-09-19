@@ -166,6 +166,13 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
  */
 export function bindSubjectPicker(input, opts) {
   if (!input) return;
+  /* 幂等保护（2026-09-19）——
+   * 对同一元素重复绑定会让事件触发两次：浮层「一开就被自己关掉」，而且不报错。
+   * 原先靠调用方自觉（用变量存句柄做守卫，或只对新建元素调用），9 个调用点恰好都对；
+   * 但本函数是 export 的公共 API，防御责任应在组件自身，不能指望每个调用方都记得。
+   * 标记在元素上（dataset）而非模块变量：不同元素各自独立，语义准确。 */
+  if (input.dataset && input.dataset.subjPickerBound === '1') return;
+  if (input.dataset) input.dataset.subjPickerBound = '1';
   opts = opts || {};
   const getSubjects = opts.getSubjects || function () {
     return (typeof S !== 'undefined' && S.subjects) ? S.subjects() : [];

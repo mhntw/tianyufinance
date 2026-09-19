@@ -4,7 +4,9 @@ const fs = require('fs');
 const path = require('path');
 
 class El {
-  constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this._cls = new Set(); this._h = {}; this._attrs = {}; this.parentNode = null; this.value = ''; this.innerHTML = ''; this.textContent = ''; }
+  /* dataset 必须提供：真实 DOM 元素一定有，而 bindSubjectPicker 的幂等标记就挂在它上面。
+     早先的 mock 缺这一项，导致「重复绑定保护」在测试里根本不生效（测不出来）。 */
+  constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this._cls = new Set(); this._h = {}; this._attrs = {}; this.dataset = {}; this.parentNode = null; this.value = ''; this.innerHTML = ''; this.textContent = ''; }
   get classList() { const s = this; return { add: c => s._cls.add(c), remove: c => s._cls.delete(c), contains: c => s._cls.has(c) }; }
   get className() { return Array.from(this._cls).join(' '); }
   set className(v) { this._cls = new Set(String(v).split(/\s+/).filter(Boolean)); }
@@ -66,6 +68,21 @@ ck((list.innerHTML.match(/subj-range-row/g) || []).length === 2, 'limit=2 时 3 
 // matchSubjectCode（查凭证科目过滤用）
 ck(matchSubjectCode(null, '1001') === true, 'matchSubjectCode(null) = 全部命中');
 ck(matchSubjectCode(new Set(['1001']), '1001') === true && matchSubjectCode(new Set(['1001']), '1002') === false, 'matchSubjectCode(集合) 精确命中');
+
+/* ---- 幂等保护（2026-09-19 加固后补测）----
+ * 同一元素上重复 bindSubjectPicker 会让事件触发两次（浮层一开就被自己关掉），
+ * 而且不抛错、极难定位。断言方式：看元素上的监听数量在二次绑定后是否变化。 */
+const inIdem = new El('input');
+bindSubjectPicker(inIdem, { getSubjects: () => subs.slice() });
+const f1 = (inIdem._h['focus'] || []).length, c1 = (inIdem._h['click'] || []).length;
+bindSubjectPicker(inIdem, { getSubjects: () => subs.slice() });
+const f2 = (inIdem._h['focus'] || []).length, c2 = (inIdem._h['click'] || []).length;
+ck(f1 > 0, '首次绑定确实注册了监听（前置条件，否则下面的断言会假通过）');
+ck(f2 === f1 && c2 === c1, '重复绑定被拦下：监听数量不增（focus ' + f1 + '→' + f2 + '）');
+ck(inIdem.dataset.subjPickerBound === '1', '幂等标记记在元素 dataset 上');
+const inOther = new El('input');
+bindSubjectPicker(inOther, { getSubjects: () => subs.slice() });
+ck((inOther._h['focus'] || []).length > 0, '幂等标记不误伤其它元素（不同元素各自独立）');
 
 console.log('\n' + (bad === 0 ? '全部通过：统一科目选择组件 稳定 + 能力完整' : bad + ' 项未通过'));
 process.exitCode = bad === 0 ? 0 : 1;
