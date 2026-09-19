@@ -14,6 +14,31 @@ permissions:
   contents: write
 
 jobs:
+  # 回归自检（2026-09-19 新增）
+  #
+  # 【为什么需要】此前 CI 只有构建、不跑任何测试，导致 2 个测试长期失败而无人察觉
+  # （直到 2026-09-19 才被发现）。测试写了不跑等于没写，这是本项目目前投入产出比
+  # 最高的一处修补：28 个脚本统一入口，全量耗时约 10 秒。
+  #
+  # 【为什么暂不阻塞发布】CI 运行在 Linux，而开发者本地是 macOS —— 两者在
+  # 路径分隔、文件权限、大小写敏感性等方面存在差异，直接设为硬门禁有卡住发布的风险。
+  # 故先以 continue-on-error 观察若干次发布：若连续稳定通过，再移除该行升级为门禁
+  # （届时可加 needs: selftest 让构建依赖它）。
+  selftest:
+    name: 回归自检
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: 运行回归自检（tools/run-all.js）
+        run: node tools/run-all.js
+
   build-windows:
     name: 构建 Windows
     runs-on: windows-latest
