@@ -3544,9 +3544,11 @@ label.req::before {
   width: 100%;            /* 填满父容器 min-width，不再随 option 文字长度跳变 */
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
-/* hover：只给浅蓝底提示可点 —— 不加边框，否则又变成"框" */
+/* hover：只让文字变品牌蓝作为反馈 —— 不给底色也不给边框。
+ * 带底色的 hover 虽然本意是"提示可点"，但在白卡片上仍会呈现为一个方块，
+ * 与"去掉框"的诉求相悖（容易被看成框）。文字变色是最轻的反馈。 */
 .drag-header .card-period-select select:hover {
-  background-color: var(--ty-blue-2);
+  color: var(--ty-blue);
 }
 /* focus / focus-visible：彻底无框、无光晕、无轮廓。
  * 【为什么必须连 focus 也清掉】<select> 被鼠标点击时同样会命中 :focus，
