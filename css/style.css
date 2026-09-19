@@ -935,7 +935,10 @@ select:not([class]):focus { border-color: var(--ty-blue); }
  * ============================================================ */
 .btn {
   width: auto;            /* 自适应：按文字内容自然伸缩 */
-  height: 28px;
+  /* 高度统一为 30px（2026-09-20）——
+     此前按钮 28px，而期间选择器 / 下拉 / .inp 输入框都是 30px，同一行并排就看出高矮不一。
+     取 30px 而非把别处压到 28px：30px 是多数派（表单控件侧），且按钮与它们同排时对齐更自然。 */
+  height: 30px;
   min-width: 60px;        /* 极短文字不缩没 */
   max-width: 100%;        /* 超长文字不撑破容器 */
   padding: 0 14px;
@@ -5702,7 +5705,8 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-fold-bottom { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
 
 .orig-btns { padding: 10px 12px; border-bottom: 1px solid var(--ty-border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.orig-btns .btn { margin: 0; height: 32px; }
+/* 高度交给 .btn 的统一值（原先此处强制 32px，比同期控件高出一截，是全站最明显的一处不齐） */
+.orig-btns .btn { margin: 0; }
 /* 工具条分组竖线：把「对卡片做事 / 数据进出 / 基础资料」三组隔开（两侧间距由父级 gap 提供） */
 .orig-btn-sep { flex: 0 0 1px; width: 1px; height: 18px; background: var(--ty-border); }
 /* 「批量操作」菜单内的分组分隔线（写凭证类 / 清理删除类 两组） */
@@ -5829,7 +5833,9 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-subject-range:hover { border-color: var(--ty-border); }
 .ty-period-trigger:hover { border-color: var(--ty-border); }
 .ty-period-trigger-label { font-size: var(--fs-xs); color: var(--ty-text-2); margin-right: 8px; }
-.ty-period-trigger-text { font-size: var(--fs-xs); color: var(--ty-text); }
+/* 文本字号与 .btn 对齐（原为 --fs-xs 12px，比按钮小一号，同排时显得矮小）；
+   左侧的 .ty-period-trigger-label（「会计期间」）保持 --fs-xs —— 它是次要标签，小一号是对的。 */
+.ty-period-trigger-text { font-size: var(--fs-sm); color: var(--ty-text); }
 .ty-period-trigger-text.is-placeholder { color: var(--ty-text-3); }
 
 .ty-period-trigger::after {
