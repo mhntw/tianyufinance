@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 验证子科目全链路（段式编码，对齐金蝶）：新增子科目、层级判断、多栏账直属、level 推导
+// 验证子科目全链路（段式编码）：新增子科目、层级判断、多栏账直属、level 推导
 import fs from 'fs';
 
 const CODE_RE = /^\d{4,16}$/;

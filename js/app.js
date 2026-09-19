@@ -351,9 +351,9 @@
   function money(n) { return U.money(n); }
   function fmt(n) { return n == null ? '--' : money(Math.abs(n)); }
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
-  // 报表金额着色（负数）：与金蝶一致——负值显示为 "-1,234.56" 并标红。
+  // 报表金额着色（负数）：按会计惯例显示为 "-1,234.56" 并标红。
   // 历史实现 money(Math.abs(n)) 只染红、丢掉负号，导致资产负债表「未分配利润」等
-  // 负值被渲染成正数（如 -2,424,599.93 显示为红色 2,424,599.93），与金蝶符号相反。
+  // 负值被渲染成正数（如 -2,424,599.93 显示为红色 2,424,599.93），符号方向相反。
   function moneyRed(n) { return n < 0 ? '<span class="ty-red">-' + money(Math.abs(n)) + '</span>' : money(n); }
   function round2(n) { return Math.round(U.num(n) * 100) / 100; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }

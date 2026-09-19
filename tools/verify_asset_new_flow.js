@@ -2,7 +2,7 @@
 /* 固定资产「新增/编辑」改造验证（2026-09-18）
  * 覆盖：
  *   A 编辑卡片时累计折旧字段同步（P0-1，实测复现过的 bug）
- *   B 表单静态契约 —— 对齐金蝶新增页（字段增删与星标）
+ *   B 表单静态契约（字段增删与星标）
  *   C 校验与提示的静态契约
  * 仅读真实账套文件做只读加载；所有写操作都落内存 localStorage，不动账套。
  */
@@ -62,13 +62,13 @@ else {
     'A5 恒等式保持：accumDepr == accumDeprBegin');
 }
 
-console.log('\n=== B. 表单静态契约（对齐金蝶新增页）===');
-ck(!/id="aStatus"/.test(HTML), 'B1 已移除「状态」字段（金蝶无此字段，消除无凭证清理入口）');
+console.log('\n=== B. 表单静态契约 ===');
+ck(!/id="aStatus"/.test(HTML), 'B1 已移除「状态」字段（消除无凭证清理入口）');
 ck(!/id="aCleanPeriod"/.test(HTML), 'B2 已移除「清理期间」字段');
-ck(/<label class="req">类别<\/label>/.test(HTML), 'B3 资产类别改必填（金蝶为必填）');
-ck(/<label>期初累计折旧<\/label>/.test(HTML), 'B4 期初累计折旧去星标（金蝶非必填）');
+ck(/<label class="req">类别<\/label>/.test(HTML), 'B3 资产类别改必填');
+ck(/<label>期初累计折旧<\/label>/.test(HTML), 'B4 期初累计折旧去星标（非必填）');
 ck(/<label>本年已折旧<\/label>/.test(HTML), 'B5 本年已折旧去星标');
-ck(/<label>数量<\/label>/.test(HTML), 'B6 数量去星标（金蝶非必填）');
+ck(/<label>数量<\/label>/.test(HTML), 'B6 数量去星标（非必填）');
 ck(/id="aSalvageHint"/.test(HTML) && /id="aAccumHint"/.test(HTML) && /id="aMonthDeprHint"/.test(HTML),
   'B7 三个辅助提示位已就位');
 ck(/\.form-hint/.test(CSS), 'B8 .form-hint 样式已定义');

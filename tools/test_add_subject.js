@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 用真实账套验证 addSubject / setOpening 的段式子科目逻辑（对齐金蝶）
+// 用真实账套验证 addSubject / setOpening 的段式子科目逻辑
 import fs from 'fs';
 import os from 'os';
 import path from 'path';

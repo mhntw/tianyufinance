@@ -238,7 +238,7 @@ function run(bookPath) {
       });
     }
   }
-  report('I7', '年初数滚动', true, 'WARN 待金蝶对照深度验证（此轮跳过严格断言）');
+  report('I7', '年初数滚动', true, 'WARN 待与外部账套对照深度验证（此轮跳过严格断言）');
 
   /* --- I8：期初试算平衡 --- */
   console.log('--- I8: 期初试算平衡 ---');

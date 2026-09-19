@@ -738,7 +738,7 @@
         </div>
 
         <!-- 导入体检提示条：导入固定资产卡片后，把「会静默出错」的情况显式列出来
-             （缺开始使用日期/使用期限、月折旧与金蝶不符、期初期末差额不是月折旧整数倍…）。
+             （缺开始使用日期/使用期限、月折旧与原始数据不符、期初期末差额不是月折旧整数倍…）。
              默认隐藏；由 Asset.js 的 renderAssetImportCheck() 填充。样式复用 .open-check / .open-check.warn。 -->
         <div class="open-check" id="assetImportCheck" hidden></div>
         <!-- 卡片 ↔ 总账对账提示条：核对两条 ——
@@ -1812,8 +1812,8 @@
         <div class="form-row"><label class="req">资产购入对方科目</label><input id="aPurchaseAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <div class="form-row"><label>税金科目</label><input id="aTaxAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <div class="form-row"><label>减值准备对方科目</label><input id="aImpairAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
-        <!-- 星标对齐金蝶新增页：「期初累计折旧」「本年已折旧」在金蝶是非必填（默认 0），故去星标；
-             残值率 / 预计使用期数 / 已折旧期间 金蝶为必填，保留。
+        <!-- 星标规则：「期初累计折旧」「本年已折旧」为选填（默认 0），故去星标；
+             残值率 / 预计使用期数 / 已折旧期间为必填，保留。
              「月折旧额」只读（由原值、残值率、期数联动算出，不接受手工录入）。 -->
         <div class="form-row"><label class="req">残值率%</label><input id="aSalvageRate" class="inp" type="number"><span class="form-hint" id="aSalvageHint"></span></div>
         <div class="form-row"><label class="req">预计使用期数(月)</label><input id="aLife" class="inp" type="number" value="60"></div>
@@ -1829,7 +1829,7 @@
         <div class="form-row"><label>使用人</label><input id="aUser" class="inp"></div>
         <div class="form-row"><label>录入期间</label><input id="aEntryPeriod" class="inp" placeholder="如 2022-02"></div>
         <div class="form-row"><label>减值准备</label><input id="aImpairment" class="inp" type="number" value="0"></div>
-        <!-- 「状态」「清理期间」已于 2026-09-18 移除 —— 对齐金蝶新增页（金蝶没有这两个字段）。
+        <!-- 「状态」「清理期间」已于 2026-09-18 移除 —— 这两个字段与卡片行的「清理」动作语义重叠。
              资产转为「清理」只能走卡片行的「清理」动作，它会同时生成清理凭证；
              若在表单里直接选「清理」，卡片显示已处置、而账上资产还在、且没有任何凭证，账实不符。 -->
         <div class="form-row form-row-full"><label>备注</label><input id="aMemo" class="inp"></div>

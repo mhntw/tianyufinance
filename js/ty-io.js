@@ -106,7 +106,7 @@
     // 顺序即优先级：「期末累计折旧」必须排在「累计折旧」之前 —— 两列并存时前者才是期末值
     accumDepr:      ['期末累计折旧', '累计折旧', '已提折旧', 'accumdepr'],
     life:           LIFE_YEAR_ALIASES.concat(LIFE_MONTH_ALIASES),
-    // 金蝶卡片列表导出带「月折旧额」：只作导入体检的交叉校验值，不落库（卡片月折旧由 assetMonthlyDepr 统一算）
+    // 导入文件带出的「月折旧额」：只作导入体检的交叉校验值，不落库（卡片月折旧由 assetMonthlyDepr 统一算）
     monthDeprRef:   ['月折旧额', '月折旧', 'monthlydepr'],
     salvage:        ['残值', '净残值', '预计净残值', 'salvage'],
     salvageRate:    ['残值率', '净残值率', '预计残值率%', '残值率%', 'salvageRate', 'salvagerate'],
@@ -271,7 +271,7 @@
         memo: get('memo', arr),
         periodUsed: cleanNum(get('periodUsed', arr)),
         yearDepr: cleanNum(get('yearDepr', arr)),
-        // 金蝶卡片列表导出的「月折旧额」：仅作导入体检的交叉校验值，落库前由导入方删除
+        // 导入文件带出的「月折旧额」：仅作导入体检的交叉校验值，落库前由导入方删除
         monthDeprRef: cleanNum(get('monthDeprRef', arr)),
         faAcctId: get('faAcctId', arr),
         accDeprAcct: get('accDeprAcct', arr),

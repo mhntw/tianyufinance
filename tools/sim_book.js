@@ -3,7 +3,7 @@
  * tools/sim_book.js —— 在【真实账套副本】上模拟记账，验证记账链路
  *
  * 【为什么要有它】
- *   现有账套是从金蝶导入的，只能验证「复算」能否还原别人算好的结果，
+ *   现有账套是从外部导入的，只能验证「复算」能否还原别人算好的结果，
  *   验证不了「记账」本身（录凭证 → 账簿 → 期末结转 → 结账 → 报表）对不对。
  *   本脚本在真实账套（科目、期初、历史凭证都在，最贴近真实）的**内存副本**上
  *   继续记账，用**人工手算的期望值**逐项比对。
@@ -418,7 +418,7 @@ PLAN.forEach(P => {
     section('【7】年末结转 ' + M + '（3103 本年利润 → 3104 利润分配）');
     const before3103 = netOf(gl(M), '3103');
     const allocBefore = netOf(gl(M), '3104');
-    console.log('    结转前 3103 余额 ' + before3103.toFixed(2) + '（应 = 金蝶 1~8 月累计 + 模拟各月利润）');
+    console.log('    结转前 3103 余额 ' + before3103.toFixed(2) + '（应 = 导入账套 1~8 月累计 + 模拟各月利润）');
     let y = null;
     try { y = S.carryYearEnd(M); } catch (e) { y = { err: e.message }; }
     ok('年末结转执行', y && y.ok !== false, y && y.ok ? ('结转金额 ' + r2(num(y.amount)).toFixed(2)) : JSON.stringify(y || {}).slice(0, 90));

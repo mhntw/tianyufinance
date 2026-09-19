@@ -90,7 +90,7 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
   bookCount++;
   const short = name.slice(0, 14);
 
-  // 期间可见集：期间早于购置月的资产不参与本表（对齐金蝶）
+  // 期间可见集：期间早于购置月的资产不参与本表
   function visibleIn(m) {
     return fas.filter(fa => {
       const acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';

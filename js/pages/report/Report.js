@@ -15,7 +15,7 @@ const $ = H.$;
 const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 const money = H.money;
 const moneyRed = H.moneyRed || function (n) {
-  // 负数必须带负号（与金蝶一致）：只染红而丢掉负号会把负值误显示为正数。
+  // 负数必须带负号：只染红而丢掉负号会把负值误显示为正数。
   var s = money(Math.abs(n));
   return n < 0 ? '<span class="ty-red">-' + s + '</span>' : s;
 };

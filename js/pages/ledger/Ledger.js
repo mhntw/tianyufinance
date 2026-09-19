@@ -316,10 +316,10 @@ function renderDlSegment(tb, code, range, vmap) {
   }
   if (!d) return false;
   var s = d.subject;
-  // 余额列按「科目正常方向」带符号（与金蝶科目余额表同口径）：实际余额方向与科目正常方向
+  // 余额列按「科目正常方向」带符号（与科目余额表同口径）：实际余额方向与科目正常方向
   // 相反时显示为负数（例：3104 为贷方科目，出现借方余额 → 余额显示为负）。方向列仍显示实际方向。
   var normalDir = (s.normal === 'dr') ? '借' : '贷';
-  // 方向列显示「科目正常方向」（金蝶口径）：余额为正/负由金额符号承担，
+  // 方向列显示「科目正常方向」：余额为正/负由金额符号承担，
   // 例如 3104 是贷方科目 → 方向列恒为「贷」，出现借方余额时金额显示为负。
   function dirText(v) { return num(v) ? normalDir : ''; }
   function balText(v, dir) {

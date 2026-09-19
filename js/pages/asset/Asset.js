@@ -92,7 +92,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var dept = _assetDeptSel;
     var sw = $('fShowCleanedTop');
     var showCleaned = !!(sw && sw.checked);
-    /* 期间过滤（2026-09-18 补，对齐金蝶：改期间时卡片清单也跟着变）：
+    /* 期间过滤（2026-09-18 补：改期间时卡片清单也跟着变）：
      * 期间早于购置月 → 资产尚未入账，不显示。
      * 原先这里只过滤「清理」状态，于是 2026-06 才购置的卡在选 2026-03 时照样占一行，
      * 且其原值、期末净值都被计入卡片页合计 —— 实测使「原值」合计虚增 3,550.00（恰为该卡
@@ -118,14 +118,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!fa.addVoucherId) return text;
     return '<a href="#" class="link-voucher" data-id="' + esc(fa.addVoucherId) + '">' + text + '</a>';
   }
-  /* ============ 累计折旧的期间滚动【唯一实现，金蝶口径】 ============
+  /* ============ 累计折旧的期间滚动【唯一实现】 ============
    * 卡片上的「期初累计折旧」不是"永远等于期末"，它只是【截至某个锚点月末】的余额：
    *   - 本应用计提过的卡：锚点 = 最近一次计提月（deprMonth）
-   *   - 外部导入（金蝶卡片）的卡：锚点 = 购置月 + 已折旧期间数
-   *     （金蝶卡片模板只导出「期初累计折旧 + 本年已折旧」，没有期末列；实测本账套
+   *   - 外部导入的卡：锚点 = 购置月 + 已折旧期间数
+   *     （导入模板只给出「期初累计折旧 + 本年已折旧」，没有期末列；实测本账套
    *      18/18 张卡片的锚点都落在 2026-07，与总账 1602 在 2026-07 的期末 316,209.32 完全吻合）
    * 任一期间末的累计折旧 = 期初累计折旧 + 月折旧 × (锚点月末 → 该期间末月 的月数)
-   *   例：316,209.32 + 14,015.73 × 1 = 330,225.05 = 金蝶 2026-08 期末（逐月一字不差）
+   *   例：316,209.32 + 14,015.73 × 1 = 330,225.05 = 2026-08 期末（逐月一字不差）
    * ⚠️ 所以「期末累计折旧」必须按期间滚算；直接读卡片存的 accumDepr 会永远停在期初。 */
   function _addMonths(ym, n) {
     if (!ym) return '';
@@ -156,12 +156,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 资产卡片 27 列共用 td 拼接（卡片页 + 折旧凭证页复用）
   function _assetRowCells(fa) {
     var md = S.assetMonthlyDepr(fa);
-    /* 四个金额全部按「期间选择器的期间」滚算，对齐金蝶固定资产清单的口径：
+    /* 四个金额全部按「期间选择器的期间」滚算：
      *   期初累计 = 上一期间月末的累计；期末累计 = 本期间月末的累计；
      *   期初/期末净值 = 原值 − 对应累计 − 减值准备。
      * 2026-09-18 修正：此前「期初累计折旧」直接显示卡片存的 fa.accumDeprBegin。
-     * 那是**内部锚点值**（卡片录入时的基准月末余额），不是"上一期间末"，语义与金蝶的
-     * "期初"不符 —— 表现为切期间时该列不动，与金蝶不一致。现改为同样参与滚算。
+     * 那是**内部锚点值**（卡片录入时的基准月末余额），不是"上一期间末"，语义与报表的
+     * "期初"不符 —— 表现为切期间时该列不动，前后不一致。现改为同样参与滚算。
      * ⚠️ 卡片表单里的「期初累计折旧」输入框仍是锚点值（录入基准），两者口径不同属正常。 */
     var pEnd = _assetPeriod();
     var pBegin = _addMonths(pEnd, -1);                       // 期初 = 上一期间月末
@@ -230,7 +230,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var foot = $('assetFoot'); foot.innerHTML = '';
     if (total > 0) {
       var sOrig = 0, sB = 0, sE = 0, sM = 0, sS = 0, sI = 0, sNB = 0, sNE = 0;
-      // 与卡片行同源：四个金额都按「期初 = 上月末 / 期末 = 本月末」滚算（对齐金蝶口径）
+      // 与卡片行同源：四个金额都按「期初 = 上月末 / 期末 = 本月末」滚算
       var cp = _assetPeriod();
       var cb = _addMonths(cp, -1);
       _assetFiltered.forEach(function (fa) {
@@ -282,7 +282,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
    *   ① 缺开始使用日期 → 期末累计折旧的锚点算不出来，页面只能退回卡片存值（会停在期初）
    *   ② 缺预计使用期限 → 月折旧为 0，期末永远等于期初
    *   ③ 期初/期末累计折旧都为 0 → 卡片没有折旧起点
-   *   ④ 文件带金蝶「月折旧额」而我方算法(剩余净值/剩余寿命)与之不符 → 卡片可能改过折旧方法/年限
+   *   ④ 文件带出的「月折旧额」与本软件算法(剩余净值/剩余寿命)不符 → 卡片可能改过折旧方法/年限
    *   ⑤ 期初、期末都给时，(期末-期初) 不是月折旧额的整数倍 → 两个口径不一致
    * 只提示、不阻断：源头数据的问题需要用户自己判断。 */
   function _assetImportCheck(list) {
@@ -291,16 +291,16 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var msg = [];
       var begin = num(fa.accumDeprBegin), end = num(fa.accumDepr);
       var md = S.assetMonthlyDepr(fa);
-      var ref = num(fa.monthDeprRef);                      // 金蝶「月折旧额」（文件给了才有）
+      var ref = num(fa.monthDeprRef);                      // 导入文件的「月折旧额」（给了才有）
       if (!fa.acqDate) msg.push('缺开始使用日期');
       if (!num(fa.life)) msg.push('缺预计使用期限');
       if (!begin && !end) msg.push('期初/期末累计折旧均为 0');
       if (ref > 0 && md > 0 && Math.abs(ref - md) > 0.01) {
-        msg.push('月折旧与金蝶不符（我方 ' + md.toFixed(2) + ' / 金蝶 ' + ref.toFixed(2) + '）');
+        msg.push('月折旧与导入数据不符（本软件 ' + md.toFixed(2) + ' / 导入 ' + ref.toFixed(2) + '）');
       }
       // 文件给的期末（归一前的原值）与期初的差额，应当是月折旧的整数倍
       var fileEnd = num(fa.accumDeprRef) || end;
-      var unit = ref > 0 ? ref : md;      // 校验单位：优先金蝶「月折旧额」，其次我方算出的月折旧
+      var unit = ref > 0 ? ref : md;      // 校验单位：优先导入文件的「月折旧额」，其次本软件算出的月折旧
       var diff = fileEnd - begin;
       if (unit > 0 && begin > 0 && fileEnd > 0 && Math.abs(diff / unit - Math.round(diff / unit)) > 0.01) {
         msg.push('期初/期末差额 ' + diff.toFixed(2) + ' 不是月折旧 ' + unit.toFixed(2) + ' 的整数倍');
@@ -476,7 +476,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           });
           // 【期初/期末口径归一】卡片的不变式是「期初累计折旧 = 期末累计折旧 = 累计至『已折旧期间』月末」
           // （应用自身计提就是"月末滚转"，见 store.depreciateMonth）。
-          // 而金蝶卡片列表导出的「期末累计折旧」是【查询期间末】的值，与「已折旧期间数」相差一个月 ——
+          // 而导入文件给出的「期末累计折旧」是【查询期间末】的值，与「已折旧期间数」相差一个月 ——
           // 直接落库会让 assetMonthlyDepr 的"剩余净值 ÷ 剩余寿命"整体错一个月
           // （实测月折旧会从 6,517.50 变成 6,341.35）。故：期末一律回到期初，
           // 文件给的期末只留作体检校验值（accumDeprRef），落库前删除。
@@ -521,7 +521,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!act) return;
     var checked = [].slice.call(document.querySelectorAll('.aChk:checked')).map(function (c) { return c.getAttribute('data-id'); });
     // 「关联凭证」：把**账上已有**的购入凭证挂到卡片上，填「新增资产凭证」列。
-    // ⚠️ 只关联、不生成凭证 —— 迁移账套里购入凭证本就在（金蝶导入，实测 10 张卡片 10/10 命中），
+    // ⚠️ 只关联、不生成凭证 —— 迁移账套里购入凭证本就在（实测 10 张卡片 10/10 命中），
     // 再「生成」一张就是固定资产重复入账。幂等：已关联的卡片跳过，可反复点。
     // 不要求先勾选（勾了就只关联勾选的、没勾就关联全部未关联的）→ 排在通用守卫之前
     if (act === 'link') {
@@ -639,7 +639,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     } else if (e.target.classList.contains('link-edit')) {
       _openAssetModal(e.target.getAttribute('data-asset-edit'));
     } else if (e.target.classList.contains('link-clean')) {
-      // 清理一步式（对齐金蝶「清理」的语义）：标记清理 + 立即生成清理凭证。
+      // 清理一步式：标记清理 + 立即生成清理凭证。
       // 必须「先标记再生成」—— genCleanVoucher 只处理 status=清理 的卡片；
       // 生成失败则把标记回滚，避免留下「卡片显示已清理、账上资产还在」的账实不符。
       // 边界：本凭证只做「账面价值转入固定资产清理」这一步，处置收入/清理费用/净损益结转
@@ -715,7 +715,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!/^\d{4}-\d{2}$/.test(ym)) return '';
     return _addMonths(ym, U.num($('aPeriodUsed').value));
   }
-  /* 辅助提示：把字段的隐含口径直接写出来。金蝶在这几个字段旁也有小字说明，ty 原先完全没有 ——
+  /* 辅助提示：把字段的隐含口径直接写出来。这几个字段原先没有任何说明 ——
    * 而「期初累计折旧」恰恰最需要说明：它必须是【锚点月末】的余额，时点填错就会与总账差整期折旧
    * （卡片显示累计 vs 总账 1602，差额正好是一期月折旧额）。 */
   function _updateHints() {
@@ -789,10 +789,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aEntryPeriod').value = fa ? (fa.entryPeriod || '') : currentPeriod();
     $('aImpairment').value = fa ? fa.impairment : 0;
     $('aMemo').value = fa ? (fa.memo || '') : '';
-    // 「状态」「清理期间」已不在表单里（对齐金蝶新增页）：新增一律「正常」，转清理走卡片行的
+    // 「状态」「清理期间」已不在表单里：新增一律「正常」，转清理走卡片行的
     // 「清理」动作（会同时生成凭证）；编辑时 _collectAsset 也不再采集这两个字段，
     // 所以卡片上的原值不会被覆盖。
-    // 新增时「资产清理科目」默认带出 1606（金蝶的默认值 1606 固定资产清理），省一次手选。
+    // 新增时「资产清理科目」默认带出 1606（固定资产清理），省一次手选。
     if (!fa) {
       var cl = $('aCleanAcct');
       if (cl && !cl.value) {
@@ -818,7 +818,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       qty: U.num($('aQty').value), category: $('aCategory').value, spec: $('aSpec').value,
       location: $('aLocation').value, user: $('aUser').value, entryPeriod: $('aEntryPeriod').value,
       impairment: U.num($('aImpairment').value), memo: $('aMemo').value,
-      // 刻意不采集 status / cleanPeriod：表单已移除这两个字段（对齐金蝶）。
+      // 刻意不采集 status / cleanPeriod：表单已移除这两个字段。
       // 编辑时不覆盖卡片原值；新增时由 addFixedAsset 补默认（'正常' / ''）。
       salvage: U.num($('aOriginal').value) * U.num($('aSalvageRate').value) / 100
     };
@@ -835,13 +835,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var rawRate = $('aSalvageRate').value, rawLife = $('aLife').value;
     var rawPeriod = $('aPeriodUsed').value, rawBegin = $('aAccumDeprBegin').value;
     var fa = _collectAsset();
-    // 必填校验（星标对齐金蝶新增页）
+    // 必填校验
     if (!fa.code) return showToast('请填写资产编码', 'error');
     if (!fa.name) return showToast('请填写资产名称', 'error');
     if (!fa.faAcctId) return showToast('请选择固定资产科目', 'error');
     if (!fa.dept) return showToast('请选择使用部门', 'error');
     if (!fa.acqDate) return showToast('请选择开始使用日期', 'error');
-    if (!fa.category) return showToast('请选择资产类别', 'error');   // 金蝶为必填，此处对齐
+    if (!fa.category) return showToast('请选择资产类别', 'error');   // 资产类别为必填
     if (!fa.original) return showToast('请填写原值', 'error');
     if (!fa.accDeprAcct) return showToast('请选择累计折旧科目', 'error');
     if (!fa.method) return showToast('请选择折旧方法', 'error');
@@ -909,12 +909,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function _assetDeprRows(month, opts) {
     opts = opts || {};
     var y = month ? month.slice(0, 4) : currentPeriod().slice(0, 4);
-    // 期初列 = 期间「起始月之前一个月末」的余额（金蝶口径：期末 = 期初 + 期间内各月折旧）
+    // 期初列 = 期间「起始月之前一个月末」的余额（期末 = 期初 + 期间内各月折旧）
     var prevOfStart = _addMonths(opts.startMonth || month, -1);
     var rows = S.state.fixedAssets.filter(function (fa) {
       if (!opts.showCleaned && fa.status === '清理') return false;
       /* 期间早于购置月 → 该资产尚未入账，本表不应出现（2026-09-18 补）。
-       * 对齐金蝶：选前几个期间时看不到后期才购置的资产。
+       * 选前几个期间时看不到后期才购置的资产。
        * 实测（添钰来客）：「010 沙发折叠床」购置月 2026-06，但本表此前只过滤了「清理」状态，
        * 于是选 2026-03 时它照样占一行 —— 更糟的是它的原值、期末净值都被计入合计，
        * 使「原值」合计虚增 3,550.00（恰为该卡原值），与总账 1601 期末余额对不上。

@@ -106,11 +106,11 @@ function renderTb(month) {
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
     // 隐藏零行：期初借贷、本期借贷贷方、期末余额均为 0 时跳过（受 bookHideZero 控制）
     if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
-    // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与金蝶科目余额表口径一致：
+    // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与科目余额表的通用口径一致：
     // 贷方类科目（负债/权益/收入）出现借方余额时，金额在「贷方」列以负数显示
     // （例：3104 利润分配为贷方科目，出现借方余额 → 期末贷方显示 -2,836,003.25）。
     // 借正类科目同理：出现贷方余额时，金额在「借方」列以负数显示。
-    // 注：本期/本年累计发生额列仍按实际借贷方向填列（金蝶红字冲减差异另行处置，不在本次改动内）。
+    // 注：本期/本年累计发生额列仍按实际借贷方向填列（红字冲减的差异另行处置，不在本次改动内）。
     const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
     const obD = r.normal === 'dr' ? obNet : 0;
     const obC = r.normal === 'cr' ? obNet : 0;
@@ -176,7 +176,7 @@ export function exportTb() {
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
     if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
     // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与屏幕 renderTb 同口径
-    // （与金蝶科目余额表一致：贷方类科目出现借方余额时，金额在「贷方」列以负数显示）。
+    // （与科目余额表的通用口径一致：贷方科目出现借方余额时，金额在「贷方」列以负数显示）。
     const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
     const obD = r.normal === 'dr' ? obNet : 0;
     const obC = r.normal === 'cr' ? obNet : 0;
