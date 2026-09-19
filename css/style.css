@@ -2277,7 +2277,7 @@ label.req::before {
   margin: 14px 16px 0;
   font-size: var(--fs-md);
   font-weight: 600;
-  color: var(--ty-blue, #3b82f6);
+  color: var(--ty-blue);
 }
 .operator-box .modal-actions { padding-bottom: 16px; }
 .modal-box .form-row .inp-pin { flex: 0 0 auto; width: 130px; }
@@ -3528,13 +3528,13 @@ label.req::before {
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .drag-header .card-period-select select:hover {
-  border-color: #3b82f6;
-  background-color: #e0eaff;
+  border-color: var(--ty-blue);
+  background-color: var(--ty-blue-3);
 }
 .drag-header .card-period-select select:focus {
-  border-color: #3b82f6;
+  border-color: var(--ty-blue);
   background-color: var(--ty-white);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 2px rgba(47, 149, 255, 0.15);
 }
 
 /* 费用卡片公式行：两行布局
@@ -3582,11 +3582,11 @@ label.req::before {
   cursor: pointer;
 }
 .formula-row .formula-cell.amt-link:hover {
-  background-color: #e0eaff;
+  background-color: var(--ty-blue-3);
 }
 .formula-row .formula-cell.amt-link:hover .formula-label,
 .formula-row .formula-cell.amt-link:hover .formula-amt {
-  color: #3b82f6;
+  color: var(--ty-blue);
 }
 .formula-row .formula-sep {
   color: var(--ty-text-3);
@@ -4629,7 +4629,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   font-size: var(--fs-2xs);
   line-height: 16px;
   color: var(--ty-blue);
-  background: #e6f7ff;
+  background: var(--ty-blue-2);
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -4655,13 +4655,13 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 }
 /* 结账页年份右箭头（>> 可切换年） */
 .settle-year-arrow {
-  color: #1890ff;
+  color: var(--ty-blue);
   font-size: var(--fs-xl);
   cursor: pointer;
   padding-left: 4px;
   user-select: none;
 }
-.settle-year-arrow:hover { color: #40a9ff; }
+.settle-year-arrow:hover { color: var(--ty-btn-hover); }
 /* 反结账按钮 */
 .btn-reopen {
   margin-top: 20px;
@@ -4687,7 +4687,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   border-radius: 4px;
   transition: background .15s;
 }
-.settle-year-clickable:hover { background: #e6f7ff; }
+.settle-year-clickable:hover { background: var(--ty-blue-2); }
 
 /* ===== 年份选择器弹窗（3列网格 + 左右翻页） ===== */
 .settle-year-picker {
@@ -4714,13 +4714,13 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 }
 .settle-year-picker-arrow {
   cursor: pointer;
-  color: #096dd9;
+  color: var(--ty-blue-dark);
   font-size: var(--fs-xl);
   padding: 2px 6px;
   border-radius: 4px;
   user-select: none;
 }
-.settle-year-picker-arrow:hover { background: #e6f7ff; }
+.settle-year-picker-arrow:hover { background: var(--ty-blue-2); }
 .settle-year-picker-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -4736,9 +4736,9 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   transition: all .15s;
   user-select: none;
 }
-.settle-year-picker-item:hover { background: #e6f7ff; color: #1890ff; }
+.settle-year-picker-item:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
 .settle-year-picker-item.active {
-  background: #1890ff;
+  background: var(--ty-blue);
   color: var(--ty-white);
   font-weight: 400;
 }
@@ -4756,8 +4756,8 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-close-notice {
   margin: 14px 0 0;
   font-size: var(--fs-sm);
-  color: #096dd9;
-  background: #e6f7ff;
+  color: var(--ty-blue-dark);
+  background: var(--ty-blue-2);
   border: 1px solid #91d5ff;
   border-radius: 4px;
   padding: 8px 12px;
@@ -4810,7 +4810,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   overflow: hidden;
   transition: all .15s;
 }
-.settle-month:hover { border-color: #40a9ff; box-shadow: 0 0 0 2px rgba(64,169,255,.15); }
+.settle-month:hover { border-color: var(--ty-btn-hover); box-shadow: 0 0 0 2px rgba(47, 149, 255,.15); }
 /* 顶部灰色头部条 */
 .settle-month-head {
   height: 20px;
@@ -4840,7 +4840,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   position: absolute;
   right: 5px;
   bottom: 3px;
-  color: #1890ff;
+  color: var(--ty-blue);
   font-size: var(--fs-xs);
   font-weight: 400;
 }
@@ -4857,19 +4857,19 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-month.checked { border-color: #b7eb8f; background: #f6ffed; }
 .settle-month.checked .settle-month-head { background: #d9f7be; color: #389e0d; }
 /* 当前期：蓝色边框 */
-.settle-month.ready { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,.2); }
+.settle-month.ready { border-color: var(--ty-blue); box-shadow: 0 0 0 2px rgba(47, 149, 255,.2); }
 /* 选中：更粗蓝边 */
-.settle-month.select { border-color: #1890ff; border-width: 2px; box-shadow: 0 0 0 2px rgba(24,144,255,.3); }
+.settle-month.select { border-color: var(--ty-blue); border-width: 2px; box-shadow: 0 0 0 2px rgba(47, 149, 255,.3); }
 /* 未结账不可点（反结账用） */
 .settle-month.disabled { cursor: not-allowed; opacity: .55; }
 .settle-month.disabled:hover { border-color: #d9d9d9; box-shadow: none; }
 /* 当前待结账期 */
-.settle-month.ready { border-color: #40a9ff; }
+.settle-month.ready { border-color: var(--ty-btn-hover); }
 /* 选中 */
 .settle-month.select {
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24,144,255,.2);
-  background: #e6f7ff;
+  border-color: var(--ty-blue);
+  box-shadow: 0 0 0 2px rgba(47, 149, 255,.2);
+  background: var(--ty-blue-2);
 }
 /* 未结账（不可反结账）置灰 */
 .settle-month.disabled {
@@ -4943,7 +4943,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   height: 32px;
   border-radius: 50%;
   background: #eaf2ff;
-  color: #3b82f6;
+  color: var(--ty-blue);
   font-size: var(--fs-2xl);
   flex-shrink: 0;
 }
