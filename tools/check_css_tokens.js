@@ -93,7 +93,7 @@ function contrast(a, b) {
 // 同时区分两类豁免，避免把有意设计报成问题：
 //   · 禁用态（规则选择器含 .disabled）：WCAG 明确豁免，且"文字色 = 底色"是有意的隐藏手法
 //   · 同色隐藏（color 与同规则的 background 取同一变量）：用于分隔符等有意弱化
-const asText = new Map();   // var名 -> { disabled: bool, hidden: bool }
+const asText = new Map();   // var名 -> { disabled, hidden, ui }
 {
   const body = css.replace(/:root\s*\{[\s\S]*?\n\}/g, '');
   const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
@@ -105,9 +105,12 @@ const asText = new Map();   // var名 -> { disabled: bool, hidden: bool }
     if (!v) continue;
     const bg = decl.match(/background(?:-color)?\s*:\s*([^;{}]+)/);
     const bgVar = bg ? (bg[1].match(/var\(\s*(--[\w-]+)/) || [])[1] : null;
-    const rec = asText.get(v) || { disabled: false, hidden: false };
+    const rec = asText.get(v) || { disabled: false, hidden: false, ui: false };
     if (/\.disabled/.test(sel)) rec.disabled = true;
     if (bgVar === v) rec.hidden = true;
+    // 图标/装饰元素：作用于 ::before/::after 的 color 或选择器明显是图标容器。
+    // 这类是 UI 元素而非正文，WCAG 适用 3:1（非文本对比）而非 4.5:1。
+    if (/::?(?:before|after)|icon|ico(?![a-z])|-ico(?![a-z])/i.test(sel)) rec.ui = true;
     asText.set(v, rec);
   }
 }
@@ -121,17 +124,19 @@ asText.forEach((flags, v) => {
     const c = contrast(val, BGS[bn]);
     if (!worst || c < worst.c) worst = { bn, c };
   });
-  if (!worst || worst.c >= 4.5) return;
-  const item = { v, val, ...worst };
-  // 只在「非豁免」场景下才当作问题
+  if (!worst) return;
+  // 判定门槛：纯文字 4.5；仅作图标 3.0
+  const limit = (flags.ui && !flags.disabled && !flags.hidden) ? 3.0 : 4.5;
+  if (worst.c >= limit) return;
+  const item = { v, val, ...worst, limit };
   (flags.disabled || flags.hidden) ? waived.push(item) : low.push(item);
 });
 if (low.length) {
   low.sort((a, b) => a.c - b.c);
-  console.log('· 作文字用时对比度不足（WCAG AA 正文需 ≥4.5）：');
+  console.log('· 对比度不足：');
   low.forEach(x => {
     const tag = x.c >= 3 ? '仅够大字/UI' : '偏低';
-    console.log('    ' + x.v.padEnd(20) + x.val + '  最差 ' + x.c.toFixed(2) + '（' + x.bn + '）  ' + tag);
+    console.log('    ' + x.v.padEnd(20) + x.val + '  最差 ' + x.c.toFixed(2) + '（' + x.bn + '）  需≥' + x.limit + '  ' + tag);
   });
   console.log('');
 }
@@ -143,6 +148,13 @@ if (waived.length) {
     if (asText.get(x.v).hidden) why.push('文字色=底色（有意隐藏）');
     console.log('    ' + x.v.padEnd(20) + x.val + '  ' + why.join(' + '));
   });
+  console.log('');
+}
+// 提醒：品牌主色天然达不到 4.5（Ant #1677ff=3.4 / Element #409eff=2.9 亦然），
+// 为可读性强行压深会失去品牌识别度，属设计取舍而非缺陷。此处仅记录，不判失败。
+if (low.some(x => x.v === '--ty-blue')) {
+  console.log('  说明：--ty-blue 是品牌主色，深色底白字 3.06 与业界主色（Ant/Element）相当；');
+  console.log('        它作「白底文字」偏弱，需要文字场景时请用 --ty-blue-dark（5.21 ✓）。');
   console.log('');
 }
 

@@ -13,8 +13,10 @@
   --ty-blue-dark:   #3a66d4;   /* 深一档，用于 hover/active */
   --ty-blue-2:      #e8f1ff;   /* 主色浅蓝底（hover） */
   --ty-blue-3:      #e8f1ff;   /* --ty-g-color-theme-3 active浅蓝底 */
-  --ty-nav-bg:      #fff;      /* 侧栏纯白底：与内容区/顶栏统一，消除浅蓝底与白底内容区的色差 */
-  --ty-nav-text:    #022433;   /* 侧栏默认菜单文字：白底用偏深灰蓝，比原 #022433 更协调可读 */
+  /* 侧栏底/文字复用通用令牌：原先各自写死 #fff / #022433，与 --ty-white / --ty-text 完全同值，
+     属纯冗余 —— 同一色值两处维护，调色时必漏一处。语义未变，只是指向统一来源。 */
+  --ty-nav-bg:      var(--ty-white);
+  --ty-nav-text:    var(--ty-text);
   --ty-nav-active-bg: #e8f1ff; /* 菜单 hover/active 底：白侧栏上须用浅灰（原 #fff 白上白无反馈） */
   --ty-nav-active:  #3a66d4;   /* 菜单选中文字：品牌蓝，白底清晰 */
   --ty-border:      #E3E8EE;   /* 边框/分隔线色 */
@@ -40,27 +42,39 @@
   --ty-row-hover:   #e8f1ff;   /* 鼠标定位行高亮（与 .grid tbody tr:hover 实际值一致） */
   --ty-subtotal-bg: #e8f1ff;   /* 小计行背景（折旧/费用明细分组末行） */
   --ty-cur-add-bg:  #e8f1ff;   /* 当前添加行背景（科目表新增行、凭证分录新增行） */
-  --th-border:      #c2d1e4;   /* 表头下边框（比 --grid-line 深一档，区分表头与正文） */
-  --th-border-r:    #c2d1e4;   /* 表头右边框 */
+  /* 表头边框复用 --ty-border-2（同值 #c2d1e4）：语义已被「二级边框」覆盖，无需独立令牌 */
+  --th-border:      var(--ty-border-2);
+  --th-border-r:    var(--ty-border-2);
   --ty-btn:         var(--ty-blue);   /* 添钰 主按钮蓝（复用 --ty-blue） */
   --ty-btn-hover:   #3a66d4;   /* 主按钮 hover 深一档 */
-  --ty-red:         #E64545;   /* 强调红（负值/警示） */
-  --ty-green:       #17A45B;   /* 强调绿（正/通过） */
-  --ty-orange:      #FA8C16;   /* 强调橙（提醒） */
+  /* 强调色（2026-09-19 按 WCAG 校准）——
+     实测：这三个色 49 处用于「文字」、仅 9 处用于边框，本质是文字色，故按正文标准取值（白底/浅底 ≥4.5）。
+     原值 #E64545(白底 3.96 / 浅蓝底 3.48)、#17A45B(3.23 / 2.84) 均不达标，而红绿恰是财务界面最关键的
+     语义色（负值 / 平衡通过），读不清等于信息丢失 —— 故加深，色相与鲜艳度基本保留。 */
+  --ty-red:         #cf2e2e;   /* 强调红（负值/警示）原 #E64545：白底 3.96→5.14，浅蓝底 3.48→4.52 ✓AA */
+  --ty-green:       #0d7a3e;   /* 强调绿（正/通过）原 #17A45B：白底 3.23→5.43，浅蓝底 2.84→4.77 ✓AA */
+  /* 橙是唯一例外：警示橙的价值就在「跳出来」，压到 AA 需到 #7A5B00 级别，会失去警示感。
+     故 --ty-orange 只用于图标/边框/底色（UI 元素标准 ≥3.0），
+     **当文字的场景（标签、链接、提示文案）一律改用已有的 --st-hl-fg**（#7A5B00，最差 5.54 ✓AA）。 */
+  --ty-orange:      #FA8C16;   /* 强调橙（提醒）—— 仅限图标/边框/底色，请勿作文字 */
 
   /* ── 语义状态色：底 / 边 / 字 三件套（全站唯一来源）──
      规则：状态色只在此定义，组件/页面一律引用 var(--st-…)，不得再写状态色十六进制。
      新增提示/警示类 UI 直接挑对应状态；以后调色只改这几行。 */
-  --st-info-bg: #e3e8ee;   --st-info-bd: #e3e8ee;   --st-info-fg: var(--ty-blue-dark);
-  --st-info-tag-bd: #e3e8ee;
-  --st-tip-bg:  #FFF8E1;   --st-tip-bd:  #fff8e1;   --st-tip-fg:  #5c6d74;
-  --st-hl-bg:   #fff8e1;   --st-hl-bd:   #fff8e1;   --st-hl-fg:   #7A5B00;
-  --st-warn-bg: #fff8e1;   --st-warn-bd: #fa8c16;   --st-warn-fg: #5c6d74;
-  --st-danger-bg: #FCEDED; --st-danger-fg: var(--ty-red);
-  --st-ok-bg:   #E6F4E6;   --st-ok-fg:   #17a45b;
-  --st-panel-bg: #e3e8ee;  --st-panel-bg2: #e8f1ff; --st-panel-bd: #f0f0f0;
+  /* 以下统一「引用基础色板」而非重复写死字面量：原先 #e3e8ee / #fff8e1 / #5c6d74 / #17a45b
+     在这里与 --ty-border / --ty-text-2 / --ty-green 等同值共存 —— 同一色值两处维护，调色必漏一处。
+     规则：--st-* 是组件级语义，只负责「指向」；基础色板变了，状态色自动跟随。
+     （--st-warn-bg 保留字面量：它是浅黄提示底的唯一定义处，其余 tip/hl 均引用它。） */
+  --st-warn-bg: #fff8e1;   --st-warn-bd: var(--ty-orange);   --st-warn-fg: var(--ty-text-2);
+  --st-info-bg: var(--ty-border);   --st-info-bd: var(--ty-border);   --st-info-fg: var(--ty-blue-dark);
+  --st-info-tag-bd: var(--ty-border);
+  --st-tip-bg:  var(--st-warn-bg);  --st-tip-bd:  var(--st-warn-bg);  --st-tip-fg:  var(--ty-text-2);
+  --st-hl-bg:   var(--st-warn-bg);  --st-hl-bd:   var(--st-warn-bg);  --st-hl-fg:   #7A5B00;
+  --st-danger-bg: var(--ty-red-bg); --st-danger-fg: var(--ty-red);
+  --st-ok-bg:   var(--ty-green-bg); --st-ok-fg:   var(--ty-green);
+  --st-panel-bg: var(--ty-border);  --st-panel-bg2: #e8f1ff; --st-panel-bd: var(--ty-content-bg);
   --ty-content-bg:  #f0f0f0;   /* 内容区外底色（工作区浅灰白） */
-  --grid-line:      #e3e8ee;   /* 单元格网格线 #e3e8ee */
+  --grid-line:      var(--ty-border);   /* 单元格网格线（与边框同色，原独立写死 #e3e8ee） */
   --grid-text:      var(--ty-text);   /* 表格正文主色（复用 --ty-text） */
 
   --topbar-h: 60px;   /* 方案 C：加高以容纳完整品牌标题（原 48px 紧凑高度，品牌搬进顶栏后放宽） */
@@ -352,22 +366,6 @@ img, svg { display: block; max-width: 100%; }
 .sidenav.collapsed .nav-company,
 .sidenav.collapsed .nav-period { display: none; }
 
-/* 侧栏底部作者信息（切换图标横向上方一行小字；收起导航后仅 50px 宽，隐藏文字） */
-.nav-author {
-  margin-top: auto;
-  padding: 8px 0 4px;
-  font-size: var(--fs-2xs);
-  color: var(--ty-blue);
-  text-align: center;
-  white-space: nowrap;
-  user-select: none;
-  border-top: 1px solid rgba(2,36,51,.08);   /* 与导航区视觉分隔 */
-  line-height: 1;
-}
-.sidenav.collapsed .nav-author { display: none; }
-/* 极简版权署名（无交互、无邮箱） */
-.nav-author-line { letter-spacing: .3px; }
-
 /* 侧栏底部操作区（.opWrapper--1HuXG：含「浅色模式」+「收起导航」两个 bottomMenuBtn） */
 .nav-op-wrapper {
   display: flex;
@@ -376,7 +374,6 @@ img, svg { display: block; max-width: 100%; }
   gap: 10px;
   padding: 10px 0 4px;
   margin-top: auto;          /* 贴侧栏底部（与 opWrapper 居底一致） */
-  /* 去掉与作者信息之间的分隔横线（原 border-top: 1px rgba(2,36,51,.08)） */
 }
 .sidenav.collapsed .nav-op-wrapper {
   flex-direction: column;
@@ -643,7 +640,7 @@ img, svg { display: block; max-width: 100%; }
 .vch-tpl-seg { white-space: nowrap; }
 .vch-tpl-seg .muted { color: var(--ty-text-3); }
 .vch-tpl-drc { font-style: normal; font-weight: 600; color: var(--ty-red); margin-right: 3px; }
-.vch-tpl-sep { margin: 0 7px; color: var(--ty-blue-2); }
+.vch-tpl-sep { margin: 0 7px; color: var(--ty-border-2); }   /* 原 --ty-blue-2(#e8f1ff) 与白底对比度 1.00＝完全不可见，等于无分隔符 */
 .vch-tpl-miss { margin-top: 3px; font-size: var(--fs-xs); color: var(--ty-red); line-height: 1.6; }
 .vch-tpl-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .vch-tpl-empty-my { font-size: var(--fs-xs); color: var(--ty-text-3); text-align: center; padding: 4px 0 2px; }
@@ -2151,7 +2148,7 @@ label.req::before {
 }
 
 .tag-closed {
-  color: var(--ty-orange);
+  color: var(--st-hl-fg);   /* 原橙字在浅黄底仅 2.24，改深黄棕 5.95 */
   background: var(--st-warn-bg);
 }
 
@@ -2950,7 +2947,7 @@ label.req::before {
 .tmpl-op-add { color: var(--ty-blue); }
 .tmpl-op-add::before { content: '+'; font-size: var(--fs-2xl); }
 .tmpl-op-add:hover { background: var(--ty-blue-2); color: var(--ty-blue-dark); }
-.tmpl-op-del { color: var(--ty-content-bg); }
+.tmpl-op-del { color: var(--ty-text-3); }   /* 原 --ty-content-bg(#f0f0f0) 与白底 1.00＝按钮看不见，hover 才变红；改三级文字灰，弱化但可见 */
 .tmpl-op-del::before { content: '−'; font-size: var(--fs-xl); }
 .tmpl-op-del:hover { background: var(--ty-red-bg); color: var(--ty-red); }
 /* 金额取数规则帮助 */
@@ -4251,14 +4248,14 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
  * ============================================================ */
 .status-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: var(--fs-xs); }
 .status-tag.ok { background: var(--ty-green-bg); color: var(--ty-green); }
-.status-tag.warn { background: var(--st-warn-bg); color: var(--ty-orange); }
+.status-tag.warn { background: var(--st-warn-bg); color: var(--st-hl-fg); }   /* 橙字在白/浅黄底仅 2.09~2.24，改深黄棕 5.54 */
 .status-tag.muted { background: var(--ty-blue-2); color: var(--ty-muted); }
 
 
-.link-enable { color: var(--ty-orange); cursor: pointer; margin-right: 8px; }
+.link-enable { color: var(--st-hl-fg); cursor: pointer; margin-right: 8px; }   /* 原橙 2.09，改深黄棕 5.54 */
 .link-enable:hover { text-decoration: underline; }
 .settle-audit { margin-top: 10px; font-size: var(--fs-sm); }
-.settle-audit .warn { color: var(--ty-orange); }
+.settle-audit .warn { color: var(--st-hl-fg); }   /* 原橙 2.09，改深黄棕 5.54 */
 .settle-audit .ok { color: var(--ty-green); }
 
 /* 期末调汇：期末汇率输入框 */
@@ -4305,7 +4302,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-check-icon { width: 16px; text-align: center; font-weight: 400; }
 .settle-check-item.is-ok .settle-check-icon { color: var(--ty-green); }
 .settle-check-item.is-ok .settle-check-tip { color: var(--ty-text-2); }
-.settle-check-item.is-warn .settle-check-icon { color: var(--ty-orange); }
+.settle-check-item.is-warn .settle-check-icon { color: var(--st-hl-fg); }   /* 警告图标属"有意义的图形"，需 3:1；原橙 2.09 不达标 */
 .settle-check-item.is-warn { background: var(--st-warn-bg); }
 .settle-check-item.is-warn .settle-check-tip { color: var(--ty-text-2); }
 .settle-check-item.is-fail .settle-check-icon { color: var(--ty-red); }
@@ -4550,7 +4547,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   font-size: var(--fs-sm);
   color: var(--ty-text-3);
 }
-.settle-tip-icon { color: var(--ty-orange); font-style: normal; }
+.settle-tip-icon { color: var(--st-hl-fg); font-style: normal; }   /* 同上：原橙 2.24 在浅黄底不达标 */
 
 /* 卡片底部 */
 .settle-card-foot {
@@ -5580,7 +5577,7 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 .home-backup-tip a { cursor: pointer; white-space: nowrap; }
 .home-backup-tip #btnBackupTipGo { color: var(--ty-text-2); font-weight: 600; text-decoration: underline; }
 .home-backup-tip #btnBackupTipGo:hover { color: var(--st-hl-fg); }
-.home-backup-tip #btnBackupTipClose { margin-left: auto; font-size: var(--fs-xl); color: var(--ty-orange); line-height: 1; }
+.home-backup-tip #btnBackupTipClose { margin-left: auto; font-size: var(--fs-xl); color: var(--st-hl-fg); line-height: 1; }   /* 关闭按钮原橙 2.09 太弱，改深黄棕 5.54 */
 .home-backup-tip #btnBackupTipClose:hover { color: var(--st-hl-fg); }
 /* 从首页提醒跳转而来时，「云备份」按钮短暂高亮 */
 .btn-hl { outline: 2px solid var(--ty-orange); outline-offset: 1px; }
@@ -5618,7 +5615,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 /* 结构化动作标签 */
 .act-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 500; margin-left: 4px; vertical-align: middle; }
 .act-tag-create { background: var(--st-ok-bg); color: var(--st-ok-fg); }       /* 新增-绿 */
-.act-tag-update { background: var(--st-tip-bg); color: var(--ty-orange); }      /* 修改-橙 */
+.act-tag-update { background: var(--st-tip-bg); color: var(--st-hl-fg); }      /* 修改-橙（字色改深黄棕：原橙在浅黄底仅 2.24） */
 .act-tag-delete { background: var(--st-danger-bg); color: var(--st-danger-fg); }  /* 删除-红 */
 .act-tag-restore { background: var(--st-info-bg); color: var(--st-info-fg); }     /* 还原-蓝 */
 .act-tag-purge { background: var(--st-panel-bg); color: var(--ty-text-2); }       /* 清除-灰 */
