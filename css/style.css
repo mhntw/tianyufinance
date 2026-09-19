@@ -3510,7 +3510,10 @@ label.req::before {
   min-width: 72px;        /* 稳定占位：避免缩放时因内容宽度变动导致位置漂移 */
   text-align: right;
 }
-/* 流量卡片右上角独立期间 select：明显的控件感，与存量卡片静态文字区分开 */
+/* 流量卡片右上角独立期间 select：默认「隐形」，hover/focus 时才浮现控件感。
+ * 2026-09-19：原为常驻 1px 灰边框（--ty-text-3）+ 浅蓝底，视觉上是一块突兀的灰色方框，
+ * 与卡片整体（存量卡片是纯静态文字）不协调。现改为默认无框，仅保留文字与下拉箭头；
+ * 交互时给出反馈，既去掉灰框又保留「这里可点」的可发现性。 */
 .drag-header .card-period-select {
   flex-shrink: 0;
   white-space: nowrap;
@@ -3526,10 +3529,12 @@ label.req::before {
   font-family: inherit;
   color: var(--ty-text, var(--ty-text-2));
   font-weight: 500;
-  /* 明显的控件底色和圆角，与存量卡片静态文字（无背景、灰色）形成对比 */
-  background: var(--ty-blue-2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
+  /* 默认无底色：只留文字 + 箭头（箭头是唯一提示「可下拉」的线索，必须保留） */
+  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
   background-size: 10px 6px;
-  border: 1px solid var(--ty-text-3);
+  /* 关键：用 transparent 而不是把 border 去掉 —— 保留 1px 占位，
+     否则 hover 加边框时盒模型变化会让文字左右跳动。 */
+  border: 1px solid transparent;
   border-radius: 4px;
   padding: 0 22px 0 10px;
   height: 24px;
@@ -3540,13 +3545,13 @@ label.req::before {
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .drag-header .card-period-select select:hover {
-  border-color: var(--ty-blue);
-  background-color: var(--ty-blue-3);
+  border-color: var(--ty-border-2);      /* 淡边框，不抢眼 */
+  background-color: var(--ty-blue-2);    /* 浅蓝底，提示可点 */
 }
 .drag-header .card-period-select select:focus {
   border-color: var(--ty-blue);
   background-color: var(--ty-white);
-  box-shadow: 0 0 0 2px rgba(47, 149, 255, 0.15);
+  box-shadow: 0 0 0 2px rgba(47, 149, 255, 0.15);   /* 键盘聚焦可见（可访问性） */
 }
 
 /* 费用卡片公式行：两行布局
