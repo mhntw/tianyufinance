@@ -69,7 +69,7 @@ function updateGlFilterBanner() {
     if (!subs.some(function (s) { return String(s.code) === c; })) names.push(c);
   });
   el.hidden = false;
-  el.innerHTML = '当前仅显示：' + names.join('、') +
+  el.innerHTML = '当前仅显示：' + escHtml(names.join('、')) +
     ' <a href="#" id="glFilterClear" class="gl-filter-clear">清除筛选</a>';
 }
 

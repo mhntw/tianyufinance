@@ -1471,7 +1471,7 @@
     if (!kw) { searchResult.innerHTML = '<div class="search-empty">输入金额 / 科目 / 摘要 / 凭证字号进行搜索</div>'; if (searchDropdown) searchDropdown.hidden = true; return; }
     res = res || { voucher: [], subject: [], ledger: [] };
     if (!res.voucher.length && !res.subject.length && !res.ledger.length) {
-      searchResult.innerHTML = '<div class="search-empty">未找到与「' + kw + '」相关的结果</div>';
+      searchResult.innerHTML = '<div class="search-empty">未找到与「' + esc(kw) + '」相关的结果</div>';
       if (searchDropdown) { placeSearchDropdown(); searchDropdown.hidden = false; }
       return;
     }

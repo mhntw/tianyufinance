@@ -48,14 +48,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     // 原 <span class="tree-arrow"></span> 是空标签：画三角的 CSS 选择器为
     // .orig-tree .tree-parent .tree-arrow，而本树 li 的类名是 orig-tree-parent
     // （不是 tree-parent）→ 选择器从不匹配，既无字符也无 CSS 三角，纯废弃标记。
-    li.innerHTML = name;
+    li.innerHTML = esc(name);
     li.addEventListener('click', function () { onPick(''); });
     return li;
   }
   function _assetTreeLeaf(name, selected, onPick, code) {
     var li = document.createElement('li');
     li.className = 'orig-tree-child' + (selected ? ' selected' : '');
-    li.innerHTML = name;
+    li.innerHTML = esc(name);
     li.addEventListener('click', function () { onPick(code); });
     return li;
   }

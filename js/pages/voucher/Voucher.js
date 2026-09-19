@@ -284,7 +284,7 @@ function fillVoucherWord() {
     ? S.state.voucherWords.filter(function (x) { return x.enabled !== false; })
     : [{ name: '记' }];
   var cur = w.value || S.state.param.voucherWord || '记';
-  w.innerHTML = words.map(function (x) { return '<option value="' + (x.name || x.code) + '">' + (x.name || x.code) + '</option>'; }).join('');
+  w.innerHTML = words.map(function (x) { return '<option value="' + escHtml(x.name || x.code) + '">' + escHtml(x.name || x.code) + '</option>'; }).join('');
   if (words.some(function (x) { return (x.name || x.code) === cur; })) w.value = cur;
   else w.value = words[0] ? (words[0].name || words[0].code) : '记';
 }

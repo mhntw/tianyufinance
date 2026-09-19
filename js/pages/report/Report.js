@@ -10,6 +10,9 @@
 const H = globalThis.__TY_HELPERS__ || {};
 const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
+/* 转义：本页此前从未调用过转义（0 处），但报表行名/标签可能来自用户编辑的科目表，
+   或来自导入的账套文件 —— 是真实的注入面，故补齐。H.esc 由 app.js 注册。 */
+const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 const money = H.money;
 const moneyRed = H.moneyRed || function (n) {
   // 负数必须带负号（与金蝶一致）：只染红而丢掉负号会把负值误显示为正数。
@@ -119,10 +122,10 @@ function renderBs(month) {
     var tr = document.createElement('tr');
     if (a && a.grp !== undefined) {
       noA += 1;
-      tr.innerHTML = '<td class="grp-label">' + a.grp + '</td><td>' + noA + '</td>' + amtCell(a.end, 'grp-amt') + amtCell(a.year, 'grp-amt');
+      tr.innerHTML = '<td class="grp-label">' + esc(a.grp) + '</td><td>' + noA + '</td>' + amtCell(a.end, 'grp-amt') + amtCell(a.year, 'grp-amt');
     } else if (a) {
       noA += 1;
-      tr.innerHTML = '<td class="bs-name">' + a.label + '</td><td>' + noA + '</td>' + bsEndCell(a) + amtCell(a.year);
+      tr.innerHTML = '<td class="bs-name">' + esc(a.label) + '</td><td>' + noA + '</td>' + bsEndCell(a) + amtCell(a.year);
     } else {
       tr.innerHTML = '<td></td><td></td><td></td><td></td>';
     }
@@ -266,7 +269,7 @@ function renderPl(month) {
         ? '<a href="#" class="pl-amt-link" data-codes="' + fmtCodes + '">' + moneyRed(v) + '</a>'
         : moneyRed(v);
     }
-    tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + r.label +
+    tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + esc(r.label) +
                    '</td><td>' + no + '</td>' +
                    '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.cur) + '</td>' +
                    '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.ytd) + '</td>';
@@ -399,7 +402,7 @@ function renderCf(month) {
     // 此前这里写的是 amt<0 ? ty-red : ty-green —— 正数一律染绿，与利润表/资产负债表口径不一致。
     var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'ty-red' : '');
     var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'ty-red' : '');
-    tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + name + '</td>' +
+    tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + esc(name) + '</td>' +
       '<td>' + (num === '' ? '' : num) + '</td>' +
       '<td class="' + amtCls + '">' + money(amt) + '</td>' +
       '<td class="' + yCls + '">' + money(y) + '</td>';
@@ -414,7 +417,7 @@ function renderCf(month) {
     // 大类标题行（无行次、无金额）
     var grp = document.createElement('tr');
     grp.className = 'grp-row';
-    grp.innerHTML = '<td class="grp-label">' + g.title + '</td><td></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>';
+    grp.innerHTML = '<td class="grp-label">' + esc(g.title) + '</td><td></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>';
     tb.appendChild(grp);
     // 流入明细
     g.subs.forEach(function (id) {
@@ -509,7 +512,7 @@ function renderTx(month) {
     // 用色约定（全站报表统一）：只有负数标红，正数走默认色
     var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'ty-red' : '');
     var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'ty-red' : '');
-    tr.innerHTML = '<td class="' + nameCls + '">' + r.name + '</td>' +
+    tr.innerHTML = '<td class="' + nameCls + '">' + esc(r.name) + '</td>' +
       '<td>' + (r.level === 2 ? r.rowNum : '') + '</td>' +
       '<td class="' + amtCls + '">' + money(r.cur) + '</td>' +
       '<td class="' + yCls + '">' + money(r.ytd) + '</td>';

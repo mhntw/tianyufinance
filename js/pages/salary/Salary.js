@@ -32,7 +32,7 @@ const periodRangeValue = H.periodRangeValue;
     var tb = $('salBody'); tb.innerHTML = '';
     S.state.payrolls.filter(function (p) { return !month || p.month === month; }).forEach(function (p) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + p.month + '</td><td>' + p.name + '</td><td>' + (p.category || '全部') + '</td><td class="ta-r mono">' + money(p.should) + '</td><td class="ta-r mono">' + money(p.real) + '</td><td><a class="link-del" data-id="' + p.id + '">删除</a></td>';
+      tr.innerHTML = '<td>' + esc(p.month) + '</td><td>' + esc(p.name) + '</td><td>' + esc(p.category || '全部') + '</td><td class="ta-r mono">' + money(p.should) + '</td><td class="ta-r mono">' + money(p.real) + '</td><td><a class="link-del" data-id="' + esc(p.id) + '">删除</a></td>';
       tb.appendChild(tr);
     });
   }
@@ -119,7 +119,7 @@ const periodRangeValue = H.periodRangeValue;
     });
     Object.keys(staff).forEach(function (nm, i) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td class="mono">E' + (i + 1) + '</td><td>' + nm + '</td><td>职员</td><td>—</td><td><a class="link-del disabled">—</a></td>';
+      tr.innerHTML = '<td class="mono">E' + (i + 1) + '</td><td>' + esc(nm) + '</td><td>职员</td><td>—</td><td><a class="link-del disabled">—</a></td>';
       tb.appendChild(tr);
     });
     if (!depts.length && !Object.keys(staff).length) {

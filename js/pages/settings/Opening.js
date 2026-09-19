@@ -7,6 +7,9 @@ const H = globalThis.__TY_HELPERS__ || {};
 const EX = globalThis.__TY_EXPORT__ || {};
 const $ = H.$;
 const money = H.money;
+/* 转义：本页此前从未调用过转义（0 处），而它拼接的科目编码/名称可由用户编辑、
+   也可能来自导入的账套文件 —— 是真实的注入面，故补齐。H.esc 由 app.js 注册。 */
+const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 import { exportTable } from './_shared.js'; // 修复：此前 H.exportTable 未挂全局，期初导出是 undefined 会抛错
 const showToast = H.showToast;
 const S = H.S || (EX && EX.store);
@@ -27,7 +30,7 @@ function renderOpening() {
   S.subjects().forEach(function (s) {
     var o = S.opening(s.code);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + s.code + '</td><td>' + s.name + '</td><td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
+    tr.innerHTML = '<td>' + esc(s.code) + '</td><td>' + esc(s.name) + '</td><td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
       '<td><input class="inp open-yb num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.yb + '"></td>' +
       '<td><input class="inp open-ytddr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.ytdDr + '"></td>' +
       '<td><input class="inp open-ytdcr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.ytdCr + '"></td>' +

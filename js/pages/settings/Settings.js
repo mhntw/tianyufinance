@@ -265,7 +265,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       (S.getLogs() || []).forEach(function (l) { users[l.user || '会计'] = 1; });
       var optUser = Object.keys(users).sort();
       $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {
-        return '<option value="' + u + '">' + u + '</option>';
+        return '<option value="' + esc(u) + '">' + esc(u) + '</option>';
       }).join('');
       logInitDone = true;
     }
@@ -305,7 +305,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
           var tagCls = 'act-tag-' + l.action_type;
           actTag = ' <span class="act-tag ' + tagCls + '">' + esc(ACTION_TYPE_LABELS[l.action_type]) + '</span>';
         }
-        tr.innerHTML = '<td class="mono">' + (l.time || '') + '</td><td>' + (l.user || '') + '</td><td>' +
+        tr.innerHTML = '<td class="mono">' + esc(l.time || '') + '</td><td>' + esc(l.user || '') + '</td><td>' +
           (l.action || '') + actTag + '</td><td>' + (l.module || '设置') + '</td><td>' + detailHtml + '</td>';
         tb.appendChild(tr);
       });

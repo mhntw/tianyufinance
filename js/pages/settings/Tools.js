@@ -87,7 +87,7 @@ function refreshTools() {
     var isCur = b.id === cur;
     var enabled = S.isBookEnabled(b.id);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + b.name + '</td><td class="mono">' + b.period + '</td><td>' + b.vouchers + '</td>'
+    tr.innerHTML = '<td>' + esc(b.name) + '</td><td class="mono">' + esc(b.period) + '</td><td>' + b.vouchers + '</td>'
       + '<td>' + (isCur ? '<span class="tag tag-current">当前</span>' : (enabled ? '<span class="tag">启用</span>' : '<span class="tag tag-stop">停用</span>')) + '</td>'
       + '<td class="book-ops">'
       + '<button class="btn-link" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
@@ -329,7 +329,7 @@ function renderTrash() {
     box._trashAll = false;
     renderTrashRows();
   }).catch(function (e) {
-    box.innerHTML = '<p class="muted">读取回收站失败：' + ((e && e.message) || e) + '</p>';
+    box.innerHTML = '<p class="muted">读取回收站失败：' + esc((e && e.message) || e) + '</p>';
   });
 }
 
