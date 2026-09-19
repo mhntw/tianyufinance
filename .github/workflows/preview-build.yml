@@ -8,8 +8,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 回归自检：与「自动发布」保持一致 —— 预览包也要装到机器上试，坏包只会浪费时间。
+  # 【为什么这里也要跑（此前不跑）】预览包虽不进 Release，但一旦带着失败的计算逻辑
+  # 被装上试跑，排查成本远高于这 10 秒。两个工作流用同一个入口 tools/run-all.js，
+  # 该入口已做到「无账套环境跳过、有账套环境真跑」，两种环境都必须全绿。
+  selftest:
+    name: 回归自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: 运行回归自检（tools/run-all.js）
+        run: node tools/run-all.js
+
   build:
     name: 构建 ${{ matrix.label }}（预览）
+    needs: selftest
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
