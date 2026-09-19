@@ -1,12 +1,29 @@
-// 端到端整体测试：在 Node 中模拟 Tauri 桌面版运行环境，加载真实账套数据 default.json
-// 验证 storage.js（Tauri 内存兜底分支）+ store.js 计算引擎整链可用。
+// 端到端整体测试：在 Node 中模拟 Tauri 桌面版运行环境，验证 storage.js（内存兜底分支）
+// + store.js 计算引擎整链可用。
+//
+// 数据隔离（2026-09-19）：原实现直接读取**真实账套目录**下的 default.json —— 那是客户数据，
+// 测试不该碰。现改为自造一份同结构的 default 账套，全程不落盘（走 storage.js 的内存兜底分支），
+// 于是没有任何途径能触碰真实账套 —— 不靠"路径校验"去兜，而是压根不调 fs。
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-// e2e 一律走沙箱：真实账套目录绝不参与测试（详见 e2e_sandbox.js）
-const sandbox = require('./e2e_sandbox.js');
-let SB = null;   // 沙箱句柄，结束时清理
+
+// 自造的 default 账套：科目规模取 48（与真实账套同量级），故下游依赖"48"的断言依旧成立。
+function makeDefaultBook() {
+  var subjects = [];
+  for (var i = 0; i < 48; i++) {
+    var code = String(1001 + i);
+    subjects.push({ code: code, name: '测试科目' + code, cls: '资产', normal: 'dr', dc: 1, level: 1 });
+  }
+  return {
+    schemaVersion: 5,
+    company: { name: '测试账套', startMonth: '2026-01', code: 'TEST' },
+    subjects: subjects,
+    vouchers: [],
+    currencies: [{ code: 'CNY', name: '人民币', rate: 1, base: true }]
+  };
+}
 
 // ---- 最小化浏览器全局 ----
 const mem = {};
@@ -42,14 +59,7 @@ function assert(cond, msg) {
   assert(Storage.isFileMode() === true, 'Storage.isFileMode() 恒为 true（桌面版）');
 
   console.log('\n=== 2. 载入真实账套 default.json 到存储引擎 ===');
-  // 原实现直接读取**真实账套目录**下的 default.json —— 那是客户数据，测试不该碰；
-  // 且测试随后会对该账套执行 addVoucher / saveBook 等写操作。改为在沙箱内自造一份
-  // 同结构的 default 账套（科目规模仍取 48，故下游依赖"48"的断言依旧成立）。
-  SB = sandbox.create('book');
-  fs.mkdirSync(SB.books, { recursive: true });
-  const bookPath = path.join(SB.books, 'default.json');
-  fs.writeFileSync(bookPath, JSON.stringify(sandbox.makeDefaultBook()));
-  const raw = fs.readFileSync(bookPath, 'utf8');
+  const raw = JSON.stringify(makeDefaultBook());
   const parsed = JSON.parse(raw);
   const saveRes = await Storage.saveBook('default', raw);
   assert(saveRes && saveRes.ok === true, 'saveBook("default") 成功');
@@ -122,10 +132,4 @@ function assert(cond, msg) {
   assert(S2.state.vouchers.length === before, '已撤销测试凭证，恢复 ' + before + ' 张');
 
   console.log('\n全部整体测试完成。');
-})().then(function () {
-  if (SB) SB.cleanup();                      // 无论成败都清掉沙箱，不留临时账套
-}).catch((e) => {
-  console.error('测试异常：', e);
-  if (SB) SB.cleanup();
-  process.exit(1);
-});
+})().catch((e) => { console.error('测试异常：', e); process.exit(1); });

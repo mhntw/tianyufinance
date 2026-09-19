@@ -5,7 +5,10 @@
  * 真实账套目录 $HOME/Library/Application Support/添钰财务/books，而这两个 e2e 里有
  * deleteBook（unlinkSync 删文件）、restoreBookState（覆盖账套）等破坏性操作。
  * 只因本机没有 default.json、switchBook 先行失败，才一直没酿成事故 —— 这是运气不是安全。
- * 现已改用 tools/e2e_sandbox.js（临时目录 + 路径硬校验）。
+ * 现两处均已改为**内存 mock**（books[id] = json），零 fs 调用，从原理上碰不到真实账套。
+ *
+ * 【为什么改动后仍保留本护栏】上面两个测试是修好了，但这是一类容易复发的问题：
+ * 将来新写的工具脚本若又去写真实账套目录，同样会埋雷。本脚本是常驻的预防性检查。
  *
  * 【本脚本做什么】扫描 tools/ 下的脚本，凡是「指向真实数据目录」且「对该目录有写操作」的，
  * 一律判为不合格并退出码 1。只读访问（如跨报表核对类脚本读真账套做比对）允许，只作提示列出。
@@ -36,8 +39,6 @@ function stripComments(src) {
 
 const files = fs.readdirSync(path.join(ROOT, 'tools'))
   .filter(f => f.endsWith('.js'))
-  // 沙箱模块本身以"拒绝真实目录"为职责，注释里必然出现特征串（已剥离注释），无需排查
-  .filter(f => f !== 'e2e_sandbox.js')
   .map(f => path.join(ROOT, 'tools', f));
 
 const bad = [];
@@ -70,8 +71,8 @@ if (bad.length) {
   console.log('★ 以下脚本会写真实数据目录，必须改用 tools/e2e_sandbox.js：');
   bad.forEach(function (b) { console.log('  · ' + b); });
   console.log('');
-  console.log('  修法：const sb = require("./e2e_sandbox.js").create("tag");');
-  console.log('        const sh = require("./e2e_sandbox.js").install(Storage, sb);');
+  console.log('  修法：改用内存 mock（如 books[id] = json），不要调 fs —— 真实落盘由 Rust 后端');
+  console.log('        负责，Node 测试里模拟不了，也不必模拟。');
   process.exit(1);
 }
 
