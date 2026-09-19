@@ -942,7 +942,12 @@ select:not([class]):focus { border-color: var(--ty-blue); }
      顶栏的 .topbar-search-btn（30×30 方形图标按钮）与 .topbar-brand-ico 不动：它们是图标类，
      不是表单控件，且改成 28 会破坏正方形比例。 */
   height: 28px;
-  min-width: 60px;        /* 极短文字不缩没 */
+  /* 最小宽度 72px（2026-09-20）：原先 60px —— 而 2 字按钮实测只需 ~54px，被撑到 60px 后
+     仍比 4 字按钮（~80px）窄一大截，同排并排时宽窄参差明显（全站 2 字按钮有 91 个，最常见的一类）。
+     提到 72px 后，2~3 字与 4 字的差距从 20px 收到 8px。
+     仍保留 width:auto：长文字按钮（如「多年合并导入」~106px）按内容自然变宽，不会被截断 ——
+     若改成所有按钮等宽，长文字反而会被挤成两行或溢出。 */
+  min-width: 72px;
   max-width: 100%;        /* 超长文字不撑破容器 */
   padding: 0 14px;
   font-size: var(--fs-sm);
@@ -1101,14 +1106,16 @@ select:not([class]),
 /* 无 label 的复选项框：label 占位撑高，使其与同行带 label 框纵向对齐 */
 .ed-box-nolabel { justify-content: flex-end; }
 
-/* 主按钮（对齐 .ty-btn-size-middle：高 28px、min-width 60px、圆角 4、字号 13） */
+/* 主按钮（对齐 .ty-btn-size-middle：高 28px、圆角 4、字号 13）
+   注：min-width 于 2026-09-20 与 .btn 同步由 60px 提到 72px（理由见 .btn 处的注释）——
+   两套按钮若宽度基准不同，混用在同一行时照样参差。 */
 .ty-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: auto;            /* 自适应：按文字内容自然伸缩 */
   height: 28px;
-  min-width: 60px;        /* 极短文字不缩没 */
+  min-width: 72px;        /* 极短文字不缩没 */
   max-width: 100%;        /* 超长文字不撑破容器 */
   padding: 0 16px;
   font-size: var(--fs-sm);
