@@ -1,6 +1,6 @@
 [package]
 name = "ty"
-version = "0.6.5"
+version = "0.6.6"
 description = "添钰财务管理系统 —— 酒店经营台账（本地单机版）"
 authors = ["chen"]
 edition = "2021"
