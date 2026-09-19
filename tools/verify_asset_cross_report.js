@@ -64,7 +64,18 @@ function check(cond, label, detail) {
   fail++; fails.push(label + (detail ? '  → ' + detail : ''));
 }
 
-const BOOKS = path.join(os.homedir(), 'Library/Application Support/添钰财务/books');
+// 跨平台账套目录 + 无账套即跳过（原先写死 macOS 路径，CI/Linux 上抛 ENOENT 会被误判为失败）
+const BOOKS = (function () {
+  const home = os.homedir();
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', '添钰财务', 'books');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
+})();
+if (!fs.existsSync(BOOKS) || !fs.readdirSync(BOOKS).some(f => f.endsWith('.json'))) {
+  console.log('跳过：未找到账套（' + BOOKS + '）');
+  console.log('本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0，不计为失败。');
+  process.exit(0);
+}
 const PERIODS = ['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'];
 let bookCount = 0, lateAssets = 0;
 

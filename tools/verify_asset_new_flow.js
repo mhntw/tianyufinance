@@ -26,7 +26,18 @@ const ASSET = fs.readFileSync(path.join(ROOT, 'js/pages/asset/Asset.js'), 'utf8'
 const CSS = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
 
 console.log('\n=== A. store 层：编辑卡片时累计折旧字段同步（P0-1）===');
-const BOOKS = path.join(os.homedir(), 'Library/Application Support/添钰财务/books');
+// 跨平台账套目录 + 无账套即跳过（原先写死 macOS 路径，CI/Linux 上抛 ENOENT 会被误判为失败）
+const BOOKS = (function () {
+  const home = os.homedir();
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', '添钰财务', 'books');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
+})();
+if (!fs.existsSync(BOOKS) || !fs.readdirSync(BOOKS).some(f => f.endsWith('.json'))) {
+  console.log('跳过：未找到账套（' + BOOKS + '）');
+  console.log('本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0，不计为失败。');
+  process.exit(0);
+}
 const files = fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().map(n => path.join(BOOKS, n));
 const file = files.filter(f => { const b = JSON.parse(fs.readFileSync(f, 'utf8')); return (b.fixedAssets || []).length > 0; })[0];
 if (!file) { console.log('  （无含卡片的账套，跳过 A 组）'); }

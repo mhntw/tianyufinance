@@ -23,7 +23,21 @@ S.persist = function () { /* no-op */ };
 S.addLog = function () { /* no-op */ };
 S.backupNow = function () { return Promise.resolve(true); };
 
-const BOOKS_DIR = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
+// 跨平台账套目录 + 无账套即跳过。
+// 【为什么】本脚本要进 run-all.js 与 CI 门禁：原先写死 macOS 路径且不检查存在性，
+// 在 Linux/无账套环境直接抛 ENOENT，会被误判为「测试失败」—— 门禁就会永远卡住发布。
+const BOOKS_DIR = (function () {
+  const os = require('os');
+  const home = os.homedir();
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', '添钰财务', 'books');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
+})();
+if (!fs.existsSync(BOOKS_DIR) || !fs.readdirSync(BOOKS_DIR).some(f => f.endsWith('.json'))) {
+  console.log('跳过：未找到账套（' + BOOKS_DIR + '）');
+  console.log('本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0，不计为失败。');
+  process.exit(0);
+}
 const EPS = 0.005;
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
