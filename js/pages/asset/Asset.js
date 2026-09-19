@@ -510,11 +510,16 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var m = $('assetBatchMenu'); if (m) m.hidden = !m.hidden;
   });
   $('assetBatchMenu').addEventListener('click', async function (e) {
-    var a = e.target.closest('a[data-batch]');
+    var a = e.target.closest('a');
     if (!a) return;
-    var act = a.getAttribute('data-batch');
-    var checked = [].slice.call(document.querySelectorAll('.aChk:checked')).map(function (c) { return c.getAttribute('data-id'); });
+    // 先收起菜单再分发：菜单里现在还有「导入/导出/打印」这类**没有 data-batch** 的项，
+    // 它们由各自既有通道处理（导入/导出 = 本文件按 id 绑定；打印 = app.js 的 [data-print] 全局委托）。
+    // 原先按 a[data-batch] 选择器取元素并在取不到时直接 return，会导致点这三项菜单不收起 —— 故改为
+    // 先关闭、再判断有无 data-batch，无则交还给它们的处理器。
     $('assetBatchMenu').hidden = true;
+    var act = a.getAttribute('data-batch');
+    if (!act) return;
+    var checked = [].slice.call(document.querySelectorAll('.aChk:checked')).map(function (c) { return c.getAttribute('data-id'); });
     // 「关联凭证」：把**账上已有**的购入凭证挂到卡片上，填「新增资产凭证」列。
     // ⚠️ 只关联、不生成凭证 —— 迁移账套里购入凭证本就在（金蝶导入，实测 10 张卡片 10/10 命中），
     // 再「生成」一张就是固定资产重复入账。幂等：已关联的卡片跳过，可反复点。
