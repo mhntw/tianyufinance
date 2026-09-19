@@ -3544,14 +3544,22 @@ label.req::before {
   width: 100%;            /* 填满父容器 min-width，不再随 option 文字长度跳变 */
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
+/* hover：只给浅蓝底提示可点 —— 不加边框，否则又变成"框" */
 .drag-header .card-period-select select:hover {
-  border-color: var(--ty-border-2);      /* 淡边框，不抢眼 */
-  background-color: var(--ty-blue-2);    /* 浅蓝底，提示可点 */
+  background-color: var(--ty-blue-2);
 }
-.drag-header .card-period-select select:focus {
-  border-color: var(--ty-blue);
-  background-color: var(--ty-white);
-  box-shadow: 0 0 0 2px rgba(47, 149, 255, 0.15);   /* 键盘聚焦可见（可访问性） */
+/* focus / focus-visible：彻底无框、无光晕、无轮廓。
+ * 【为什么必须连 focus 也清掉】<select> 被鼠标点击时同样会命中 :focus，
+ * 只要 focus 上有任何边框或 box-shadow，用户就会看到「点一下就冒出个框」。
+ * 这里同时覆盖 :focus-visible —— 它在部分浏览器（Chrome）对 select 这类
+ * 需要键盘交互的控件在鼠标点击时也会命中，起不到"仅键盘才显示"的隔离作用。
+ * 代价：键盘 Tab 聚焦时无视觉指示。取舍是「3 个期间选择器 + 用户明确要求去掉框」，
+ * 且 select 聚焦后按 Enter 会弹出原生下拉，仍有可感知的反馈。 */
+.drag-header .card-period-select select:focus,
+.drag-header .card-period-select select:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
 }
 
 /* 费用卡片公式行：两行布局
