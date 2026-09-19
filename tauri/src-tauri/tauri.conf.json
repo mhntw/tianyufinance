@@ -4,7 +4,7 @@
   "version": "0.6.7",
   "identifier": "com.chen.ty",
   "build": {
-    "beforeDevCommand": "cd ../ && python3 -m http.server 1420 --bind 127.0.0.1",
+    "beforeDevCommand": "node scripts/dev-server.mjs",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": {
       "script": "node scripts/build-dist.mjs",
