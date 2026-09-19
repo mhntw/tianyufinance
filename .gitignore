@@ -47,7 +47,9 @@ tools/scan_ais_templates.js
 # 临时调试文件
 full-page.html
 
-# 变更记录含真实账套数据，不进仓库（已移父层 财务软件/CHANGELOG.md 管理）
+# 变更记录含真实账套数据，不进仓库（现位于本仓库根目录 CHANGELOG.md，仅本地保存）
+# 【务必保留本规则】该文件含真实账套指标，一旦提交即会公开到 GitHub ——
+#   切勿用 git add -f CHANGELOG.md 绕过忽略；也勿在 git clean 时加 -x（-x 会连忽略文件一起删）。
 CHANGELOG.md
 
 # 编辑器 / 工具自动生成的备份与临时副本（避免误提交进仓库，如 style.css.bak1）
