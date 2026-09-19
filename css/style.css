@@ -70,7 +70,6 @@
  /* 纯黑（阴影/描边等），收敛原 6 处 #000 */
   --ty-red-bg: #fceded;     /* 危险/警示浅底（错误提示框、差异行） */
   --ty-green-bg: #e6f4e6;   /* 成功/通过浅底（余额平、状态标签） */
-  --ty-warn-text: #7a5b00;  /* 警示深黄文字（提示条文字，浅黄底上保证可读） */
 }
 
 *, *::before, *::after { box-sizing: border-box; }   /* 原 jdy-base.css 并入：伪元素同样 border-box */
@@ -4001,7 +4000,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   align-items: center !important;
   justify-content: center !important;
   font-size: var(--fs-md) !important;
-  color: var(--ty-text) !important;   /* 统一顶栏主色，去掉各块散落的 var(--ty-black)/var(--ty-nav-text)/#606266 */
+  color: var(--ty-text) !important;   /* 统一顶栏主色，去掉各块散落的 var(--ty-text)/var(--ty-nav-text)/#606266 */
   height: 48px !important;
   line-height: 48px !important;
   padding: 0 !important;
@@ -5123,14 +5122,14 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   /* 激活页标题（卡片头文字）作为打印表头 */
   .page.active .card-head {
     display: block !important;
-    border-bottom: 2px solid var(--ty-black);
+    border-bottom: 2px solid var(--ty-text);
     margin-bottom: 8px;
     padding-bottom: 4px;
   }
   /* 报表打印专用抬头：屏幕隐藏，此处显示（复刻：表名 + 编制单位/报表日期/单位：元） */
   .rpt-print-head {
     display: block !important;
-    color: var(--ty-black);
+    color: var(--ty-text);
     margin: 0 0 6px 0;
     padding: 0 2px;
   }
@@ -5142,13 +5141,13 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
     font-weight: 400;
     text-align: center;
     margin-bottom: 6px;
-    color: var(--ty-black);
+    color: var(--ty-text);
   }
   .rpt-print-head .rph-line {
     display: flex;
     justify-content: space-between;
     font-size: var(--fs-xs);
-    color: var(--ty-black);
+    color: var(--ty-text);
   }
   /* 卡片整体缩进仅用于屏幕，打印态还原为无内缩 */
   .page.active .card { padding: 0; }
@@ -5267,7 +5266,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   .grid tbody tr:hover td { background: var(--ty-white) !important; }
   .grid .ta-r, .grid .col-amt { text-align: right; }
   /* 数字着色（红字）在打印时保留但转深灰，避免浅红看不清 */
-  .grid .amt-neg, .grid .num-neg { color: var(--ty-black) !important; }
+  .grid .amt-neg, .grid .num-neg { color: var(--ty-text) !important; }
   /* 行勾选列 / 操作列在打印时隐藏 */
   .grid col.c-check, .grid col.c-op,
   .grid th.col-check, .grid td.col-check,
@@ -5604,8 +5603,8 @@ tr.log-row-reopen { background: var(--st-danger-bg); }
 tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .log-reason { margin-top: 4px; padding: 2px 6px; background: var(--st-danger-bg); border-left: 3px solid var(--st-danger-fg); color: var(--st-danger-fg); font-size: var(--fs-xs); }
 /* 凭证回收站：简洁表格，黑字、还原蓝、宽度自适应 */
-.recycle-table { width: 100%; border-collapse: collapse; color: var(--ty-black); font-size: var(--fs-sm); }
-.recycle-table th, .recycle-table td { border: 1px solid var(--grid-line); padding: 6px 10px; text-align: left; color: var(--grid-text); font-weight: 400; }   /* 回收站表：线色/字色/字重走全站 token（原写死 #e5e5e5 / var(--ty-black)） */
+.recycle-table { width: 100%; border-collapse: collapse; color: var(--ty-text); font-size: var(--fs-sm); }
+.recycle-table th, .recycle-table td { border: 1px solid var(--grid-line); padding: 6px 10px; text-align: left; color: var(--grid-text); font-weight: 400; }   /* 回收站表：线色/字色/字重走全站 token（原写死 #e5e5e5 / var(--ty-text)） */
 .recycle-table a.link-toggle { color: var(--ty-blue-dark); }
 /* 凭证增删改审计明细展开区 */
 .log-audit-toggle { margin-left: 8px; font-size: var(--fs-xs); }
