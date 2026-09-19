@@ -12,36 +12,17 @@ require(path.resolve(__dirname, '../js/storage.js'));
 require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S, Storage = global.Storage;
 
-// 注入"模拟真实文件 + meta" Storage：用真实 fs 写 booksDir，验证 store.js 真相源逻辑
-const booksDir = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books');
-const exportsDir = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/exports');
-fs.mkdirSync(booksDir, { recursive: true });
-fs.mkdirSync(exportsDir, { recursive: true });
-const diskBooks = {};
-let metaStore = { last_book: null, disabled: {} };
-let exportLog = [];
-
-Storage.init = () => {
-  // 模拟 Rust 引擎就绪
-  global.__refreshAll = () => {};
-  return Promise.resolve({ ok: true });
-};
-Storage.saveBook = (id, json) => { diskBooks[id] = json; fs.writeFileSync(path.join(booksDir, id + '.json'), json); return Promise.resolve({ ok: true }); };
-Storage.loadBook = (id) => { try { return Promise.resolve(fs.readFileSync(path.join(booksDir, id + '.json'), 'utf8')); } catch (e) { return Promise.resolve(null); } };
-Storage.deleteBook = (id) => { delete diskBooks[id]; try { fs.unlinkSync(path.join(booksDir, id + '.json')); } catch (e) {} return Promise.resolve(); };
-Storage.listBooks = () => Promise.resolve(fs.readdirSync(booksDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, '')));
-Storage.readMeta = () => Promise.resolve(JSON.parse(JSON.stringify(metaStore)));
-Storage.writeMeta = (m) => { metaStore = (typeof m === 'string') ? JSON.parse(m) : m; return Promise.resolve({ ok: true }); };
-Storage.getDataDir = () => Promise.resolve(path.resolve(process.env.HOME, 'Library/Application Support/添钰财务'));
-Storage.exportBook = (id, json) => {
-  const fname = (diskBooks[id] ? (JSON.parse(diskBooks[id]).company.name || id) : id) + '_' + '20260826' + '.json';
-  fs.writeFileSync(path.join(exportsDir, fname), json);
-  exportLog.push(fname);
-  return Promise.resolve({ ok: true, filename: fname });
-};
-Storage.saveBackup = () => Promise.resolve({ ok: true });
-Storage.listBackups = () => Promise.resolve([]);
-Storage.loadBackup = () => Promise.resolve(null);
+/* 数据隔离（2026-09-19）：原实现把 Storage 的 mock 指向**真实账套目录与导出目录**
+ *   $HOME/Library/Application Support/添钰财务/books 与 /exports
+ * 而本测试包含 deleteBook（unlinkSync 删文件）、停用账套、导出等写操作 —— 一旦本机存在
+ * default 账套，跑一次就可能删除或改写真实账套。此前只是因为 default.json 缺失才没出事。
+ * 现改为沙箱（os.tmpdir 下唯一临时目录）；e2e_sandbox.install() 内含路径硬校验，
+ * 任何试图指向真实数据目录的行为都会直接抛错拒绝运行。 */
+const sandbox = require('./e2e_sandbox.js');
+const SB = sandbox.create('bookmanage');
+const sh = sandbox.install(Storage, SB);
+const booksDir = SB.books;
+const exportsDir = SB.exports;
 
 let fails = 0;
 function assert(c,m){ if(!c){console.error('  ✗ '+m);fails++;} else console.log('  ✓ '+m); }
@@ -49,6 +30,10 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
 
 (async () => {
   console.log('=== 初始化（应异步读磁盘，默认进上次店） ===');
+  // 沙箱内预置一份 default 账套（自造 fixture，不复制任何真实数据）。
+  // 原先依赖真实账套目录里存在 default.json —— 既耦合客户数据，又使其一旦缺失
+  // 整个测试就中断，后面的新建/切换/停用/导出用例从未被执行过。
+  await Storage.saveBook('default', JSON.stringify(sandbox.makeDefaultBook()));
   S.init();
   await wait(400);
   assert(S.currentBookId() === 'default', '初始默认账套为 default');
@@ -77,12 +62,12 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
 
   console.log('\n=== 当前账套指针（meta）持久化 ===');
   await wait(50);
-  assert(metaStore.last_book === 'default', 'meta.last_book 记录上次店=default（关闭后重开应默认进此店）');
+  assert(sh.meta().last_book === 'default', 'meta.last_book 记录上次店=default（关闭后重开应默认进此店）');
 
   console.log('\n=== 停用标记走 meta（不赖 localStorage） ===');
   S.setBookEnabled(newId, false);
   await wait(50);
-  assert(metaStore.disabled[newId] === true, '停用标记写入 meta.json（非 localStorage）');
+  assert(sh.meta().disabled[newId] === true, '停用标记写入 meta.json（非 localStorage）');
   assert(S.isBookEnabled(newId) === false, 'isBookEnabled 从 meta 读取停用状态');
   assert(S.isBookEnabled('default') === true, '未停用的账套默认启用');
 
@@ -114,7 +99,9 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   console.log('\n=== 删除账套（删磁盘 + 刷新索引） ===');
   const del = await S.removeBook(newId);
   assert(del.ok === true, 'removeBook 成功');
-  assert(!fs.existsSync(path.join(booksDir, newId + '.json')), '删除账套已移除磁盘文件');
+  // 删除 = 移入回收站（trash/，保留期内可还原），不是物理删除 —— 故断言"移出 books/"而非"文件消失"
+  assert(!fs.existsSync(path.join(booksDir, newId + '.json')), '删除账套已移出 books 目录');
+  assert((await Storage.listTrash()).length >= 1, '删除的账套进入回收站（可还原）');
   assert(S.listBooks().map(b=>b.id).indexOf(newId) < 0, '删除后列表不含该账套');
 
   console.log('\n=== 索引刷新（refreshBookIndex 收敛到磁盘） ===');
@@ -128,20 +115,21 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   assert(S.listBooks().map(b=>b.id).indexOf(ghost) < 0, '清理后索引同步移除幽灵');
 
   console.log('\n=== 导出（落 exports + 路径可获取） ===');
-  exportLog = [];
+  sh.exportLog.length = 0;   // 清空但保留数组引用（沙箱内部仍 push 到同一数组）
   const books = S.listBooks();
   for (const b of books) {
     const txt = await Storage.loadBook(b.id);
     const st2 = txt ? JSON.parse(txt) : null;
     if (st2) await Storage.exportBook(b.id, JSON.stringify(st2));
   }
-  assert(exportLog.length === books.length, '每个账套都导出了文件：' + exportLog.join(', '));
+  assert(sh.exportLog.length === books.length, '每个账套都导出了文件：' + sh.exportLog.join(', '));
   const dataDir = await Storage.getDataDir();
-  assert(fs.existsSync(path.join(dataDir, 'exports', exportLog[0])), '导出文件落在 exports 目录（可拼出完整路径）');
+  assert(fs.existsSync(path.join(dataDir, 'exports', sh.exportLog[0])), '导出文件落在 exports 目录（可拼出完整路径）');
 
   console.log('\n=== 旧 kis_books 缓存已废弃（不应再写入） ===');
   assert(mem['kis_books'] === undefined, 'localStorage 不再写入 kis_books 混乱缓存');
 
   console.log('\n' + (fails ? ('有 '+fails+' 项失败') : '全部账套管理功能验证通过 ✅'));
+  SB.cleanup();                      // 清掉沙箱，不在临时目录留账套副本
   process.exit(fails ? 1 : 0);
-})().catch(e=>{console.error('异常:',e);process.exit(1);});
+})().catch(e=>{console.error('异常:',e); SB.cleanup(); process.exit(1);});

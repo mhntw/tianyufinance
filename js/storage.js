@@ -49,17 +49,31 @@
       case 'load_book': return Promise.resolve(memBooks[args.id] !== undefined ? memBooks[args.id] : null);
       case 'list_books': return Promise.resolve(Object.keys(memBooks));
       case 'delete_book': delete memBooks[args.id]; return Promise.resolve();
-      case 'save_backup':
-        var k = args.book_id; memBackups[k] = memBackups[k] || [];
+      // ⚠️ 参数名必须取 camelCase 的 bookId：调用方（saveBackup / saveRestoreSnapshot /
+      // listBackups / backupStats）一律传 { bookId, json } —— 因为 Tauri 2 会把 Rust 侧的
+      // snake_case 参数转成 camelCase。此处原先读的是 snake_case 的 args.book_id，恒为
+      // undefined，于是备份被存进 memBackups[undefined]，而 list_backups 去 memBackups['']
+      // 取，永远是空 —— 表现为「备份列表始终为 0 条」。
+      // 该缺陷只影响浏览器兜底分支（桌面版走 Rust 后端不受影响），故长期未被发现：
+      // e2e 测试原本因缺少 default.json 提前报错退出，根本没跑到这一步。
+      // 同时兼容 book_id，避免将来调用方写法回退时再次静默失效。
+      case 'save_backup': {
+        var k = args.bookId || args.book_id;
+        memBackups[k] = memBackups[k] || [];
         memBackups[k].push({ ts: Date.now(), json: args.json });
         return Promise.resolve({ ts: Date.now() });
-      case 'save_restore_snapshot':
-        var rk = args.book_id; memBackups[rk] = memBackups[rk] || [];
+      }
+      case 'save_restore_snapshot': {
+        var rk = args.bookId || args.book_id;
+        memBackups[rk] = memBackups[rk] || [];
         memBackups[rk].push({ ts: Date.now(), json: args.json, pre: true });
         return Promise.resolve(rk + '_pre_restore_' + Date.now() + '.json');
-      case 'list_backups':
-        var bk = memBackups[args.book_id || ''] || [];
-        return Promise.resolve(bk.map(function (b) { return { ts: b.ts, bookId: args.book_id }; }));
+      }
+      case 'list_backups': {
+        var bid = args.bookId || args.book_id || '';
+        var bk = memBackups[bid] || [];
+        return Promise.resolve(bk.map(function (b) { return { ts: b.ts, bookId: bid }; }));
+      }
       case 'load_backup': return Promise.resolve(null);
       case 'append_changelog': memChangelog.push(args.entry); return Promise.resolve();
       case 'list_changelog': return Promise.resolve(memChangelog);

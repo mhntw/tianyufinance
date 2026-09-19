@@ -4,6 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
+// e2e 一律走沙箱：真实账套目录绝不参与测试（详见 e2e_sandbox.js）
+const sandbox = require('./e2e_sandbox.js');
+let SB = null;   // 沙箱句柄，结束时清理
 
 // ---- 最小化浏览器全局 ----
 const mem = {};
@@ -39,7 +42,13 @@ function assert(cond, msg) {
   assert(Storage.isFileMode() === true, 'Storage.isFileMode() 恒为 true（桌面版）');
 
   console.log('\n=== 2. 载入真实账套 default.json 到存储引擎 ===');
-  const bookPath = path.resolve(process.env.HOME, 'Library/Application Support/添钰财务/books/default.json');
+  // 原实现直接读取**真实账套目录**下的 default.json —— 那是客户数据，测试不该碰；
+  // 且测试随后会对该账套执行 addVoucher / saveBook 等写操作。改为在沙箱内自造一份
+  // 同结构的 default 账套（科目规模仍取 48，故下游依赖"48"的断言依旧成立）。
+  SB = sandbox.create('book');
+  fs.mkdirSync(SB.books, { recursive: true });
+  const bookPath = path.join(SB.books, 'default.json');
+  fs.writeFileSync(bookPath, JSON.stringify(sandbox.makeDefaultBook()));
   const raw = fs.readFileSync(bookPath, 'utf8');
   const parsed = JSON.parse(raw);
   const saveRes = await Storage.saveBook('default', raw);
@@ -113,4 +122,10 @@ function assert(cond, msg) {
   assert(S2.state.vouchers.length === before, '已撤销测试凭证，恢复 ' + before + ' 张');
 
   console.log('\n全部整体测试完成。');
-})().catch((e) => { console.error('测试异常：', e); process.exit(1); });
+})().then(function () {
+  if (SB) SB.cleanup();                      // 无论成败都清掉沙箱，不留临时账套
+}).catch((e) => {
+  console.error('测试异常：', e);
+  if (SB) SB.cleanup();
+  process.exit(1);
+});
