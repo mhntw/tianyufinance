@@ -254,6 +254,44 @@ const PLAN = [
   }
 ];
 
+/* ---------- 追加 2027 年 1~12 月（跨年：验证年初数滚动）----------
+   模板化：每月固定 7 笔业务，收入逐月递增 1000、成本固定，故利润逐月递增 1000。
+   期望值同样用公式独立推出（不是抄软件的结果）。
+     利润 = 收入 − 成本 − 费用(15000+30000+5000) = (100000+i*1000) − 40000 − 50000 = 10000 + i*1000
+   采购略大于结转成本（cost+5000），避免库存越结越负。 */
+for (let i = 1; i <= 12; i++) {
+  const mo = '2027-' + String(i).padStart(2, '0');
+  const rev = 100000 + i * 1000;
+  const cost = 40000;
+  const buy = cost + 5000;
+  PLAN.push({
+    month: mo,
+    title: '第 ' + i + ' 月（收入 ' + rev + '，利润 ' + (10000 + i * 1000) + '）',
+    vouchers: [
+      [3, '客房收入', [['1002', rev, 0], ['5001', 0, rev]]],
+      [8, '采购入库', [['1405', buy, 0], ['2202', 0, buy]]],
+      [10, '结转成本', [['5401', cost, 0], ['1405', 0, cost]]],
+      [12, '管理费用', [['5602', 15000, 0], ['1002', 0, 15000]]],
+      [15, '计提工资', [['5602', 30000, 0], ['2211', 0, 30000]]],
+      [15, '发放工资', [['2211', 30000, 0], ['1002', 0, 30000]]],
+      [28, '计提折旧', [['5602', 5000, 0], ['1602', 0, 5000]]]
+    ],
+    expect: {
+      rev: rev, cost: cost, exp: 50000, profit: rev - cost - 50000,
+      delta: {
+        '1002': rev - 45000,
+        '1405': buy - cost,
+        '1602': -5000,
+        '2202': -buy,
+        '2211': 0,
+        '5401': cost,
+        '5602': 50000,
+        '5001': -rev
+      }
+    }
+  });
+}
+
 /* ---------- 前置：科目存在性预检 ---------- */
 section('【0】科目存在性预检');
 const NEED = ['1002', '1122', '1405', '1602', '2202', '2211', '5001', '5401', '5602', '5603', '3103', '3104'];
@@ -406,6 +444,146 @@ PLAN.forEach(P => {
 
   monthLog.push({ month: M, rev: P.expect.rev, cost: P.expect.cost, exp: P.expect.exp, profit: P.expect.profit });
 });
+
+/* ============================================================
+ * 跨年验证：2027-01 的「年初数」应等于 2026-12 的「期末数」
+ * ============================================================ */
+console.log('\n═══════════════════════════════════════════════════════════');
+console.log(' 跨年验证：年初数滚动（2027-01 年初数 应 = 2026-12 期末数）');
+console.log('═══════════════════════════════════════════════════════════');
+{
+  const yEnd = '2026-12', yStart = '2027-01';
+  S._glCache = {};
+  const bsEnd = S.balanceSheet(yEnd);
+  S._glCache = {};
+  const bsStart = S.balanceSheet(yStart);
+  const pick = bs => {
+    const o = {};
+    ['asset', 'liability', 'equity'].forEach(side => {
+      ((bs.groups[side] || {}).items || []).forEach(it => { if (it && it.label) o[side + '|' + it.label] = it; });
+    });
+    return o;
+  };
+  const e = pick(bsEnd), s = pick(bsStart);
+  let bad = 0, cmp = 0;
+  Object.keys(e).forEach(k => {
+    if (!s[k]) return;
+    cmp++;
+    const endV = r2(num(e[k].end)), yearV = r2(num(s[k].year));
+    if (Math.abs(endV - yearV) > 0.005) { bad++; console.log('    \x1b[31m✗\x1b[0m ' + k.replace('|', ' / ') + '  2026-12 期末 ' + endV.toFixed(2) + '  →  2027-01 年初 ' + yearV.toFixed(2)); }
+  });
+  ok('全部 ' + cmp + ' 个报表项目的年初数 = 上年期末数', bad === 0 && cmp > 0, cmp === 0 ? '未取到可比项目' : (bad ? ('不一致 ' + bad + ' 项') : ''));
+  const unKey = Object.keys(e).find(k => k.indexOf('未分配利润') >= 0);
+  if (unKey) console.log('    未分配利润：2026-12 期末 ' + r2(num(e[unKey].end)).toFixed(2) + ' → 2027-01 年初 ' + r2(num(s[unKey].year)).toFixed(2) + '（上年利润经年末结转滚入）');
+  // 年初数滚动的严格比法：逐科目比对 —— 2027-01 的「期初余额」应 = 2026-12 的「期末余额」。
+  // 【为什么不用报表 items】balanceSheet 的资产/负债侧 items 不展开 year 字段，
+  //   用它会得到「0 = 0」的空洞断言（曾踩过）。generalLedger 有 obDr/obCr（期初）与 balance（期末），
+  //   逐科目比对最严格，也最能暴露「年初数没滚过来」这类问题。
+  {
+    const e = gl(yEnd), s = gl(yStart);
+    let bad = 0, cmp = 0;
+    e.forEach(re => {
+      const rs = s.find(x => String(x.code) === String(re.code));
+      if (!rs) return;
+      cmp++;
+      const endNet = r2((re.dir === '借' ? 1 : -1) * num(re.balance));
+      const startNet = r2(num(rs.obDr) - num(rs.obCr));
+      if (Math.abs(endNet - startNet) > 0.005) {
+        bad++;
+        if (bad <= 5) console.log('    \x1b[31m✗\x1b[0m ' + re.code + ' ' + (re.name || '') + '  2026-12 期末 ' + endNet.toFixed(2) + ' → 2027-01 期初 ' + startNet.toFixed(2));
+      }
+    });
+    ok('全部 ' + cmp + ' 个科目：2027-01 期初余额 = 2026-12 期末余额', bad === 0 && cmp > 200,
+      bad ? ('不一致 ' + bad + ' 项') : ('共 ' + cmp + ' 个科目'));
+  }
+  S._glCache = {};
+  const bs1 = S.balanceSheet(yStart);
+  ok('2027-01 资产负债表平衡', Math.abs(r2(num(bs1.totalAsset) - num(bs1.totalLiability) - num(bs1.totalEquity))) < 0.005);
+}
+
+/* ============================================================
+ * 异常场景专项（2028-01）：删除/还原 / 红冲 / 反结账后修改
+ * ============================================================ */
+console.log('\n═══════════════════════════════════════════════════════════');
+console.log(' 异常场景专项（2028-01）');
+console.log('═══════════════════════════════════════════════════════════');
+{
+  const XM = '2028-01';
+  const mk = (day, sum, entries) => ({
+    word: '记', date: XM + '-' + day, summary: sum, attach: 0,
+    entries: entries.map(e => ({ code: e[0], name: (S.subject(e[0]) || {}).name || '', dr: e[1], cr: e[2] }))
+  });
+
+  section('【A】删除 → 账簿应立即排除 → 还原 → 应完全恢复');
+  const vA = S.addVoucher(mk('05', '临时测试凭证', [['1002', 1234.56, 0], ['5001', 0, 1234.56]]));
+  ok('A1 凭证录入成功', vA && vA.ok !== false);
+  eqAmt('A2 录入后 1002 本期变动 +1234.56', periodDelta(XM, '1002'), 1234.56);
+  const delR = S.removeVoucher(vA.id);
+  ok('A3 凭证已软删除', delR && delR.ok !== false, (delR && delR.msg) || '');
+  eqAmt('A4 删除后 1002 本期变动归零（账簿已排除）', periodDelta(XM, '1002'), 0);
+  ok('A5 凭证进入回收站', (S.deletedVouchers() || []).some(v => v.id === vA.id));
+  S._glCache = {};
+  const bsDel = S.balanceSheet(XM);
+  ok('A6 删除后资产负债表仍平衡', Math.abs(r2(num(bsDel.totalAsset) - num(bsDel.totalLiability) - num(bsDel.totalEquity))) < 0.005);
+  const resR = S.restoreVoucher(vA.id);
+  ok('A7 凭证还原成功', resR && resR.ok !== false, (resR && resR.msg) || '');
+  eqAmt('A8 还原后 1002 本期变动恢复 +1234.56', periodDelta(XM, '1002'), 1234.56);
+  const delR2 = S.removeVoucher(vA.id);
+  ok('A9 再次删除（清理，避免影响后续）', delR2 && delR2.ok !== false);
+  eqAmt('A10 清理后 1002 本期变动归零', periodDelta(XM, '1002'), 0);
+
+  section('【B】红字冲销：一正一负，净额应为 0');
+  const vB1 = S.addVoucher(mk('06', '计提费用', [['5602', 8888, 0], ['1002', 0, 8888]]));
+  const vB2 = S.addVoucher(mk('07', '红冲上述费用', [['5602', -8888, 0], ['1002', 0, -8888]]));
+  ok('B1 正负两张均被接受（软件支持红字负数）', !!(vB1 && vB1.ok !== false && vB2 && vB2.ok !== false));
+  eqAmt('B2 红冲后 5602 净额 = 0', periodDelta(XM, '5602'), 0);
+  eqAmt('B3 红冲后 1002 净额 = 0', periodDelta(XM, '1002'), 0);
+  S.removeVoucher(vB1.id); S.removeVoucher(vB2.id);
+
+  section('【C】反结账 → 修改凭证 → 重新结账');
+  S.addVoucher(mk('10', '客房收入', [['1002', 10000, 0], ['5001', 0, 10000]]));
+  S.addVoucher(mk('28', '计提折旧', [['5602', 2000, 0], ['1602', 0, 2000]]));
+  let cfx = S.carryForwardProfit(XM);
+  ok('C1 结转损益', cfx && cfx.ok !== false);
+  ok('C2 结转后利润 ≠ 0（先记录基准）', Math.abs(periodDelta(XM, '3103')) > 0.005, '3103 变动 ' + periodDelta(XM, '3103').toFixed(2));
+  let cx = S.closePeriod(XM);
+  if (cx && cx.ok === false && cx.warnOnly) cx = S.closePeriod(XM, { force: true });
+  ok('C3 结账成功', cx && cx.ok !== false, (cx && cx.msg) || '');
+  ok('C4 结账后不可修改凭证', (function () {
+    const vs = S.periodVouchers(XM).filter(v => !v.kind);
+    if (!vs.length) return false;
+    const r = S.updateVoucher(vs[0].id, { word: vs[0].word, no: vs[0].no, date: vs[0].date, entries: [{ code: '1002', dr: 5, cr: 0 }, { code: '5001', dr: 0, cr: 5 }] });
+    return !!(r && r.ok === false);
+  })());
+  const closedProfit = -r2(periodDelta(XM, '3103'));      // 结转后 3103 贷方增加 → 取负得利润
+  const reR = S.reopenPeriod(XM, '模拟：需修正一笔凭证');
+  ok('C5 反结账成功', reR && reR.ok !== false, (reR && reR.msg) || '');
+  ok('C6 该期不再处于已结账', !S.isPeriodClosed(XM));
+  S.periodVouchersOfKind(XM, 'carryPL').forEach(v => S.removeVoucher(v.id));   // 先清旧结转，避免重复结转
+  const revV = S.periodVouchers(XM).filter(v => !v.kind).find(v => String(v.summary || '').indexOf('客房收入') >= 0);
+  if (!revV) {
+    ok('C7 找到待修改凭证', false, '未在期间凭证中找到「客房收入」');
+  } else {
+    const upR = S.updateVoucher(revV.id, {
+      word: revV.word, no: revV.no, date: revV.date, summary: revV.summary,
+      entries: [{ code: '1002', name: '银行存款', dr: 12000, cr: 0 }, { code: '5001', name: '主营业务收入', dr: 0, cr: 12000 }]
+    });
+    ok('C7 反结账后修改凭证成功（10000 → 12000）', upR && upR.ok !== false, (upR && upR.msg) || '');
+    eqAmt('C8 修改后 1002 本期变动 = 12000', periodDelta(XM, '1002'), 12000);
+    cfx = S.carryForwardProfit(XM);
+    ok('C9 重新结转损益', cfx && cfx.ok !== false);
+    const newProfit = -r2(periodDelta(XM, '3103'));
+    eqAmt('C10 结转后利润 = 12000 − 2000(折旧) = 10000', newProfit, 10000);
+    ok('C11 利润确实变了（原 ' + closedProfit + ' → 现 ' + newProfit + '）', Math.abs(newProfit - closedProfit) >= 0.005);
+    let cx2 = S.closePeriod(XM);
+    if (cx2 && cx2.ok === false && cx2.warnOnly) cx2 = S.closePeriod(XM, { force: true });
+    ok('C12 重新结账成功', cx2 && cx2.ok !== false, (cx2 && cx2.msg) || '');
+    ok('C13 该期重新进入已结账', S.isPeriodClosed(XM));
+    S._glCache = {};
+    const bsX = S.balanceSheet(XM);
+    ok('C14 异常操作后资产负债表仍平衡', Math.abs(r2(num(bsX.totalAsset) - num(bsX.totalLiability) - num(bsX.totalEquity))) < 0.005);
+  }
+}
 
 /* ---------- 汇总 ---------- */
 console.log('\n═══════════════════════════════════════════════════════════');
