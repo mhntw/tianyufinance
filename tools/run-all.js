@@ -7,15 +7,20 @@
  *   · CI 里更是干脆一个都不跑 —— 于是 2 个测试长期失败而无人察觉
  *     （2026-09-19 才被发现并修复）。测试写了不跑，等于没写。
  *
- * 本脚本只收「无参数、可独立运行」的三类脚本：
+ * 本脚本只收「无参数、可独立运行」的四类脚本：
  *   test_*.js    单元/集成测试
  *   verify_*.js  不变量与跨模块一致性验证
  *   check_*.js   静态契约检查（源码层面的规则）
+ *   sim_*.js     模拟记账验证（在真实账套副本上记账；无账套时自行跳过）
  *
  * 刻意**不**收录：
  *   _diag_*.js     诊断脚本，需按场景手工传参（且已被 .gitignore 忽略）
  *   audit_*.js     审计报告类，面向具体账套数据，输出非 pass/fail
  *   export_*.js    导出工具，有副作用
+ *
+ * 【sim_*.js 为什么可以进 CI】它们依赖本机存在账套，但脚本内已做
+ * 「无账套即打印说明并返回 0」的处理 —— CI（ubuntu-latest）无账套时自动跳过，
+ * 不会把「环境缺样本」误报成「测试失败」。本机有账套时会真正执行。
  *
  * 用法：
  *   node tools/run-all.js          全部跑一遍
@@ -31,7 +36,7 @@ const ROOT = path.resolve(__dirname, '..');
 const QUIET = process.argv.includes('--quiet');
 
 const scripts = fs.readdirSync(__dirname)
-  .filter(n => /^(test|verify|check)_.*\.js$/.test(n))
+  .filter(n => /^(test|verify|check|sim)_.*\.js$/.test(n))
   .sort();
 
 let pass = 0, fail = 0;

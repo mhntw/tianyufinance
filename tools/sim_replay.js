@@ -45,17 +45,26 @@ function booksDir() {
   if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
   return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
 }
+// 返回最新账套路径；找不到返回 null，由调用方决定「跳过」。
+// 【为什么返回 null 而不是 exit(1)】本脚本要进 run-all.js 回归与 CI
+// （ubuntu-latest 上没有账套），若直接 exit(1) 会把「环境缺样本」误报成
+// 「测试失败」，让 CI 永久变红、进而使人对红色告警脱敏 —— 得不偿失。
 function newestBook() {
   const dir = booksDir();
-  if (!fs.existsSync(dir)) { console.error('账套目录不存在：' + dir); process.exit(1); }
+  if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.includes('.bak'))
     .map(f => ({ p: path.join(dir, f), m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m);
-  if (!files.length) { console.error('无账套文件'); process.exit(1); }
-  return files[0].p;
+  return files.length ? files[0].p : null;
 }
 
 const BOOK_FILE = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[2] : newestBook();
 const SEED = Number(process.argv[3]) || 20260920;
+if (!BOOK_FILE) {
+  console.log('跳过：未找到账套（' + booksDir() + '）');
+  console.log('本脚本重放【真实凭证】，需要至少一个账套作为样本。');
+  console.log('无账套的环境（如 CI）自动跳过，返回 0，不计为失败。');
+  process.exit(0);
+}
 const RAW = fs.readFileSync(BOOK_FILE, 'utf8');
 const MD5_BEFORE = crypto.createHash('md5').update(RAW).digest('hex');
 

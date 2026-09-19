@@ -3,21 +3,57 @@ const path = require('path');
 const fs = require('fs');
 
 global.window = global;
-global.navigator = { userAgent: 'node' };
+// Node 21+ 内置了只读的 navigator，直接赋值会抛 TypeError
+try { global.navigator = { userAgent: 'node' }; } catch (e) { /* 已有只读内置 */ }
 const _store = {};
 global.localStorage = { getItem:k=>_store[k]||null, setItem:(k,v)=>{_store[k]=String(v);}, removeItem:k=>{delete _store[k];} };
-global.document = { getElementById:()=>null, querySelector:()=>null, querySelectorAll:()=>[], createElement:()=>({style:{},appendChild(){},setAttribute(){}}), addEventListener(){} };
+global.document = { getElementById:()=>null, querySelector:()=>null, querySelectorAll:()=>[], createElement:()=>({style:{},appendChild(){},setAttribute(){},classList:{add(){},remove(){}}}), addEventListener(){} };
 global.fetch = () => Promise.reject(new Error('no network'));
 global.indexedDB = undefined;
+if (typeof global.isTauri === 'undefined') global.isTauri = false;
+
+/* 账套目录解析：桌面应用数据目录 > 项目内 data/books（开发态）
+   【为什么必须探测】原先只写死 'data/books/添钰来客_...json'，而桌面版账套在
+   系统应用数据目录 —— 该路径恒 ENOENT，脚本根本跑不起来（与 audit_books.js 曾犯的
+   是同一个错：自检脚本跑不起来＝没有）。 */
+function booksDir() {
+  const os = require('os');
+  const home = os.homedir();
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', '添钰财务', 'books');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
+}
+function newestBook() {
+  const dirs = [booksDir(), path.join(__dirname, '..', 'data', 'books')];
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.includes('.bak'))
+      .map(f => ({ p: path.join(dir, f), m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m);
+    if (files.length) return files[0].p;
+  }
+  return null;
+}
+const FILE = newestBook();
+if (!FILE) {
+  console.log('跳过：未找到账套；本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0。');
+  process.exit(0);
+}
 
 require(path.join(__dirname, '..', 'js', 'store.js'));
 const S = global.S;
+// 封死写盘：本脚本在账套副本上调用真实 addVoucher（其内部会 persist），必须拦掉
+S.persist = function () { };
+S.save = function () { return Promise.resolve(); };
+S.addLog = function () { };
+S.backupNow = function () { return Promise.resolve(true); };
+if (global.Storage) {
+  global.Storage.saveBook = function () { return Promise.resolve({ ok: true }); };
+  global.Storage.saveBackup = function () { return Promise.resolve({ ok: true }); };
+}
 
-// 用真实 26 年原账套（酒店业，科目用 5xxx 小企业准则）
-const FILE = 'data/books/添钰来客_2026年_金蝶KIS格式_1787294859054.json';
 const base = JSON.parse(fs.readFileSync(FILE, 'utf8'));
 const st = JSON.parse(JSON.stringify(base)); // 深拷贝，保护原文件
-S.state = st; S._glCache = {}; S.normalizeState(); S.ensureCashFlowFields();
+S.state = st; S.bookId = '__SIM_VOUCHERS_NEVER_SAVE__'; S._glCache = {}; S.normalizeState(); S.ensureCashFlowFields();
 
 const num = x => { x=Number(x); return isNaN(x)?0:x; };
 const EPS = 0.005; const eq = (a,b)=>Math.abs(a-b)<EPS;
