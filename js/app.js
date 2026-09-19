@@ -25,7 +25,6 @@
         hasDialogBridge: !!window.__dialogBridge,
         hasXLSX: typeof window.XLSX !== 'undefined'
       };
-      console.log('[self-check]', JSON.stringify(info));
       window.__TY_SELFCHECK__ = info;
       if (window.__TAURI__ && !window.__fileSaveBridge) {
         console.error('[self-check] 致命：__fileSaveBridge 未加载，导出/打印将失效！请检查 index.html 是否引入了 js/file-save-bridge.js');
@@ -1052,12 +1051,7 @@
       '<div class="nav-op-btn" id="navCollapseBtn" title="收起导航">' +
         '<svg class="nav-op-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="12" x2="3" y2="12"/><polyline points="8,7 3,12 8,17"/></svg>' +
       '</div>';
-    // 侧栏底部版权署名：极简灰色小字，任何页面可见；邮箱/版本号等详细信息统一在设置页「关于」卡。
-    var author = document.createElement('div');
-    author.className = 'nav-author';
-    author.innerHTML = '<div class="nav-author-line">©诗和远方</div>';
     nav.appendChild(op);
-    nav.insertBefore(author, op);
     // hover 绑定：进入标题即把该组数据交给单例浮层渲染显示，离开再延时隐藏。
     // 单例浮层物理上只有一个 DOM 节点，从根上保证「同一时刻只显示一个预览气泡」。
     nav.querySelectorAll('.nav-group').forEach(function (group, idx) {
@@ -1164,6 +1158,19 @@
 
     // 首页域逻辑已迁移至 js/pages/home/Home.js（globalThis.__HOME__），此处委托。
     var hm = globalThis.__HOME__ || {};
+
+    // --- 内联事件处理器移除后的委托绑定（B1 收敛） ---
+    // .vf-edit-maker 无实际 JS 行为，仅阻止 <a href="#"> 跳转
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('.vf-edit-maker')) { e.preventDefault(); }
+    });
+    // 总账 "展开所有级次" checkbox
+    var glExp = $('glExpandAll');
+    if (glExp) glExp.addEventListener('change', function () { if (globalThis.__renderGl) globalThis.__renderGl(); });
+    // 费用明细表 4 个报表选项 checkbox（函数由页面模块在 bindED 中挂到 window）
+    ['edOptYearTotal','edOptRatio','edOptExpand','edOptZero'].forEach(function (id) {
+      var el = $(id); if (el) el.addEventListener('change', function () { if (window.__edOptChange) window.__edOptChange(); });
+    });
   });
 
 
@@ -1876,6 +1883,8 @@
 
   // 系统设置（数据与安全已并入）：参数区 __renderSystemSettings + 数据/账套区 __renderBackup
   function refreshSettingsAll() {
+    /* 渲染失败必须留痕：静默 catch 会让「设置页空白」变成无从排查的问题（用户只看到空白）。
+       这里保留 console.warn 只在**出错路径**触发，不影响正常时的控制台噪音。 */
     if (globalThis.__renderSystemSettings) { try { globalThis.__renderSystemSettings(); } catch (e) { console.warn('[设置页刷新]', e); } }
     if (globalThis.__renderBackup) { try { globalThis.__renderBackup(); } catch (e) { console.warn('[数据区刷新]', e); } }
   }

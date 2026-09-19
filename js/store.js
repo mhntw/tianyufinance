@@ -184,7 +184,15 @@
   // 金额分位精度归一（会计金额精确到分）。消除二进制浮点累加误差（如 0.1+0.2），
   // 金额统一按 decimal 分位精度处理。用于新生成金额（调汇/结转）及对外输出金额。
   function round2(n) { var v = Number(n); if (isNaN(v)) v = 0; return Math.round(v * 100) / 100; }
-  var EPS = 0.005; // 金额相等容差（半分），用于借贷平衡/结转阈值/零值判定，全局统一避免散落硬编码
+  /* 金额相等容差（半分 = 0.005 元），用于借贷平衡 / 结转阈值 / 零值判定，全局统一避免散落硬编码。
+   *
+   * 【为什么必须是半分而不能是 1 分】金额一律精确到「分」，两笔金额之差必然是 0.01 的整数倍。
+   *   · EPS = 0.005 → 只有差 0 才判「相等」（差 1 分即 0.01 > 0.005，判为不等）；✓ 严格
+   *   · EPS = 0.01  → 差 1 分（0.01 <= 0.01）也会被判「相等」；✗ 放行真实的 1 分不平
+   * 后者会让「借贷差 1 分」「期初差 1 分」的凭证与账套悄悄通过校验，误差逐月累积到年末变成数元。
+   * 财务软件的平衡校验必须严格，容差只用来吸收「二进制浮点」的表示误差 —— 而那种误差由
+   * 比较前的 round2 消除（见 voucherBalance / openingBalanceCheck），不需要靠放大 EPS 兜底。 */
+  var EPS = 0.005;
   // 相差整月数（b - a），a/b 均为 'YYYY-MM' → 返回 number。
   // 注意与紧随其后的 monthList 区分：那个返回「月份列表」(array)。
   // 此前两者同名 monthsBetween 却有三种语义并存（本文件差月数 / report._shared.js 列表 /
@@ -756,15 +764,22 @@
       }
       // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/添钰财务/backups，环形保留）。
       // 桌面版数据即文件，无需浏览器缓存兜底。
+      // 备份失败连续 ≥3 次时，复用主账本保存失败的 UI 横幅告警——磁盘满/权限等问题
+      // 若长期静默，用户以为有备份实际没有，丢失数据后才发现为时已晚。
       try {
         var doAutoBk = function (st) {
           self._bkInFlight = true; // 在途标记：供页面关闭兜底（_flushOnExit）识别尾发尚未完成
           if (typeof window.Storage !== 'undefined') {
             return window.Storage.saveBackup(bid, st).then(function () {
               self._bkInFlight = false;
+              if (self._bkFailCount) { self._bkFailCount = 0; } // 成功则清零失败计数
             }).catch(function (e) {
-              console.warn('[persist] 自动备份失败：' + (e && e.message || e));
               self._bkInFlight = false;
+              self._bkFailCount = (self._bkFailCount || 0) + 1;
+              console.warn('[persist] 自动备份失败（第 ' + self._bkFailCount + ' 次）：' + (e && e.message || e));
+              if (self._bkFailCount >= 3 && typeof window.__onPersistError === 'function') {
+                try { window.__onPersistError('自动备份连续失败 ' + self._bkFailCount + ' 次，请检查磁盘空间/权限', self._bkFailCount); } catch (_) {}
+              }
             });
           }
           self._bkInFlight = false;
@@ -1226,8 +1241,7 @@
       var s = {
         code: code, name: name.trim(), cls: cls2, normal: ACCOUNT_CLASSES[cls2].normal,
         level: level, parent: parent ? parent.code : '',
-        qty: false, unit: '',
-        enabled: true // 历史字段：科目「停用」功能已下线，此字段仅为旧账套数据兼容保留，不再参与任何判断
+        qty: false, unit: ''
       };
       if (extra) {
         if (extra.qty) { s.qty = true; s.unit = String(extra.unit || '').trim(); }
@@ -1308,7 +1322,10 @@
         if (s.normal === 'dr') totalDr += num(o.dr) - num(o.cr);
         else totalCr += num(o.cr) - num(o.dr);
       });
-      return { dr: totalDr, cr: totalCr, balanced: Math.abs(totalDr - totalCr) < EPS };
+      // 与 voucherBalance 同口径：先 round2 消除累加浮点误差，再比 EPS。
+      // 不加 round2 时，0.1+0.2 这类累加会留下 0.30000000000000004，使「差 0」被误判成不相等。
+      var drR = round2(totalDr), crR = round2(totalCr);
+      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) <= EPS };
     },
 
     /* ===================== 凭证 ===================== */
@@ -1358,14 +1375,23 @@
         return { ok: false, msg: '凭证日期（' + _month + '）不能晚于当前月份（' + _cur + '）' };
 
       v.word = v.word || this.state.param.voucherWord || '记';
-      v.no = v.no || this.nextVoucherNo(v.word, _month);
-      // 凭证字号唯一性校验：同月同凭证字下字号不可重复（含已软删凭证——号一旦签发就永不回收，保持审计链条完整）
-      var _dup = (this.state.vouchers || []).filter(function (x) {
-        return (x.word || '记') === v.word
-          && String(x.no) === String(v.no) && voucherMonth(x) === _month;
-      });
-      if (_dup.length) {
-        return { ok: false, msg: '同月同凭证字下已存在字号 ' + v.word + '-' + v.no + ' 的凭证，请修改凭证号' };
+      // 凭证号自动生成：若用户未显式指定 no，则用 nextVoucherNo 取最大号+1；
+      // 若唯一性校验失败（并发/导入批量场景），自动重试最多 3 次再报错，
+      // 避免用户已填好的分录数据因撞号被整批作废。用户显式指定 no 时不自动重试。
+      var _userSpecifiedNo = (v.no != null);
+      if (!_userSpecifiedNo) v.no = this.nextVoucherNo(v.word, _month);
+      var _retryCount = 0;
+      while (true) {
+        var _dup = (this.state.vouchers || []).filter(function (x) {
+          return (x.word || '记') === v.word
+            && String(x.no) === String(v.no) && voucherMonth(x) === _month;
+        });
+        if (!_dup.length) break;
+        if (_userSpecifiedNo || _retryCount >= 3) {
+          return { ok: false, msg: '同月同凭证字下已存在字号 ' + v.word + '-' + v.no + ' 的凭证，请修改凭证号' };
+        }
+        _retryCount++;
+        v.no = this.nextVoucherNo(v.word, _month); // 撞号后重新取下一个
       }
       // 凭证 id 必须与 ensureVoucherIds() 的口径完全一致（word-no，重复则加 -N 后缀），
       // 否则「新增时用 V+时间戳、账套重新加载时被改成 word-no」会让 id 变化，
@@ -1481,6 +1507,11 @@
       this.state.vouchers.forEach(function (x, i) { if (x.id === id) idx = i; });
       if (idx < 0) return { ok: false, msg: '凭证不存在' };
       if (this.state.vouchers[idx].deleted === 'y') return { ok: false, msg: '凭证已删除，请先还原再修改' };
+      // 借贷平衡校验（与 addVoucher 口径完全一致）：修改也不能改成不平衡
+      var bal = this.voucherBalance(v.entries);
+      if (!bal.balanced) {
+        return { ok: false, msg: '借贷不平衡，无法保存（借 ' + round2(bal.dr) + ' / 贷 ' + round2(bal.cr) + '）' };
+      }
       if (this.isPeriodClosed(voucherMonth(this.state.vouchers[idx])))
         return { ok: false, msg: '该凭证所在月份已结账，不可修改' };
       // 凭证字号唯一性校验（编辑场景）：仅当用户实际改变了字/号/月份时才校验，
@@ -1518,14 +1549,23 @@
         }
       }
       // 审计留痕：先快照修改前值，再应用修改
-      var before = this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || '');
+      var _oldVoucher = this.state.vouchers[idx];
+      var before = _oldVoucher.word + '-' + _oldVoucher.no + ' ' + (_oldVoucher.summary || '');
+      // 分录级快照：记录修改前后借贷合计，便于审计追查"改了多少"
+      var oldDr = round2(_oldVoucher.entries.reduce(function (s, e) { return s + num(e.dr); }, 0));
+      var oldCr = round2(_oldVoucher.entries.reduce(function (s, e) { return s + num(e.cr); }, 0));
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
+      var newDr = round2(v.entries.reduce(function (s, e) { return s + num(e.dr); }, 0));
+      var newCr = round2(v.entries.reduce(function (s, e) { return s + num(e.cr); }, 0));
       this.state.vouchers[idx] = Object.assign(this.state.vouchers[idx], v, { id: id });
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存
       this.persist();
-      this.addLog('修改凭证', this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || ''), '凭证',
-        null, before, this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + (this.state.vouchers[idx].summary ? ' ' + this.state.vouchers[idx].summary : ''),
-        { id: id, action_type: 'update', target_name: this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no, result: 'success' });
+      var after = this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || '');
+      this.addLog('修改凭证', after, '凭证',
+        null, before, after,
+        { id: id, action_type: 'update', target_name: this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no, result: 'success',
+          beforeDr: oldDr, beforeCr: oldCr, afterDr: newDr, afterCr: newCr,
+          beforeEntries: _oldVoucher.entries.length, afterEntries: v.entries.length });
       return { ok: true };
     },
     getVoucher: function (id) {
@@ -1786,7 +1826,10 @@
     voucherBalance: function (entries) {
       var dr = 0, cr = 0;
       (entries || []).forEach(function (e) { dr += num(e.dr); cr += num(e.cr); });
-      return { dr: dr, cr: cr, balanced: Math.abs(dr - cr) < EPS };
+      // 合计后 round2 消除二进制浮点累积误差（0.1+0.1+...≠1.0），再与 EPS 比较。
+      // diff 也要 round2：Math.abs(100-100.01)=0.010000000000005116 ≠ 0.01，直接比会越过 EPS。
+      var drR = round2(dr), crR = round2(cr);
+      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) <= EPS };
     },
 
     /* ===================== 运行期自检（防算错） =====================
@@ -2134,6 +2177,20 @@
       };
       var doSave = function (entries) {
         if (!entries.length) return null;
+        // 结转凭证 entries 由程序生成，理论上借贷平衡；但若前面科目汇总存在 rounding 误差，
+        // 最后一条「本年利润」分录的金额可能与汇总项差几分钱，导致 addVoucher 拒绝。
+        // 这里做一次预检：若发现不平衡，调整最后一条 entries 的金额让它平衡（plug 分录）。
+        var _bal = self.voucherBalance(entries);
+        if (!_bal.balanced) {
+          var _diff = round2(_bal.dr - _bal.cr);
+          var _last = entries[entries.length - 1];
+          if (_diff > 0) _last.cr = round2(num(_last.cr) + _diff);   // 借 > 贷 → 补贷
+          else if (_diff < 0) _last.dr = round2(num(_last.dr) - _diff); // 贷 > 借 → 补借
+          // 必须留痕：plug 会**悄悄改变金额**，若汇总环节真有错会被它掩盖。
+          // 差几分属正常的逐科目 round2 累积，差到「元」级则说明汇总有问题，需人工核查。
+          var _msg = '[结转] 损益结转借贷差 ' + _diff.toFixed(2) + ' 元，已调整末笔分录配平';
+          console.warn(_msg + (Math.abs(_diff) >= 1 ? '（差额较大，请核查科目汇总！）' : ''));
+        }
         var v = Object.assign({}, baseV, { entries: entries });
         v.summary = opts.summary || ('结转' + month + '损益');
         var r = self.addVoucher(v);
@@ -2322,16 +2379,25 @@
     // 结账前检查清单（损益结转 + 借贷平衡是硬性条件；
     // 折旧/调汇/税费等启用的期末处理模板为提示项，未完成时结账需确认）。
     // 返回 [{ key, label, status: 'ok'|'fail'|'warn', tip }]
+    // 部分 fail 项（vbal/ghost）属于硬错误，**不可被 checkOverrides 降级**——
+    // 借贷不平或存在幽灵科目的账绝对不能结账，用户强制也不行。
+    // 其余 fail 项（结转损益/本年利润等）可通过 checkOverrides 降级为 warn，
+    // 再由 opts.force 跳过——给极端场景（如导入账套无损益结转结构）留口子。
     settleChecklist: function (month) {
       var self = this;
+      // 硬错误键：绝对不可被降级的检查项
+      var NON_OVERRIDABLE_KEYS = { vbal: true, ghost: true };
       var vs = this.periodVouchers(month);
       var est = this.profitStatement(month);
       var checks = [];
       function add(key, label, status, tip) {
         var ov = (self.state.param && self.state.param.checkOverrides) || {};
         var o = ov[key];
-        if (o === 'warn' && status === 'fail') status = 'warn';   // 降级为提醒
-        if (o === 'block' && status === 'warn') status = 'fail';  // 升级为拦截
+        // 硬错误键不可被降级
+        if (!NON_OVERRIDABLE_KEYS[key]) {
+          if (o === 'warn' && status === 'fail') status = 'warn';   // 降级为提醒
+          if (o === 'block' && status === 'warn') status = 'fail';  // 升级为拦截
+        }
         checks.push({ key: key, label: label, status: status, tip: tip });
       }
       // 期末处理凭证是否已生成：一律按 v.kind 判定（结构识别，兼容导入的无摘要凭证）。

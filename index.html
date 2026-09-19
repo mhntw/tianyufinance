@@ -358,7 +358,7 @@
           <div class="voucher-footer">
             <div class="vf-left">
               <span class="vf-maker">制单人：<span id="vMakerName">会计</span></span>
-              <a href="#" class="vf-edit-maker" onclick="return false;">✎</a>
+              <a href="#" class="vf-edit-maker">✎</a>
             </div>
           </div>
         </div>
@@ -416,11 +416,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 风险检测报告 / 跨年一致性校验报告的「Modal 版」弹窗已于 2026-09-18 移除。
-           它们已被设置页内的卡片版取代（healthCheckCard / yearBoundaryCard，元素 id 一律带 InPage 后缀），
-           而 Modal 版全项目再无任何代码引用 —— 是永远打不开的死代码，其内的 × 与「关闭」按钮
-           自然也永不生效（静态扫描曾把它们报成"4 个关闭按钮无效"，实为整个弹窗已废弃）。 -->
 
       <!-- 凭证回收站（软删除还原入口）-->
       <div class="modal" id="recycleBinModal">
@@ -523,7 +518,7 @@
               <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
             </div>
             <span id="glFilterHint" class="gl-filter-hint" hidden></span>
-            <label class="chk"><input type="checkbox" id="glExpandAll" checked onchange="__renderGl()"> 展开所有级次</label>
+            <label class="chk"><input type="checkbox" id="glExpandAll" checked> 展开所有级次</label>
             <label class="chk"><input type="checkbox" id="glHideZero"> 隐藏零行</label>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnGlExport">导出</button>
@@ -1370,10 +1365,10 @@
                 </div>
               </div>
             </div>
-            <label class="chk"><input type="checkbox" id="edOptYearTotal" checked onchange="__edOptChange()"> 年度合计</label>
-            <label class="chk"><input type="checkbox" id="edOptRatio" onchange="__edOptChange()"> 显示同环比</label>
-            <label class="chk"><input type="checkbox" id="edOptExpand" checked onchange="__edOptChange()"> 展开所有级次</label>
-            <label class="chk"><input type="checkbox" id="edOptZero" onchange="__edOptChange()"> 展示零值科目</label>
+            <label class="chk"><input type="checkbox" id="edOptYearTotal" checked> 年度合计</label>
+            <label class="chk"><input type="checkbox" id="edOptRatio"> 显示同环比</label>
+            <label class="chk"><input type="checkbox" id="edOptExpand" checked> 展开所有级次</label>
+            <label class="chk"><input type="checkbox" id="edOptZero"> 展示零值科目</label>
             <button class="btn" id="btnEdPrint" data-print>打印</button>
             <button class="btn" id="btnEdExport">导出</button>
         </div>
@@ -1605,7 +1600,7 @@
               <span class="about-label">源码</span>
               <a class="about-link" id="aboutGitHub" target="_blank">GitHub · 查看所有版本</a>
             </div>
-            <div class="about-copy">© 2024-2026 添钰财务管理系统</div>
+            <div class="about-copy">© 2026 诗和远方</div>
           </div>
         </div>
 

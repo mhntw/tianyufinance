@@ -4705,7 +4705,6 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   padding: 8px;
   min-width: 240px;
 }
-.settle-year-picker-inner { }
 .settle-year-picker-head {
   display: flex;
   align-items: center;
@@ -5496,7 +5495,6 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 .sys-tab.active::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--ty-blue); border-radius: 2px;
 }
-.sys-pane { }
 
 /* 表格内紧凑输入/下拉 */
 .input-sm { width: 120px; height: 26px; padding: 0 6px; font-size: var(--fs-xs); border: 1px solid var(--ty-border-2); border-radius: 3px; outline: none; }
@@ -5735,7 +5733,6 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 #origGrid .empty { text-align: center; color: var(--ty-text-3); padding: 40px 0; }
 
 .orig-pagination { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--ty-border); background: var(--ty-white); font-size: var(--fs-xs); color: var(--ty-text-2); }
-.orig-pagination .orig-total { }
 .orig-pagination .orig-pages { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
 .orig-pagination .orig-pages li button { min-width: 26px; height: 26px; border: 1px solid var(--ty-border); background: var(--ty-white); border-radius: 3px; cursor: pointer; color: var(--ty-text-2); }
 .orig-pagination .orig-pages li.active button { border-color: var(--ty-blue); color: var(--ty-blue); background: rgba(47, 149, 255,.06); }
