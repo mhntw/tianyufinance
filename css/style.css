@@ -873,7 +873,7 @@ section.page > .page-actions {
 /* 筛选项内的 select 走全局基类（select:not([class]）：自适应宽度+统一 min/max），
    此处不再为 select 重复定义宽度；仅 input 保留最小宽 */
 .filter-item input[type="text"],
-.filter-item input[type="number"] { height: 30px; min-width: 96px; border: 1px solid var(--ty-border-2); border-radius: 4px; padding: 0 6px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
+.filter-item input[type="number"] { height: 28px; min-width: 96px; border: 1px solid var(--ty-border-2); border-radius: 4px; padding: 0 6px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
 .filter-item select[multiple] { height: auto; min-height: 28px; padding: 2px 4px; }
 /* 裸 select（报表筛选期间/科目等）宽度已并入上方全局基类（select:not([class])），
    此处仅保留焦点态边框 */
@@ -935,10 +935,13 @@ select:not([class]):focus { border-color: var(--ty-blue); }
  * ============================================================ */
 .btn {
   width: auto;            /* 自适应：按文字内容自然伸缩 */
-  /* 高度统一为 30px（2026-09-20）——
+  /* 高度统一为 28px（2026-09-20）——
      此前按钮 28px，而期间选择器 / 下拉 / .inp 输入框都是 30px，同一行并排就看出高矮不一。
-     取 30px 而非把别处压到 28px：30px 是多数派（表单控件侧），且按钮与它们同排时对齐更自然。 */
-  height: 30px;
+     先试过统一到 30px，但按钮观感偏高；最终改为统一到 28px —— 并把 .inp / .inp-sel /
+     .ty-period-trigger / .ty-subject-range 等表单控件一并降到 28px，全站保持同一高度。
+     顶栏的 .topbar-search-btn（30×30 方形图标按钮）与 .topbar-brand-ico 不动：它们是图标类，
+     不是表单控件，且改成 28 会破坏正方形比例。 */
+  height: 28px;
   min-width: 60px;        /* 极短文字不缩没 */
   max-width: 100%;        /* 超长文字不撑破容器 */
   padding: 0 14px;
@@ -1009,7 +1012,7 @@ select:not([class]):focus { border-color: var(--ty-blue); }
  * 表单控件
  * ============================================================ */
 .inp {
-  height: 30px;
+  height: 28px;
   padding: 0 8px;
   font-size: var(--fs-xs);
   font-family: inherit;
@@ -1039,7 +1042,7 @@ select:not([class]):focus { border-color: var(--ty-blue); }
 select.inp,
 select:not([class]),
 .inp-sel {
-  height: 30px;
+  height: 28px;
   padding: 0 6px;
   font-size: var(--fs-xs);
   font-family: inherit;
@@ -1130,7 +1133,7 @@ select:not([class]),
    max-width 视口兜底防屏幕边缘溢出 */
 .ed-subj-select { position: relative; display: inline-block; width: auto; min-width: 120px; max-width: 100%; }
 .ed-subj-trigger {
-  position: relative; height: 30px; min-height: 30px; padding: 0 22px 0 0;
+  position: relative; height: 28px; min-height: 28px; padding: 0 22px 0 0;
   background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: pointer; display: flex; align-items: stretch;
 }
@@ -2688,7 +2691,7 @@ label.req::before {
 }
 .settle-tmpl-form .inp {
   width: 220px;
-  height: 30px;
+  height: 28px;
   font-size: var(--fs-sm);
 }
 /* 结转成本预估/凭证设置：子标题 + 提示小字（subTitle） */
@@ -2768,7 +2771,7 @@ label.req::before {
 .settle-tmpl-new-name .inp {
   flex: 1;
   max-width: 420px;
-  height: 30px;
+  height: 28px;
   font-size: var(--fs-sm);
 }
 .settle-tmpl-label-req::before {
@@ -2794,7 +2797,7 @@ label.req::before {
 }
 .settle-tmpl-word-sel {
   width: 130px;
-  height: 30px;
+  height: 28px;
   font-size: var(--fs-sm);
 }
 /* 分录表格（ag-grid：操作68 / 摘要200 / 会计科目408 / 方向80 / 金额130） */
@@ -5625,7 +5628,7 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 .card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--st-panel-bg); }
 .card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .card-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ty-text-3); white-space: nowrap; }
-.card-filter label input, .card-filter label select { height: 30px; min-width: 140px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
+.card-filter label input, .card-filter label select { height: 28px; min-width: 140px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
 .card-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--ty-border-2); }
 .log-count { font-size: var(--fs-xs); color: var(--ty-text-3); }
 /* 反结账行红标（审计高危醒目） */
@@ -5811,7 +5814,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 }
 .ty-period-trigger {
   position: relative; display: flex; align-items: center;
-  height: 30px; min-height: 30px; min-width: 148px; padding: 0 22px 0 8px;
+  height: 28px; min-height: 28px; min-width: 148px; padding: 0 22px 0 8px;
   background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: pointer; white-space: nowrap; width: max-content;
 }
@@ -5820,7 +5823,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
    保证筛选行视觉一致。右侧箭头提示可展开科目表。 */
 .ty-subject-range {
   position: relative; display: inline-flex; align-items: center;
-  height: 30px; min-height: 30px;
+  height: 28px; min-height: 28px;
   background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: text; white-space: nowrap;
 }
