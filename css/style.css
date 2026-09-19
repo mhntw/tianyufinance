@@ -14,11 +14,11 @@
   --ty-blue-2:      #e8f1ff;   /* 主色浅蓝底（hover） */
   --ty-blue-3:      #e8f1ff;   /* --ty-g-color-theme-3 active浅蓝底 */
   --ty-nav-bg:      #fff;      /* 侧栏纯白底：与内容区/顶栏统一，消除浅蓝底与白底内容区的色差 */
-  --ty-nav-text:    #1f2937;   /* 侧栏默认菜单文字：白底用偏深灰蓝，比原 #022433 更协调可读 */
+  --ty-nav-text:    #022433;   /* 侧栏默认菜单文字：白底用偏深灰蓝，比原 #022433 更协调可读 */
   --ty-nav-active-bg: #e8f1ff; /* 菜单 hover/active 底：白侧栏上须用浅灰（原 #fff 白上白无反馈） */
   --ty-nav-active:  #3a66d4;   /* 菜单选中文字：品牌蓝，白底清晰 */
   --ty-border:      #E3E8EE;   /* 边框/分隔线色 */
-  --ty-border-2:    #D5DCE5;
+  --ty-border-2:    #c2d1e4;
   --ty-text:        #022433;   /* 添钰文字主色（标题/正文） */
   --ty-text-1:      var(--ty-text);
   --ty-text-2:      #5c6d74;   /* 添钰次要文字色 */
@@ -51,15 +51,15 @@
   /* ── 语义状态色：底 / 边 / 字 三件套（全站唯一来源）──
      规则：状态色只在此定义，组件/页面一律引用 var(--st-…)，不得再写状态色十六进制。
      新增提示/警示类 UI 直接挑对应状态；以后调色只改这几行。 */
-  --st-info-bg: #EAF5FF;   --st-info-bd: #C2E0FF;   --st-info-fg: var(--ty-blue-dark);
-  --st-info-tag-bd: #D0E4FF;
-  --st-tip-bg:  #FFF8E1;   --st-tip-bd:  #F0D58C;   --st-tip-fg:  #5c6d74;
-  --st-hl-bg:   #FFF3C4;   --st-hl-bd:   #FFE9A8;   --st-hl-fg:   #7A5B00;
-  --st-warn-bg: #FFF8EC;   --st-warn-bd: #F0AD4E;   --st-warn-fg: #5c6d74;
+  --st-info-bg: #e3e8ee;   --st-info-bd: #e3e8ee;   --st-info-fg: var(--ty-blue-dark);
+  --st-info-tag-bd: #e3e8ee;
+  --st-tip-bg:  #FFF8E1;   --st-tip-bd:  #fff8e1;   --st-tip-fg:  #5c6d74;
+  --st-hl-bg:   #fff8e1;   --st-hl-bd:   #fff8e1;   --st-hl-fg:   #7A5B00;
+  --st-warn-bg: #fff8e1;   --st-warn-bd: #fa8c16;   --st-warn-fg: #5c6d74;
   --st-danger-bg: #FCEDED; --st-danger-fg: var(--ty-red);
-  --st-ok-bg:   #E6F4E6;   --st-ok-fg:   #2E7D32;
-  --st-panel-bg: #F7F9FB;  --st-panel-bg2: #F5F8FC; --st-panel-bd: #D9DEE5;
-  --ty-content-bg:  #F5F6F8;   /* 内容区外底色（工作区浅灰白） */
+  --st-ok-bg:   #E6F4E6;   --st-ok-fg:   #17a45b;
+  --st-panel-bg: #e3e8ee;  --st-panel-bg2: #e8f1ff; --st-panel-bd: #f0f0f0;
+  --ty-content-bg:  #f0f0f0;   /* 内容区外底色（工作区浅灰白） */
   --grid-line:      #e3e8ee;   /* 单元格网格线 #e3e8ee */
   --grid-text:      var(--ty-text);   /* 表格正文主色（复用 --ty-text） */
 
@@ -271,7 +271,7 @@ img, svg { display: block; max-width: 100%; }
 .topbar-period,
 .topbar-user {
   font-size: var(--fs-xs);
-  color: #777;
+  color: #5c6d74;
   line-height: normal;   /* 覆盖 .topbar 继承的 line-height:48px，避免用户名被撑高溢出顶栏 */
 }
 
@@ -578,7 +578,7 @@ img, svg { display: block; max-width: 100%; }
 .grid-wrap .grid thead th { position: sticky; top: 0; z-index: 2; }
 /* 表格底部计数条（「已选 X 条 / 共 N 条」） */
 .grid-foot { display: flex; justify-content: flex-end; align-items: center; padding: 8px 14px; font-size: var(--fs-xs); color: var(--ty-text-2); background: var(--ty-white); border: 1px solid var(--grid-line); border-top: none; }
-.grid-foot b { color: #333; font-weight: normal; margin: 0 2px; }
+.grid-foot b { color: #000000; font-weight: normal; margin: 0 2px; }
 /* 凭证汇总表副标题（凭证总张数 / 附件总张数）：表格上方灰色小字。
    未选期间时 renderSum 会清空文本，:empty 兜住不留下多余空隙。 */
 .sum-stat { padding: 0 14px 6px; font-size: var(--fs-xs); color: var(--ty-text-2); }
@@ -640,9 +640,9 @@ img, svg { display: block; max-width: 100%; }
 }
 .vch-tpl-seg { white-space: nowrap; }
 .vch-tpl-seg .muted { color: var(--ty-text-3); }
-.vch-tpl-drc { font-style: normal; font-weight: 600; color: #D93026; margin-right: 3px; }
+.vch-tpl-drc { font-style: normal; font-weight: 600; color: #e64545; margin-right: 3px; }
 .vch-tpl-sep { margin: 0 7px; color: #e8f1ff; }
-.vch-tpl-miss { margin-top: 3px; font-size: var(--fs-xs); color: #D93026; line-height: 1.6; }
+.vch-tpl-miss { margin-top: 3px; font-size: var(--fs-xs); color: #e64545; line-height: 1.6; }
 .vch-tpl-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .vch-tpl-empty-my { font-size: var(--fs-xs); color: var(--ty-text-3); text-align: center; padding: 4px 0 2px; }
 /* 保存为凭证模板面板 */
@@ -741,7 +741,7 @@ img, svg { display: block; max-width: 100%; }
 .tab-close {
   font-size: var(--fs-xs);
   line-height: 1;
-  color: #ccc;
+  color: #f0f0f0;
   margin-left: 2px;
   padding: 0 2px;
   transition: all .15s;
@@ -1141,14 +1141,14 @@ select:not([class]),
 .ed-subj-tag-close {
   display: inline-flex; align-items: center; justify-content: center;
   width: 14px; height: 14px; line-height: 14px; font-size: var(--fs-md);
-  color: #888; cursor: pointer;
+  color: #99a1ac; cursor: pointer;
 }
 .ed-subj-tag-close:hover { color: #e64545; }
 .ed-subj-placeholder { color: var(--ty-text-3); font-size: var(--fs-xs); }
 .ed-subj-caret {
   position: absolute; right: 8px; top: 50%; width: 0; height: 0;
   border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid #888; transform: translateY(-50%); pointer-events: none;
+  border-top: 5px solid #99a1ac; transform: translateY(-50%); pointer-events: none;
 }
 .ed-subj-pop {
   position: absolute; z-index: 50; top: calc(100% + 4px); left: 0;
@@ -1223,7 +1223,7 @@ label.req::before {
    锚点月末的余额，填错时点会与总账差整期折旧）。空内容时自动隐藏，不留空隙。 */
 .form-hint {
   font-size: 12px;
-  color: #999;
+  color: #99a1ac;
   margin-left: 6px;
   white-space: nowrap;
 }
@@ -1416,13 +1416,13 @@ label.req::before {
 .rpt-print-head .rph-title {
   font-size: 20px;
   font-weight: 400;
-  color: #333;
+  color: #000000;
 }
 .rpt-print-head .rph-line {
   display: flex;
   justify-content: space-between;
   font-size: var(--fs-xs);
-  color: #333;
+  color: #000000;
 }
 .rpt-print-head .rph-left,
 .rpt-print-head .rph-mid,
@@ -1444,7 +1444,7 @@ label.req::before {
   font-size: var(--fs-2xs);
   font-weight: 400;
   letter-spacing: normal;
-  color: var(--ty-text-3);   /* 原写死 #888，走三级文字 token */
+  color: var(--ty-text-3);   /* 原写死 #99a1ac，走三级文字 token */
 }
 
 /* 【已删除：账簿表的 table-layout:fixed + width:100%】
@@ -1627,7 +1627,7 @@ label.req::before {
 }
 
 .link-del.disabled {
-  color: var(--ty-text-3, #bbb);
+  color: var(--ty-text-3, #99a1ac);
   cursor: not-allowed;
 }
 
@@ -1765,13 +1765,13 @@ label.req::before {
   align-items: center;
   gap: 8px;
   font-size: var(--fs-sm);
-  color: #333;
+  color: #000000;
   white-space: nowrap;
 }
 .vh-left select, .vh-left input { font-size: var(--fs-sm); }
 /* 凭证号 readonly，紧凑宽度 */
 #vNo { width: 40px; text-align: center; font-size: var(--fs-sm); }
-.vh-no-label, .vh-date-label { color: #666; }
+.vh-no-label, .vh-date-label { color: #5c6d74; }
 .vh-center {
   text-align: center;
   flex: 1;
@@ -1785,7 +1785,7 @@ label.req::before {
 }
 .vh-period {
   font-size: var(--fs-xs);
-  color: #888;
+  color: #99a1ac;
   display: block;
 }
 .vh-right {
@@ -2145,7 +2145,7 @@ label.req::before {
 
 .tag-open {
   color: var(--ty-green);
-  background: #E7F7EE;
+  background: #e6f4e6;
 }
 
 .tag-closed {
@@ -2155,7 +2155,7 @@ label.req::before {
 
 .tag-current {
   color: var(--ty-green);
-  background: #E7F7EE;
+  background: #e6f4e6;
 }
 
 /* ============================================================
@@ -2634,7 +2634,7 @@ label.req::before {
 .settle-tmpl-switch i {
   position: absolute;
   inset: 0;
-  background: #c3cad2;
+  background: #f0f0f0;
   border-radius: 9px;
   transition: background .2s;
 }
@@ -2948,7 +2948,7 @@ label.req::before {
 .tmpl-op-add { color: var(--ty-blue); }
 .tmpl-op-add::before { content: '+'; font-size: var(--fs-2xl); }
 .tmpl-op-add:hover { background: #e8f1ff; color: var(--ty-blue-dark); }
-.tmpl-op-del { color: #c3cad2; }
+.tmpl-op-del { color: #f0f0f0; }
 .tmpl-op-del::before { content: '−'; font-size: var(--fs-xl); }
 .tmpl-op-del:hover { background: #fceded; color: #e64545; }
 /* 金额取数规则帮助 */
@@ -2979,7 +2979,7 @@ label.req::before {
   gap: 8px;
   padding: 10px 16px;
   font-size: var(--fs-md);
-  color: #1f2937;
+  color: #022433;
   cursor: pointer;
 }
 .pref-row:hover { background: #e8f1ff; }
@@ -3202,7 +3202,7 @@ label.req::before {
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%;
   background: #e8f1ff;
-  color: #999;
+  color: #99a1ac;
   font-size: var(--fs-md);
   cursor: pointer;
 }
@@ -3268,7 +3268,7 @@ label.req::before {
 .metric-tab-main {
   font-size: var(--fs-lg);
   font-weight: 400;
-  color: #888;
+  color: #99a1ac;
   padding-bottom: 8px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -3349,7 +3349,7 @@ label.req::before {
   flex: none;
   width: 95px;   /*  linkItem--1iqtm 同款宽度 */
 }
-.home-quick-grid .qk:hover { background: #F5F9FF; }
+.home-quick-grid .qk:hover { background: #e8f1ff; }
 /* 图标（linkItem img：32×32 圆角方块，margin-bottom:8px;margin-top:4px） */
 .qk-circle {
   width: 32px; height: 32px;
@@ -3508,12 +3508,12 @@ label.req::before {
   appearance: none;
   font-size: var(--fs-xs);
   font-family: inherit;
-  color: var(--ty-text, #3c4a51);
+  color: var(--ty-text, #5c6d74);
   font-weight: 500;
   /* 明显的控件底色和圆角，与存量卡片静态文字（无背景、灰色）形成对比 */
   background: #e8f1ff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
   background-size: 10px 6px;
-  border: 1px solid #b8c1c8;
+  border: 1px solid #99a1ac;
   border-radius: 4px;
   padding: 0 22px 0 10px;
   height: 24px;
@@ -3567,7 +3567,7 @@ label.req::before {
   white-space: nowrap;
 }
 .formula-row .formula-cell .formula-amt {
-  color: var(--ty-text, #3c4a51);
+  color: var(--ty-text, #5c6d74);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-xs);
@@ -3859,7 +3859,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .cost-card .detail-split-wrapper .fv5-f,
 .cost-card .detail-split-wrapper .fv5-v { text-align: left; }
 .detail-split-wrapper .split-line {
-  width: 1px; align-self: stretch; background: #b8c1c8; margin: 0 8px;   /*  split-line background:#b8c1c8 */
+  width: 1px; align-self: stretch; background: #99a1ac; margin: 0 8px;   /*  split-line background:#99a1ac */
 }
 
 /* ---- 净利润 / 收入成本 详情区（detail 两栏，口径）---- */
@@ -4315,7 +4315,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-check-cfg { margin-top: 10px; padding: 10px 12px; background: #f0f0f0; border: 1px solid #f0f0f0; border-radius: 6px; }
 .scc-head { font-size: var(--fs-xs); color: var(--ty-text-2); margin-bottom: 8px; }
 .scc-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
-.scc-row + .scc-row { border-top: 1px dashed #eee; }
+.scc-row + .scc-row { border-top: 1px dashed #f0f0f0; }
 .scc-name { font-size: var(--fs-sm); color: var(--ty-text); }
 .scc-sel { font-size: var(--fs-xs); padding: 3px 6px; border: 1px solid #c2d1e4; border-radius: 4px; background: var(--ty-white); }
 .scc-empty { font-size: var(--fs-sm); color: var(--ty-text-2); padding: 8px 0; }
@@ -4592,7 +4592,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-add-card:hover { border-color: var(--ty-blue); color: var(--ty-blue); background: #e8f1ff; }
 .settle-add-icon {
   width: 36px; height: 36px;
-  border: 1px dashed #b8c1c8;
+  border: 1px dashed #99a1ac;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 22px;
@@ -4754,7 +4754,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   font-size: var(--fs-sm);
   color: var(--ty-blue-dark);
   background: var(--ty-blue-2);
-  border: 1px solid #b8c1c8;
+  border: 1px solid #99a1ac;
   border-radius: 4px;
   padding: 8px 12px;
 }
@@ -4850,7 +4850,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   color: #17a45b;
 }
 /* 已结账：头部变绿 + 整体浅绿 */
-.settle-month.checked { border-color: #b7eb8f; background: #e6f4e6; }
+.settle-month.checked { border-color: #e6f4e6; background: #e6f4e6; }
 .settle-month.checked .settle-month-head { background: #e6f4e6; color: #17a45b; }
 /* 当前期：蓝色边框 */
 .settle-month.ready { border-color: var(--ty-blue); box-shadow: 0 0 0 2px rgba(47, 149, 255,.2); }
@@ -5442,7 +5442,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 
 .page-title { font-size: var(--fs-lg); font-weight: 400; color: var(--ty-text); margin: 0; }
 .link-del { color: var(--ty-red); cursor: pointer; }
-.link-del.disabled { color: var(--ty-text-3, #bbb); cursor: not-allowed; }
+.link-del.disabled { color: var(--ty-text-3, #99a1ac); cursor: not-allowed; }
 .link-del:hover { text-decoration: underline; }
 
 /* 凭证字卡片：默认行高亮 + 操作链接 */
@@ -5456,7 +5456,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .link-vw-del { color: var(--ty-red); cursor: pointer; }
 .link-vw-del:hover { text-decoration: underline; }
 .ok-tag { display: inline-block; padding: 0 6px; margin-left: 4px; font-size: var(--fs-2xs); line-height: 16px;
-  color: var(--ty-blue); background: #e8f1ff; border-radius: 3px; border: 1px solid #b8c1c8; }
+  color: var(--ty-blue); background: #e8f1ff; border-radius: 3px; border: 1px solid #99a1ac; }
 
 /* 辅助核算：左侧类别 + 右侧档案 */
 .aux-layout { display: flex; gap: 16px; align-items: flex-start; }
@@ -5574,7 +5574,7 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 .card .chk-row,
 .card .radio-row { padding-left: 106px; }
 /* 首页「云备份」提醒条：7 天节流、可忽略；平时不显示 */
-.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: #fff8e1; border: 1px solid #ffe58f; border-radius: 6px; font-size: var(--fs-sm); color: var(--st-hl-fg); line-height: 1.5; }
+.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: #fff8e1; border: 1px solid #fff8e1; border-radius: 6px; font-size: var(--fs-sm); color: var(--st-hl-fg); line-height: 1.5; }
 .home-backup-tip a { cursor: pointer; white-space: nowrap; }
 .home-backup-tip #btnBackupTipGo { color: #5c6d74; font-weight: 600; text-decoration: underline; }
 .home-backup-tip #btnBackupTipGo:hover { color: var(--st-hl-fg); }
@@ -5631,7 +5631,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .table-box { margin: 0; }
 .card-note { margin: 12px 0 0; font-size: var(--fs-xs); color: var(--ty-text-3); line-height: 1.6; }
 .health-summary.health-summary-high { background: #fceded; border: 1px solid #fceded; }
-.health-summary.health-summary-medium { background: var(--st-tip-bg); border: 1px solid #ffe58f; }
+.health-summary.health-summary-medium { background: var(--st-tip-bg); border: 1px solid #fff8e1; }
 .health-summary.health-summary-ok { background: #e6f4e6; border: 1px solid #17a45b; }
 .health-summary .hs-period { color: var(--ty-text-3); }
 .health-summary .hs-total b { color: var(--ty-text); font-size: var(--fs-xl); }
@@ -5684,7 +5684,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-batch-wrap { position: relative; display: inline-flex; }
 .orig-batch-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 108px; padding: 4px 0;
   background: var(--ty-white); border: 1px solid var(--ty-border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, .12); z-index: 80; }
-.orig-batch-menu a { display: block; padding: 7px 14px; color: #333; text-decoration: none; font-size: var(--fs-sm); white-space: nowrap; }
+.orig-batch-menu a { display: block; padding: 7px 14px; color: #000000; text-decoration: none; font-size: var(--fs-sm); white-space: nowrap; }
 .orig-batch-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
 .btn.ty-dropdown { position: relative; padding-right: 24px; }
 .btn.ty-dropdown::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
@@ -5730,7 +5730,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-pagination .orig-pages { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
 .orig-pagination .orig-pages li button { min-width: 26px; height: 26px; border: 1px solid var(--ty-border); background: var(--ty-white); border-radius: 3px; cursor: pointer; color: var(--ty-text-2); }
 .orig-pagination .orig-pages li.active button { border-color: var(--ty-blue); color: var(--ty-blue); background: rgba(30,135,240,.06); }
-.orig-pagination .orig-pages li.disabled button { color: #ccc; cursor: not-allowed; }
+.orig-pagination .orig-pages li.disabled button { color: #f0f0f0; cursor: not-allowed; }
 .orig-pagination .orig-page-size { display: flex; align-items: center; gap: 4px; }
 .orig-pagination .orig-page-size .inp-sm { width: 64px; }
 
@@ -5806,7 +5806,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   content: ''; position: absolute; right: 9px; top: 50%;
   width: 0; height: 0;
   border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid #888; transform: translateY(-50%); pointer-events: none;
+  border-top: 5px solid #99a1ac; transform: translateY(-50%); pointer-events: none;
 }
 
 /* popover：position:fixed 定位到 trigger 下方，无遮罩 */
@@ -5838,8 +5838,8 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-range-hint {
   font-size: var(--fs-xs); color: var(--ty-blue); padding: 4px 0 8px; text-align: center;
 }
-.ty-period-cell.disabled { color: #c3cad2; background: var(--ty-content-bg); cursor: not-allowed; }
-.ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: #c3cad2; }
+.ty-period-cell.disabled { color: #f0f0f0; background: var(--ty-content-bg); cursor: not-allowed; }
+.ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: #f0f0f0; }
 
 /* ============ 浏览器存储模式横幅（防丢数据告警） ============ */
 .server-banner {
@@ -5849,7 +5849,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   line-height: 1.6;
   background: #fff8e1;
   color: #5c6d74;
-  border-bottom: 1px solid #ffe58f;
+  border-bottom: 1px solid #fff8e1;
 }
 .server-banner:not([hidden]) { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .server-banner .banner-btn {
@@ -5879,7 +5879,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   background: #fceded; color: #e64545; border-color: #fceded;
 }
 .selftest-banner.st-level-warn {
-  background: #fff8e1; color: #5c6d74; border-color: #ffe58f;
+  background: #fff8e1; color: #5c6d74; border-color: #fff8e1;
 }
 .selftest-banner .st-item { margin: 2px 0; }
 .selftest-banner .st-item b { font-weight: 600; }
@@ -5890,7 +5890,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   margin: 6px 0 2px;
   font-size: var(--fs-xs);
   font-weight: 600;
-  color: #666;
+  color: #5c6d74;
 }
 .backup-sec-title:first-child { margin-top: 0; }
 .backup-toolbar {
@@ -6067,7 +6067,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .dl-main::-webkit-scrollbar-thumb,
 .dl-body::-webkit-scrollbar-thumb { background: #e8f1ff; border-radius: 4px; }
 .dl-main::-webkit-scrollbar-thumb:hover,
-.dl-body::-webkit-scrollbar-thumb:hover { background: #c3cad2; }
+.dl-body::-webkit-scrollbar-thumb:hover { background: #f0f0f0; }
 .dl-main, .dl-body { scrollbar-width: thin; scrollbar-color: #e8f1ff transparent; }
 
 /* 打印时隐藏快速切换栏，只出主表 */
