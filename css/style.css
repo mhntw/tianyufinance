@@ -5707,8 +5707,10 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-btn-sep { flex: 0 0 1px; width: 1px; height: 18px; background: var(--ty-border); }
 /* 「批量操作」菜单内的分组分隔线（写凭证类 / 清理删除类 两组） */
 .orig-batch-menu .orig-batch-sep { display: block; height: 1px; margin: 4px 0; background: var(--ty-border); }
-/* 固定资产卡片页工具条（新增/生成凭证/导入/导出/批量操作）整体右对齐 */
-#page-asset-card .orig-btns { justify-content: flex-end; }
+/* 固定资产卡片页工具条：原先强制右对齐（justify-content: flex-end，自仓库初始化 1d9d945 就在），
+   但按钮只有 7 个时左侧会空出一大片，观感前重后轻、与下方内容区的左边界也对不上。
+   2026-09-20 按反馈去掉该规则 —— 恢复 .orig-btns 默认的 flex-start，
+   按钮自左向右排列，与页面标题、提示条、正文表左边界成一条竖线。 */
 /* 资产卡片页「批量操作」下拉菜单（批量清理/批量删除，对齐参考实现批量操作） */
 .orig-batch-wrap { position: relative; display: inline-flex; }
 .orig-batch-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 108px; padding: 4px 0;
