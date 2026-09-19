@@ -206,8 +206,6 @@ export function bindSubjectPicker(input, opts) {
       onPick(code, s);
     }, { bareInput: true, filterInput: input, onlyParent: onlyParent, limit: limit });
   }
-  function doClose() { closeSubjectPop(); }
-
   input.addEventListener('focus', doOpen);
   input.addEventListener('click', doOpen);
   input.addEventListener('input', function () {

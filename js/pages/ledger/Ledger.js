@@ -25,21 +25,6 @@ import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { createSubjectTree } from '../../components/SubjectTree.js?v=dev';
 import { updatePeriodRangeTrigger } from '../../components/PeriodRangePicker.js';
 
-/* ===================== 通用：安全填充（带守卫，避免查询时重置用户选择） ===================== */
-// bookKey：账套切换标识（app.js 内定义）。下面两个下拉守卫靠它判断「是否已为当前账套」，
-// 账套不变则跳过重填，保住用户在查询前已选的值。
-var bookKey = H.bookKey;
-// 核算类别下拉
-function safeFillAuxType(sel) {
-  var k = bookKey();
-  if (sel.dataset.key !== k) { fillAuxTypeSelect(sel); sel.dataset.key = k; }
-}
-// 核算项目下拉：随类别切换重填
-function safeFillAuxItem(sel, typeKey) {
-  var k = bookKey() + '|' + typeKey;
-  if (sel.dataset.key !== k) { fillAuxItemSelect(sel, typeKey); sel.dataset.key = k; }
-}
-
 /* ===================== 总账 ===================== */
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
 // 复用统一期间取值实现，避免多份拷贝失同步。

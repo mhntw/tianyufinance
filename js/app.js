@@ -998,36 +998,6 @@
     });
   }
 
-  /** 复制文本到剪贴板（侧栏作者邮箱点击复制）：
-   *  navigator.clipboard 优先（Tauri/现代浏览器为安全上下文，可用）；
-   *  失败或老 WebView 回退 textarea + execCommand('copy')，两条路都失败才提示手动复制。 */
-  function copyAuthorMail(text) {
-    function done(ok) {
-      showToast(ok ? ('已复制邮箱：' + text) : ('复制失败，请手动复制：' + text), ok ? 'success' : 'warn', 2600);
-    }
-    function fallback() {
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-        document.body.appendChild(ta);
-        ta.select();
-        ta.setSelectionRange(0, text.length);
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return !!ok;
-      } catch (e) { return false; }
-    }
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallback()); });
-        return;
-      }
-    } catch (e) { /* 继续走回退 */ }
-    done(fallback());
-  }
-
   /** 左侧导航：依据同一份 QUICK_MENU_ITEMS 数据源渲染，与设置弹窗自动同步 */
   function renderSideNav() {
     var nav = $('sidenav');

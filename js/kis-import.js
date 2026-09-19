@@ -312,7 +312,6 @@
     //   - 如果 startPeriod 已确定（来自 GLSetup），直接算 key，只匹配这个精确期间的行
     //   - 如果 GLSetup 无效，回退遍历取最小 FPeriod（兼容极端老账套）
     var balRows = getRows(reader, 'GLBal');
-    function periodOf(r) { var p = parseInt(r.FPeriod || 0, 10) || 0; return p > 999 ? p % 100 : p; }
     function periodKeyOf(r) {
       var p = parseInt(r.FPeriod || 0, 10) || 0;
       return p > 999 ? p : startYear * 100 + p;
@@ -660,6 +659,42 @@
     return { ledger: ledger, stats: stats };
   }
 
+  /* ---------- MDB 解析库按需加载（2026-09-19） ----------
+   * mdb-reader.js 有 703K、buffer.js 66K，合计 769K，而只有导入 .ais 时才用得上。
+   * 原先二者在 index.html 里以 <script> 静态引入，每次启动都要解析这 769K —— 纯浪费。
+   * 现改为首次解析前动态加载。convert() 本就有「库未加载则抛错」的检查，故解析逻辑无需改动。
+   * 顺序不能颠倒：mdb-reader 依赖全局 Buffer，必须先加载 buffer.js。 */
+  function mdbReady() {
+    var M = global.MDBReader;
+    var C = (M && (M.default || M.MDBReader)) || M;
+    return typeof C === 'function';
+  }
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      if (typeof document === 'undefined' || !document.createElement) {
+        reject(new Error('当前环境不支持动态加载脚本：' + src));
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('加载失败：' + src)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+  }
+  var _mdbPromise = null;
+  function ensureMdbReader() {
+    if (mdbReady()) return Promise.resolve();
+    if (_mdbPromise) return _mdbPromise;                  // 并发导入共用一次加载
+    _mdbPromise = loadScript('js/buffer.js?v=dev')
+      .then(function () { return loadScript('js/mdb-reader.js?v=dev'); })
+      .then(function () {
+        if (!mdbReady()) throw new Error('解析库加载后仍不可用 (MDBReader)');
+      })
+      .catch(function (e) { _mdbPromise = null; throw e; });   // 失败后允许重试
+    return _mdbPromise;
+  }
+
   function parse(input) {
     return new Promise(function (resolve, reject) {
       try {
@@ -667,19 +702,21 @@
         if (input && input.name) name = input.name;
         if (input && typeof input.arrayBuffer === 'function') {
           // 浏览器 File / Blob
-          input.arrayBuffer().then(function (buf) { resolve(convert(buf, name)); }).catch(reject);
+          input.arrayBuffer().then(function (buf) {
+            ensureMdbReader().then(function () { resolve(convert(buf, name)); }, reject);
+          }).catch(reject);
           return;
         }
         if (input instanceof ArrayBuffer ||
             (typeof Uint8Array !== 'undefined' && input instanceof Uint8Array) ||
             (global.Buffer && global.Buffer.isBuffer && global.Buffer.isBuffer(input)) ||
             (input && input.buffer instanceof ArrayBuffer)) {
-          resolve(convert(input, name));
+          ensureMdbReader().then(function () { resolve(convert(input, name)); }, reject);
           return;
         }
         if (input && input.byteLength != null && input.slice) {
           // 跨 realm 的 ArrayBuffer / TypedArray 兜底
-          resolve(convert(input, name));
+          ensureMdbReader().then(function () { resolve(convert(input, name)); }, reject);
           return;
         }
         reject(new Error('不支持的输入类型'));

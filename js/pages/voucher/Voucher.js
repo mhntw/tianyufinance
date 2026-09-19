@@ -170,27 +170,6 @@ let vAttachFiles = [];
 
 function defaultVoucherRow() { return { summary: '', code: '', name: '', dr: 0, cr: 0, cashActivity: '' }; }
 
-/* —— 现金流下拉（依赖模块级 vRows） —— */
-function isCashSubject(code) {
-  if (!code) return false;
-  var c = String(code);
-  return c.indexOf('1001') === 0 || c.indexOf('1002') === 0;
-}
-function cashActivityOptions(row) {
-  if (!isCashSubject(row.code)) return '<span class="muted">—</span>';
-  var opts = [
-    { v: '', t: '—' },
-    { v: 'operating', t: '经营活动' },
-    { v: 'investing', t: '投资活动' },
-    { v: 'financing', t: '筹资活动' }
-  ];
-  var html = '<select class="inp v-cash" data-i="' + vRows.indexOf(row) + '">';
-  opts.forEach(function (o) {
-    html += '<option value="' + o.v + '"' + (row.cashActivity === o.v ? ' selected' : '') + '>' + o.t + '</option>';
-  });
-  return html + '</select>';
-}
-
 /* ============================================================
  * 凭证录入
  * ============================================================ */

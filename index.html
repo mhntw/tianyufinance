@@ -1921,8 +1921,9 @@
   <script src="js/xlsx.full.min.js?v=dev"></script>
   <script src="js/ty-io.js?v=dev"></script>
   <script src="js/ty-menu-icons.js?v=dev"></script>
-  <script src="js/buffer.js?v=dev"></script>
-  <script src="js/mdb-reader.js?v=dev"></script>
+  <!-- buffer.js / mdb-reader.js 不再于此静态引入：二者合计 769K（703K + 66K），
+       仅「导入金蝶 .ais 账套」时才用得上，每次启动都解析属纯浪费。
+       现改为首次导入前由 kis-import.js 的 ensureMdbReader() 动态加载（先 buffer 后 mdb-reader）。 -->
   <script src="js/kis-import.js?v=dev"></script>
   <script src="js/dialog-bridge.js?v=dev"></script>
   <script src="js/file-save-bridge.js?v=dev"></script>

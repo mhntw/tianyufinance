@@ -571,17 +571,11 @@ function refreshSettle() {
   function kindVs(list, kind) {
     return list.filter(function (v) { return S.voucherKind(v) === kind; });
   }
-  function doneCount(kind) { return kindVs(vs, kind).length; }
-  function firstVoucherNo(kind) {
-    return kindVs(vs, kind).map(function (v) { return (v.word || '记') + '-' + v.no; }).join('、');
-  }
   // 期末处理区块数据源（固定当前期）
   var curVs = S.periodVouchers(curMonth);
   var curEst = S.profitStatement(curMonth);
+  // 注意保留 curDoneCount（在用的），仅上面两个同期同名的 doneCount/firstVoucherNo 已废弃
   function curDoneCount(kind) { return kindVs(curVs, kind).length; }
-  function curFirstVoucherNo(kind) {
-    return kindVs(curVs, kind).map(function (v) { return (v.word || '记') + '-' + v.no; }).join('、');
-  }
 
   // 期末处理卡片：checkbox 绑定模板启用状态（每张卡的启用开关）
   var cardTplMap = {
@@ -1198,8 +1192,6 @@ function fillWordOptions(sel) {
   var def = (S.state.param && S.state.param.voucherWord) || (words.length ? (words[0].name || words[0].code) : '记');
   sel.value = (words.some(function (w) { return (w.name || w.code) === def; })) ? def : (words.length ? (words[0].name || words[0].code) : '记');
 }
-
-function setText(id, txt) { var el = $(id); if (el) el.textContent = txt; }
 
 // 显示新增模板面板（分录表格：模板名称 + 凭证字 + 摘要/科目/方向/金额）
 // 草稿仅保留在内存（不进 settleTmplList、不落库），点「保存」才由 saveSettleTmplForm 写入；
