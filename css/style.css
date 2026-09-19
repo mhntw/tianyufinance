@@ -2450,13 +2450,6 @@ label.req::before {
 }
 .modal-title .modal-x:hover { color: var(--ty-blue); }
 #surTaxCalcBody { padding: 14px 18px; max-height: 60vh; overflow: auto; font-size: var(--fs-sm); color: var(--ty-text); }
-.header--1z_e8 { font-weight: 400; margin-bottom: 8px; color: var(--ty-text); }
-.header--1z_e8:not(:first-child) { margin-top: 14px; }
-.list--Gy482 { }
-.line--1izHk { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; line-height: 1.5; }
-.line--1izHk > p { margin: 0; }
-.p--2Q6HZ { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; color: var(--ty-text); white-space: nowrap; }
-
 /* 计提所得税「金额计算逻辑」浮层（结账页 所得税浮层截图） */
 #incTaxCalcBody { padding: 0; max-height: 65vh; overflow: auto; font-size: var(--fs-sm); }
 .it-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px 10px; border-bottom: 1px solid var(--ty-border); }
@@ -3255,28 +3248,6 @@ label.req::before {
   padding: 20px 24px 0;
   min-height: 130px;
   overflow: hidden;   /* 原值：清内部 contentL/contentR 子浮动 */
-}
-.titleWrapper--2yike {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;   /*  titleWrapper--2yike margin-bottom:14px */
-  font-size: var(--fs-xl);   /* 原 jdy-base.css 并入：标题容器基础字号（原值） */
-  font-weight: 400;
-  color: var(--ty-text);
-  line-height: 20px;
-}
-/* flex 容器内 float 失效，用 margin-left:auto 把右侧工具推到右上角（对应 pull-right 效果，原 jdy-base.css） */
-.titleWrapper--2yike .pull-right { margin-left: auto; }
-/* 区块标题（titleWrapper--2yike：font-size:16px;font-weight: 400;
-   color:var(--ty-text);line-height:20px，无左侧竖线） */
-.titleWrapper--2yike > span {
-  font-size: var(--fs-xl);
-  font-weight: 400;
-  color: var(--ty-text);
-  padding-left: 0;
-  border-left: none;
-  line-height: 20px;
 }
 /* 标题右侧自定义按钮（editBtn--2VJ9T：font-size:22px 深色，hover 变蓝） */
 .home-section-edit.editBtn--2VJ9T {
@@ -5775,11 +5746,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .year-arrow:hover { background: #f0f2f5; }
 /* .tri / .tri-left / .tri-right 已删除：全站无任何引用（死规则） */
 
-/* el-button 轻量复刻（/Element 蓝底主按钮） */
-.el-button { height: 32px; padding: 0 16px; border: 1px solid var(--ty-border); border-radius: 4px; background: #fff; color: var(--ty-text); font-size: var(--fs-sm); cursor: pointer; }
-.el-button:hover { border-color: var(--ty-blue); color: var(--ty-blue); }
-.el-button--primary { background: var(--ty-btn); border-color: var(--ty-btn); color: #fff; }
-.el-button--primary:hover { opacity: .9; color: #fff; }
+/* （原 el-button / el-button--primary 为 Element UI 残留复刻，本项目未使用，已移除） */
 
 
 /* ============================================================
