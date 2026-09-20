@@ -3123,8 +3123,11 @@ label.req::before {
 .toast {
   position: fixed;
   left: 50%;
-  top: 70px;
-  transform: translate(-50%, -14px);
+  /* 【位置 2026-09-20】原先 top:70px（屏幕顶部），与弹窗位置不一致——弹窗关闭后提示
+     出现在别处，视线要重新找。现改为与 .modal 一致：屏幕正中央。入场仍保留
+     「略高 14px 滑入」的手感。 */
+  top: 50%;
+  transform: translate(-50%, calc(-50% - 14px));
   padding: 9px 20px;
   /* 【易读性 2026-09-20】原先既无 max-width 也无 white-space：长文案会拉成一条很宽的
      横幅，且内容是 textContent、\n 不生效，读起来很吃力（批量删除的结果提示尤其明显）。
@@ -3146,7 +3149,7 @@ label.req::before {
 
 .toast.show {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, -50%);
 }
 
 .toast.error { background: rgba(214, 58, 58, .95); }
