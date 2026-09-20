@@ -599,8 +599,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (!delBlocked.length) {
         showToast('已删除 ' + delOk + ' 张资产卡片', 'success');
       } else {
-        showToast('已删除 ' + delOk + ' 张；' + delBlocked.length + ' 张未删除（' +
-          delBlocked.join('、') + '）—— 这些卡片已有折旧或清理记录，请改用「清理」处理', 'warn');
+        // 分两行：第一行说结果与哪几张，第二行说原因与处置办法；\n 由 .toast 的
+        // white-space: pre-line 生效。内容较多，停留 5 秒（默认 2.2 秒读不完）。
+        showToast('已删除 ' + delOk + ' 张；' + delBlocked.length + ' 张未删除（' + delBlocked.join('、') + '）' +
+          '\n原因：已有折旧或清理记录，请改用「清理」处理', 'warn', 5000);
         console.warn('[批量删除] 未删除明细：', blockedDetail);
       }
     }

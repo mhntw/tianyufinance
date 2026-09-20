@@ -3126,6 +3126,13 @@ label.req::before {
   top: 70px;
   transform: translate(-50%, -14px);
   padding: 9px 20px;
+  /* 【易读性 2026-09-20】原先既无 max-width 也无 white-space：长文案会拉成一条很宽的
+     横幅，且内容是 textContent、\n 不生效，读起来很吃力（批量删除的结果提示尤其明显）。
+     现限制最大宽度、让 \n 生效、宽度不够时自动折行，多行时放宽行距。 */
+  max-width: min(560px, 90vw);
+  white-space: pre-line;
+  line-height: 1.6;
+  text-align: center;
   font-size: var(--fs-sm);
   color: var(--ty-white);
   background: rgba(40, 46, 56, .92);
