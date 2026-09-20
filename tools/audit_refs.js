@@ -56,14 +56,31 @@ for (const f of ALL_JS) {
       const nextNl2 = txt.indexOf('\n', nextNl + 1);
       const nextNl3 = txt.indexOf('\n', nextNl2 + 1);
       // 模式 A：同一行有 if/guard
-      const guardSame = /\bif\b|\?\.|!==\s*null|!=\s*null|&&\s*\w/.test(thisLine);
+      // 【修正 2026-09-20】原正则不含「?」，于是漏掉「guard 与 $() 在同一行」的写法：
+      //   function dasMonth() { var e = $('dasPeriodEnd'); return e ? e.value : currentPeriod(); }
+      // 这类在全项目很常见（单行取值函数），实测又造成 11 处假警报。
+      const guardSame = /\bif\b|\?\.|\?|!==\s*null|!=\s*null|&&\s*\w/.test(thisLine);
       // 模式 B：赋值给变量，下面行 if (var)
       let guardVar = false;
       const assignMatch = thisLine.match(/(?:var|let|const)?\s*([A-Za-z_$][\w$]*)\s*=\s*\$\(\s*["']/);
       if (assignMatch) {
         const vname = assignMatch[1];
         const after = txt.slice(nextNl > 0 ? nextNl + 1 : m.index + 1, nextNl3 > 0 ? nextNl3 : m.index + 400);
-        if (new RegExp(`if\\s*\\(\\s*${vname}\\s*[\\)!=?]|${vname}\\s*\\?\\s*[\\.]`, 'm').test(after)) {
+        // 【修正 2026-09-20】原正则写的是「变量 ? .」——要求问号后紧跟点号，
+        //   于是漏掉了最常见的写法「变量 ? 变量.属性 : 默认值」，例如：
+        //     const month = eInp ? eInp.value : currentPeriod();
+        //   问号后是变量名而非点号 → 永远匹配不上 → 全项目报了 33 处假警报，
+        //   把审计结果变成噪声（实测这 33 处每一处的下一行都有正确的判空）。
+        //   现放宽为「变量 ?」即可 —— 无论问号后跟的是点号、变量名还是字面量。
+        // 【再修正 2026-09-20】上一版仍漏掉两类常见写法：
+        //   ① if (a && vname) —— 变量名不在括号首位（如 `if (sInp && eInp)`）；
+        //   ② if (vname && ...) —— 变量名后是 &&，而原字符类 [)!=?] 不含 &。
+        //   现改为：变量名出现在 if(...) 内，或后接 ? / && / || / != null，即视为已有判空。
+        if (new RegExp(
+          `(if\\s*\\([^)]*\\b${vname}\\b[^)]*\\))` +
+          `|(\\b${vname}\\b\\s*(?:\\?|&&|\\|\\|))` +
+          `|(\\b${vname}\\b\\s*[!=]==\\s*null)`, 'm'
+        ).test(after)) {
           guardVar = true;
         }
       }
