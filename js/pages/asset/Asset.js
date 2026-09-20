@@ -580,12 +580,29 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       showToast('已清理 ' + gv2.count + ' 张，生成凭证 ' + ((gv2.voucher.word || '记') + '-' + gv2.voucher.no) +
         '，金额 ' + money(gv2.total) + '（卡片已归入「显示已清理资产」）');
     } else {
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量删除？\n\n' +
-        '已有折旧或清理记录的卡片无法删除（会提示改用「清理」处理）。', { title: '批量删除' }))) return;
-      var delOk = 0, delFail = 0;
-      checked.forEach(function (id) { var r = S.removeFixedAsset(id); if (r.ok) delOk++; else delFail++; });
+      // 【文案优化 2026-09-20】原提示只报数量（「1 张因已折旧/清理未删」），用户既看不出
+      //   哪一张被拒，也不知道该拿它怎么办。现统一为与上方「关联凭证」分支一致的做法：
+      //   ① 确认弹窗先讲清规则与「不可恢复」；② 结果里点名具体卡片（编码优先、其次名称）；
+      //   ③ 被拒时给出明确处置指引「改用清理」；④ 失败用 warn 级别 + 控制台留明细备查。
+      if (!(await H.confirmAsync('确认删除选中的 ' + checked.length + ' 张资产卡片？删除后不可恢复。\n\n' +
+        '注意：已有折旧或清理记录的卡片不会被删除。', { title: '批量删除' }))) return;
+      var delOk = 0, delBlocked = [], blockedDetail = [];
+      checked.forEach(function (id) {
+        var fa = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
+        var r = S.removeFixedAsset(id);
+        if (r.ok) { delOk++; return; }
+        var label = fa ? (fa.code || fa.name || id) : id;
+        delBlocked.push(label);
+        blockedDetail.push(label + '：' + (r.msg || ''));
+      });
       renderAssets(); syncAll();
-      showToast('已删除 ' + delOk + ' 张' + (delFail ? '，' + delFail + ' 张因已折旧/清理未删' : ''));
+      if (!delBlocked.length) {
+        showToast('已删除 ' + delOk + ' 张资产卡片', 'success');
+      } else {
+        showToast('已删除 ' + delOk + ' 张；' + delBlocked.length + ' 张未删除（' +
+          delBlocked.join('、') + '）—— 这些卡片已有折旧或清理记录，请改用「清理」处理', 'warn');
+        console.warn('[批量删除] 未删除明细：', blockedDetail);
+      }
     }
   });
   document.addEventListener('click', function (e) {
