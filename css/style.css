@@ -3153,6 +3153,11 @@ label.req::before {
 }
 
 .toast.error { background: rgba(214, 58, 58, .95); }
+/* 警告（操作部分完成 / 需注意）：橙黄。此前 CSS 只定义了 error 一种配色，
+   导致项目中 50 处 'warn'、27 处 'success' 提示全部退化为默认深灰、级别信息丢失。
+   （success 亦补上，绿；info 暂未用到，需要时再补。） */
+.toast.warn { background: rgba(217, 119, 6, .95); }
+.toast.success { background: rgba(22, 163, 74, .95); }
 
 /* 科目属性标识 / 弹窗内辅助核算复选组 */
 .subjBody .flags, #subjBody .flags { color: var(--ty-text-2); font-size: var(--fs-xs); }
