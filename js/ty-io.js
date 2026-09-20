@@ -29,8 +29,8 @@
   function fmt(n) { return n ? Number(n).toFixed(2) : ''; }
 
   /* ============== 固定资产卡片 导出/导入 ============== */
-  // 卡片表 31 列表头（顺序严格对照资产_卡片.html struct L2245-2472）
-  var ASSET_HEADERS = ['操作', '编码', '名称', '类别', '部门', '开始使用日期', '录入期间', '原值',
+  // 卡片表 29 列表头（顺序严格对照屏幕列：「录入期间」列已于 2026-09-20 随卡片页精简移除）
+  var ASSET_HEADERS = ['操作', '编码', '名称', '类别', '部门', '开始使用日期', '原值',
     '期初累计折旧', '期末累计折旧', '月折旧', '预计使用期限', '已折旧期间', '残值', '残值率%',
     '减值准备', '期初净值', '期末净值', '折旧方法', '状态', '数量', '规格型号', '存放地点',
     '使用人', '清理期间', '新增资产凭证', '清理凭证', '减值准备凭证', '其他变动凭证', '备注'];
@@ -42,7 +42,6 @@
       case '类别': return fa.category || '';
       case '部门': return fa.dept || '';
       case '开始使用日期': return fa.acqDate || '';
-      case '录入期间': return fa.entryPeriod || '';
       case '原值': return fmt(fa.original);
       case '期初累计折旧': return fmt(fa.accumDeprBegin);
       case '期末累计折旧': return fmt(fa.accumDepr);
@@ -100,7 +99,6 @@
     category:       ['类别', '资产类别', '固定资产类别', 'category'],
     dept:           ['部门', '使用部门', 'dept', 'department'],
     acqDate:        ['入账日期', '开始使用日期', '投入使用日期', '使用日期', '购置日期', 'acqdate', 'usedate'],
-    entryPeriod:    ['录入期间', '入账期间', '会计期间', 'entryperiod'],
     original:       ['原值', '资产原值', '固定资产原值', 'original', 'cost'],
     accumDeprBegin: ['期初累计折旧', '累计折旧期初', 'accumdeprbegin'],
     // 顺序即优先级：「期末累计折旧」必须排在「累计折旧」之前 —— 两列并存时前者才是期末值
@@ -133,7 +131,6 @@
     deprFeeAcct:    ['折旧费用科目', 'deprfeeacct'],
     cleanAcct:      ['资产清理科目', 'cleanacct'],
     purchaseAcct:   ['资产购入对方科目', 'purchaseacct'],
-    taxAcct:        ['税金科目', 'taxacct'],
     impairAcct:     ['减值准备对方科目', 'impairacct']
   };
   function faNorm(s) { return (s == null ? '' : String(s)).trim().toLowerCase().replace(/[\s_\-()（）]/g, ''); }
@@ -239,7 +236,6 @@
         category: get('category', arr),
         dept: get('dept', arr),
         acqDate: get('acqDate', arr),
-        entryPeriod: get('entryPeriod', arr),
         original: cleanNum(get('original', arr)),
         accumDeprBegin: cleanNum(get('accumDeprBegin', arr)),
         accumDepr: cleanNum(get('accumDepr', arr)),
@@ -278,7 +274,6 @@
         deprFeeAcct: get('deprFeeAcct', arr),
         cleanAcct: get('cleanAcct', arr),
         purchaseAcct: get('purchaseAcct', arr),
-        taxAcct: get('taxAcct', arr),
         impairAcct: get('impairAcct', arr)
       };
       if (fa.name) out.push(fa);

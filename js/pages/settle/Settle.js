@@ -739,12 +739,6 @@ function refreshSettle() {
     else pd.textContent = (kindVs(curVs, K.PROFIT_DIST).length > 0) ? '重新分配' : '利润分配';
   }
 
-  // 增值税编辑入口
-  var btnVatew = $('btnVatew');
-  if (btnVatew && !btnVatew._bound) {
-    btnVatew._bound = true;
-    btnVatew.addEventListener('click', openVatEditModal);
-  }
   // 同步全选 checkbox 状态（刷新后可见卡片集合可能变了）
   syncCheckAllState();
 }
@@ -1799,11 +1793,6 @@ function saveSettleTmplForm() {
   showToast('已保存模板：' + t.name);
 }
 
-// 模板弹窗事件绑定
-// 先取变量再守卫：原写法 `if ($('btnSettleTmpl')) $('btnSettleTmpl')…` 本身安全，
-// 但静态检查卡口（tools/test_stale_dom_refs.js）识别不了「if(...) 包着再取一次」的守卫 → 误报。
-var _btnSettleTmpl = $('btnSettleTmpl');
-if (_btnSettleTmpl) _btnSettleTmpl.addEventListener('click', openSettleTemplateModal);
 if ($('btnSettleTmplClose')) $('btnSettleTmplClose').addEventListener('click', closeSettleTemplateModal);
 // 弹窗启用开关：改了立即生效（persist + 刷新左侧分组 + 页面卡片）
 var _tmplEnCb = $('settleTmplFormEnabled');

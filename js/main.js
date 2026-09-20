@@ -10,7 +10,7 @@ import { refreshSubjects } from './pages/subject/Subject.js?v=dev';
 import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=dev';
 import { renderOriginal } from './pages/report/Original.js?v=dev';
 import {
-  refreshAssets, refreshDas, refreshDad, refreshAssetCategory, refreshAssetChangeLog, refreshAssetDeprVoucher
+  refreshAssets, refreshDas, refreshDad, refreshAssetCategory
 } from './pages/asset/Asset.js?v=dev';
 import {
   refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
@@ -57,8 +57,6 @@ globalThis.__renderAssets = refreshAssets;
 globalThis.__renderDas = refreshDas;
 globalThis.__renderDad = refreshDad;
 globalThis.__renderAssetCategory = refreshAssetCategory;
-globalThis.__renderAssetChangeLog = refreshAssetChangeLog;
-globalThis.__renderAssetDeprVoucher = refreshAssetDeprVoucher;
 
 // —— 设置域：现金流量初始 / 现金流量项目 / 备份 / 操作日志 / 系统参数 / 系统设置 ——
 globalThis.__renderCashflowInit = refreshCashflowInit;

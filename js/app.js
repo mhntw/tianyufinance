@@ -626,7 +626,8 @@
     }
     // 打印主体：只克隆「数据表格本身」（见 collectPrintBody 契约说明），
     // 期间选择条 / 按钮 / 筛选提示等表格外 UI 从结构上不可能进入打印件。
-    // 折旧四页已独立分页（原 page-asset-depr 页内 Tab 拆出），直接以当前激活页为作用域，一页一张表。
+    // 折旧汇总表 / 明细表 / 资产变动记录三页为独立分页（原 asset-depr 宿主页内 Tab 拆出，
+    // 折旧凭证已合并回固定资产卡片页），直接以当前激活页为作用域，一页一张表。
     var scope = (btn && btn.closest('.page')) || active;
     // 报表名优先级：页内 h2 标题 > PAGE_NAMES 页面名 > 页面 data-name > 通用兜底。
     var subName = '';
@@ -874,10 +875,8 @@
     ]},
     { group: '资产', items: [
       { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card',          color: '#14B8A6' },
-      { key: 'asset-depr-voucher',  name: '折旧凭证',     page: 'asset-depr-voucher',  color: '#F59E0B' },
       { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',      color: '#0EA5E9' },
       { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',   color: '#6366F1' },
-      { key: 'asset-change-log',    name: '资产变动记录', page: 'asset-change-log',    color: '#EC4899' },
     ]},
     { group: '工资', items: [
       { key: 'salary-table', name: '工资',   page: 'salary',           color: '#E11D48' },
@@ -908,8 +907,8 @@
     try { localStorage.setItem('quick_menu_keys', JSON.stringify(keys)); } catch(e){}
   }
   function findQuickItem(key) {
-    // 旧「折旧」菜单键 → 折旧凭证（资产四页已独立分页，旧快捷图标平滑延续）
-    if (key === 'asset-depr') key = 'asset-depr-voucher';
+    // 旧「折旧凭证」菜单键 → 固定资产卡片（折旧凭证已合并进卡片页）
+    if (key === 'asset-depr' || key === 'asset-depr-voucher') key = 'asset-card';
     for (var i = 0; i < QUICK_MENU_ITEMS.length; i++) {
       for (var j = 0; j < QUICK_MENU_ITEMS[i].items.length; j++) {
         if (QUICK_MENU_ITEMS[i].items[j].key === key) return QUICK_MENU_ITEMS[i].items[j];
@@ -1602,11 +1601,13 @@
     else if (page === 'book-manage' || page === 'backup-restore') { page = 'system-settings'; }
     // 导入账套：触发文件选择，不切换页面
     else if (page === 'import-ais') { goPage('system-settings'); return; }
-    /* 折旧独立分页：旧宿主键（asset-depr）→ 折旧凭证；旧子页键即新页键，保持直达 */
+    /* 折旧独立分页：旧宿主键（asset-depr）和原折旧凭证页键均重定向到 asset-card，
+       折旧汇总表 / 明细表 / 资产变动记录保持直达不变 */
     var _assetDeprPageAlias = {
-      'asset-depr': 'asset-depr-voucher',
-      'asset-depr-voucher': 'asset-depr-voucher', 'asset-depr-sum': 'asset-depr-sum',
-      'asset-depr-detail': 'asset-depr-detail', 'asset-change-log': 'asset-change-log'
+      'asset-depr': 'asset-card',
+      'asset-depr-voucher': 'asset-card',
+      'asset-depr-sum': 'asset-depr-sum',
+      'asset-depr-detail': 'asset-depr-detail'
     };
     if (_assetDeprPageAlias[page]) page = _assetDeprPageAlias[page];
     // 资产类别：收敛为固定资产卡片工具条弹窗，旧直达落到卡片页
@@ -1656,8 +1657,8 @@
     'trial-balance': '科目余额表', 'report-balance': '资产负债表', 'report-profit': '利润表',
     'report-cashflow': '标准现金流量表', 'report-tax': '主要应交税金明细表',
     'asset-card': '固定资产卡片',
-    'asset-depr-voucher': '折旧凭证', 'asset-depr-sum': '折旧汇总表',
-    'asset-depr-detail': '折旧明细表', 'asset-change-log': '资产变动记录',
+    'asset-depr-sum': '折旧汇总表',
+    'asset-depr-detail': '折旧明细表',
     'cashflow-init': '现金流量初始余额', 'cashflow-project': '科目现金流量项目',
     'backup-restore': '数据与安全', 'system-settings': '系统设置', 'operation-logs': '操作日志',
     'salary-statistics': '工资统计',
@@ -1907,10 +1908,12 @@
     'general-ledger': renderVia('Gl'), 'detail-ledger': renderVia('Dl'), 'multi-ledger': renderVia('Ml'),
     'trial-balance': renderVia('TrialBalance'), 'report-balance': renderVia('Bs'), 'report-profit': renderVia('Pl'),
     'report-cashflow': renderVia('Cf'), 'report-tax': renderVia('Tx'),     'asset-card': renderVia('Assets'),
-    /* 折旧独立分页：折旧凭证 / 折旧汇总表 / 折旧明细表 / 资产变动记录（原 asset-depr 宿主页内 Tab 拆出）；旧宿主键 asset-depr 兼容映射到折旧凭证 */
-    'asset-depr': renderVia('AssetDeprVoucher'),
-    'asset-depr-voucher': renderVia('AssetDeprVoucher'), 'asset-depr-sum': renderVia('Das'),
-    'asset-depr-detail': renderVia('Dad'), 'asset-change-log': renderVia('AssetChangeLog'),
+    /* 旧 asset-depr / asset-depr-voucher 已在 goPage 路由层重定向到 asset-card，
+       这里保留两键映射到 Assets 作为兜底（万一外部直接调用 renderPage） */
+    'asset-depr': renderVia('Assets'),
+    'asset-depr-voucher': renderVia('Assets'),
+    'asset-depr-sum': renderVia('Das'),
+    'asset-depr-detail': renderVia('Dad'),
     'salary': renderVia('Salary'), 'settle': refreshSettle, 'subject': renderVia('Subjects'),
     'opening': refreshOpening, 'param': renderVia('SystemSettings'),
     'salary-statistics': renderVia('SalaryStats'),

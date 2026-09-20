@@ -1036,6 +1036,16 @@ select:not([class]):focus { border-color: var(--ty-blue); }
   box-shadow: 0 0 0 2px rgba(47, 149, 255, .12);
 }
 
+/* 禁用态：灰色背景 + 浅色文字，视觉上明显区分"不可修改" */
+.inp:disabled,
+.inp-sel:disabled,
+select.inp:disabled {
+  background: var(--ty-blue-2, #e8f1ff) !important;
+  color: var(--ty-text-3, #999) !important;
+  cursor: not-allowed;
+  opacity: .85;
+}
+
 .inp-xs { width: 70px; }
 
 /* 下拉选择框全局统一基础样式：所有下拉（.inp 系、.inp-sel、报表筛选等无 class 的裸 select）
@@ -1695,6 +1705,63 @@ label.req::before {
 }
 .asset-ops a:last-child { margin-right: 0; }
 .asset-ops a:hover { text-decoration: underline; }
+
+/* 资产变动历史弹窗 */
+.history-item {
+  border-bottom: 1px solid var(--ty-border);
+  padding: 10px 0;
+}
+.history-item:last-child { border-bottom: none; }
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.history-op {
+  font-weight: 600;
+  color: var(--ty-blue);
+  background: var(--ty-blue-2);
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-size: var(--fs-sm);
+}
+.history-fa {
+  font-weight: 500;
+}
+.history-code {
+  color: var(--ty-text-2);
+  font-size: var(--fs-sm);
+}
+.history-time {
+  color: var(--ty-text-2);
+  font-size: var(--fs-sm);
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.history-table td {
+  padding: 2px 6px;
+  border: none;
+}
+.history-table td.h-label {
+  color: var(--ty-text-2);
+  width: 120px;
+}
+.history-table td.h-before {
+  color: #b91c1c;
+  text-align: right;
+}
+.history-table td.h-arrow {
+  text-align: center;
+  color: var(--ty-text-2);
+  width: 30px;
+}
+.history-table td.h-after {
+  color: #059669;
+}
 
 /* 凭证分录行操作按钮（+ 📋 -） */
 .row-ops {
@@ -5486,9 +5553,6 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 
 
 .page-title { font-size: var(--fs-lg); font-weight: 400; color: var(--ty-text); margin: 0; }
-.link-del { color: var(--ty-red); cursor: pointer; }
-.link-del.disabled { color: var(--ty-text-3, var(--ty-text-3)); cursor: not-allowed; }
-.link-del:hover { text-decoration: underline; }
 
 /* 凭证字卡片：默认行高亮 + 操作链接 */
 .vw-default { font-weight: 600; color: var(--ty-text); }

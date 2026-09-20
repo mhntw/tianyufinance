@@ -54,7 +54,6 @@
  * 依赖：无。所有计算纯函数，挂在全局 S。
  * 持久化：磁盘为唯一真相源——persist() 经 Storage 引擎（Rust）写
  *         <应用数据目录>/添钰财务/books/<id>.json；localStorage 仅存当前账套指针。
- * 产品来源说明见 README「关于产品来源」。
  * ============================================================ */
 
 /* ----------【功能索引】（按职责分组；**只列函数名，不写行号**）----------
@@ -3921,6 +3920,38 @@
       this.persist();
       return { ok: true, renamed: renamed, touched: touched };
     },
+    /* 资产变动历史：关键字段清单 + 中文标签。
+     * 只记录影响折旧计算/资产价值/归属的字段，编码、名称、规格等不改折旧的不记。
+     * history 挂在 fa 自身上，随卡片持久化，老账套 undefined 自动兜底为空数组。 */
+    _ASSET_HISTORY_FIELDS: [
+      'original', 'salvage', 'impairment',
+      'method', 'life',
+      'category', 'dept',
+      'status', 'cleanPeriod', 'cleanVoucher',
+      'faAcctId', 'accDeprAcct', 'deprFeeAcct'
+    ],
+    _ASSET_HISTORY_LABELS: {
+      original: '原值', salvage: '残值', impairment: '减值准备',
+      method: '折旧方法', life: '使用期限（年）',
+      category: '类别', dept: '部门',
+      status: '状态', cleanPeriod: '清理期间', cleanVoucher: '清理凭证',
+      faAcctId: '固定资产科目', accDeprAcct: '累计折旧科目', deprFeeAcct: '折旧费用科目'
+    },
+    _assetHistoryFields: function () { return this._ASSET_HISTORY_FIELDS; },
+    _assetHistoryLabels: function () { return this._ASSET_HISTORY_LABELS; },
+    _pushAssetHistory: function (fa, op, fields) {
+      if (!fa) return;
+      if (!fa.history) fa.history = [];
+      var d = new Date();
+      var time = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0') + ' ' +
+        String(d.getHours()).padStart(2, '0') + ':' +
+        String(d.getMinutes()).padStart(2, '0') + ':' +
+        String(d.getSeconds()).padStart(2, '0');
+      fa.history.unshift({ op: op || '修改', time: time, fields: fields || {} });
+    },
+
     addFixedAsset: function (fa) {
       fa.id = 'A' + Date.now() + Math.floor(Math.random() * 1000);
       // 数值字段初始化（严格对齐卡片列）
@@ -3933,7 +3964,6 @@
       // 档案里没有的部门会按名称补进 depts，否则资产左树/按部门筛选永远对不上。见 normalizeDept。
       fa.dept = this.normalizeDept(fa.dept);
       fa.acqDate = fa.acqDate || '';                  // 开始使用日期
-      fa.entryPeriod = fa.entryPeriod || '';          // 录入期间
       fa.original = num(fa.original);                 // 原值
       fa.accumDeprBegin = num(fa.accumDeprBegin);     // 期初累计折旧
       fa.accumDepr = num(fa.accumDepr);               // 期末累计折旧
@@ -3969,18 +3999,40 @@
       fa.deprFeeAcct = fa.deprFeeAcct || '';          // 折旧费用科目
       fa.cleanAcct = fa.cleanAcct || '';              // 资产清理科目
       fa.purchaseAcct = fa.purchaseAcct || '';        // 资产购入对方科目
-      fa.taxAcct = fa.taxAcct || '';                  // 税金科目
       fa.impairAcct = fa.impairAcct || '';            // 减值准备对方科目
       fa.yearDepr = num(fa.yearDepr);                 // 本年已折旧
       fa.addVoucherId = fa.addVoucherId || '';        // 新增资产凭证的**凭证 id**（唯一、含月份）
+      fa.history = [];
+      this._pushAssetHistory(fa, '新增', this._collectAssetHistoryFields(fa));
       this.state.fixedAssets.push(fa);
       this.persist();
       return fa;
+    },
+    /* 从 fa 中提取关键字段的当前值（用于新增时记一条 baseline） */
+    _collectAssetHistoryFields: function (fa) {
+      var self = this;
+      var out = {};
+      this._ASSET_HISTORY_FIELDS.forEach(function (k) { out[k] = self._fmtAssetHistoryVal(k, fa[k]); });
+      return out;
+    },
+    /* 字段值格式化：金额用千分位，其他原样返回 */
+    _fmtAssetHistoryVal: function (key, val) {
+      if (val === undefined || val === null || val === '') return '—';
+      if (['original', 'salvage', 'impairment'].indexOf(key) >= 0) {
+        var n = num(val);
+        return n === 0 ? '0' : money(n);
+      }
+      return String(val);
     },
     updateFixedAsset: function (id, fa) {
       var idx = -1;
       this.state.fixedAssets.forEach(function (x, i) { if (x.id === id) idx = i; });
       if (idx < 0) return { ok: false, msg: '卡片不存在' };
+      // Object.assign 之前先存 old 快照，用于 diff 关键字段
+      var old = this.state.fixedAssets[idx];
+      var self = this;
+      var oldVals = {};
+      this._ASSET_HISTORY_FIELDS.forEach(function (k) { oldVals[k] = old[k]; });
       // 与 addFixedAsset 同口径：编辑保存进来的类别/部门也过一遍归一（下拉/输入给的本就合规，此处是防呆，
       // 并保证手填的新部门会被补进部门档案）
       if (fa && fa.category !== undefined) fa.category = this.normalizeAssetCategory(fa.category);
@@ -4003,8 +4055,26 @@
       r.accumDepr = r.accumDeprBegin;
       if (!r.netValueBegin && r.original > 0) r.netValueBegin = r.original - r.accumDeprBegin - r.impairment;
       if (!r.netValueEnd && r.original > 0) r.netValueEnd = r.original - r.accumDepr - r.impairment;
+      // diff 关键字段，有变化就记 history
+      var diff = {};
+      this._ASSET_HISTORY_FIELDS.forEach(function (k) {
+        var newVal = r[k];
+        if (self._valuesDiffer(oldVals[k], newVal)) {
+          diff[k] = [self._fmtAssetHistoryVal(k, oldVals[k]), self._fmtAssetHistoryVal(k, newVal)];
+        }
+      });
+      if (Object.keys(diff).length > 0) {
+        this._pushAssetHistory(r, '修改', diff);
+      }
       this.persist();
       return { ok: true };
+    },
+    _valuesDiffer: function (a, b) {
+      // 先看是否都是**可转成数字**的（字符串 '5000' 也可）。任何一边不是数字 → 按字符串比
+      var an = Number(a), bn = Number(b);
+      var bothNumeric = !isNaN(an) && !isNaN(bn) && String(a).trim() !== '' && String(b).trim() !== '';
+      if (bothNumeric) return Math.abs(an - bn) > 0.005; // 容差 0.005 防浮点
+      return String(a) !== String(b);
     },
     removeFixedAsset: function (id) {
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
@@ -4108,6 +4178,7 @@
       if (!fa) return { ok: false, msg: '卡片不存在' };
       fa.status = '清理';
       fa.cleanPeriod = month || '';
+      this._pushAssetHistory(fa, '标记清理', { status: '清理', cleanPeriod: month || '' });
       this.persist();
       return { ok: true };
     },
@@ -4128,12 +4199,15 @@
         if (v) {
           var r = this.removeVoucher(v.id); // 内部 _revertAssetClean 负责把卡片恢复为「正常」
           if (!r || r.ok === false) return { ok: false, msg: '无法取消清理：' + ((r && r.msg) || '清理凭证未删除成功') };
+          this._pushAssetHistory(fa, '取消清理', { cleanVoucher: '—', cleanPeriod: '—', status: '正常' });
+          this.persist();
           return { ok: true, removedVoucher: vno };
         }
         delete fa.cleanVoucher; // 凭证已不在账上（历史脏数据）→ 清掉悬空引用再恢复卡片
       }
       fa.status = '正常';
       fa.cleanPeriod = '';
+      this._pushAssetHistory(fa, '取消清理', { cleanVoucher: '—', cleanPeriod: '—', status: '正常' });
       this.persist();
       return { ok: true };
     },
@@ -4184,7 +4258,16 @@
       if (!saved || saved.ok === false) {
         return { ok: false, msg: (saved && saved.msg) || '生成清理凭证失败' };
       }
-      done.forEach(function (fa) { fa.cleanVoucher = saved.word + '-' + saved.no; });
+      done.forEach(function (fa) {
+        fa.cleanVoucher = saved.word + '-' + saved.no;
+      });
+      var self2 = this;
+      done.forEach(function (fa) {
+        self2._pushAssetHistory(fa, '清理', {
+          status: '清理', cleanPeriod: month,
+          cleanVoucher: saved.word + '-' + saved.no
+        });
+      });
       this.persist();
       return { ok: true, voucher: saved, total: total, count: done.length };
     },

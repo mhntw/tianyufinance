@@ -707,22 +707,12 @@
           <button class="btn btn-primary" id="btnNewAsset">新增</button>
           <button class="btn" id="btnAssetGenVoucher" title="按左侧期间对「全部应计提折旧的资产」计提并生成折旧凭证 —— 面向全部资产，不按勾选筛选（同一期间重复点击不会重复计提）">计提折旧</button>
           <span class="orig-batch-wrap">
-            <!-- 「更多」是**真下拉**（下面有 assetBatchMenu）→ 保留 ty-dropdown（那个 CSS ::after 三角是它的真箭头）。
-                 2026-09-20 按反馈把原先平铺在工具条上的「导入 / 导出 / 打印」收进本下拉，
-                 工具条少三个按钮、更易在一行内排下；按钮文字也从「批量操作」改为「更多」——
-                 里面已不只是批量作业，还有数据进出与维护工具，叫「批量操作」名不副实。
-                 实现要点：导入/导出**沿用原 id**（btnAssetImport / btnAssetExport），
-                 其监听在 Asset.js 按 id 绑定，元素由 button 换成 a 标签照样生效；
-                 打印走 app.js 的全局委托 e.target.closest('[data-print]')，对任何元素都成立。
-                 （注：注释里不写尖括号形式的标签字面量 —— 会被「标签配对」类检查误计。） -->
             <button class="btn ty-dropdown" id="btnAssetBatch">更多</button>
             <div class="orig-batch-menu" id="assetBatchMenu" hidden>
-              <!-- 分三层：数据进出 / 批量作业 / 低频维护工具。
-                   清理已是一步式（标记＋生成凭证），故「补生成清理凭证」只用于补漏
-                   （导入的卡片本就带清理状态、或上次生成失败）。 -->
               <a href="javascript:;" id="btnAssetImport">导入</a>
               <a href="javascript:;" id="btnAssetExport">导出</a>
               <a href="javascript:;" data-print>打印</a>
+              <a href="javascript:;" id="btnAssetHistory" title="查看全部固定资产的变动记录（新增/修改/清理）">变动记录</a>
               <span class="orig-batch-sep"></span>
               <a href="javascript:;" data-batch="clean">批量清理</a>
               <a href="javascript:;" data-batch="del">批量删除</a>
@@ -750,6 +740,10 @@
              实测算例见 Asset.js 的 _assetLedgerReconcile 注释（绅蓝之星差额 198,144.00）。
              由 Asset.js 的 renderAssetReconcile() 维护。 -->
         <div class="open-check" id="assetReconcileCheck" hidden></div>
+        <!-- 折旧生成状态提示：取代原独立「折旧凭证」页的顶部提示。
+             与对账/导入体检同级，但不同色（k-tip info 蓝 vs open-check 黄/红），
+             因它是「操作引导」而非「异常告警」。默认隐藏；由 renderAssets() 填充。 -->
+        <div class="k-tip" id="assetDeprTip" hidden></div>
 
         <div class="orig-body orig-body-sider-right">
           <div class="orig-sider" id="assetSider">
@@ -767,7 +761,7 @@
             <table class="grid" id="assetGrid">
               <thead><tr>
                 <th class="col-check"><input type="checkbox" id="aCheckAll"></th>
-                <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
+                <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th>
                 <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
                 <th>预计使用期限</th><th>已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
                 <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
@@ -799,11 +793,9 @@
       <section class="page" id="page-asset-depr-sum" data-name="折旧汇总表">
         <div class="page-actions">
             <div data-period="das" data-default="currentPeriod" data-on-change="__renderDas"></div>
-            <label class="chk"><input type="checkbox" id="dasByDept"> 按部门汇总</label>
             <label class="chk"><input type="checkbox" id="dasShowCleaned"> 显示已清理</label>
             <button class="btn" id="btnDasPrint" data-print>打印</button>
             <button class="btn" id="btnDasExport">导出</button>
-            <button class="btn" id="btnDepreciateAll">计提本月折旧</button>
         </div>
         <div class="scroll-area">
         <table class="grid" id="dasGrid">
@@ -819,7 +811,6 @@
         <div class="page-actions">
             <div data-period="dad" data-default="currentPeriod" data-on-change="__renderDad"></div>
             <label class="chk"><input type="checkbox" id="dadShowCleaned"> 显示已清理</label>
-            <label class="chk"><input type="checkbox" id="dadShowChange"> 显示变动信息</label>
             <button class="btn" id="btnDadPrint" data-print>打印</button>
             <button class="btn" id="btnDadExport">导出</button>
         </div>
@@ -834,54 +825,6 @@
         </div>
       </section>
 
-      <section class="page" id="page-asset-change-log" data-name="资产变动记录">
-        <div class="page-actions">
-            <div data-period="acl" data-default="currentPeriod" data-on-change="__renderAssetChangeLog"></div>
-            <label class="chk"><input type="checkbox" id="aclByDept"> 按部门汇总</label>
-            <label class="chk"><input type="checkbox" id="aclShowCleaned"> 显示已清理</label>
-            <label class="chk"><input type="checkbox" id="aclShowChange"> 显示变动信息</label>
-            <button class="btn" id="btnAclPrint" data-print>打印</button>
-            <button class="btn" id="btnAclExport">导出</button>
-        </div>
-        <div class="scroll-area">
-        <table class="grid" id="aclGrid">
-          <thead>
-            <tr class="grid-title" id="aclTitleRow"></tr>
-            <tr>
-              <th>资产编码</th><th class="col-fill">资产名称</th><th>变动项</th><th class="col-fill">变动前内容</th>
-              <th class="col-fill">变动后内容</th><th>变动期间</th><th>修改人</th><th>变动时间</th>
-            </tr>
-          </thead>
-          <tbody id="aclBody"></tbody>
-        </table>
-        </div>
-      </section>
-
-      <section class="page" id="page-asset-depr-voucher" data-name="折旧凭证">
-        <div class="page-actions">
-            <span class="page-period" id="dvPeriod"></span>
-            <button class="btn" id="btnDeprVchSetting">折旧凭证参数设置</button>
-            <button class="btn btn-primary" id="btnAccrueDepr">生成折旧凭证</button>
-            <button class="btn" id="btnDvExport">导出</button>
-            <button class="btn" id="btnDvBatch">批量操作</button>
-        </div>
-        <div class="k-tip" id="dvTip">点击「生成折旧凭证」按当前期间计提折旧并生成凭证。</div>
-        <div class="scroll-area">
-        <table class="grid" id="dvGrid">
-          <thead><tr>
-            <th class="col-check"><input type="checkbox" id="dvCheckAll"></th>
-            <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th><th>录入期间</th>
-            <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
-            <th>预计使用期限</th><th>已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
-            <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
-            <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
-            <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th class="col-fill">备注</th>
-          </tr></thead>
-          <tbody id="dvBody"></tbody>
-          <tfoot id="dvFoot"></tfoot>
-        </table>
-        </div>
-      </section>
 
       <section class="page" id="page-salary">
         <div class="page-actions">
@@ -1810,7 +1753,6 @@
         <div class="form-row"><label class="req">折旧费用科目</label><input id="aDeprFeeAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <div class="form-row"><label class="req">资产清理科目</label><input id="aCleanAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <div class="form-row"><label class="req">资产购入对方科目</label><input id="aPurchaseAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
-        <div class="form-row"><label>税金科目</label><input id="aTaxAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <div class="form-row"><label>减值准备对方科目</label><input id="aImpairAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
         <!-- 星标规则：「期初累计折旧」「本年已折旧」为选填（默认 0），故去星标；
              残值率 / 预计使用期数 / 已折旧期间为必填，保留。
@@ -1827,7 +1769,6 @@
         <div class="form-row"><label>规格型号</label><input id="aSpec" class="inp"></div>
         <div class="form-row"><label>存放地点</label><input id="aLocation" class="inp"></div>
         <div class="form-row"><label>使用人</label><input id="aUser" class="inp"></div>
-        <div class="form-row"><label>录入期间</label><input id="aEntryPeriod" class="inp" placeholder="如 2022-02"></div>
         <div class="form-row"><label>减值准备</label><input id="aImpairment" class="inp" type="number" value="0"></div>
         <!-- 「状态」「清理期间」已于 2026-09-18 移除 —— 这两个字段与卡片行的「清理」动作语义重叠。
              资产转为「清理」只能走卡片行的「清理」动作，它会同时生成清理凭证；
@@ -1840,6 +1781,16 @@
              清空的新表单），且同批同型资产用「数量」字段一张卡即可，无需连续录入。 -->
         <button class="btn btn-primary" id="btnSaveAsset">保存</button>
         <button class="btn" id="btnCloseAsset">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="assetHistoryModal">
+    <div class="modal-box modal-wide">
+      <div class="modal-title" id="assetHistoryTitle">变动记录<button class="modal-x" id="btnCloseAssetHistory">×</button></div>
+      <div class="modal-body" id="assetHistoryBody"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="btnCloseAssetHistory2">关闭</button>
       </div>
     </div>
   </div>
@@ -1885,22 +1836,6 @@
       <div class="modal-actions">
         <button class="btn" id="btnSaveCat">保存</button>
         <button class="btn" id="btnCloseCat">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="deprVchSettingModal">
-    <div class="modal-box modal-compact">
-      <div class="modal-title">折旧凭证参数设置</div>
-      <div class="form-grid">
-        <div class="form-row"><label>凭证分类</label><input id="dvsVoucherType" class="inp" value="记"></div>
-        <div class="form-row"><label>折旧科目</label><input id="dvsDeprSubject" class="inp" value="1602"></div>
-        <div class="form-row"><label>费用科目</label><input id="dvsExpenseSubject" class="inp" value="5602"></div>
-        <div class="form-row"><label>结转方式</label><select id="dvsCategory" class="inp"><option>收益和损失分开结转</option><option>同时结转</option></select></div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="btnSaveDvs">保存</button>
-        <button class="btn" id="btnCloseDvs">取消</button>
       </div>
     </div>
   </div>
