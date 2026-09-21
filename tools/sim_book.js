@@ -370,12 +370,19 @@ PLAN.forEach(P => {
     eqAmt(c + ' ' + ((S.subject(c) || {}).name || '') + ' 变动', periodDelta(M, c), got);
   });
 
-  section('【3】结转前：资产负债表应「暂不平衡」，且差额恰等于未结转利润');
+  section('【3】结转前：未结转利润被正确识别，资产负债表仍平衡');
   {
     S._glCache = {};
     const bs = S.balanceSheet(M);
     const diff = r2(num(bs.totalAsset) - num(bs.totalLiability) - num(bs.totalEquity));
-    eqAmt('暂不平衡差额 = 当月利润（正确表现）', diff, P.expect.profit);
+    // 【为什么不期望「暂不平衡」】balanceSheet 会主动把「未结转损益」并入未分配利润
+    //   （见 store.js balanceSheet：保证「资产 = 负债 + 所有者权益」在未结转期间同样成立），
+    //   因此任何时点都应平衡 —— 真实账套的 I3 恒等式正是靠这一点通过的。
+    //   本条原先期望「差额 = 当月利润」（即不平），那是借助 unclosedProfit「只统计末级科目」
+    //   的缺陷才成立的：本测试用一级科目(有下级)记账，未结转利润被算成 0，才显得"不平"。
+    //   该缺陷修复后此期望不再成立，改为直接核对未结转利润本身（更有针对性）。
+    ok('结转前资产负债表平衡（未结转损益已并入权益）', Math.abs(diff) < 0.005, '差 ' + diff.toFixed(2));
+    eqAmt('未结转利润 = 当月利润（被正确识别）', r2(S.unclosedProfit(M)), P.expect.profit);
   }
 
   section('【4】结转损益');

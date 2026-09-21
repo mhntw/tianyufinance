@@ -993,6 +993,10 @@
     restoreBookState: function (st) {
       if (!st || !st.company) { console.warn('[restoreBookState] 无效备份数据'); return false; }
       this.state = st;
+      // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
+      // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
+      // （switchBook 因换了 bookId 天然隔绝，故此前未暴露；restoreFromData 已显式清理，此处曾遗漏。）
+      this._glCache = {};
       this.normalizeState();
       this.ensureVoucherIds();
       this._writeLocalBookSafe();
@@ -3306,16 +3310,30 @@
       var revItems = self.subjects().filter(function (s) { return s.cls === 'revenue' && !isCarryOver(s.code); });
       var expItems = self.subjects().filter(function (s) { return s.cls === 'expense' && !isCarryOver(s.code); });
       var items = [];
-      // 汇总总额走「逐分录」累加（采用标准利润表口径：收入取贷方发生额、费用取借方发生额）。
-      // 逐分录累加，避免原实现用 rollCodes 上卷时对父+子重复累加导致金额翻倍。
+      // 结转损益凭证：含「本年利润 3103」或「利润分配 3104」分录的凭证。
+      // 【为什么必须整张排除】结转凭证会把每个损益科目做反向分录结平（借收入 / 贷费用）：
+      //   若把它的分录计入，取净额会得到 0 —— 这正是旧实现被迫改用「单边发生额」的原因。
+      //   但单边口径（收入只算贷方、费用只算借方）会连同**真实的红冲/冲减**一起漏掉，
+      //   例如「借 待摊费用 / 贷 管理费用」这类冲减是真实发生的，必须抵减该费用。
+      //   结果是利润表净利润与结转金额对不上（实测真实账套 6/8 个月偏差，最大 -47429.72）。
+      // 正确做法：排除结转凭证后取【净额】—— 冲减被保留、结转被排除，与结转口径逐分一致。
+      function isCarryVoucher(v) {
+        return (v.entries || []).some(function (e) {
+          var c = String(e.code);
+          return c === PROFIT_CODE || c === '3104';
+        });
+      }
+      // 汇总总额走「逐分录」累加（标准利润表口径：收入净额=贷-借，费用净额=借-贷）。
+      // 逐分录累加，避免用 rollCodes 上卷时对父+子重复累加导致金额翻倍。
       var totalRevenue = 0, totalExpense = 0;
       self.periodVouchers(month).forEach(function (v) {
+        if (isCarryVoucher(v)) return; // 排除结转损益凭证（其分录是结平用的反向分录）
         v.entries.forEach(function (e) {
           var es = self.subject(e.code);
           if (!es) return;
-          if (isCarryOver(e.code)) return; // 排除结转科目
-          if (es.cls === 'revenue') totalRevenue += num(e.cr);
-          else if (es.cls === 'expense') totalExpense += num(e.dr);
+          if (isCarryOver(e.code)) return; // 排除结转科目本身
+          if (es.cls === 'revenue') totalRevenue += num(e.cr) - num(e.dr);
+          else if (es.cls === 'expense') totalExpense += num(e.dr) - num(e.cr);
         });
       });
       revItems.forEach(function (s) {
@@ -3335,15 +3353,14 @@
           : self.periodVouchers(month);
         var t = 0;
         vs.forEach(function (v) {
+          if (isCarryVoucher(v)) return; // 排除结转损益凭证，理由同 totalRevenue/totalExpense
           v.entries.forEach(function (e) {
             if (codes.indexOf(e.code) < 0) return;
             var s = self.subject(code);
-            // 利润表是动态报表，取「发生额」而非借贷轧差净额：
-            // 收入类取贷方发生额、费用类(含成本/税金)取借方发生额。
-            // 已结转损益的账套中损益科目借贷已平衡，取净额会得到 0（错误），
-            // 取发生额方向才能还原真实本月/累计数（利润表口径）。
-            if (s.cls === 'revenue') t += num(e.cr);
-            else t += num(e.dr);
+            // 取【净额】：收入 = 贷-借，费用(含成本/税金) = 借-贷。
+            // 与 totalRevenue/totalExpense 同口径，也与结转损益完全一致。
+            if (s.cls === 'revenue') t += num(e.cr) - num(e.dr);
+            else t += num(e.dr) - num(e.cr);
           });
         });
         return t;
@@ -3488,12 +3505,15 @@
       month = normMonth(month);
       if (month === '0000-00') return 0;
       var subs = this.subjects();
-      var leaf = {};
-      subs.forEach(function (s) {
-        if (!self.childCodesOf(s.code).length) leaf[String(s.code)] = s;
-      });
+      // 【为什么按「全部科目」而非「末级科目」建账户】凭证允许直接记在有下级的父科目上
+      // （科目选择器不限制末级）。若只建末级，记在父科目上的损益分录会因 acc[e.code]
+      // 查不到而被静默跳过 —— 表现为资产负债表「未分配利润」偏小、与利润表/总账分叉。
+      // 按全部科目建账户后，每笔分录都归属到它实际所在的科目：既不漏计、也不重复（一笔分录只有一个 code）。
+      // 期初照旧取自 opening()：有下级的科目本就禁止录入自身期初（见 setOpening），
+      // 故父科目期初恒为 0，不会重复计入。
       var acc = {};
-      Object.keys(leaf).forEach(function (c) {
+      subs.forEach(function (s) {
+        var c = String(s.code);
         var o = self.opening(c);
         acc[c] = { dr: num(o.dr), cr: num(o.cr) };
       });
@@ -3507,10 +3527,10 @@
         });
       });
       var t = 0;
-      Object.keys(leaf).forEach(function (c) {
-        var ss = leaf[c], a = acc[c] || { dr: 0, cr: 0 };
-        if (ss.cls === 'revenue') t += a.cr - a.dr;
-        else if (ss.cls === 'expense') t -= a.dr - a.cr;
+      subs.forEach(function (s) {
+        var a = acc[String(s.code)] || { dr: 0, cr: 0 };
+        if (s.cls === 'revenue') t += a.cr - a.dr;
+        else if (s.cls === 'expense') t -= a.dr - a.cr;
       });
       return t;
     },

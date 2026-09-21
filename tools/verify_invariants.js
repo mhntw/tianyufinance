@@ -357,6 +357,39 @@ function run(bookPath) {
   clsDiagnose();
   report('I10', '利润表页面=数据层', i10ok, i10ok ? '' : 'FAIL 页面与数据层不一致（已附科目类别诊断，见上）');
 
+  /* --- I11：利润表净利润 = 结转损益凭证金额 --- */
+  // 【为什么需要这条】利润表原先用「单边发生额」取数（收入只算贷方、费用只算借方），
+  //   结转损益用「净额」（借-贷）。当存在真实的红冲/冲减时（如「借 待摊费用 / 贷 管理费用」），
+  //   两条口径必然不等 —— 报表净利润、结转金额、3103 余额三者分叉。
+  //   实测真实账套 6/8 个月不一致，最大 -47429.72（5 月利润被少算一半以上）。
+  //   现改为「排除结转凭证后取净额」，三者应恒等；本不变量用于锁死该关系。
+  console.log('--- I11: 利润表净利润 = 结转损益凭证金额 ---');
+  let i11bad = 0, i11checked = 0;
+  const _n = (x) => { const z = parseFloat(x); return isNaN(z) ? 0 : z; };
+  monthList.forEach(m => {
+    const repNP = round2(S.profitStatement(m).netProfit);
+    let carry = 0, cn = 0;
+    (data.vouchers || []).forEach(v => {
+      if (v.deleted === 'y') return;
+      if ((v.date || '').slice(0, 7) !== m) return;
+      if (!/carryPL/i.test(v.kind || '')) return;
+      cn++;
+      (v.entries || []).forEach(e => {
+        if (String(e.code) === '3103') carry += _n(e.cr) - _n(e.dr);
+      });
+    });
+    if (cn === 0) return; // 未做结转的月份不适用
+    i11checked++;
+    if (Math.abs(repNP - round2(carry)) >= 0.01) {
+      i11bad++;
+      console.log('    ' + m + '：报表净利润=' + repNP + '  结转金额=' + round2(carry) +
+        '  差=' + round2(repNP - carry));
+    }
+  });
+  if (!i11bad) console.log('      ✓ 已核对 ' + i11checked + ' 个已结转月份，报表与结转逐分一致');
+  report('I11', '利润表净利润=结转金额', i11bad === 0,
+    i11bad ? 'FAIL ' + i11bad + ' 个月不一致（报表口径与结转口径分叉）' : '');
+
   /* --- 汇总 --- */
   console.log('');
   console.log('=== 汇总 ===');

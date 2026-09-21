@@ -88,6 +88,32 @@ ck(rr.ok, 'restoreFromData 成功');
 const afterRestore = glOf('1001', '2026-03');
 ck(afterRestore === 777, '恢复后 2026-03 现金 = 777（实际 ' + afterRestore + '，修复前会命中旧缓存返回3000）');
 
+console.log('\n=== 2b. restoreBookState 后缓存失效（从备份列表恢复，bookId 不变）===');
+// 与 2 的区别：restoreFromData 换了数据源；restoreBookState 恢复的是**同一账套**（bookId 不变），
+// 缓存键 bookId|month 完全相同 —— 若不清缓存，恢复后查询同月必命中恢复前的旧值。
+// 此前只测了 restoreFromData，restoreBookState 漏清缓存（账套「从备份恢复」后会显示旧数）。
+mkState(SUBJ, [{ id: 'V7', word: '记', no: 1, date: '2026-03-05', summary: '恢复前', entries: [{ code: '1001', dr: 4000, cr: 0 }, { code: '6001', dr: 0, cr: 4000 }] }]);
+S.bookId = 'BOOK_F';
+ck(glOf('1001', '2026-03') === 4000, '恢复前 2026-03 现金 = 4000（已建立缓存）');
+// mock 落盘副作用：本测试只验证「缓存是否失效」
+const _realPersist = S.persist, _realWrite = S._writeLocalBookSafe, _realRefresh = S.refreshBookIndex;
+S.persist = function () {}; S._writeLocalBookSafe = function () {}; S.refreshBookIndex = function () {};
+const _realSaveBook = (global.Storage && global.Storage.saveBook) || null;
+if (global.Storage) global.Storage.saveBook = function () { return Promise.resolve({ ok: true }); };
+const backup2 = {
+  company: { startMonth: '2026-01', name: '测试' },
+  subjects: SUBJ,
+  vouchers: [{ id: 'V8', word: '记', no: 1, date: '2026-03-05', summary: '恢复后', entries: [{ code: '1001', dr: 999, cr: 0 }, { code: '6001', dr: 0, cr: 999 }] }]
+};
+const rbs = S.restoreBookState(backup2);
+ck(rbs === true, 'restoreBookState 返回成功');
+ck(S.bookId === 'BOOK_F', '恢复的是同一账套（bookId 未变，缓存键会完全相同）');
+const afterRBS = glOf('1001', '2026-03');
+ck(afterRBS === 999, '恢复后 2026-03 现金 = 999（实际 ' + afterRBS + '，修复前会命中旧缓存返回4000）');
+// 还原 mock
+S.persist = _realPersist; S._writeLocalBookSafe = _realWrite; S.refreshBookIndex = _realRefresh;
+if (global.Storage && _realSaveBook) global.Storage.saveBook = _realSaveBook;
+
 console.log('\n=== 3. 缓存仍能正常命中（性能未被破坏）===');
 mkState(SUBJ, [{ id: 'V5', word: '记', no: 1, date: '2026-04-05', summary: '缓存测试', entries: [{ code: '1001', dr: 888, cr: 0 }, { code: '6001', dr: 0, cr: 888 }] }]);
 S.bookId = 'BOOK_D';
