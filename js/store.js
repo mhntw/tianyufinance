@@ -3287,7 +3287,8 @@
       }
       // 期间范围：从年初到目标月末（用于本年累计）
       function netOfRange(cls) {
-        var vs = self.state.vouchers.filter(function (v) { var m = voucherMonth(v); return m >= ym && m <= month; });
+        // 同 netOfCls：统一走 ytdVouchers（已排除软删除凭证），避免累计口径漏掉删除标记
+        var vs = self.ytdVouchers(month);
         var t = 0;
         vs.forEach(function (v) {
           v.entries.forEach(function (e) {
@@ -3351,9 +3352,11 @@
       });
       function netOfCls(code, scope) {
         var codes = self.rollCodes(code);
-        var vs = scope === 'year'
-          ? self.state.vouchers.filter(function (v) { var m = voucherMonth(v); return m >= ym && m <= month; })
-          : self.periodVouchers(month);
+        // 【必须走统一入口】原 year 分支自写 filter，漏了 v.deleted 判断 —— 导致
+        // 「删除凭证后，利润表『本年累计』列不更新，而『本月』列已更新」，同一张表两列自相矛盾。
+        // （本月分支用 periodVouchers，本就排除软删除；累计分支自写 filter 时漏了，故只有累计错。）
+        // ytdVouchers 是「活动凭证 + 本年区间」的统一入口，已排除软删除，这里直接复用。
+        var vs = scope === 'year' ? self.ytdVouchers(month) : self.periodVouchers(month);
         var t = 0;
         vs.forEach(function (v) {
           if (isCarryVoucher(v)) return; // 排除结转损益凭证，理由同 totalRevenue/totalExpense
