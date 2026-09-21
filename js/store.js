@@ -1340,6 +1340,37 @@
       return { ok: true };
     },
 
+    // 删除科目（**仅限未使用**：无凭证引用、无期初余额）。
+    // 【为什么不给「已使用」的科目删除】删除会让历史凭证的分录指向一个不存在的科目，账就断了，
+    //   故一律拒绝 —— 这类科目必须留在账上（要退出使用时另作处理，不在本函数职责内）。
+    // 【为什么连带下级是安全的】_subjectUsed 按编码前缀涵盖整棵子树（凭证与期初余额都查前缀），
+    //   故「本科目未使用」⇒ 其全部下级必然也未使用，一并删除不会误删有效数据。
+    removeSubject: function (code) {
+      code = String(code || '').trim();
+      var s = this.subject(code);
+      if (!s) return { ok: false, msg: '科目不存在' };
+      if (this._subjectUsed(code)) {
+        return {
+          ok: false,
+          msg: '科目「' + s.code + ' ' + (s.name || '') + '」已有凭证或期初余额（含其下级科目），不允许删除 —— 删除会使历史凭证指向不存在的科目。'
+        };
+      }
+      var self = this;
+      // 自身 + 全部下级（indexOf === 0 已包含自身）
+      var delCodes = {};
+      this.state.subjects.forEach(function (x) {
+        if (x && x.code.indexOf(code) === 0) delCodes[x.code] = 1;
+      });
+      var n = Object.keys(delCodes).length;
+      this.state.subjects = this.state.subjects.filter(function (x) { return x && !delCodes[x.code]; });
+      // 清理期初余额的残留键（全 0 键正常会被 setOpening 删除，导入账套可能带入）
+      Object.keys(delCodes).forEach(function (c) { delete self.state.openingBalances[c]; });
+      // 科目表变化会改变 rollCodes 上卷口径，须作废总账缓存
+      this._glCache = {};
+      this.persist();
+      return { ok: true, removed: n, code: code, name: s.name || '' };
+    },
+
     /* ===================== 期初余额 =====================
      * 「财务初始余额」：科目表（编码/名称/方向/币别/年初余额/本年累计借/本年累计贷/期初余额/数量）。
      * 覆盖核心列：年初余额(yb)、本年累计借(ytdDr)、本年累计贷(ytdCr)、期初余额(dr/cr)。

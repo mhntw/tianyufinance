@@ -124,6 +124,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var indent = S.subjectIndentHTML(lv);
       var tr = document.createElement('tr');
       if (hidden) tr.className = 'subj-hidden';
+      // 删除入口：仅「未使用」的科目给删除（已有凭证/期初的科目删除会断账，故不给入口，
+      // 免得用户点了才报错）。_subjectUsed 按前缀已涵盖整棵子树，判断一次即可。
+      var opDel = S._subjectUsed(s.code) ? ''
+        : ' <a class="link-del" data-code="' + s.code + '">删除</a>';
       tr.innerHTML =
         // 三角放在【科目编码列】的编码前（与科目余额表一致）；名称列只留缩进 + 名称
         '<td class="mono">' + arrow + s.code + '</td>' +
@@ -131,7 +135,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name + '</td>' +
         '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side + '</td>' +
         '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '✓' : '—') + '</td>' +
-        '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a></td>';
+        '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a>' + opDel + '</td>';
       tb.appendChild(tr);
     });
     if (!list.length) {
@@ -232,6 +236,29 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     }
     if (e.target.classList.contains('link-edit')) {
       openSubjectModal(e.target.getAttribute('data-code'));
+    }
+    if (e.target.classList.contains('link-del')) {
+      var dCode = e.target.getAttribute('data-code');
+      var dSub = S.subject(dCode);
+      if (!dSub) { renderSubjects(); return; }
+      // 连带下级数量（编码前缀匹配，排除自身）
+      var kidN = S.subjects().filter(function (x) {
+        return x && x.code.indexOf(dCode) === 0 && x.code !== dCode;
+      }).length;
+      var dMsg = '确定删除科目「' + dCode + ' ' + (dSub.name || '') + '」？'
+        + (kidN ? ('\n\n其下 ' + kidN + ' 个下级科目将一并删除。') : '')
+        + '\n\n（该科目尚无凭证与期初余额，删除不影响任何账务）';
+      // Tauri 下 window.confirm 非阻塞，统一走桥接（与 app.js 一致）
+      var ask = H.confirmAsync || function (m) { return Promise.resolve(window.confirm ? window.confirm(m) : false); };
+      Promise.resolve(ask(dMsg)).then(function (ok) {
+        if (!ok) return;
+        var r = S.removeSubject(dCode);
+        if (!r.ok) { showToast(r.msg, 'error'); return; }
+        renderSubjects();
+        showToast(kidN ? ('已删除「' + dCode + '」及其 ' + kidN + ' 个下级科目')
+                       : ('已删除科目「' + dCode + '」'), 'success');
+      });
+      return;
     }
   });
   $('btnNewSubject').addEventListener('click', function () { openSubjectModal(null); });
