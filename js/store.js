@@ -279,14 +279,12 @@
     var n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }
+  // 金额显示：固定加千分位。
+  // 原「凭证录入偏好设置」里的千分位开关已移除（该弹窗连同赤字检查一并删除），千分位改为默认行为。
+  // 注意：导出 Excel 不受影响 —— 导出走原始数值（XLSX.utils.aoa_to_sheet 直接吃数字），不经过本函数；
+  //       粘贴回输入框也没问题（num() 会先剥离千分位逗号）。
   function money(n) {
-    var sep = true;
-    try { if (S && S.settings && S.settings.voucher && S.settings.voucher.thousand === false) sep = false; } catch (e) {}
-    var v = num(n);
-    if (!sep) {
-      return v.toFixed(2);
-    }
-    return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
 
@@ -347,7 +345,7 @@
   ];
 
   /* ---------- 空状态（单一账套） ----------
-   * standard: 会计准则机器键（'old'|'small2013'），建账时由 newBook(key) 传入
+   * standard: 会计准则机器键。当前仅 'small2013'（小企业会计准则 2013）一套，建账时由 newBook(key) 传入
    * reportRules: 该账套的报表规则快照（balanceSheet + incomeStatement），深拷贝自
    *              STANDARDS[key].reportRules，拷入后即与准则模板解耦，可逐账套独立编辑
    */
@@ -373,9 +371,6 @@
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
       operationLogs: [],      // 操作日志 [{ time, user, action, detail }]
-      originals: [],         // 原始凭证（电子档案/附件管理），字段对照：
-                               // {id,name,remark,smallType,amount,voucherTpl,group,isInvoice,uploadTime,uploader,fileSize,checkStatus,auditTime,voucherNo,period,vouchered,audited,voucherId}
-                               // 数据来自用户导入/拍照，新账套为空表（不预置假数据）
       closedPeriods: [],     // 已结账月份列表 ['YYYY-MM', ...]
       voucherWords: [
         { name: '记', title: '记账凭证', enabled: true },
@@ -386,10 +381,6 @@
       param: {
         standard: stdMeta.label,
         voucherWord: '记',
-        // 凭证开关（单机版仅保留赤字检查；多人权限相关开关已移除）
-        voucherChecks: {
-          deficitCheck: false        // 现金、银行存款、其他货币资金科目赤字检查
-        },
         // 账簿开关（仅保留已接真的两项；其余开关本项目无消费方，已移除）
         bookHideZero: false,           // 无发生额且余额为0不显示
         bookExpandAll: true            // 展开所有级次（默认✓）
@@ -931,7 +922,8 @@
     },
 
 
-    // 新建账套（可建多个核算主体）。standardKey: 'old'|'small2013'，默认 'old'
+    // 新建账套（可建多个核算主体）。standardKey 当前仅 'small2013' 可用，默认 'small2013'。
+    // （原注释写作「默认 'old'」，与下方 emptyState(standardKey || 'small2013') 不符，已更正）
     // startMonth: 启用期间（'YYYY-MM'），建账时定稿；缺省/非法时回落 emptyState 的建账当月
     newBook: function (name, standardKey, startMonth) {
       var id = 'B' + Date.now();
@@ -1778,11 +1770,9 @@
     },
     _voucherRefs: function (id) {
       var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
-      var vno = v ? ((v.word || '') + '-' + (v.no != null ? v.no : '')) : null;
       var hits = [];
       var self = this;
       function any(arr, cond) { return (arr || []).some(cond); }
-      if (any(this.state.originals, function (o) { return o.voucherId === id || (vno && o.voucherNo === vno); })) hits.push('原始凭证');
       // 固定资产：折旧凭证与清理凭证**均不拦**，改为删除时自动回退卡片的业务状态
       // （见 _revertAssetDepr / _revertAssetClean），账账、账实保持一致。
       // 这里若继续拦，用户得先手工解锁，而界面上并没有能解锁这两个字段的入口
@@ -1795,19 +1785,37 @@
       if (v && v.payroll) hits.push('工资');
       return hits;
     },
-    removeVoucher: function (id) {
+    // reason：删除原因（审计留痕）。
+    // 【为什么是可选参数、且本层不强制】本方法有三类调用方，其中两类是【系统调用】，不该被要求填原因：
+    //   · 人工删除（凭证页单张 / 批量）→ UI 层强制必填后传入；
+    //   · 结账流程重算结转凭证（Settle.js）→ 系统行为，不传；
+    //   · 取消资产清理的业务回退（本文件 _cancelClean 链路）→ 不传。
+    // 若在此处强制校验，结账会直接失败。故「是否强制」放在 UI 层，
+    // 本层只负责留痕：调用方没传就记为「(未填写)」，便于事后识别谁绕过了入口。
+    // 凭证制单人（唯一取值点，页面一律调用本方法，不要各自读字段）。
+    // 【为什么必须兼容两个字段】制单人有两套来源，只读任何一个都会漏：
+    //   · v.maker    —— ty 新录的凭证（addVoucher 写入，值为当时的 company.bookkeeper）
+    //   · v.preparer —— 金蝶导入的凭证（kis-import 取 FPreparer，如 "Manager"）
+    // 实测（添钰来客 2026）：1047 张导入凭证只有 preparer、没有 maker；
+    // 若只读 v.maker，这些凭证「没有制单人」，导出 Excel 与操作日志都会显示空白。
+    // 2026-09-21 统一：两处来源都认，谁有值用谁。
+    voucherMaker: function (v) {
+      if (!v) return '';
+      return String(v.maker || v.preparer || '').trim();
+    },
+
+    removeVoucher: function (id, reason) {
       var v = this.state.vouchers.filter(function (x) { return x.id === id; })[0];
       if (!v) return { ok: false, msg: '凭证不存在' };
       if (v.deleted === 'y') return { ok: false, msg: '凭证已删除' };
       if (this.isPeriodClosed(voucherMonth(v)))
         return { ok: false, msg: '该凭证所在月份已结账，不可删除' };
-      // 财务严谨：校验凭证是否被业务单据引用（报销单/原始凭证/固定资产/工资等），有引用则禁删
+      // 财务严谨：校验凭证是否被业务单据引用（固定资产/工资等），有引用则禁删
       var ref = this._voucherRefs(id);
       if (ref && ref.length) {
         // 按引用类型给具体指引：原实现一律说「请先解除关联后再删除」，而固定资产类引用
         // 根本不是靠「解除关联」解的（那按钮清的是购入凭证字段），会把人带进死胡同。
         var REF_TIPS = {
-          '原始凭证': '请先在「原始凭证」页解除该凭证的关联',
           '工资': '请先在工资模块删除对应工资记录'
         };
         var tips = ref.map(function (r) { return REF_TIPS[r] || ('请先处理「' + r + '」后再删除'); });
@@ -1824,12 +1832,16 @@
       v.deleted = 'y';
       v.deletedAt = fmtDateTime(new Date());
       v.deletedBy = curUser;
+      // 删除原因随凭证留存，供「凭证回收站」直接展示。
+      // 与日志的 reason 字段互为补充：回收站解答「这张为什么被删」（就地可见），
+      // 日志是全局审计流水（跨凭证、可按时间追溯）。两者场景不同，故都落。
+      v.deleteReason = (reason == null ? '' : String(reason)).trim();
       if (deprReverted) v.deprReverted = deprReverted;
       if (cleanReverted) v.cleanReverted = cleanReverted;
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存
       this.persist();
       this.addLog('删除凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
-        null, (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''), null,
+        v.deleteReason || '(未填写)', (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''), null,
         { id: id, action_type: 'delete', target_name: (v.word || '') + '-' + (v.no != null ? v.no : ''), result: 'success' });
       return { ok: true };
     },
@@ -1844,6 +1856,7 @@
       v.deleted = 'n';
       delete v.deletedAt;
       delete v.deletedBy;
+      delete v.deleteReason;   // 与 deletedAt/deletedBy 同步清理：还原后该凭证视为「未删除」，不留删除痕迹
       // 与 removeVoucher 严格对称：还原凭证时，按删除时留存的快照把卡片业务状态加回
       if (v.deprReverted && v.deprReverted.length) {
         this._restoreAssetDepr(v.deprReverted);
@@ -1885,7 +1898,9 @@
      * 科目缺失统一由调用方给出明确提示，绝不裸调 subject(code).name 导致崩溃。
      */
     subjectRole: function (role, preferred) {
-      var std = (this.state && this.state.standard) || 'old';
+      // 兜底必须是 'small2013'：STANDARDS 里【只有】这一套（standards.js 已统一为小企业会计准则 2013）。
+      // 旧代码兜到 'old' 会取到 undefined → roles 为空 → 折旧/工资等科目角色解析静默失效。
+      var std = (this.state && this.state.standard) || 'small2013';
       var roles = (global.STANDARDS && global.STANDARDS[std] && global.STANDARDS[std].roles) || {};
       var want = preferred || roles[role];
       if (want) { var s = this.subject(want); if (s) return s; }
@@ -2640,7 +2655,7 @@
         if (!r) return null;
         return r.normal === 'cr' ? (num(r.endCr) - num(r.endDr)) : (num(r.endDr) - num(r.endCr));
       }
-      // 现金/银行/其他货币资金期末为贷方余额（赤字）→ 硬性拦截
+      // 现金/银行/其他货币资金期末出现贷方余额（赤字）—— 判定规则见下，默认只提醒不拦截
       var cashAccts = (self.cashAccounts ? self.cashAccounts() : []).map(function (s) { return s.code; });
       var negCash = cashAccts.filter(function (c) { var b = endBalOf(c); return b !== null && b < -EPS; });
       // 现金及现金等价物「期末余额是否存在异常」默认【不参与检查】。
@@ -2905,6 +2920,7 @@
         ? largeVoucherThreshold
         : (vAmts.length ? vAmts[Math.min(TOPN, vAmts.length) - 1] : largeVoucherThreshold);
       var largeVouchers = [];
+      var vmk = this.voucherMaker;   // forEach 回调内 this 不再指向 store（严格模式），先取出方法引用
       (this.state.vouchers || []).forEach(function (v) {
         var amt = 0;
         (v.entries || []).forEach(function (e) {
@@ -2914,7 +2930,7 @@
         if (amt >= effThreshold) {
           largeVouchers.push({
             id: v.id, date: v.date, word: v.word, no: v.no,
-            summary: v.summary, amount: amt, maker: v.maker,
+            summary: v.summary, amount: amt, maker: vmk(v),
             entries: (v.entries || []).slice(0, 6)
           });
         }
@@ -4344,13 +4360,22 @@
     },
     /* 某资产在**某期间实际应提**的折旧额（0 = 该月不需计提）。
      *
-     * 【为什么必须是唯一实现】原来这套判断只写在 depreciateMonth 里，而「折旧汇总表 / 折旧明细表」
-     * 的「本月折旧」列却是无条件对所有在用卡求 assetMonthlyDepr(fa) —— 于是两边口径分叉：
+     * 【历史问题（已于 2026-09-18 修正；此处存档原因备查）】
+     * 这套判断原先只写在 depreciateMonth 里，而「折旧汇总表 / 折旧明细表」的「本月折旧」
+     * 列却无条件对所有在用卡求 assetMonthlyDepr(fa) —— 于是两边口径分叉：
      * 报表把"购置晚于本月 / 已提满 / 本月已计提 / 次月起提"的卡也算进去了。
      * 实测（添钰来客 2026-03~06）：报表显示 10,866.63，而凭证与总账都是 10,810.42，
      * 差额 56.21 正是一张「购置晚于本月」的卡（010 沙发折叠床）。
      * 「本年折旧额」同理（报表用 md×月份数，忽略跳过，差 281.07）。
-     * 现抽出本函数，depreciateMonth 与两个折旧报表共用，口径不可能再漂移。
+     * 现报表已改为「累计折旧滚增」，与总账 1602 只剩逐张舍入的 0.01~0.03（见 Asset.js:953）。
+     *
+     * 【⚠ 适用范围 —— 并非所有地方都用本函数】
+     * 本函数当前【仅】被 depreciateMonth 调用（store.js:4455）。
+     * 两个折旧报表【刻意不用】它：本函数含 "deprMonth === month → 0" 的计提幂等保护，
+     * 对已计提的历史期间会算出 0，而凭证里是有金额的 —— 报表要的是账面滚增（详见 Asset.js:959）。
+     * ⚠ 切勿为了「统一口径」把报表改用 assetDeprDue()：那会把已计提的卡算成 0，
+     *   反而让折旧报表数字出错。（2026-09-21 更正：原注释写作「两个折旧报表共用」，
+     *   与实现不符，会误导后来者去"统一"而引入 bug。）
      *
      * 判断顺序与 depreciateMonth 保持一致（顺序本身有语义：先排除不存在的、再算金额）。 */
     assetDeprDue: function (fa, month) {
@@ -4504,35 +4529,9 @@
       return { ok: true, voucher: saved, total: total, count: assetLines.length };
     },
     // 折旧汇总表
-    // 原始凭证（电子档案/附件管理）
-    originals: function () { return this.state.originals || []; },
-    addOriginalFromAttachment: function (file, ctx) {
-      ctx = ctx || {};
-      var path = file.path || file.name || '';
-      // 按 path 去重：同一路径已存在则跳过，编辑凭证重存不会重复添加
-      if (this.state.originals.some(function (o) { return (o._path || '') === path; })) return null;
-      var o = {
-        id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
-        name: file.name || path.split(/[\\/]/).pop() || '未命名附件',
-        remark: '', smallType: '', amount: 0, group: '', isInvoice: false,
-        uploadTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        fileSize: file.size || 0, checkStatus: '', auditTime: '',
-        voucherNo: (ctx.word || '') + (ctx.no != null ? ('-' + ctx.no) : ''),
-        period: ctx.period || '', vouchered: ctx.voucherNo ? '1' : '',
-        audited: false, voucherId: ctx.id || '', _path: path
-      };
-      this.state.originals.push(o);
-      return o;
-    },
-    removeOriginal: function (id) {
-      var self = this;
-      var idx = this.state.originals.findIndex(function (o) { return o.id === id; });
-      if (idx < 0) return { ok: false, msg: '未找到该原始凭证' };
-      var o = this.state.originals[idx];
-      if (o.vouchered || o.voucherId || o.voucherNo) return { ok: false, msg: '已关联凭证的原始凭证不可删除，请先解除关联' };
-      this.state.originals.splice(idx, 1);
-      return { ok: true };
-    },
+    // （原始凭证 / 电子档案功能已于 2026-09-21 按用户要求整体移除：
+    //   originals、addOriginalFromAttachment、removeOriginal 三个方法与
+    //   state.originals 字段一并删除。两个账套实测 originals 均为 0 条，无数据残留。）
 
     /* ===================== 备份与恢复 ===================== */
     restoreFromData: function (data) {
@@ -4885,10 +4884,6 @@
       if (!this.state.param || typeof this.state.param !== 'object') this.state.param = def.param;
       for (var pk in def.param) {
         if (this.state.param[pk] === undefined) this.state.param[pk] = def.param[pk];
-      }
-      if (!this.state.param.voucherChecks) this.state.param.voucherChecks = def.param.voucherChecks;
-      for (var vk in def.param.voucherChecks) {
-        if (this.state.param.voucherChecks[vk] === undefined) this.state.param.voucherChecks[vk] = def.param.voucherChecks[vk];
       }
       if (!this.state.param.checkOverrides) this.state.param.checkOverrides = {}; // 结账检查项处置策略（block/warn）
       if (!this.state.voucherWords) this.state.voucherWords = def.voucherWords;

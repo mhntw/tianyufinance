@@ -49,7 +49,7 @@
    * 再记「最后一次成功落盘的时间」和「每个录入区最后一次被编辑的时间」，
    * 后者晚于前者，就说明有改动还没存。
    * 不去绑定具体的保存按钮：按钮点了也可能校验失败、根本没写盘（凭证借贷不平衡、
-   * 科目不存在、赤字检查不过时，点保存都会直接 return 而不落盘），
+   * 科目不存在、借贷不平衡等校验不过时，点保存都会直接 return 而不落盘），
    * 按按钮清除就会误判成「已保存」，反而把人坑了。
    * ============================================================ */
   var SCOPE_LABEL = { voucher: '凭证', opening: '期初余额' };
@@ -349,7 +349,14 @@
   /* ---------- 通用工具 ---------- */
   function $(id) { return document.getElementById(id); }
   function money(n) { return U.money(n); }
-  function fmt(n) { return n == null ? '--' : money(Math.abs(n)); }
+  // ⚠ 本函数会【抹掉负号】（内部 Math.abs）—— 只用于「方向已由上下文表达」的场景
+  //   （如应收/应付按主体分列，金额方向由标签/Tab 承担）。
+  //   【为什么改名】它原叫 fmt()，名字完全看不出会丢符号，因而被反复误用：
+  //     资产负债表「未分配利润」、首页指标、红字判定等处的负值
+  //     都被渲染成了正数（-2,424,599.93 → 红色 2,424,599.93，方向相反）。
+  //     索性改名 absFmt，让「取绝对值」在调用处显式可见，杜绝顺手误用。
+  //   【默认选择】要显示带符号的金额：屏幕用 signed()，报表着色用 moneyRed()。
+  function absFmt(n) { return n == null ? '--' : money(Math.abs(n)); }
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
   // 报表金额着色（负数）：按会计惯例显示为 "-1,234.56" 并标红。
   // 历史实现 money(Math.abs(n)) 只染红、丢掉负号，导致资产负债表「未分配利润」等
@@ -359,7 +366,9 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   // 期间取值单点实现：此前各页面各自实现、口径雷同，现统一在此，页面经 H.periodRangeValue 引用。
   // 口径：回填默认期间并同步触发器文本，返回该期间。期间控件是单期形态，两端恒等。
-  // 第二参 def 已移除：16 个调用方无一传参，默认值一律取控件 data-default 的声明（见下）。
+  // 第二参 def 已移除：所有调用方均只传 prefix（不传第二参），默认值一律取控件 data-default 的声明（见下）。
+  // 注：此处原写「16 个调用方」—— 具体数字必然随页面增减而漂移（2026-09-21 实测已为 22），
+  //     故不再写死数量，只保留「均不传第二参」这一可验证的约束。
   function periodRangeValue(prefix) {
     var sInp = $(prefix + 'Start'), eInp = $(prefix + 'End');
     if (sInp && eInp) {
@@ -457,7 +466,12 @@
   }
 
   /* ---------- 高危操作密码（防误删/误清，全局设置） ----------
-   * 删除凭证、彻底清除回收站等不可逆或高风险操作，执行前要求输入操作密码。
+   * 【适用范围】只用于【不可逆】操作 —— 目前唯一调用点是「清空账套回收站」（永久删除整个账套）。
+   *   【删除凭证为什么不在这里】删除是可逆操作（软删除进回收站、可随时还原）。
+   *   若加密码，「改错一张凭证重录」这种日常动作每次都要输密码，摩擦远大于收益。
+   *   它走的是另一条线：二次确认 + 必填删除原因（写入凭证 deleteReason 与操作日志 reason 字段）。
+   *   规则可概括为：**可逆免密码、不可逆要密码**。
+   *   注：本注释此前写作「删除凭证…执行前要求输入操作密码」，与实现不符（从未接入），已于 2026-09-21 更正。
    * 生效密码：用户在「系统设置 → 操作保护」自定义后以自定义为准；
    * 未自定义时默认 admin（单人场景防误操作的第一道闸）。
    * 存在全局 settings（localStorage kis_settings），与账套数据无关。
@@ -471,7 +485,8 @@
     return String(input === undefined || input === null ? '' : input) === effectiveOpPassword();
   }
   // 高危操作统一验证入口：弹窗输入密码，通过返回 true，取消/输错返回 false。
-  // 页面（删除凭证/彻底清除回收站/清空账套回收站等）只需 await H.askOpPassword('操作名')。
+  // 页面只需 await H.askOpPassword('操作名')。当前唯一调用点：settings/Tools.js「清空账套回收站」。
+  // 新增调用点前请先确认该操作确实【不可逆】—— 可逆操作不应加密码（见上方适用范围说明）。
   function askOpPassword(opName, hint) {
     var dlg = window.__dialogBridge && window.__dialogBridge.promptAsync;
     var promptP = dlg || function (m, d) { return Promise.resolve(window.prompt ? window.prompt(m, d) : null); };
@@ -495,7 +510,7 @@
     // 避免某次迁移误删私有 helper 导致整页 ReferenceError 崩溃。
     var pick = function (v) { return (typeof v !== 'undefined') ? v : undefined; };
     globalThis.__TY_HELPERS__ = {
-      $: pick($), money: pick(money), fmt: pick(fmt), signed: pick(signed), moneyRed: pick(moneyRed),
+      $: pick($), money: pick(money), absFmt: pick(absFmt), signed: pick(signed), moneyRed: pick(moneyRed),
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
       closeModal: pick(closeModal), bookKey: pick(bookKey),
@@ -726,6 +741,11 @@
       + '.rpt-period{font-size:12px;color:#666;margin-top:4px;}'
       + 'input[type=checkbox]{display:none;}'
       + '.btn,.ty-btn,button{display:none!important;}'
+      // 负数配色：页面里 .ty-red 定义在 css/style.css，而打印件是【自包含 HTML】、
+      // 不引外部样式表 —— 两者脱节的后果是「打印出来的报表里负数不标红」，
+      // 与正数长得一模一样，核对时极易看错方向。故此处必须重复声明一次。
+      // 色值与 css/style.css 的 --ty-red 保持一致（#cf2e2e；白底对比度 5.14 ✓AA）。
+      + '.ty-red{color:#cf2e2e;}'
       + '@media print{body{padding:0;}.print-hint{display:none!important;}}'
       + '</style></head><body>'
       + leading
@@ -854,7 +874,6 @@
       { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',        color: '#5582f3' },
       { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query',  color: '#06B6D4' },
       { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum',    color: '#8B5CF6' },
-      { key: 'original',        name: '原始凭证',     page: 'original',       color: '#F59E0B' },
     ]},
     { group: '账簿', items: [
       { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger',  color: '#6366F1' },
@@ -1163,10 +1182,8 @@
     var hm = globalThis.__HOME__ || {};
 
     // --- 内联事件处理器移除后的委托绑定（B1 收敛） ---
-    // .vf-edit-maker 无实际 JS 行为，仅阻止 <a href="#"> 跳转
-    document.addEventListener('click', function (e) {
-      if (e.target.closest && e.target.closest('.vf-edit-maker')) { e.preventDefault(); }
-    });
+    // （原 .vf-edit-maker 铅笔按钮已于 2026-09-21 移除：它是无实际行为的死按钮，
+    //   而改名功能本来就在右上角「记账员」，属重复入口 —— 去掉而非接通。）
     // 总账 "展开所有级次" checkbox
     var glExp = $('glExpandAll');
     if (glExp) glExp.addEventListener('change', function () { if (globalThis.__renderGl) globalThis.__renderGl(); });
@@ -1192,8 +1209,13 @@
 
   // 右上角：纯本地单机版，显示当前账套的记账员（不依赖云端账号）
   // 点击可改名：用于会计换人/离职场景。保存到 company.bookkeeper 并持久化，
-  // 之后新录凭证的制单人、新操作日志的操作人、以及「不允许修改/删除别人录入的凭证」
-  // 等权限校验都会按新名字生效；历史凭证 maker 已固化、不受影响（可追溯离职前操作人）。
+  // 之后新录凭证的制单人、新操作日志的操作人都按新名字记录；
+  // 历史凭证 maker 已固化、不受影响（可追溯离职前操作人）。
+  // ⚠ 2026-09-21 更正：此处原写「『不允许修改/删除别人录入的凭证』等权限校验都会按新名字生效」，
+  //   但全项目【并没有】这类权限校验 —— updateVoucher / removeVoucher 实际只校验
+  //   「已删除 / 已结账 / 借贷平衡 / 被业务单据引用」，均【不】校验录入人。
+  //   即：本单机版当前允许修改或删除他人录入的凭证，制单人（maker）仅作留痕，不作权限依据。
+  //   若将来要启用该内控，需在 updateVoucher / removeVoucher 中比对 v.maker 与当前 bookkeeper。
   function updateTopOperator() {
     var topOperator = $('topOperator');
     if (!topOperator) return;
@@ -1621,8 +1643,7 @@
     // 已激活页且非强制刷新：跳过重渲染，仅做高亮/标签栏同步与搜索高亮
     var alreadyActive = wasActive && !force;
     // 报表/凭证子页面
-    if (page === 'original') { if (globalThis.__renderOriginal) globalThis.__renderOriginal(); }
-    else if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
+    if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
 
     // 同步导航 active 状态（nav-group-title / nav-pop-item / home-trigger）
     document.querySelectorAll('.nav-group-title, .nav-pop-item, .home-trigger').forEach(function (el) {
@@ -1665,7 +1686,6 @@
     'salary': '工资', 'settle': '结账', 'subject': '科目', 'opening': '期初余额',
     'param': '账套参数',
     /* 凭证/报表补充子页 */
-    'original': '原始凭证',
     'expense-detail': '费用明细表',
     /* 结账（独立页面） */
     'settle-close':'期末处理'
@@ -1920,9 +1940,8 @@
     /* 工资收敛：部门职员/凭证模板已并回工资页弹窗，旧键保持可用（渲染到弹窗内表体） */
     'department-staff': renderVia('DeptStaff'), 'salary-tpl': renderVia('SalaryTpl'), 'salary-guide': renderVia('Salary'),
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
-    // 报表扩展页：费用明细表 / 报表中心 / 原始凭证
+    // 报表扩展页：费用明细表 / 报表中心
     'report-expense-detail': renderVia('ExpenseDetail'),
-    'original': renderVia('Original'),
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
     'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
     // 操作日志独立页：当前账套日志 + 跨账套操作日志
@@ -1972,7 +1991,7 @@
       // 此前只认 settle/opening/subject/tools 四 hash，设置子菜单页刷新直达会落到首页、内容"丢失"；现命中已接入页面（PAGE_REFRESHERS/报表四页）则直达，否则首页。
       var _h = (location.hash || '').replace(/^#/, '');
       var _direct = PAGE_REFRESHERS[_h] ||
-        _h === 'original' || _h === 'expense-detail';
+        _h === 'expense-detail';
       goPage(_direct ? _h : 'home');
     }
     syncAll();

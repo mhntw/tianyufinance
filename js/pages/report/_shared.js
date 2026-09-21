@@ -2,7 +2,7 @@ const H = window.__TY_HELPERS__ || {};
 const $ = id => document.getElementById(id);
 const S = H.S || window.store;
 const money = H.money || (v => v == null ? '0.00' : Number(v).toFixed(2));
-const fmt = H.fmt || (v => v == null ? '' : String(v));
+const absFmt = H.absFmt || (v => v == null ? '' : String(v));
 const goPage = H.goPage || (p => { if (window.goPage) window.goPage(p); });
 const currentPeriod = H.currentPeriod || (() => (window.store ? window.store.currentPeriod : '2026-01'));
 // 本期 = 最近一个已结账期间（桥接层 lastClosedPeriod）；无已结账回退 currentPeriod()
@@ -63,4 +63,4 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { $, S, money, fmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };
+export { $, S, money, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };

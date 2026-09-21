@@ -47,7 +47,7 @@ var TY_MENU_ICON_PAIRS = {
 var TY_SUBMENU_GROUPS = {
   '凭证': [
     {title: '记账凭证', icon: 'icon-jizhangpingzheng', items: ['录凭证', '查凭证', '凭证汇总表']},
-    {title: '电子档案', icon: 'icon-qitapingzheng', items: ['原始凭证']},
+    // （「电子档案 / 原始凭证」子菜单已于 2026-09-21 随原始凭证功能整体移除）
   ],
   '账簿': [
     {title: '主账簿', icon: 'icon-zhuzhangbu', items: ['明细账', '总账', '科目余额表', '多栏账']},

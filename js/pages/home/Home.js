@@ -6,7 +6,7 @@
 const H = globalThis.__TY_HELPERS__ || {};
 const $ = H.$;
 const S = H.S || window.S;
-const fmt = H.fmt;
+const absFmt = H.absFmt;
 const signed = H.signed;
 const round2 = H.round2;
 // 科目名称来自导入账套，可能含 < & " 等字符，拼进 innerHTML 前必须转义
@@ -300,7 +300,7 @@ function fillMetrics() {
     // ¥8.00    +     ¥12.00   +  ¥2.00
     var items = plFee.expense.formula.map(function (f) {
       var val = round2(plIsYearFee ? f.ytd : f.cur);
-      var amtHtml = (val < 0 ? '−' : '') + fmt(Math.abs(val));
+      var amtHtml = (val < 0 ? '−' : '') + absFmt(Math.abs(val));
       var cls = f.ids && f.ids.length ? 'formula-cell amt-link' : 'formula-cell';
       var attrs = f.ids && f.ids.length ? ' data-pl-rows="' + f.ids.join(',') + '"' : '';
       return '<div class="' + cls + '"' + attrs + '>'
@@ -373,12 +373,12 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
   children.forEach(function (x) {
     html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
             '</span><span class="ai-val amt-link" data-codes="' + esc(x.code) + '">' +
-            fmt(Math.abs(x.v)) + '</span></div>';
+            signed(x.v) + '</span></div>';
   });
   box.innerHTML = html;
   // 合计 = 父科目余额（父行已含全部下级）
   var total = round2(subjectBalance(code, month));
-  setEl(totalId, fmt(Math.abs(total)));
+  setEl(totalId, signed(total));
 }
 
 // 应收 / 应付 Tab 切换（卡片内两个主体互斥显隐）

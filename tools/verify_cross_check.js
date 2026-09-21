@@ -103,7 +103,13 @@ months.forEach(function (m) {
     });
   });
 
-  // 损益净额（排除结转凭证）—— 用末级科目逐个累加，避免父子重复
+  // 损益净额（排除结转凭证）—— 逐分录累加，**含非末级科目**。
+  // 【为什么不能只算末级】实测绅蓝之星：部分损益直接记在一级科目 5403（其下有明细）上，
+  //   只算末级会把它整笔漏掉。差异与 5403 的净影响逐月逐一吻合（2026-01 差 -8,131.21、
+  //   2026-03 差 -5,428.29、2026-06 差 -9,623.57 均为该科目当月发生额），共 12 个月误报。
+  //   利润表与结转都是「逐分录累加」，本就含非末级 —— 此处对齐它们。
+  // 【为什么不会父子重复】逐分录累加只对每笔分录计一次，不涉及科目上下级关系；
+  //   只有「按科目余额上卷」才会父子重复，故这里无需按末级过滤。
   let net = 0;
   const leaf = {};
   (S.state.subjects || []).forEach(function (s) {
@@ -114,7 +120,7 @@ months.forEach(function (m) {
     if (String(v.date || '').slice(0, 7) !== m) return;
     if ((v.entries || []).some(function (e) { return /carryPL/i.test(v.kind || ''); })) return; // 排除结转凭证
     (v.entries || []).forEach(function (e) {
-      const s = leaf[String(e.code)];
+      const s = S.subject(e.code);                 // 含非末级，与利润表/结转同口径
       if (!s) return;
       if (String(e.code) === '3103' || String(e.code) === '3104') return;
       if (s.cls === 'revenue') net += num(e.cr) - num(e.dr);
@@ -140,7 +146,9 @@ months.forEach(function (m) {
     const gl = S.generalLedger(m);
     let glSum = 0;
     gl.forEach(function (r) {
-      if (!leaf[String(r.code)]) return;             // 只取末级，防父子重复
+      // 这里走的是「科目余额上卷」，必须只取末级 —— 否则父科目余额已含子树，父子重复累加会翻倍。
+      // （与上面的「逐分录累加」不同：那条不需要过滤，因为每笔分录只计一次。）
+      if (!leaf[String(r.code)]) return;
       const cls = (S.subject(r.code) || {}).cls;
       if (cls === 'revenue') glSum += R(r.endCr - r.endDr);
       else if (cls === 'expense') glSum -= R(r.endDr - r.endCr);
@@ -161,8 +169,53 @@ months.forEach(function (m) {
       const r3 = gl.filter(function (x) { return String(x.code) === '3103'; })[0];
       const bal3103 = r3 ? R(r3.endCr - r3.endDr) : 0;
       const un = R(S.unclosedProfit(m));
-      const c4 = chk('C4', m + ' 利润表累计 vs 3103+未结转', ytd, R(bal3103 + un));
-      if (!c4.ok) issues.push('C4 利润表累计=' + ytd + ' 3103=' + bal3103 + '+未结转' + un + '=' + R(bal3103 + un) + ' 差=' + c4.d);
+      // 【年末：3103 的去处要补上】年末会把「本年利润 3103」结转到「利润分配 3104x（未分配利润）」，
+      // 结转后 3103 归零 —— 若不补这一项，12 月的 C4 必然假报差异（实测 2025-12：利润表累计
+      // 541,189.28，而 3103=0、未结转=0，差 541,189.28）。该情形此前没暴露，是因为一直拿
+      // 「单年 2026 账套」跑，从未遇到 12 月。
+      // 【为什么不能无条件加「3104x 本年净变化」】跨年时上年结转来的未分配利润会在次年被转走，
+      //   于是 3104x 的「本年净变化」含上年分配动作 —— 实测 2026-08 得 -1,065,163.69，
+      //   反而把本来成立的等式打破（3103 已有 597,776.09，无需再补）。
+      //   故：只在 3103 已清零（即本年已做年末结转）时补，且只取**本年内**「3103 与 3104x
+      //   同处一张凭证」的实际转账额 —— 那才是本年净利润的去处，不含往年分配。
+      let distYtd = 0;
+      if (Math.abs(bal3103) < 0.01) {
+        const yr = m.slice(0, 4);
+        (S.state.vouchers || []).forEach(function (v) {
+          if (v.deleted === 'y') return;
+          const vm = String(v.date || '').slice(0, 7);
+          if (vm.slice(0, 4) !== yr || vm > m) return;      // 只算本年、且不晚于当期
+          const es = v.entries || [];
+          if (!es.some(function (e) { return String(e.code) === '3103'; })) return;
+          // 【只取 3103 的借方】= 本年利润转出到未分配利润的金额。
+          //   不能取该凭证里所有 3104x 的发生额：实测绅蓝之星 2025-02 记-93 / 2025-03 记-88
+          //   （均为 carryPL）同时含「贷 3103」与「贷 3104006」，那是**以前年度损益调整**
+          //   （363.00 + 3,793.42 = 4,156.42），并非当年利润的去处 —— 一并计入会多出该差额。
+          //   真正的年末结转是「借 3103 / 贷 3104x」，故取 3103 借方即可精确对应。
+          // 条件一：该凭证必须真的与未分配利润发生往来（含 3104x），否则不是"利润的去处"。
+          if (!es.some(function (e) { return String(e.code).indexOf('3104') === 0; })) return;
+          // 条件二：不含任何损益类科目。用于滤掉两类干扰：
+          //   · 「月末结转费用」的凭证（借 3103 / 贷 各费用科目）—— 那是费用转入本年利润，
+          //     实测若计入会把金额放大到 248 万级；
+          //   · 「以前年度损益调整」的 carryPL 凭证（实测绅蓝之星 2025-02 记-93 / 2025-03 记-88，
+          //     含损益科目，合计 4,156.42）—— 那是往年的账，不属于本年利润。
+          var hasPlCls = es.some(function (e) {
+            var s = S.subject(e.code);
+            return s && (s.cls === 'revenue' || s.cls === 'expense' || s.cls === 'cost');
+          });
+          if (hasPlCls) return;
+          // 取 3103 的「借 − 贷」：盈利年为「借 3103 / 贷 3104x」得正数；
+          // 亏损年为「借 3104x / 贷 3103」得负数 —— 与利润表累计同号。
+          // 实测绅蓝之星 2024 为亏损（记-150 贷 3103 391,367.07），只取借方会得到 0 而漏掉。
+          es.forEach(function (e) {
+            if (String(e.code) !== '3103') return;
+            distYtd += R(num(e.dr) - num(e.cr));
+          });
+        });
+      }
+      const c4 = chk('C4', m + ' 利润表累计 vs 3103+未结转+已转未分配利润', ytd, R(bal3103 + un + distYtd));
+      if (!c4.ok) issues.push('C4 利润表累计=' + ytd + ' 3103=' + bal3103 + '+未结转' + un
+        + '+已转未分配利润' + R(distYtd) + '=' + R(bal3103 + un + distYtd) + ' 差=' + c4.d);
     }
   } catch (e) { issues.push('C4 调用异常 ' + e.message); }
 

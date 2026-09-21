@@ -236,7 +236,9 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     if (!v) return '(无)';
     var lines = [];
     lines.push('凭证 ' + (v.word || '') + '-' + (v.no != null ? v.no : '') + ' · ' + (v.date || '') + ' · ' + (v.summary || ''));
-    if (v.maker) lines.push('制单：' + v.maker);
+    // 兼容两套来源：ty 新录写 maker，金蝶导入写 preparer（否则导入凭证在此处无制单人）
+    var mk = (S && S.voucherMaker) ? S.voucherMaker(v) : (v.maker || v.preparer || '');
+    if (mk) lines.push('制单：' + mk);
     (v.entries || []).forEach(function (e) {
       var amt = e.dr ? '借 ' + num(e.dr).toFixed(2) : (e.cr ? '贷 ' + num(e.cr).toFixed(2) : '0.00');
       lines.push('  ' + (e.code || '') + ' ' + ((S.subjectName && S.subjectName(e.code)) || e.name || '') + ' ' + amt);
@@ -783,7 +785,8 @@ function refreshParam() {
       verEl.textContent = '--';
     }
   }
-  // 赤字检查已迁至凭证页面「偏好设置」弹窗，凭证审核后才允许结账已迁至结账页面 close tab
+  // 注：货币资金赤字检查现由【结账检查项】「货币资金赤字」承担（store.js 的 runSelfTest）。
+  //     原凭证页「偏好设置」弹窗（含该开关）已于 2026-09-21 整体移除，此处不再有相关参数。
   // 默认密码 admin 提示：改过就不再提示
   var opHint = $('opPwHint');
   if (opHint) opHint.style.display = (S.state.op && S.state.op.opOverridden) ? 'none' : '';

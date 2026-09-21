@@ -1795,6 +1795,14 @@ label.req::before {
   color: var(--ty-red);
   background: var(--ty-red-bg);
 }
+/* 科目余额表：发生额口径说明行（仅旧版导入的账套显示，见 TrialBalance.js）。
+   小字 + 弱化色，避免被误读为数据行。 */
+.tb-note .tb-note-cell {
+  color: var(--ty-muted);
+  font-size: 12px;
+  text-align: left;
+  line-height: 1.6;
+}
 
 .muted {
   color: var(--ty-muted);
@@ -2186,7 +2194,7 @@ label.req::before {
 }
 .vf-left { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--ty-text-2); }
 .vf-maker { color: var(--ty-text-1); font-weight: 400; }
-.vf-edit-maker { color: var(--ty-blue); cursor: pointer; font-size: var(--fs-md); text-decoration: none; }
+/* .vf-edit-maker（制单人旁的铅笔）已于 2026-09-21 随死按钮一并移除，样式同步删除。 */
 
 .voucher-balance {
   padding: 9px 14px;
@@ -3070,18 +3078,7 @@ label.req::before {
 .settle-tmpl-rule-tip p { margin: 0 0 4px; font-weight: 400; color: var(--ty-text); }
 .settle-tmpl-rule-tip ol { margin: 0; padding-left: 18px; }
 
-/* 凭证录入偏好设置 */
-.pref-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  font-size: var(--fs-md);
-  color: var(--ty-text);
-  cursor: pointer;
-}
-.pref-row:hover { background: var(--ty-blue-2); }
-.pref-row input { width: 16px; height: 16px; cursor: pointer; }
+
 
 /* ============================================================
  * 云端登录弹窗

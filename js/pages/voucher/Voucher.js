@@ -126,7 +126,9 @@ function amtHeaderHtml(title, activeIndex) {
 function amtCellHtml(val, cls, i) {
   var field = cls.split(' ')[0];
   var num = parseFloat(val);
-  var displayVal = (num > 0) ? num.toFixed(2) : '';
+  // 负数（红字）同样要显示：原写法仅 num > 0 才回填，导致聚焦红字金额时输入框是空白，
+  // 用户会以为金额丢了。num 为 0/NaN 时留空（与既有行为一致）。
+  var displayVal = (num && !isNaN(num)) ? num.toFixed(2) : '';
   return '<td class="col-amount has-input" data-field="' + field + '" data-i="' + i + '">' +
     '<div class="amt-bg">' + amtInnerHtml(val, true, -1, isRed(val), true, true) + '</div>' +
     '<input class="amt-edit-input ' + cls + '" data-i="' + i + '" type="text" ' +
@@ -704,8 +706,19 @@ function setupVoucher() {
   });
   var bDel = $('btnDeleteVoucher'); if (bDel) bDel.addEventListener('click', async function () {
     if (!vEditId) return;
-    if (!(await H.confirmAsync('确认删除该凭证？', { title: '删除凭证' }))) return;
-    var r = S.removeVoucher(vEditId);
+    // 审计留痕：删除凭证必须填写原因（写入凭证 deleteReason + 操作日志 reason 字段）。
+    // 写法与「反结账」一致：promptAsync 输入 → 判空 → 带原因的二次确认 → 落库。
+    // 注：本操作为可逆（软删除进回收站、可还原），故按「可逆免密码」不要求操作密码。
+    var reason = await H.promptAsync(
+      '删除凭证属于审计留痕操作，请填写删除原因（必填）：\n\n' +
+      '例如：金额录错重录、科目选错、重复录入',
+      '',
+      { title: '删除凭证' }
+    );
+    if (reason === null || reason === undefined) return;   // 用户取消
+    if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
+    if (!(await H.confirmAsync('确认删除该凭证？\n原因：' + reason.trim(), { title: '删除凭证确认' }))) return;
+    var r = S.removeVoucher(vEditId, reason.trim());
     if (!r.ok) return showToast(r.msg, 'error');
     syncAll();
     showToast('已删除凭证');
@@ -713,30 +726,6 @@ function setupVoucher() {
   });
   var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
   var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
-  var bPref = $('btnVoucherPref'); if (bPref) bPref.addEventListener('click', function () {
-    var st = S.settings.voucher || {};
-    var pt = $('prefThousand'); if (pt) pt.checked = st.thousand !== false;
-    var vc = (S.state.param && S.state.param.voucherChecks) || {};
-    var dc = $('prefDeficitCheck'); if (dc) dc.checked = !!vc.deficitCheck;
-    var m = $('voucherPrefModal'); if (m) m.classList.add('show');
-  });
-  var bPrefClose = $('btnVoucherPrefClose'); if (bPrefClose) bPrefClose.addEventListener('click', function () { var m = $('voucherPrefModal'); if (m) m.classList.remove('show'); });
-  var bPrefCancel = $('btnVoucherPrefCancel'); if (bPrefCancel) bPrefCancel.addEventListener('click', function () { var m = $('voucherPrefModal'); if (m) m.classList.remove('show'); });
-  var bPrefSave = $('btnVoucherPrefSave'); if (bPrefSave) bPrefSave.addEventListener('click', function () {
-    S.settings.voucher = S.settings.voucher || {};
-    var pt = $('prefThousand'); if (pt) S.settings.voucher.thousand = pt.checked;
-    var dc = $('prefDeficitCheck'); if (dc) {
-      S.state.param = S.state.param || {};
-      S.state.param.voucherChecks = S.state.param.voucherChecks || {};
-      S.state.param.voucherChecks.deficitCheck = dc.checked;
-    }
-    S.saveSettings();
-    S.persist();
-    var m = $('voucherPrefModal'); if (m) m.classList.remove('show');
-    showToast('偏好设置已保存');
-    syncAll();
-  });
-
   var vWord = $('vWord'); if (vWord) vWord.addEventListener('change', function () {
     var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, currentPeriod());
   });
@@ -959,26 +948,6 @@ function saveVoucher() {
     if (!e.code || !S.subject(e.code)) badCodes.push(e.code || '空');
   });
   if (badCodes.length) { showToast('科目不存在：' + badCodes.join('、') + '，请检查科目编码', 'error'); return { ok: false }; }
-  var vc = (S.state.param && S.state.param.voucherChecks) || {};
-  if (vc.deficitCheck) {
-    var cashAccts = S.cashAccounts ? S.cashAccounts() : [];
-    var cashCodes = cashAccts.map(function (s) { return s.code; });
-    if (cashCodes.length) {
-      var month = monthOf(v.date);
-      var gl = S.generalLedger(month);
-      var hasDeficit = (v.entries || []).some(function (e) {
-        if (!e.code || cashCodes.indexOf(e.code) < 0) return false;
-        var row = gl.filter(function (r) { return r.code === e.code; })[0];
-        if (!row) return false;
-        var subj = S.subject(e.code);
-        var normal = subj ? subj.normal : 'dr';
-        var endDr = num(row.endDr) + num(e.dr);
-        var endCr = num(row.endCr) + num(e.cr);
-        return normal === 'dr' ? (endCr - endDr > 0.005) : (endDr - endCr > 0.005);
-      });
-      if (hasDeficit) { showToast('存在现金/银行存款等科目赤字（系统参数已开启赤字检查）', 'error'); return { ok: false }; }
-    }
-  }
   savingVoucher = true;
   try {
     if (vEditId) {
@@ -991,13 +960,7 @@ function saveVoucher() {
       if (!ar || ar.ok === false) { showToast((ar && ar.msg) || '保存失败', 'warn'); return ar || { ok: false }; }
       vEditId = ar.id;
     }
-    // 方案 B：凭证附件同步进原始凭证库（附件台账）。按 path 去重，编辑保存不会重复添加。
-    if (vAttachFiles && vAttachFiles.length) {
-      var period = monthOf(v.date);
-      vAttachFiles.forEach(function (f) {
-        S.addOriginalFromAttachment(f, { word: v.word, no: v.no, id: v.id, period: period });
-      });
-    }
+    // （原「凭证附件同步进原始凭证库」已于 2026-09-21 随原始凭证功能整体移除。）
     syncAll();
     return { ok: true };
   } finally {
@@ -1174,11 +1137,21 @@ var bQExport = $('btnQExport'); if (bQExport) bQExport.addEventListener('click',
 var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click', async function () {
   var cks = document.querySelectorAll('#qBody .row-check:checked');
   if (!cks.length) { showToast('请先勾选要删除的凭证', 'warn'); return; }
-  // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码，仅二次确认
-  if (!(await H.confirmAsync('确认删除选中的 ' + cks.length + ' 张凭证？', { title: '删除凭证' }))) return;
+  // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码（与「清空回收站」等不可逆操作区分）。
+  // 但必须填写删除原因（审计留痕）：同一原因写入本批每张凭证的 deleteReason 与操作日志 reason 字段。
+  var reason = await H.promptAsync(
+    '将删除选中的 ' + cks.length + ' 张凭证。\n\n' +
+    '删除凭证属于审计留痕操作，请填写删除原因（必填，将记入各凭证与操作日志）：\n\n' +
+    '例如：期间录错整批重录、重复导入',
+    '',
+    { title: '删除凭证' }
+  );
+  if (reason === null || reason === undefined) return;   // 用户取消
+  if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
+  if (!(await H.confirmAsync('确认删除选中的 ' + cks.length + ' 张凭证？\n原因：' + reason.trim(), { title: '删除凭证确认' }))) return;
   var n = 0, fail = 0, failMsg = '';
   cks.forEach(function (c) {
-    var r = S.removeVoucher(c.getAttribute('data-id'));
+    var r = S.removeVoucher(c.getAttribute('data-id'), reason.trim());
     if (r.ok) n++; else { fail++; if (!failMsg) failMsg = r.msg; }
   });
   if (n) { syncAll(); qRender(); }
@@ -1268,7 +1241,9 @@ function renderQuery(start, end) {
   if (!vs.length) { tb.innerHTML = '<tr><td colspan="12" class="empty-hint">本期无凭证</td></tr>'; return; }
   // 科目名显示口径：取科目表实时名称，科目改名后历史凭证显示同步更新；分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
-  var maker = '本账套';
+  // 制单人取真实值：兼容 ty 新录的 maker 与金蝶导入的 preparer。
+  // 原实现写死 '本账套' —— 导出的 Excel 里每张凭证制单人都一样，等于没有制单人信息。
+  var makerOf = function (v) { return (S && S.voucherMaker) ? S.voucherMaker(v) : (v.maker || v.preparer || ''); };
   vs.forEach(function (v) {
     var first = true;
     v.entries.forEach(function (e) {
@@ -1279,7 +1254,8 @@ function renderQuery(start, end) {
       var chk = first ? '<input type="checkbox" class="row-check" data-id="' + v.id + '">' : '';
       var dateCell = first ? v.date : '';
       var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>') : '';
-      var makerCell = first ? maker : '';
+      // 制单人来自账套数据（可能源自导入文件），必须转义后再拼进 HTML
+      var makerCell = first ? escHtml(makerOf(v)) : '';
       tr.innerHTML =
         // 复选框列不写内联对齐：对齐统一走「列对齐约定」（除金额列右对齐，其余左对齐）
         '<td>' + chk + '</td>' +
@@ -1333,7 +1309,7 @@ function refreshRecycleBin() {
   tb.innerHTML = '';
   if (!list.length) {
     // 空状态统一走全局 td.empty-hint（居中灰字），不再写内联对齐/字色
-    tb.innerHTML = '<tr><td colspan="6" class="empty-hint">回收站为空</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" class="empty-hint">回收站为空</td></tr>';
     return;
   }
   list.forEach(function (v) {
@@ -1345,6 +1321,9 @@ function refreshRecycleBin() {
       '<td>' + num(drSum).toFixed(2) + '</td>' +
       '<td>' + escHtml(v.deletedAt || '') + '</td>' +
       '<td>' + escHtml(v.deletedBy || '') + '</td>' +
+      // 删除原因：deleteReason 为新增字段，老账套里已删除的凭证没有此字段，
+      // 用 '—' 占位而非留空，避免与「填了空」混淆。
+      '<td>' + escHtml(v.deleteReason || '—') + '</td>' +
       '<td><a class="link-toggle" data-act="restore" data-id="' + v.id + '">还原</a></td>';
     tb.appendChild(tr);
   });

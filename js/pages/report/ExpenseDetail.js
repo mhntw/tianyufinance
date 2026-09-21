@@ -1,5 +1,5 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
-import { $, S, money, fmt, goPage, currentPeriod, esc, num, showToast, nowTimeStr, round2,
+import { $, S, money, absFmt, goPage, currentPeriod, esc, num, showToast, nowTimeStr, round2,
   monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter } from './_shared.js';
 const edState = {
   page: 1,

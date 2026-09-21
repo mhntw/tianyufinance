@@ -144,8 +144,26 @@ function renderTb(month) {
     '</td><td class="ta-r mono">' + U.money(sum.pD) + '</td><td class="ta-r mono">' + U.money(sum.pC) +
     '</td><td class="ta-r mono">' + U.money(sum.yD) + '</td><td class="ta-r mono">' + U.money(sum.yC) +
     '</td><td class="ta-r mono">' + U.money(sum.eD) + '</td><td class="ta-r mono">' + U.money(sum.eC) + '</td>';
-  tb.appendChild(tr);
-}
+    tb.appendChild(tr);
+
+    // 发生额口径说明：仅对「旧版导入」的账套提示。
+    // 【背景】旧版导入会把金蝶红字（负数）改写成反方向正数（见 js/kis-import.js 历史实现），
+    //   于是「借 -1724.85」被存成「贷 +1724.85」；本期/本年累计发生额因此按**借贷双方合计**
+    //   列示，而金蝶与准则主流口径是**净额**（红字抵减借方），两者必然不同。
+    // 【为什么只提示旧账套】新版导入已原样保留红字并写入 meta.redStyle='native'，口径已一致；
+    //   手工新建的账套没有 importedAt，本就不存在该差异。故两者都不提示，避免无谓干扰。
+    // 【强调】差异只在「发生额」这一列 —— 余额、本期合计平衡、三大报表均不受影响。
+    const tbMeta = (S.state && S.state.meta) || {};
+    if (tbMeta.importedAt && tbMeta.redStyle !== 'native') {
+    const noteTr = document.createElement('tr');
+    noteTr.className = 'tb-note';
+    noteTr.innerHTML =
+      '<td colspan="10" class="tb-note-cell">注：本账套由旧版方式导入，红字冲销以反方向记录，' +
+      '故「本期发生额 / 本年累计发生额」按借贷双方合计列示（不作净额轧差），' +
+      '与金蝶的净额口径存在差异。此差异仅影响发生额列 —— 余额、借贷平衡与三大报表均不受影响。</td>';
+    tb.appendChild(noteTr);
+    }
+    }
 
 // 科目余额表导出：与 renderTb 同源（S.generalLedger + 相同借贷计算），构造 10 列 Excel
 export function exportTb() {
