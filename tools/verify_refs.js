@@ -1,5 +1,7 @@
-// audit_refs.js — 扫描全部 JS → DOM 引用、store 方法、render 注册三类断裂
-// 用法: node tools/audit_refs.js
+// verify_refs.js — 扫描全部 JS → DOM 引用、store 方法、render 注册三类断裂
+// 用法: node tools/verify_refs.js
+// （原名 audit_refs.js；2026-09-21 改为 verify_ 前缀以纳入 run-all 回归，
+//   同时修正了汇总判定：把「有 null guard 的安全项」误计入失败，导致它一直无法作为门禁。）
 // 输出: 三类断裂清单（无问题则 PASS）
 
 const fs = require('fs');
@@ -183,9 +185,15 @@ if (extraRegistered.length > 0) {
 }
 
 // ========== 4. 汇总 ==========
-const totalFails = domRefs.length + sCalls.length + missingRegistered.length;
+// 【修正 2026-09-21】原写 `domRefs.length` —— 把「有 null guard 的安全项」也算进失败，
+//   于是本脚本永远退出码 1。后果是它一直没能进 run-all 回归（收录即永久红灯），
+//   反而掩盖了这个判定错误。现按 hasGuard 区分：只有无保护的才是真断裂。
+const domUnsafe = domRefs.filter(r => !r.hasGuard);
+const domSafe = domRefs.filter(r => r.hasGuard);
+const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length;
 console.log('\n=== 汇总 ===');
-console.log(`  DOM 引用断裂:   ${domRefs.length}`);
+console.log(`  DOM 引用断裂:   ${domUnsafe.length}  (无 null guard，会炸 TypeError)`);
+console.log(`    └ 安全项:     ${domSafe.length}  (有 null guard，不计失败)`);
 console.log(`  Store 方法断裂: ${sCalls.length}`);
 console.log(`  Render 注册断链: ${missingRegistered.length}`);
 console.log(`  -----------------------------------`);

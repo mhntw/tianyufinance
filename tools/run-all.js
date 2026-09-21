@@ -22,11 +22,19 @@
  * 「无账套即打印说明并返回 0」的处理 —— CI（ubuntu-latest）无账套时自动跳过，
  * 不会把「环境缺样本」误报成「测试失败」。本机有账套时会真正执行。
  *
+ * 【两层执行（2026-09-21 新增）】
+ *   全量 42 个里，sim_book(28s) + sim_replay(18s) 两个就占了约 68% 的时间，
+ *   而其余 39 个合计仅约 21s。软件趋于定型、改动变少后，
+ *   每次改动都等 67s 并不划算 —— 故提供 --quick 跳过这个深度层。
+ *
  * 用法：
- *   node tools/run-all.js          全部跑一遍
- *   node tools/run-all.js --quiet  仅输出汇总与失败项
+ *   node tools/run-all.js                 全部跑一遍（发版前 / CI 用，约 67s）
+ *   node tools/run-all.js --quick         跳过 sim_ 深度层（日常改动后，约 21s）
+ *   node tools/run-all.js --quiet         仅输出汇总与失败项
+ *   （--quick 与 --quiet 可同时使用）
  *
  * 退出码：0 = 全部通过；1 = 有失败（供 CI 作为门禁使用）
+ * ⚠ 注意：CI 始终跑【全量】—— --quick 只是给本机日常改动提速，不放宽门禁。
  * ============================================================ */
 const fs = require('fs');
 const path = require('path');
@@ -34,17 +42,27 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const QUIET = process.argv.includes('--quiet');
+const QUICK = process.argv.includes('--quick');   // 跳过深度层（sim_*），见头部说明
 
-const scripts = fs.readdirSync(__dirname)
+const ALL = fs.readdirSync(__dirname)
   .filter(n => /^(test|verify|check|sim)_.*\.js$/.test(n))
   .sort();
+// 深度层 = sim_*：在真实账套副本上模拟记账，最全面也最慢（约 47s）
+const scripts = QUICK ? ALL.filter(n => !/^sim_/.test(n)) : ALL;
+const skipped = QUICK ? ALL.filter(n => /^sim_/.test(n)) : [];
 
 let pass = 0, fail = 0;
 const failures = [];
 const t0 = Date.now();
 
-console.log('回归自检（' + scripts.length + ' 个脚本）');
+console.log('回归自检（' + scripts.length + ' 个脚本'
+  + (QUICK ? '，--quick 已跳过 ' + skipped.length + ' 个深度层' : '') + '）');
 console.log('─'.repeat(58));
+if (skipped.length) {
+  console.log('  已跳过深度层：' + skipped.join('、'));
+  console.log('  → 改核心记账逻辑、或发版前，请跑全量（不带 --quick）');
+  console.log('─'.repeat(58));
+}
 
 scripts.forEach(name => {
   const full = path.join(__dirname, name);

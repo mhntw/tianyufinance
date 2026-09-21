@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* ============================================================
- * check-period-contract.js —— 期间控件契约自检（发版前卡口）
+ * check_period_contract.js —— 期间控件契约自检（发版前卡口）
+ * （原名 check-period-contract.js；2026-09-21 改用下划线以匹配 run-all 的 check_* 收录规则）
  *
  * 背景：期间控件的「UI 交互」是全局共用的，但「默认期间是什么 / 值怎么填」
  *       一度由各页面各自决定、口径雷同。已收敛为：默认值由 index.html 的 data-default
@@ -44,7 +45,7 @@ function read(p) {
 /* ---------- 收集 index.html 里的期间占位符 ---------- */
 const html = read(INDEX_HTML);
 if (!html) {
-  console.error('[check-period-contract] 读取 index.html 失败');
+  console.error('[check_period_contract] 读取 index.html 失败');
   process.exit(1);
 }
 

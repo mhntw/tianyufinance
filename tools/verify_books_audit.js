@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* ============================================================
- * tools/audit_books.js —— 账套数据对账（发版前一键跑）
+ * tools/verify_books_audit.js —— 账套数据对账（发版前一键跑，已纳入回归）
+ * （原名 audit_books.js；2026-09-21 改为 verify_ 前缀以纳入 run-all 回归）
  *
  * 用途：用「自下而上（逐分录）」的独立实现复算关键指标，与硬恒等式交叉验证，
  *       提前发现「父子科目重复聚合导致金额翻倍 / 数据本身不平衡」这类问题。
@@ -10,8 +11,8 @@
  *  而是独立按「逐分录 + 前缀上卷」算一遍，用作外部参照。
  *
  * 用法：
- *   node tools/audit_books.js                 # 校验 data/books 下全部账套
- *   node tools/audit_books.js 添钰            # 只校验文件名含关键字的账套
+ *   node tools/verify_books_audit.js          # 校验 data/books 下全部账套
+ *   node tools/verify_books_audit.js 添钰     # 只校验文件名含关键字的账套
  *
  * 退出码：0 = 全部通过；1 = 存在失败项（可作为发版卡口）
  * ============================================================ */
