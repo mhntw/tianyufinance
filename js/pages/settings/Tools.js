@@ -91,10 +91,18 @@ function refreshTools() {
       + '<td>' + (isCur ? '<span class="tag tag-current">当前</span>' : (enabled ? '<span class="tag">启用</span>' : '<span class="tag tag-stop">停用</span>')) + '</td>'
       + '<td class="book-ops">'
       + '<button class="btn-link" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
+      // 「切换 / 停用」对当前账套无意义（切到自己、停用自己），故只在非当前账套显示。
       + (isCur ? ''
           : '<button class="btn-link" data-switch="' + b.id + '">切换</button>'
-          + '<button class="btn-link" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>'
-          + '<button class="btn-link btn-link-danger" data-del="' + b.id + '">删除</button>')
+          + '<button class="btn-link" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>')
+      // 「删除」对**当前账套同样要能点**：store.removeBook 已支持（删除 = 移入回收站，
+      //   7 天内可还原；删完自动切到其它账套，若是最后一个则回到「新建 / 导入账套」引导）。
+      // 【历史缺陷】原实现把删除按钮一并塞进上面 `isCur ? '' : …` 的 else 分支，
+      //   于是当前账套那一行只剩「重命名」—— store 放开了限制，UI 却没有入口，
+      //   表现为"当前账套（如测试账套）删不掉"。按钮可见性与 store 能力必须一致。
+      + '<button class="btn-link btn-link-danger" data-del="' + b.id + '"'
+      + (isCur ? ' title="这是当前账套：删除后自动切换到其它账套；若为最后一个，则回到新建/导入引导"' : '')
+      + '>删除</button>'
       + '</td>';
     tb.appendChild(tr);
   });
@@ -126,11 +134,22 @@ $('bookBody').addEventListener('click', async function (e) {
   } else if (dl) {
     // 删除改为移入回收站（保留 7 天可还原），不再是"一键不可逆"
     const nm = (S.listBooks().filter(function (b) { return b.id === dl; })[0] || {}).name || dl;
-    const ok = await H.confirmAsync('确认删除账套「' + nm + '」？\n删除后会在回收站保留 7 天，期间可随时还原。', { title: '删除账套' });
+    // 删除当前账套是允许的（2026-09-22 起）：账套只是移入回收站、7 天可还原，
+    // 但要在确认框里讲清「删完会去哪」，否则用户不清楚自己会被切到哪个账套。
+    const isCur = (S.currentBookId && S.currentBookId() === dl);
+    const curTip = isCur
+      ? '\n\n注意：这是当前正在使用的账套。删除后将自动切换到其它账套；若它是最后一个账套，则回到「新建/导入账套」引导。'
+      : '';
+    const ok = await H.confirmAsync('确认删除账套「' + nm + '」？\n删除后会在回收站保留 7 天，期间可随时还原。' + curTip, { title: '删除账套' });
     if (!ok) return;
     S.removeBook(dl).then(function (rd) {
       if (!rd || !rd.ok) return showToast((rd && rd.msg) || '删除失败', 'error');
-      showToast('账套已移入回收站（7 天内可还原）'); refreshTools();
+      // 删的是当前账套时，store 已自动切走（或进入无账套态）——提示必须说清去了哪，
+      // 否则用户会以为"删完还在用同一个账套"。
+      if (rd.noBook) showToast('已移入回收站（7 天内可还原）。当前已无账套，请新建或导入账套');
+      else if (rd.switchedTo) showToast('已移入回收站（7 天内可还原），已切换到「' + rd.switchedTo + '」');
+      else showToast('账套已移入回收站（7 天内可还原）');
+      refreshTools();
       if (trashPanelOpen()) renderTrash();
       // 删除账套 changelog 已由 store.removeBook 异步写盘，稍候刷新系统事件卡
       if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
@@ -246,7 +265,7 @@ function renderBackupHealth(st, hasCloud) {
   var html = '<div class="backup-health">';
   var bits = [(st.count + (st.snapshot_count || 0)) + ' 份备份', '占用 ' + fmtSize(st.total_bytes)];
   if (st.last_ts) bits.push('最近 ' + fmtTs(st.last_ts));
-  html += '<div class="muted" style="font-size:12px">' + bits.join('　·　') + '</div>';
+  html += '<div class="muted" style="font-size:var(--fs-xs)">' + bits.join('　·　') + '</div>';
 
   // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本。
   // 已配置云备份时不再催（云端副本已满足"本机外"），本地备份仅作近时救援。
@@ -290,7 +309,7 @@ function renderBackupRows() {
   var box = $('backupList'); if (!box) return;
   var disk = box._bDisk || [], stats = box._bStats;
   var show = box._bAll ? disk : disk.slice(0, 1);
-  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:12px">共 ' +
+  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:var(--fs-xs)">共 ' +
     disk.length + ' 份备份</span></div>';
   html += renderBackupHealth(stats, box._bCloud);
   if (disk.length) {
@@ -339,7 +358,7 @@ function renderTrashRows() {
   var items = box._trashItems || [];
   var show = box._trashAll ? items : items.slice(0, 5);
   var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a>'
-    + '<span class="muted" style="font-size:12px">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
+    + '<span class="muted" style="font-size:var(--fs-xs)">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
     + (items.length ? '<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>' : '')
     + '</div>';
   if (!items.length) {

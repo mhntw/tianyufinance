@@ -1316,7 +1316,7 @@ function renderNewTplRows() {
       + '</td>'
       + '<td><input class="tmpl-cell-inp" data-f="summary" value="' + esc(r.summary) + '" placeholder="摘要"></td>'
       + '<td><span class="tmpl-subj-wrap"><input class="tmpl-cell-inp" data-f="code" value="' + esc(codeText) + '" placeholder="输入科目编码或名称"><span class="tmpl-subj-bal" data-i="' + i + '"></span></span></td>'
-      + '<td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="' + r.dc + '">' + (r.dc === 'C' ? '贷' : '借') + '</span></td>'
+      + '<td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="' + r.dc + '">' + S.dirName(r.dc) + '</span></td>'
       + '<td class="col-amount">' + amtCell + '</td>'
       + '</tr>';
   });
@@ -1544,7 +1544,7 @@ function openTplRulePopover(anchor) {
       h += '<div class="tmpl-setting-row">'
         + '<span class="tmpl-setting-label">统一金额：</span>'
         + '<input class="tmpl-setting-inp" id="tmplPopTotal" value="' + (ta ? money(ta) : '') + '" placeholder="如 5000.00" style="width:140px"></div>'
-        + '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>';
+        + '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>';
     } else if (rule === 'subject') {
       var sc = tpl.sourceSubject || '';
       var subjMap = {};
@@ -1560,11 +1560,11 @@ function openTplRulePopover(anchor) {
         +   '<option value="period_dr"' + (tpl.sourceDirection === 'period_dr' ? ' selected' : '') + '>本期借方发生额</option>'
         +   '<option value="period_cr"' + (tpl.sourceDirection === 'period_cr' ? ' selected' : '') + '>本期贷方发生额</option>'
         + '</select></div>'
-        + '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3)">将按下方各行比例分摊该科目金额</div>';
+        + '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊该科目金额</div>';
     } else if (rule === 'per_row') {
-      h += '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3);margin:4px 0 8px">在下方表格每行独立填写金额</div>';
+      h += '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">在下方表格每行独立填写金额</div>';
     } else { // none
-      h += '<div class="tmpl-setting-hint" style="font-size:12px;color:var(--ty-text-3);margin:4px 0 8px">金额在下方表格每行手填，生成凭证时直接带出（适用于每月固定计提，如电话费 500）</div>';
+      h += '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">金额在下方表格每行手填，生成凭证时直接带出（适用于每月固定计提，如电话费 500）</div>';
     }
     box.innerHTML = h;
     // subject 规则：绑定 SubjectPicker

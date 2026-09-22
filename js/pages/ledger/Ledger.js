@@ -4,6 +4,33 @@
 // 核算项目组合表(refreshAc)
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 注：试算平衡表(trial-balance) 已在 js/pages/ledger/TrialBalance.js 独立迁走，本模块不含。
+//
+// ============================================================
+// 【账簿余额显示口径 —— 本模块唯一总说明，改前必读】
+// 总账 / 明细账 / 多栏账的余额固定按**金蝶「账簿余额方向与科目方向相同」的勾选态**渲染：
+//   · 方向列 = 科目正常方向（余额为 0 时「平」）
+//   · 余额列 = 按科目正常方向为正的带符号金额（反向余额为负，如「借 -2,000.12」）；
+//     余额为 0 时留给空
+// ------------------------------------------------------------
+// 依据（2026-09-22 金蝶实测 + .ais 核对）：
+//   · 金蝶账套参数 GLPref.FAutoBalDC = true
+//     （添钰来客 2025/2026、绅蓝之星 2025/2026 四个账套全部为 true）
+//   · 1012 其他货币资金（借方正科目出现贷方余额 2,000.12）→ 金蝶显示「借 -2,000.12」
+//   · 1122006 应收账款_首免全球购（期末余额 0）→ 金蝶三行方向均为「平」、余额列空
+//   · 取数层（store.generalLedger 的 obDr/obCr/…/endDr/endCr）已与金蝶 GLBal 逐科目
+//     逐月 100% 一致，本口径只影响显示、不影响任何金额
+// ------------------------------------------------------------
+// 【将来若遇到 FAutoBalDC = false 的金蝶账套】需按该参数切换为：
+//   方向列 = 实际余额方向；余额列 = 正数（如「贷 2,000.12」）。届时改本文件 5 处：
+//   renderGl / renderDlSegment / renderMl / exportGl / exportDl
+// （2026-09-22 决定：不引入用户可切换的开关 —— 账套全为 true，加开关等于造一个永不
+//   切换的按钮，且本项目在「凭证字切换」上有过同类返工教训。）
+// ------------------------------------------------------------
+// 【已知代价，勿当笔误改掉】勾选态下「方向」列表达的是**科目固有方向**，而非
+//   《会计基础工作规范》三栏式账页「借或贷」栏所要求的**实际余额方向** ——
+//   「借 -2,000.12」需要读者知道"负号 = 与该科目正常方向相反"。这是跟随金蝶默认
+//   口径的取舍；业务事实（余额在哪一方、多少钱）不受影响。
+// ============================================================
 
 const H = globalThis.__TY_HELPERS__ || {};
 const EX = globalThis.__TY_EXPORT__ || {};
@@ -135,16 +162,28 @@ function renderGl(month) {
   S.generalLedger(month).forEach(function (r) {
     if (glFilterCodes && !glFilterCodes.has(r.code)) return;
     if (!expandAll && r.code.length > 4) return;
-    if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0) return;
+    // 隐藏零行：判据唯一实现在 store.isZeroLedgerRow（含本年累计，对齐金蝶 GL_ShowZeroRecOnLdg）。
+    // 有科目筛选时不隐藏 —— 否则筛完只剩几行还被藏掉，人会以为科目丢了。
+    if (hideZero && !glFilterCodes && S.isZeroLedgerRow(r)) return;
     var subj = S.subject(r.code);
     var depth = (expandAll && subj && typeof subj.level === 'number') ? subj.level : 0;
     var indent = S.subjectIndentHTML(depth);
-    // 期初方向 + 期初金额：obDr - obCr 的符号决定方向，绝对值进余额列。
-    // 与同表「本期合计/本年累计」两行同口径（余额列给绝对值、方向另列）。
-    // 此前期初行余额列留空，导致期初余额在总账里完全看不到（明细账是同口径显示的）。
-    var obNet = r.obDr - r.obCr;
-    var obDir = (obNet > 0) ? '借' : ((obNet < 0) ? '贷' : '平');
-    var obBal = Math.abs(obNet);
+    // 余额显示口径 = 金蝶账簿口径（总说明与切换指引见文件顶部；与明细账 renderDlSegment 同口径）：
+    //   方向列 = 科目正常方向（余额为 0 时「平」）；余额列 = 按科目正常方向为正的带符号金额，
+    //   反方向为负；余额为 0 时余额列留空。
+    // 依据（2026-09-22 用户实测金蝶）：1012 其他货币资金（借方科目）出现贷方余额 2,000.12 时，
+    //   金蝶显示「方向 借 + 余额 -2,000.12」；贷方科目贷余则显示「方向 贷 + 正数」。
+    // 【历史缺陷】本表原用「实际方向 + 绝对值」，同一笔余额在总账（贷 +2,000.12）与明细账
+    //   （借 -2,000.12）符号相反、也与金蝶对不上 —— 现统一为金蝶口径，勿再改回。
+    // 余额显示口径：统一走 store.displayBalance（**唯一实现**，见 store.js 说明）。
+    // 总账余额为 0 时方向列显示「平」（与金蝶账簿一致）。
+    // 【历史缺陷】本表曾自写一套「实际方向 + 绝对值」，与明细账的「科目正常方向 + 符号」
+    //   各写一份 → 同一笔 1012 余额在总账（贷 +2,000.12）与明细账（借 -2,000.12）反号。
+    //   收口到单点后，页面不再持有任何余额换算逻辑（只做取值与排版）。
+    var _ob = S.displayBalance(r.obDr - r.obCr, r.normal);
+    var _end = S.displayBalance(r.endDr - r.endCr, r.normal);
+    var obDir = _ob.dir, obSigned = _ob.amount;
+    var endDir = _end.dir, endSigned = _end.amount;
     // Row 1: 期初余额（前两列 rowspan=3；编码列不缩进，名称列缩进——与余额表统一）
     var tr1 = document.createElement('tr');
     tr1.className = 'gl-subject';
@@ -156,7 +195,7 @@ function renderGl(month) {
       '<td class="ta-r mono"></td>' +
       '<td class="ta-r mono"></td>' +
       '<td class="gl-dir">' + obDir + '</td>' +
-      '<td class="ta-r mono">' + (obBal ? money(obBal) : '') + '</td>';
+      '<td class="ta-r mono">' + (obSigned ? money(obSigned) : '') + '</td>';
     tb.appendChild(tr1);
     // Row 2: 本期合计
     var tr2 = document.createElement('tr');
@@ -166,8 +205,8 @@ function renderGl(month) {
       '<td class="gl-seg">本期合计</td>' +
       '<td class="ta-r mono">' + (r.periodDr ? money(r.periodDr) : '') + '</td>' +
       '<td class="ta-r mono">' + (r.periodCr ? money(r.periodCr) : '') + '</td>' +
-      '<td class="gl-dir">' + (r.dir || '平') + '</td>' +
-      '<td class="ta-r mono">' + (r.balance ? money(r.balance) : '') + '</td>';
+      '<td class="gl-dir">' + endDir + '</td>' +
+      '<td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
     tb.appendChild(tr2);
     // Row 3: 本年累计
     var tr3 = document.createElement('tr');
@@ -177,8 +216,8 @@ function renderGl(month) {
       '<td class="gl-seg">本年累计</td>' +
       '<td class="ta-r mono">' + (r.ytdDr ? money(r.ytdDr) : '') + '</td>' +
       '<td class="ta-r mono">' + (r.ytdCr ? money(r.ytdCr) : '') + '</td>' +
-      '<td class="gl-dir">' + (r.dir || '平') + '</td>' +
-      '<td class="ta-r mono">' + (r.balance ? money(r.balance) : '') + '</td>';
+      '<td class="gl-dir">' + endDir + '</td>' +
+      '<td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
     tb.appendChild(tr3);
   });
   updateGlFilterBanner();
@@ -316,22 +355,27 @@ function renderDlSegment(tb, code, range, vmap) {
   }
   if (!d) return false;
   var s = d.subject;
-  // 余额列按「科目正常方向」带符号（与科目余额表同口径）：实际余额方向与科目正常方向
-  // 相反时显示为负数（例：3104 为贷方科目，出现借方余额 → 余额显示为负）。方向列仍显示实际方向。
-  var normalDir = (s.normal === 'dr') ? '借' : '贷';
-  // 方向列显示「科目正常方向」：余额为正/负由金额符号承担，
-  // 例如 3104 是贷方科目 → 方向列恒为「贷」，出现借方余额时金额显示为负。
-  function dirText(v) { return num(v) ? normalDir : ''; }
-  function balText(v, dir) {
-    v = num(v);
-    if (!v) return money(0);
-    return money(dir === normalDir ? v : -v);
-  }
-  // 期初余额行：借贷方列永远显示空（期初是"状态"不是"本期发生额"），
-  // 余额列+方向列才显示净额。
-  var obNetDr = d.obDr - d.obCr;
-  var obBal = Math.abs(obNetDr);
-  var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
+  // 余额显示口径 = 金蝶账簿口径（总说明与切换指引见文件顶部；总账 renderGl / 多栏账 renderMl 同此实现）：
+  //   余额非 0 → 方向列 = 科目正常方向；余额列 = 按科目正常方向为正的带符号金额（反方向为负）。
+  //   余额为 0 → 方向列 = 「平」，余额列留空。
+  // 依据（2026-09-22 用户实测金蝶 KIS 明细账）：
+  //   ① 1012 其他货币资金（借方科目）出现贷方余额 2,000.12 → 金蝶显示「方向 借 + 余额 -2,000.12」；
+  //      同一笔余额在金蝶「科目余额表」里则是「借方列 -2,000.12」（借贷分列 + 反向带负号，
+  //      那是另一张表的表式，两者不冲突）。
+  //   ② 1122006 应收账款_首免全球购 期末余额 0 → 金蝶方向列显示「平」、金额列空
+  //      （原实现显示空白 + 0.00，与金蝶不一致）。
+  // ⚠ 不要再改回「实际方向 + 绝对值」：那会让同一笔余额在总账/明细账之间反号
+  //   （2026-09 已犯过一次，见 renderGl 注释）。
+  // 余额显示口径：统一走 store.displayBalance（**唯一实现**，见 store.js 顶部说明）。
+  // 数据来源有两种形态，先用 store.netFromBalDir 归一为「借正贷负」净额：
+  //   · 期初 / 本期合计 / 本年累计行 → store 给净额分量（obDr/obCr、endDr/endCr）
+  //   · 逐笔明细行                  → store 给「绝对值 bal + 实际方向 dir」
+  // 历史缺陷：本表曾自己维护 dirText/balText 两个换算函数（且期初行的 obDir 还用「实际
+  //   方向」），与总账各写一份 → 同一笔 1012 余额两页反号。收口到单点后已无此可能。
+  var obView = S.displayBalance(d.obDr - d.obCr, s.normal, '平');
+  var endView = S.displayBalance(d.endDr - d.endCr, s.normal, '平');
+  function lineView(row) { return S.displayBalance(S.netFromBalDir(row.bal, row.dir), s.normal, '平'); }
+  function amtText(v) { return v ? money(v) : ''; }
   // 科目分组行：单科目模式下一眼看不出在看哪个科目，"全部"模式下更是必需
   var th = document.createElement('tr');
   th.className = 'dl-subj-head';
@@ -339,26 +383,26 @@ function renderDlSegment(tb, code, range, vmap) {
   tb.appendChild(th);
   var tro = document.createElement('tr');
   tro.className = 'dl-seg';
-  // 期初行：借贷方列强制空，只在余额列显示净额
-  tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td class="ta-r mono">' + balText(obBal, obDir) + '</td><td>' + dirText(obBal) + '</td>';
+  // 期初行：借贷方列强制空，只在方向+余额列显示净额（列序与金蝶一致：方向在前、余额在后）
+  tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td>' + obView.dir + '</td><td class="ta-r mono">' + amtText(obView.amount) + '</td>';
   tb.appendChild(tro);
   d.rows.forEach(function (r) {
     // 凭证字号可点 → 跳转到该凭证（可编辑，store 保证仅未结账期间可保存）
     var vchTd = voucherLinkCell(r, vmap);
+    var v = lineView(r);
     var tr = document.createElement('tr');
     tr.innerHTML = '<td>' + r.date + '</td><td>' + vchTd + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
-      '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td><td class="ta-r mono">' + balText(r.bal, r.dir) + '</td><td>' + dirText(r.bal) + '</td>';
+      '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td><td>' + v.dir + '</td><td class="ta-r mono">' + amtText(v.amount) + '</td>';
     tb.appendChild(tr);
   });
   var trc = document.createElement('tr');
   trc.className = 'dl-seg';
-  var endDir = d.endDr >= d.endCr ? '借' : '贷', endBal = Math.abs(d.endDr - d.endCr);
-  trc.innerHTML = '<td></td><td></td><td>本期合计</td><td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td><td class="ta-r mono">' + balText(endBal, endDir) + '</td><td>' + dirText(endBal) + '</td>';
+  trc.innerHTML = '<td></td><td></td><td>本期合计</td><td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
   tb.appendChild(trc);
   var try_ = document.createElement('tr');
   try_.className = 'dl-seg';
-  try_.innerHTML = '<td></td><td></td><td>本年累计</td><td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td><td class="ta-r mono">' + balText(endBal, endDir) + '</td><td>' + dirText(endBal) + '</td>';
+  try_.innerHTML = '<td></td><td></td><td>本年累计</td><td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
   tb.appendChild(try_);
   return true;
 }
@@ -494,10 +538,14 @@ function renderMl(code, month, err) {
     return;
   }
   var subj = d.subject;
-  // 期初余额行：借贷方列永远空，方向+余额列显示净额
-  var obNetDr = d.obDr - d.obCr;
-  var obBal = Math.abs(obNetDr);
-  var obDir = obNetDr === 0 ? '' : (obNetDr > 0 ? '借' : '贷');
+  // 余额列口径 = 金蝶账簿口径（总说明与切换指引见文件顶部；与总账 renderGl、明细账 renderDlSegment 完全一致）：
+  //   余额非 0 → 方向列 = 科目正常方向；余额列 = 按科目正常方向为正的带符号金额。
+  //   余额为 0 → 方向列 = 「平」，余额列留空（金蝶账簿实测）。
+  // 【历史缺陷】本表原用「实际方向 + 绝对值」，与同构的明细账、与金蝶均不符，现统一。
+  // 余额显示口径：统一走 store.displayBalance（**唯一实现**，见 store.js 说明）。
+  // 本表与總账/明细账同构（方向列 + 带符号余额），历史上却各写一份 → 三页符号不一。
+  var obView = S.displayBalance(d.obDr - d.obCr, subj.normal);
+  var obSigned = obView.amount, obDir = obView.dir;
   var tro = document.createElement('tr');
   tro.className = 'ml-seg';
   // 各分栏列期初余额（此前整行留空）。
@@ -512,13 +560,14 @@ function renderMl(code, month, err) {
   var obDate = /^\d{4}-\d{2}$/.test(String(month)) ? month + '-01' : '';
   var initCells = '<td>' + obDate + '</td><td></td><td>期初余额</td>' +
     '<td class="ta-r mono"></td><td class="ta-r mono"></td>' +
-    '<td>' + obDir + '</td><td class="ta-r mono">' + money(obBal) + '</td>';
+    '<td>' + obDir + '</td><td class="ta-r mono">' + (obSigned ? money(obSigned) : '') + '</td>';
   cols.forEach(function (c) {
     initCells += '<td class="ta-r mono">' + money(obByCode[c.code] || 0) + '</td>';
   });
   tro.innerHTML = initCells;
   tb.appendChild(tro);
-  var runBal = obBal, runDir = obDir;
+  // 逐笔滚动余额：内部一律维护「借正贷负」净额，方向与符号交给 store.displayBalance（唯一口径）
+  var runNet = d.obDr - d.obCr;
   var colDr = {}, colCr = {};
   cols.forEach(function (c) { colDr[c.code] = 0; colCr[c.code] = 0; });
   var vm = voucherVmap();
@@ -527,10 +576,9 @@ function renderMl(code, month, err) {
     var rowCells = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
       '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td>';
-    if (runDir === '借') { runBal += num(r.dr) - num(r.cr); }
-    else { runBal += num(r.cr) - num(r.dr); }
-    if (runBal < 0) { runDir = runDir === '借' ? '贷' : '借'; runBal = Math.abs(runBal); }
-    rowCells += '<td>' + runDir + '</td><td class="ta-r mono">' + money(runBal) + '</td>';
+    runNet += num(r.dr) - num(r.cr);
+    var runView = S.displayBalance(runNet, subj.normal);
+    rowCells += '<td>' + runView.dir + '</td><td class="ta-r mono">' + (runView.amount ? money(runView.amount) : '') + '</td>';
     var entryCode = r.entryCode || '';
     cols.forEach(function (c) {
       var amt = '';
@@ -544,19 +592,22 @@ function renderMl(code, month, err) {
     tr.innerHTML = rowCells;
     tb.appendChild(tr);
   });
-  var endDr = d.periodDr, endCr = d.periodCr;
-  var endDir = endDr >= endCr ? '借' : '贷', endBal = Math.abs(endDr - endCr);
+  // 本期合计：借贷列给本期发生额；余额列给期末余额
+  // （原实现误用「本期发生额净额」当期余额，与明细账、金蝶均不符，已改正）
+  var endView = S.displayBalance(d.endDr - d.endCr, subj.normal);
+  var endDir = endView.dir, endSigned = endView.amount;
   var sumCells = '<td></td><td></td><td>本期合计</td>' +
-    '<td class="ta-r mono">' + money(endDr) + '</td><td class="ta-r mono">' + money(endCr) + '</td>' +
-    '<td>' + endDir + '</td><td class="ta-r mono">' + money(endBal) + '</td>';
+    '<td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td>' +
+    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
   cols.forEach(function (c) { sumCells += '<td class="ta-r mono"></td>'; });
   var trc = document.createElement('tr'); trc.className = 'ml-seg';
   trc.innerHTML = sumCells;
   tb.appendChild(trc);
-  var ytdEndDir = d.ytdDr >= d.ytdCr ? '借' : '贷', ytdEndBal = Math.abs(d.ytdDr - d.ytdCr);
+  // 本年累计：借贷列给本年累计发生额；余额列同样给期末余额
+  // （与明细账 renderDlSegment、金蝶总账「本年累计」行同口径）
   var ytdCells = '<td></td><td></td><td>本年累计</td>' +
     '<td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td>' +
-    '<td>' + ytdEndDir + '</td><td class="ta-r mono">' + money(ytdEndBal) + '</td>';
+    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
   cols.forEach(function (c) { ytdCells += '<td class="ta-r mono"></td>'; });
   var try_ = document.createElement('tr'); try_.className = 'ml-seg ml-last';
   try_.innerHTML = ytdCells;
@@ -589,20 +640,28 @@ function exportGl() {
   S.generalLedger(month).forEach(function (r) {
     if (glFilterCodes && !glFilterCodes.has(r.code)) return;
     if (!expandAll && r.code.length > 4) return;
-    if (hideZero && !glFilterCodes && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0 && r.ytdBalance === 0) return;
+    if (hideZero && !glFilterCodes && S.isZeroLedgerRow(r)) return;   // 与屏幕 renderGl 同判据
     var subj = S.subject(r.code);
     var depth = (expandAll && subj && typeof subj.level === 'number') ? subj.level : 0;
     var indent = S.subjectIndentSpaces(depth);
     var nameCol = indent + (r.name || '');
-    var obDir = (r.obDr - r.obCr > 0) ? '借' : ((r.obDr - r.obCr < 0) ? '贷' : '平');
+    // 余额口径与屏幕 renderGl 完全一致（金蝶账簿口径）：方向列 = 科目正常方向（0 时「平」），
+    // 余额列 = 按科目正常方向为正的带符号金额（反方向为负）。
+    // 期初余额列此前漏填（屏幕已有、导出空白）—— 一并补上，保证导出与屏幕同一口径。
+    // 余额显示口径：统一走 store.displayBalance（**唯一实现**，见 store.js 说明）。
+    // 导出口径必须与屏幕 renderGl 完全同源 —— 历史上曾出现「导出与自己的屏幕反号／漏列」。
+    var _ob = S.displayBalance(r.obDr - r.obCr, r.normal);
+    var _end = S.displayBalance(r.endDr - r.endCr, r.normal);
+    var obDir = _ob.dir, obSigned = _ob.amount;
+    var endDir = _end.dir, endSigned = _end.amount;
     // 记录当前科目起始行（0-based，不含表头）
     var startRow = rows.length;
     // Row 1: 期初余额（A/B 列第一行写值，后两行空，靠 merge 合并）
-    rows.push([r.code, nameCol, month, '期初余额', '', '', obDir, '']);
+    rows.push([r.code, nameCol, month, '期初余额', '', '', obDir, obSigned || '']);
     // Row 2: 本期合计
-    rows.push(['', '', month, '本期合计', r.periodDr || '', r.periodCr || '', r.dir || '平', r.balance || '']);
+    rows.push(['', '', month, '本期合计', r.periodDr || '', r.periodCr || '', endDir, endSigned || '']);
     // Row 3: 本年累计
-    rows.push(['', '', month, '本年累计', r.ytdDr || '', r.ytdCr || '', r.dir || '平', r.balance || '']);
+    rows.push(['', '', month, '本年累计', r.ytdDr || '', r.ytdCr || '', endDir, endSigned || '']);
     // 合并 A 列 (科目编码) 和 B 列 (科目名称)
     merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + 2, c: 0 } });
     merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 2, c: 1 } });
@@ -624,7 +683,8 @@ globalThis.__exportGl = exportGl;
 var bGlExport = document.getElementById('btnGlExport');
 if (bGlExport) bGlExport.addEventListener('click', exportGl);
 
-// 明细账导出：标准 9 列（科目编码/名称 + 日期/凭证字号/摘要/借/贷/余额/方向），
+// 明细账导出：标准 9 列（科目编码/名称 + 日期/凭证字号/摘要/借/贷/方向/余额，
+// 列序与屏幕及金蝶一致：方向在余额前），
 // 每个科目一段（期初余额 → 逐笔 → 本期合计 → 本年累计），与界面渲染口径一致。
 function exportDl() {
   var XLSX = globalThis.XLSX;
@@ -634,7 +694,7 @@ function exportDl() {
   var range = periodRangeValues('dlPeriod');
   if (!range.end) { H.showToast('请先选择期间', 'warn'); return; }
   var isRange = range.start && range.end && range.start !== range.end;
-  var rows = [['科目编码', '科目名称', '日期', '凭证字号', '摘要', '借方', '贷方', '余额', '方向']];
+  var rows = [['科目编码', '科目名称', '日期', '凭证字号', '摘要', '借方', '贷方', '方向', '余额']];
   // dlCurCode 为 null = 「全部科目」模式（与界面 renderDl 一致），否则仅当前科目
   var codes = dlCurCode
     ? [String(dlCurCode)]
@@ -649,19 +709,22 @@ function exportDl() {
     }
     if (!d) return;
     var s = d.subject;
-    var obNet = num(d.obDr) - num(d.obCr);
-    var obBal = Math.abs(obNet);
-    var obDir = obNet === 0 ? '' : (obNet > 0 ? '借' : '贷');
-    rows.push([s.code, s.name, '', '', '期初余额', '', '', obBal, obDir]);
+    // 余额口径与屏幕 renderDlSegment 完全一致（金蝶账簿口径）：方向列 = 科目正常方向
+    // （余额为 0 时留空），余额列 = 按科目正常方向为正的带符号金额。
+    // 【历史缺陷】导出原用「实际方向 + 绝对值」，与同表屏幕显示反号，导出后核对会再次对不上。
+    // 余额口径与屏幕 renderDlSegment 完全同源：一律走 store.displayBalance（**唯一实现**）。
+    // 导出口径若与屏幕不一致，用户拿导出件核对时照样会对不上（2026-09 已发生过一次）。
+    var obView = S.displayBalance(num(d.obDr) - num(d.obCr), s.normal);
+    rows.push([s.code, s.name, '', '', '期初余额', '', '', obView.dir, obView.amount || '']);
     d.rows.forEach(function (r) {
       var vch = (r.word || '') + '-' + (r.no || '');
-      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', num(r.dr), num(r.cr), num(r.bal), r.dir || '']);
+      // 明细行：store 给「绝对值 + 实际方向」，先由 store.netFromBalDir 归一为净额，再走同一口径
+      var v = S.displayBalance(S.netFromBalDir(r.bal, r.dir), s.normal);
+      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', num(r.dr), num(r.cr), v.dir, v.amount || '']);
     });
-    var endNet = num(d.endDr) - num(d.endCr);
-    var endBal = Math.abs(endNet);
-    var endDir = endNet >= 0 ? '借' : '贷';
-    rows.push([s.code, s.name, '', '', '本期合计', num(d.periodDr), num(d.periodCr), endBal, endDir]);
-    rows.push([s.code, s.name, '', '', '本年累计', num(d.ytdDr), num(d.ytdCr), endBal, endDir]);
+    var endView = S.displayBalance(num(d.endDr) - num(d.endCr), s.normal);
+    rows.push([s.code, s.name, '', '', '本期合计', num(d.periodDr), num(d.periodCr), endView.dir, endView.amount || '']);
+    rows.push([s.code, s.name, '', '', '本年累计', num(d.ytdDr), num(d.ytdCr), endView.dir, endView.amount || '']);
     shown++;
   });
   if (!shown) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }
@@ -669,7 +732,7 @@ function exportDl() {
   var ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [
     { wch: 12 }, { wch: 22 }, { wch: 11 }, { wch: 10 }, { wch: 30 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 6 }
+    { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, '明细账');
   var fname = isRange

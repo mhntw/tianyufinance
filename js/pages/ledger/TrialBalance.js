@@ -105,18 +105,20 @@ function renderTb(month) {
     // 树形折叠：不可见行（祖先收起）不渲染
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
     // 隐藏零行：期初借贷、本期借贷贷方、期末余额均为 0 时跳过（受 bookHideZero 控制）
-    if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
+    // 隐藏零行：判据唯一实现在 store.isZeroLedgerRow（含本年累计，对齐金蝶 GL_ShowZeroRecOnLdg）。
+    // 原判据漏了本年累计，会把「只有本年累计发生额」的科目误藏（如 5801 所得税费用）。
+    if (hideZero && S.isZeroLedgerRow(r)) return;
     // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与科目余额表的通用口径一致：
     // 贷方类科目（负债/权益/收入）出现借方余额时，金额在「贷方」列以负数显示
     // （例：3104 利润分配为贷方科目，出现借方余额 → 期末贷方显示 -2,836,003.25）。
     // 借正类科目同理：出现贷方余额时，金额在「借方」列以负数显示。
-    // 注：本期/本年累计发生额列仍按实际借贷方向填列（红字冲减的差异另行处置，不在本次改动内）。
-    const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
-    const obD = r.normal === 'dr' ? obNet : 0;
-    const obC = r.normal === 'cr' ? obNet : 0;
-    const eNet = r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
-    const eD = r.normal === 'dr' ? eNet : 0;
-    const eC = r.normal === 'cr' ? eNet : 0;
+    // 注：本期/本年累计发生额列仍按实际借贷方向填列（红字冲减的差异另行处置）。
+    // 余额列走 store.splitBalance（**唯一实现**，见 store.js 说明）：金额落在「科目正常方向」
+    // 所在列、反方向带负号；返回的 dr − cr 恒等于取数层净额 → 「借方列合计 − 贷方列合计」可肉眼验平衡。
+    // 历史缺陷：本表曾自写一套换算（屏幕 + 导出共 12 处），与账簿页的「方向列 + 带符号金额」各写一份。
+    const _ob = S.splitBalance(r.obDr - r.obCr, r.normal);
+    const _en = S.splitBalance(r.endDr - r.endCr, r.normal);
+    const obD = _ob.dr, obC = _ob.cr, eD = _en.dr, eC = _en.cr;
     // 合计累加口径（与展开状态自洽，杜绝父/子重复）：
     // 有子且已展开 → 由子级明细贡献，父行不累加（父行已含子树，rollCodes 上卷会翻倍）；
     // 末级 或 有子但收起（子级不可见）→ 累加本行（收起时本行=该支子树总额）。
@@ -172,8 +174,13 @@ export function exportTb() {
   const eInp = $('tbPeriodEnd');
   const month = eInp ? eInp.value : currentPeriod();
   if (!month) return H.showToast('请先选择期间', 'warn');
-  // 导出读全局参数 bookHideZero（页面 change 已同步，值一致）
-  const hideZero = !!(S && S.state && S.state.param && S.state.param.bookHideZero);
+  // 隐藏零行的开关来源必须与 renderTb **完全相同**（同一个页内复选框）。
+  // 【历史形态】此处原读账套参数 bookHideZero，而 renderTb 读 tbHideZero 复选框 ——
+  //   同一开关两个来源，平时靠 change 事件双向同步才"看起来一致"。一旦两者短暂不一致
+  //   （例如在总账页改过开关、余额表页尚未刷新），就会出现"屏幕藏着、导出却导出来了"。
+  //   与 5801 是同一个病根：同一口径两个来源。现统一取页内复选框，与屏幕同源。
+  const hzEl = document.getElementById('tbHideZero');
+  const hideZero = !!(hzEl && hzEl.checked);
   // 与 renderTb 同口径：页内「展开所有次级」勾选 + 树形折叠态控制导出内容
   const tbExpand = document.getElementById('tbExpandAll');
   const expandAll = !!(tbExpand && tbExpand.checked);
@@ -192,15 +199,15 @@ export function exportTb() {
     const code = String(r.code);
     // 树形折叠：与屏幕所见一致（祖先收起的不导出）
     if (!S.subjectVisible(code, tbExpanded, pm, expandAll)) return;
-    if (hideZero && r.obDr === 0 && r.obCr === 0 && r.periodDr === 0 && r.periodCr === 0 && r.balance === 0) return;
+    // 隐藏零行：判据唯一实现在 store.isZeroLedgerRow（含本年累计，对齐金蝶 GL_ShowZeroRecOnLdg）。
+    // 原判据漏了本年累计，会把「只有本年累计发生额」的科目误藏（如 5801 所得税费用）。
+    if (hideZero && S.isZeroLedgerRow(r)) return;
     // 余额列（期初/期末）按「科目正常方向」填列，反向余额带负号——与屏幕 renderTb 同口径
-    // （与科目余额表的通用口径一致：贷方科目出现借方余额时，金额在「贷方」列以负数显示）。
-    const obNet = r.normal === 'dr' ? (r.obDr - r.obCr) : (r.obCr - r.obDr);
-    const obD = r.normal === 'dr' ? obNet : 0;
-    const obC = r.normal === 'cr' ? obNet : 0;
-    const eNet = r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
-    const eD = r.normal === 'dr' ? eNet : 0;
-    const eC = r.normal === 'cr' ? eNet : 0;
+    // 余额列与屏幕 renderTb 同源：走 store.splitBalance（**唯一实现**）。
+    // 导出口径若与屏幕不一致，用户拿导出件核对时照样对不上（2026-09 已发生过）。
+    const _ob = S.splitBalance(r.obDr - r.obCr, r.normal);
+    const _en = S.splitBalance(r.endDr - r.endCr, r.normal);
+    const obD = _ob.dr, obC = _ob.cr, eD = _en.dr, eC = _en.cr;
     // 合计口径与 renderTb 一致：末级或有子但收起才累加（展开父由子级贡献）
     if (!hasKids[code] || !tbExpanded.has(code)) {
       sum.obD += obD; sum.obC += obC; sum.pD += r.periodDr; sum.pC += r.periodCr;

@@ -80,8 +80,37 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function refreshAssets() {
     // 期间选择器的默认值由组件按 data-default="currentPeriod" 自行回填，此处无需再处理。
     // 类别 / 部门下拉已随「过滤」面板一并移除；这两个维度的筛选改由左侧树承担（点击即筛）。
+    initAssetSiderCollapse();
     renderAssetTree();
     renderAssets();
+  }
+  /* ---------- 右侧筛选栏（资产类别 / 部门）的收起 / 展开 ----------
+   * 【为什么】这两个维度用得很少（2026-09-22 反馈），却常占 200px 宽，卡片表本身就宽。
+   *   照抄明细账「科目快速切换栏」那套既有范式（全站唯一）：收起成 30px 竖把、中间一个
+   *   « 铺满整条可点开，展开态右上角 » 收起；宽度过渡与观感全部复用 .dl-panel-* 类，
+   *   不另造一套 —— 否则又是"同一功能两套实现"。
+   * 状态存 localStorage。⚠ 键名与科目树（dlSubjTree.closed）**必须分开**：
+   *   共用键会让"收起明细账科目树"顺手把资产的筛选栏也收掉（或反之），两处互串状态。 */
+  var ASSET_SIDER_KEY = 'assetFilterPanel.closed';
+  var _astSt = globalThis.localStorage || { getItem: function () { return null; }, setItem: function () { } };
+  function _setAssetSiderClosed(v, save) {
+    var box = $('assetSider'); if (!box) return;
+    box.classList.toggle('dl-panel-closed', !!v);
+    if (save) { try { _astSt.setItem(ASSET_SIDER_KEY, v ? '1' : '0'); } catch (e) { } }
+  }
+  function initAssetSiderCollapse() {
+    var box = $('assetSider'); if (!box) return;
+    if (!globalThis.__assetSiderBound) {
+      globalThis.__assetSiderBound = true;   // 一次性绑定：refreshAssets 每次进页都会调
+      var min = $('assetSiderMin'), restore = $('assetSiderRestore');
+      if (min) min.addEventListener('click', function () { _setAssetSiderClosed(true, true); });
+      if (restore) restore.addEventListener('click', function () { _setAssetSiderClosed(false, true); });
+    }
+    // HTML 里默认是展开态，故每次进页都要按本地记忆**显式回放**一遍，
+    // 否则"上次收起"在切页回来后就丢了（这类持久化必须回放，不能只在点击时写）。
+    var closed = false;
+    try { closed = _astSt.getItem(ASSET_SIDER_KEY) === '1'; } catch (e) { }
+    _setAssetSiderClosed(closed, false);
   }
   /* 卡片筛选：只剩两个来源 —— 左侧树（类别 / 部门，点击即筛）与顶部「显示已清理资产」。
      2026-09-18 按用户要求移除了「过滤」折叠面板及其 11 项组合条件（编码、名称、日期区间、
@@ -342,15 +371,22 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
    *
    * 【为什么必须补②】只做①时，「账上有资产却没有建卡片」这种错查不出来：这类资产的累计折旧是 0，
    * 卡片侧与总账侧同时少一块、互不影响，①照样通过。实测（绅蓝之星 2026-08）：科目
-   * 1601001「家具设备」账面 787,047.41 而卡片只有 588,903.41，差 198,144.00。
-   * 逐笔核对后，差额恰等于三笔「已记入 1601、却从未建卡」的购进：
+   * 1601001「家具设备」账面 787,047.41 而卡片只有 634,007.41，差 153,040.00。
+   * 逐笔配对后，账上该科目有 4 笔「已记入 1601、却从未建卡」的购进，合计 198,144.00：
    *   记-45 床垫款 53,000.00 ＋ 记-27 客房用品/餐厅餐具 51,144.00
-   *   ＋ 记-101 棉织品货款 96,000.00 － 记-127 退款（红字）2,000.00 ＝ 198,144.00。
-   * 【2026-09-21 重新导入后复核更新】此前记的「期初 204,184.00 ＋ 已处置空调 −6,040.00」是
-   *   重新导入前的构成，现已不适用：那台「美的空调 6,040.00」在 记-25 与 记-68 各记一次、
-   *   2026-01 记-24 只红字冲销了 记-68，账上仍留 6,040 与卡片一致，故当前不构成差异
-   *   （但属应确认的重复记账）。余额侧 1601001 累计净额 787,047.41 与之逐分吻合。
-   * 累计折旧核对完全通过 —— 补了②才暴露出来。
+   *   ＋ 记-101 棉织品货款 96,000.00 － 记-127 退款（红字）2,000.00 ＝ 198,144.00；
+   * 而卡片 0019「客房餐厅用品」45,104.00 在账上找不到等额分录 ——
+   *   198,144.00 − 45,104.00 = 153,040.00，恰好等于差额。
+   * 即：这批床垫/棉织品/客房用品**在账上被资本化、却从未计提折旧**，卡片端只认了其中的
+   * 「客房餐厅用品」。两侧各列一项不是错，而是在提示该批采购两边口径不一致。
+   * 【2026-09-22 重新导入后复核更新 —— 旧值勿再引用】2026-09-21 时卡片为 588,903.41（18 张）、
+   * 差 198,144.00；09-22 重新导入新增卡片 0019（45,104.00）后卡片变为 634,007.41、
+   * 差额随之变为 153,040.00。另「美的空调 6,040.00」在 记-25 与 记-68 各记一次、
+   * 2026-01 记-24 只红字冲销了 记-68，账上净留 6,040.00 与卡片一致，不构成差异
+   * （但属应确认的重复记账；差额定位会把它作为「已对冲」单独计数，不计入列表）。
+   * 【累计折旧侧同源】账上 1602 期末 330,225.05 **恰好等于卡片 0001~0018 的累计折旧合计**
+   * （即恰好排除 0019）→ 卡片 0019 的折旧 18,041.52 在账上从未计提，
+   * 与「账上没把这批支出当可折旧资产」是同一件事。①本身是通过的，补了②才暴露这两个差额。
    *
    * 核对口径（与列表、折旧表的可见集严格一致）：
    *   · 已「清理」的卡片不计入 —— 清理凭证已把该资产从账上转出，卡片侧保留历史值属正常差异；
@@ -363,7 +399,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     function endBalOf(code) {
       var r = rows.filter(function (x) { return String(x.code) === String(code); })[0];
       if (!r) return null;
-      return r.normal === 'dr' ? (num(r.endDr) - num(r.endCr)) : (num(r.endCr) - num(r.endDr));
+      // 余额换算走 store.displayBalance（唯一实现）：资产核对需要「按科目正常方向为正」的净值
+      return S.displayBalance(num(r.endDr) - num(r.endCr), r.normal).amount;
     }
     // 参与核对的卡片（同页面可见口径）
     var active = (S.state.fixedAssets || []).filter(function (fa) {
@@ -396,15 +433,27 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var code = String(fa.faAcctId == null ? '' : fa.faAcctId).split(',')[0].trim();
       var orig = num(fa.original);
       cardOrig += orig;
-      if (code && S.subject(code)) byAcct[code] = (byAcct[code] || 0) + orig;
-      else { orphan.count++; orphan.amount += orig; }   // 未设科目 / 科目已不存在 → 无处核对
+      if (code && S.subject(code)) {
+        if (!byAcct[code]) byAcct[code] = { sum: 0, cards: [] };
+        byAcct[code].sum += orig;
+        // 保留卡片明细（编码+名称+原值）：差额定位要用它去认领账上分录
+        byAcct[code].cards.push({ label: String(fa.code || '') + ' ' + String(fa.name || ''), amt: orig });
+      } else { orphan.count++; orphan.amount += orig; }   // 未设科目 / 科目已不存在 → 无处核对
     });
     var ledgerOrig = 0, detail = [];
     Object.keys(byAcct).forEach(function (c) {
       var led = endBalOf(c) || 0;
       ledgerOrig += led;
-      detail.push({ code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c],
-        ledger: led, diff: Math.round((byAcct[c] - led) * 100) / 100 });
+      var d = { code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c].sum,
+        ledger: led, diff: Math.round((byAcct[c].sum - led) * 100) / 100 };
+      // 有差额才做「落到具体凭证/卡片」的定位（无谓开销避免掉）
+      if (Math.abs(d.diff) > 0.01) {
+        var loc = _faLocateDiff(c, byAcct[c].cards, month);
+        d.unbacked = loc.unbacked;            // 账上有、卡片中找不到对应
+        d.cardOrphan = loc.cardOrphan;        // 卡片有、账上找不到对应
+        d.cancelledPairs = loc.cancelledPairs;// 已先行对冲（等额反向）的分录组数
+      }
+      detail.push(d);
     });
     detail.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
     var d2 = Math.round((cardOrig - ledgerOrig) * 100) / 100;
@@ -413,39 +462,212 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
 
     return { month: month, depr: depr, orig: orig, ok: (!depr || depr.ok) && orig.ok };
   }
+
+  /* ---------- 差额定位：把「卡片 vs 总账」的差额落到具体凭证 / 具体卡片 ----------
+   * 【要解决的问题】原值核对只能报「某科目差 X 元」，用户还得自己翻凭证找是哪几笔。
+   *   实测（绅蓝之星 2026-08，1601001 家具设备）：账上比卡片多 153,040.00 —— 逐笔配对后是
+   *   4 笔「已记入 1601、却从未建卡」的购进（记-45 床垫 53,000 ／ 记-27 客房用品 51,144
+   *   ／ 记-101 棉织品 96,000 ／ 记-127 退款 −2,000）合计 198,144.00；而卡片 0019
+   *   「客房餐厅用品」45,104.00 在账上找不到等额分录 —— 198,144 − 45,104 = 153,040。
+   * 【为什么必须组合配对】一张卡片常由**多笔分录**构成：0001 固定家具 391,050.00
+   *   = 记-27 的 336,150.00 ＋ 记-110 的 54,900.00；0010 厨具 3,980.00 由 5 笔小额构成。
+   *   只做 1:1 会把构成同一张卡的分录**误报**成「无卡片」。故允许一张卡吃下 1~5 笔，
+   *   且**优先取元素最少**的组合（先试 1 笔，不成再试 2 笔……），避免凑出无关的巧合组合。
+   * 【为什么先对冲】金额相同、方向相反的两笔（实测 记-68 购入美的空调 +6,040.00 与
+   *   记-24 冲销 −6,040.00）对余额净影响为 0，不可能是差额的成因，留着只会把列表搅乱；
+   *   先剔除并单独计数，顺带把「疑似重复记账后冲销」这件事暴露出来。
+   * 【口径局限，必须如实告诉用户】账、卡之间**没有关联字段**，本定位是**按金额推断**。
+   *   遇到「同一批采购两边金额不同」（如账上 51,144.00 vs 卡片 45,104.00）会把两侧各列一项 ——
+   *   这不是错，而是在提示这批采购两边口径不一致，需人工确认。 */
+  var _FA_MAX_SUB = 5;                                    // 一张卡最多由几笔分录构成
+  function _faVoucherLabel(v) { return (v.word || '记') + '-' + (v.no != null ? v.no : ''); }
+
+  // 在 pool（live 的下标列表）中找「元素数恰好 n、金额和 ≈ target」的子集；返回下标数组或 null
+  function _faSubsetN(live, pool, target, n) {
+    var picked = [];
+    function dfs(start, sum) {
+      if (picked.length === n) return Math.abs(sum - target) < 0.005;
+      for (var k = start; k < pool.length; k++) {
+        if (picked.length + (pool.length - k) < n) break;          // 剩余元素不够，剪枝
+        picked.push(pool[k]);
+        if (dfs(k + 1, sum + live[pool[k]].amt)) return true;
+        picked.pop();
+      }
+      return false;
+    }
+    return dfs(0, 0) ? picked.slice() : null;
+  }
+
+  function _faLocateDiff(code, cards, month) {
+    // 1) 该科目截至 month 的账上分录（排除软删除凭证）
+    var entries = [];
+    (S.state.vouchers || []).forEach(function (v) {
+      if (v.deleted === 'y') return;
+      var ym = String(v.date || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(ym) || ym > month) return;
+      (v.entries || []).forEach(function (e) {
+        if (String(e.code) !== String(code)) return;
+        var amt = Math.round((num(e.dr) - num(e.cr)) * 100) / 100;
+        if (!amt) return;
+        entries.push({ amt: amt, date: String(v.date || ''), vch: _faVoucherLabel(v),
+          sum: String(e.summary || v.summary || '') });
+      });
+    });
+    // 2) 先剔除「等额反向」两笔（重复记账后冲销，净影响为 0）
+    var killed = {}, pairs = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (killed[i]) continue;
+      for (var j = i + 1; j < entries.length; j++) {
+        if (killed[j]) continue;
+        if (entries[i].vch !== entries[j].vch && Math.abs(entries[i].amt + entries[j].amt) < 0.005) {
+          killed[i] = 1; killed[j] = 1; pairs++; break;
+        }
+      }
+    }
+    var live = [];
+    entries.forEach(function (e, k) { if (!killed[k]) live.push(e); });
+    // 3) 卡片按金额降序逐张认领分录；认领不到的分录＝「账上有、卡片无」
+    var used = {};
+    cards.slice().sort(function (a, b) { return b.amt - a.amt; }).forEach(function (c) {
+      var pool = [];
+      live.forEach(function (_, k) { if (!used[k]) pool.push(k); });
+      for (var n = 1; n <= _FA_MAX_SUB && n <= pool.length; n++) {
+        var hit = _faSubsetN(live, pool, c.amt, n);
+        if (hit) { hit.forEach(function (k) { used[k] = 1; }); c.matched = true; break; }
+      }
+    });
+    return {
+      unbacked: live.filter(function (_, k) { return !used[k]; }),
+      cardOrphan: cards.filter(function (c) { return !c.matched; }),
+      cancelledPairs: pairs
+    };
+  }
+
   // 每次渲染资产列表时刷新（一致则隐藏，不打扰）
   function renderAssetReconcile() {
     var el = $('assetReconcileCheck');
     if (!el) return;
     var rc = _assetLedgerReconcile(_assetPeriod());
     if (!rc || rc.ok) { el.hidden = true; el.innerHTML = ''; return; }
-    var parts = [];
+    // 【为什么分「摘要 / 明细」两层】这个提示挂在卡片页表格上方，铺开一长串会把表格挤下去
+    //   （2026-09-22 实测反馈"太占空间"）。故：常驻摘要只留每个差额一行关键数字，
+    //   逐笔明细、口径说明、常见原因一律收进「查看差额明细」折叠区，默认收起。
+    var parts = [];      // 常驻摘要行（每行一个 div）
+    var more = [];       // 「查看差额明细」展开后才显示
+    var badge = [];      // 折叠入口上的数量徽标
     // ② 原值（先讲这条 —— 它指向"有资产没建卡片"这类结构性缺失，比折旧的偶发差异更要紧）
     if (rc.orig && !rc.orig.ok) {
       var worst = (rc.orig.detail || [])[0];
-      parts.push('<b>原值与总账不符</b>：卡片原值合计 <b>' + money(rc.orig.cardTotal) + '</b>，' +
-        '账上（' + esc(rc.month) + ' 期末）合计 <b>' + money(rc.orig.ledgerTotal) + '</b>，' +
-        '差额 <b>' + money(rc.orig.diff) + '</b>' +
-        '（负数为「账上有这笔资产、但没有对应的卡片」，正数为「有卡片而账上没有」）。' +
-        (worst ? '差异最大的科目：<b>' + esc(worst.code + ' ' + worst.name) + '</b>（卡片 ' +
-          money(worst.card) + ' / 账上 ' + money(worst.ledger) + '）。' : ''));
+      parts.push('<b>原值与总账不符</b>：卡片 <b>' + money(rc.orig.cardTotal) + '</b> / 账上 <b>' +
+        money(rc.orig.ledgerTotal) + '</b>，差额 <b>' + money(rc.orig.diff) + '</b>' +
+        (worst ? '；最大差异科目 <b>' + esc(worst.code) + '</b>' + (worst.name ? ' ' + esc(worst.name) : '') +
+          '（卡片 ' + money(worst.card) + ' / 账上 ' + money(worst.ledger) + '）' : ''));
+      more.push('<b>原值差额口径</b>：负数为「账上有这笔资产、但没有对应的卡片」，正数为「有卡片而账上没有」。');
       if (rc.orig.orphan && rc.orig.orphan.count) {
-        parts.push('另有 ' + rc.orig.orphan.count + ' 张卡片未指定固定资产科目（原值合计 ' +
+        more.push('另有 ' + rc.orig.orphan.count + ' 张卡片未指定固定资产科目（原值合计 ' +
           money(rc.orig.orphan.amount) + '），无法参与核对，请先在卡片上补选科目。');
+      }
+      // 【2026-09-22】把差额落到具体凭证 / 具体卡片 —— 从「有个差额」变成「该处理哪几笔」。
+      // 口径局限如实写明（账卡无关联字段，是按金额推断），避免用户把推断当成账表关联结果。
+      var un = [], co = [], pairs = 0;
+      (rc.orig.detail || []).forEach(function (d) {
+        (d.unbacked || []).forEach(function (e) { un.push(e); });
+        (d.cardOrphan || []).forEach(function (c) { co.push(c); });
+        pairs += d.cancelledPairs || 0;
+      });
+      if (un.length || co.length) {
+        var lines = [], unSum = 0, coSum = 0;
+        un.forEach(function (e) { unSum += e.amt; });
+        co.forEach(function (c) { coSum += c.amt; });
+        unSum = Math.round(unSum * 100) / 100;
+        coSum = Math.round(coSum * 100) / 100;
+        lines.push('按金额逐笔配对（账、卡之间没有关联字段，以下为<b>按金额推断</b>，请对照实物/原始凭证确认）：');
+        if (un.length) {
+          lines.push('· 账上有、卡片中找不到对应：<b>' + un.length + ' 笔</b>，合计 <b>' + money(unSum) + '</b>');
+          un.slice().sort(function (a, b) { return String(a.date) < String(b.date) ? -1 : 1; })
+            .slice(0, 8).forEach(function (e) {
+              lines.push('　　' + esc(e.date) + '　' + esc(e.vch) + '　' + money(e.amt) +
+                '　' + esc(String(e.sum).slice(0, 20)));
+            });
+          if (un.length > 8) lines.push('　　…另有 ' + (un.length - 8) + ' 笔');
+          badge.push('账上有卡无 ' + un.length + ' 笔');
+        }
+        if (co.length) {
+          lines.push('· 卡片有、账上找不到对应：<b>' + co.length + ' 张</b>，合计 <b>' + money(coSum) + '</b>　' +
+            co.slice(0, 4).map(function (c) { return esc(c.label) + ' ' + money(c.amt); }).join('；') +
+            (co.length > 4 ? ' …' : ''));
+          badge.push('卡有账上无 ' + co.length + ' 张');
+        }
+        if (pairs) {
+          lines.push('（另有 ' + pairs + ' 组金额相同、方向相反的分录已先行对冲，多为重复记账后冲销，不计入上列）');
+          badge.push('已对冲 ' + pairs + ' 组');
+        }
+        // 两侧相抵应与所报差额吻合；不吻合说明还有期初余额等落不到凭证的部分
+        var net = Math.round((unSum - coSum) * 100) / 100;
+        if (Math.abs(net + rc.orig.diff) < 0.01) {
+          lines.push('核对：账上多出 ' + money(unSum) + ' － 卡片多出 ' + money(coSum) + ' ＝ ' +
+            money(net) + '，与所报差额 ' + money(rc.orig.diff) + ' 金额一致（方向相反）✓');
+        } else {
+          lines.push('⚠ 上列合计 ' + money(net) + ' 与差额 ' + money(-rc.orig.diff) + ' 相差 ' +
+            money(Math.round((net + rc.orig.diff) * 100) / 100) +
+            '，可能还有一部分差额来自期初余额录入（无凭证可定位）。');
+        }
+        more.push(lines.join('<br>'));
+      } else if (Math.abs(rc.orig.diff) > 0.01) {
+        // 有差额但一笔都对不上（例如全部来自期初余额录入）—— 也要说清，别让人以为定位失效
+        more.push('按金额逐笔配对：账上该科目的凭证分录与卡片金额均能对应，差额可能全部来自期初余额录入（无凭证可定位）。');
       }
     }
     // ① 累计折旧
     if (rc.depr && !rc.depr.ok) {
-      parts.push('<b>期末累计折旧与总账不符</b>：卡片合计 <b>' + money(rc.depr.cardTotal) + '</b>，' +
-        '科目「' + esc(rc.depr.subject.code + ' ' + rc.depr.subject.name) + '」' + esc(rc.month) +
-        ' 期末 <b>' + money(rc.depr.ledgerTotal) + '</b>，差额 <b>' + money(rc.depr.diff) +
-        '</b>（容差 ' + money(rc.depr.tolerance) + '，已按卡片张数计入逐张舍入的累计误差）。');
+      parts.push('<b>期末累计折旧与总账不符</b>：卡片 <b>' + money(rc.depr.cardTotal) + '</b> / 科目「' +
+        esc(rc.depr.subject.code + ' ' + rc.depr.subject.name) + '」期末 <b>' + money(rc.depr.ledgerTotal) +
+        '</b>，差额 <b>' + money(rc.depr.diff) + '</b>');
+      more.push('<b>累计折旧差额口径</b>：容差 ' + money(rc.depr.tolerance) +
+        '，已按卡片张数计入逐张舍入的累计误差。');
     }
     if (!parts.length) { el.hidden = true; el.innerHTML = ''; return; }
-    parts.push('常见原因：有资产未建卡片、期初余额未拆成明细资产、资产已处置但卡片未标「清理」、卡片被手工改过或计提未落账。');
+    more.unshift(badge.length ? '<b>线索</b>：' + badge.join(' · ') : null);   // null 由下方 filter 清掉
+    more.push('常见原因：有资产未建卡片、期初余额未拆成明细资产、资产已处置但卡片未标「清理」、卡片被手工改过或计提未落账。');
+    // 【一行摘要，2026-09-22 二次反馈"还是太占空间"】这个提示挂在卡片清单**上方**，
+    //   常驻内容多一行，就实打实少看一行卡片。故常驻只留**恰好一行**：
+    //   一句结论 +「各差额」，原来的详细摘要行（含最大差异科目、卡片/账上双侧金额）
+    //   一并移入折叠区 —— 点开照样全在，不丢信息。
+    var diffs = [];
+    if (rc.orig && !rc.orig.ok) diffs.push('原值差 ' + money(rc.orig.diff));
+    if (rc.depr && !rc.depr.ok) diffs.push('累计折旧差 ' + money(rc.depr.diff));
+    var tip = '卡片与总账有 ' + diffs.length + ' 项不符：' + diffs.join('、');
+    var detail = parts.map(function (x) { return '<div class="rc-line">' + x + '</div>'; }).join('') +
+      '<div class="rc-line">' + more.filter(Boolean).join('<br>') + '</div>';
     el.className = 'open-check warn';
     el.hidden = false;
-    el.innerHTML = parts.join('<br>');
+    // ⚠ 折叠入口与明细**必须在同一个父元素下做兄弟节点**（点击处理要按父元素找 .rc-detail）。
+    //   【历史缺陷 2026-09-22】原先把 parts 逐项各自包一层 .rc-line，入口与明细分属两个
+    //   .rc-line，点击时 `a.parentNode.querySelector('.rc-detail')` 返回 null 直接 return ——
+    //   表现为「点『查看差额明细』没反应」。所以两者固定放在**同一个** .rc-line 里。
+    //   入口内是「结论 + 查看明细」两个 span：.rc-tip 用 ellipsis 保证**永远只占一行**，
+    //   .rc-hint 固定在右端不被挤掉。
+    el.innerHTML = '<div class="rc-line">' +
+      '<a class="rc-toggle" href="#" title="' + esc(tip) + '">' +
+      '<span class="rc-tip">' + esc(tip) + '</span>' +
+      '<span class="rc-hint">查看明细</span></a>' +
+      '<div class="rc-detail" hidden>' + detail + '</div></div>';
+  }
+  // 「查看差额明细」折叠开关（一次性委托：innerHTML 每次渲染都重建，不能用直接绑定）
+  if (!globalThis.__assetReconcileToggleBound) {
+    globalThis.__assetReconcileToggleBound = true;
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('.rc-toggle');
+      if (!a) return;
+      e.preventDefault();
+      // 从**宿主容器**（.open-check）找明细，而不是从 a.parentNode —— 这样入口与明细之间
+      // 多包/少包一层都不会再让点击失效（本轮就是被这个层级差异坑掉的）。
+      var host = (a.closest && a.closest('.open-check')) || a.parentNode;
+      var box = host && host.querySelector ? host.querySelector('.rc-detail') : null;
+      if (!box) return;
+      box.hidden = !box.hidden;
+      a.classList.toggle('open', !box.hidden);
+    });
   }
   // 关闭按钮（一次性委托，避免每次导入重复绑定）
   if (!globalThis.__assetImportCheckBound) {

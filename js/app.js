@@ -252,14 +252,14 @@
         _persistBanner = document.createElement('div');
         _persistBanner.id = 'persistErrorBanner';
         _persistBanner.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;' +
-          'background:#c0392b;color:#fff;padding:10px 16px;font-size:13px;line-height:1.7;' +
+          'background:#c0392b;color:#fff;padding:10px 16px;font-size:var(--fs-sm);line-height:1.7;' +
           'text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35)';
         document.body.appendChild(_persistBanner);
         document.body.style.paddingTop = '0'; // 横幅为 fixed 覆盖，不挤压既有布局
       }
       _persistBanner.innerHTML = '数据保存失败（第 ' + count + ' 次）：账套未能写入磁盘，继续操作可能导致数据丢失。' +
         '请立即到「设置 → 数据与安全」导出备份，并检查磁盘空间与文件权限。' +
-        (err ? '<div style="opacity:.85;font-size:12px;margin-top:2px">错误信息：' + String(err).slice(0, 200) + '</div>' : '');
+        (err ? '<div style="opacity:.85;font-size:var(--fs-xs);margin-top:2px">错误信息：' + String(err).slice(0, 200) + '</div>' : '');
       if (typeof showToast === 'function') showToast('数据保存失败，请立即导出备份！', 'error', 6000);
     } catch (e) {
       console.error('[persist] 告警横幅渲染失败：' + (e && e.message || e));

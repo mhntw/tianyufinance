@@ -195,7 +195,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         '<td class="mono">' + s.code + '</td>' +
         '<td>' + s.name + '</td>' +
         '<td>' + ((globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
-        '<td>' + (s.normal === 'dr' ? '借' : '贷') + '</td>' +
+        '<td>' + S.dirName(s.normal) + '</td>' +
         '<td><select class="cf-credit select-sm" data-code="' + s.code + '">' + opts + '</select></td>' +
         '<td><select class="cf-debit select-sm" data-code="' + s.code + '">' + opts2 + '</select></td>';
       tb.appendChild(tr);

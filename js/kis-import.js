@@ -162,17 +162,38 @@
     var reader = new MDBReader(toBuffer(buffer));
 
     // 1. 科目
+    // 【同编码多行取哪一行 —— 金蝶 GLAcct 的坑，2026-09-22 修复】
+    // 金蝶账套（做过科目表初始化 / 币别设置的）在 GLAcct 里会对**同一编码保留两行**：
+    //   · 残留行：集中在表头（实测行 0~16），**无 FForCy**（未设币别），名称/方向是旧值；
+    //   · 有效行：真正的科目表（实测行 42+），**带 FForCy（如 RMB）**，与金蝶界面显示一致。
+    // 实测：添钰来客 13 个重复编码、绅蓝之星 9 个，全部符合「残留在前、有效在后、有效行带 FForCy」。
+    // 原实现 `if (seenCode[code]) return;`（只取第一条）会命中残留行，后果（添钰来客账套）：
+    //   22210102 应「销项税额的抵减」(方向 借) → 被读成「销项税额」(方向 贷)；
+    //   560108  应「补助」  → 被读成「展览费」；560302 应「利息」 → 被读成「汇兑损失」。
+    //   金额不受影响（余额/发生额一律按科目**编码**取数），但账表与凭证上的科目名张冠李戴、方向也反。
+    // 取行规则：**带 FForCy 的行优先；同优先级时后出现的覆盖先出现的**（等价于"后写覆盖"）。
     var acctRows = getRows(reader, 'GLAcct');
     var subjects = [];
     var acctName = {};
-    var seenCode = {};
+    var byCode = {};          // code → { row, hasCy }：当前选中的行
+    var orderedCodes = [];    // 保持表内首次出现顺序（输出 subjects 的稳定顺序）
     var dupCodes = [];
     acctRows.forEach(function (r) {
       var code = (r.FAcctID || '').toString().trim();
-      var name = (r.FAcctName || '').toString().trim();
       if (!code) return;
-      if (seenCode[code]) { if (dupCodes.indexOf(code)===-1) dupCodes.push(code); return; }
-      seenCode[code] = true;
+      var hasCy = !(r.FForCy === null || r.FForCy === undefined || String(r.FForCy).trim() === '');
+      var cur = byCode[code];
+      if (!cur) {
+        byCode[code] = { row: r, hasCy: hasCy };
+        orderedCodes.push(code);
+        return;
+      }
+      if (dupCodes.indexOf(code) === -1) dupCodes.push(code);
+      if (hasCy || !cur.hasCy) byCode[code] = { row: r, hasCy: hasCy };
+    });
+    orderedCodes.forEach(function (code) {
+      var r = byCode[code].row;
+      var name = (r.FAcctName || '').toString().trim();
       acctName[code] = name;
       var dc = (r.FDC || 'D').toString().trim().toUpperCase();
       var normal = dc === 'D' ? 'dr' : 'cr';
@@ -221,8 +242,10 @@
         vchOrder.push(v);
       }
       var code = (r.FAcctID || '').toString().trim();
-      var d = Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100;
-      var c = Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100;
+      // ⚠ 勿再叫 d / c：本作用域上方已用 d 存**凭证日期**（parseDate 的结果），
+      //   同名遮蔽后，此处之后任何"取日期"的代码会静默拿到金额（差一点就踩中）。
+      var drAmt = Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100;
+      var crAmt = Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100;
       // 金蝶红字（负数）分录：**原样保留**，不做方向转换。
       // 【为什么不再转换】旧实现把「借 -1,724.85」（红字冲销）改写成「贷 +1,724.85」，
       //   于是它与「真实的贷方业务」在账套里长得完全一样，无法区分 —— 信息一旦丢失就不可逆。
@@ -236,15 +259,12 @@
         code: code,
         name: acctName[code] || code,
         summary: (r.FExp || '').toString().trim(),
-        dr: d,
-        cr: c
+        dr: drAmt,
+        cr: crAmt
       });
     });
-    // 排序口径与金蝶界面显示一致：先按【期间年月】分组（date 的 YYYY-MM），
-    // 同期间内按 FDate（凭证日期）升序、同日期按原始 FNum 升序。
-    // 重排原因：金蝶 KIS 修改/加录凭证后会重写 FNum 但界面显示用"期内位置序号"，
-    // 直接读 FNum 会导致修改过的凭证号错位（如金蝶显示记-2，FNum 却变成了 37）。
-    // 解决：排序后按期内从 1 重新编号，与金蝶界面显示完全一致。
+    // 排序口径：先按【期间年月】，同期间内按 FDate 升序、同日期按 FNum 升序。
+    // 这只是**显示顺序**，与凭证号无关 —— 凭证号保持金蝶原值（见下）。
     vchOrder.sort(function (a, b) {
       var aYm = (a.date || '').slice(0, 7);
       var bYm = (b.date || '').slice(0, 7);
@@ -253,14 +273,45 @@
       if (dc !== 0) return dc;
       return (+a.no || 0) - (+b.no || 0);
     });
-    // 按期内重新编号：word+期间 分组，每组从 1 开始递增
-    var noCounters = {};
+
+    /* ---- 凭证号：一律沿用金蝶 FNum，**不再按期内位置重编号** ----
+     * 【2026-09-22 纠正一处长期存在的错误实现】
+     * 原实现把凭证号按「期内日期顺序」从 1 重排，注释给的理由是：
+     *   「金蝶 KIS 修改/加录凭证后会重写 FNum，界面显示的是期内位置序号」。
+     * 对账时逐张核对 ais 与金蝶界面，证明该理由不成立：
+     *   ① 5 个金蝶账套、52 个「期间×凭证字」分组，FNum **全部严格 1..N 连续**，
+     *      无断号无重号 —— 若金蝶真会重写 FNum，必然留下跳号，一个都没有；
+     *   ② 金蝶界面显示的正是 FNum：截图里 2026-08-27 那张显示「记-2」，而 8 月共 63 张
+     *      凭证，按「期内位置」绝不可能是第 2 张；ais 中「期间8 号2 = 2026-08-27 = 1001
+     *      8月现金收入」与该截图逐字段吻合；
+     *   ③ 误判很可能是把 GLVch.FSerialNum（**分录**行号：逐行递增、值会很大）当成了凭证号。
+     * 该重编号的代价是**改动凭证的唯一业务标识**（且原号被覆盖、不可逆）：
+     *   添钰来客 2026 年 447 张中 442 张（98.9%）被改号 ——
+     *   如「01-23 号30 → 号1」「01-30 号36 → 号2」，会计拿着金蝶的「记-29」在 ty 里查不到
+     *   对应凭证，审计追溯与纸质凭证核对全部错位。
+     * 现改为沿用 FNum —— 这才是「与金蝶一致」。
+     * 防御：仅当同一「期间+凭证字」内**确实**存在跳号/重号（当前所有账套均无）时，
+     *   才退回按期内日期顺序重排，保证凭证号在期间内仍单调、可用。 */
+    var noPairs = {};                       // (凭证字|期间年月) → [号…]
     vchOrder.forEach(function (v) {
-      var ym = (v.date || '').slice(0, 7);
-      var key = (v.word || '记') + '|' + ym;
-      noCounters[key] = (noCounters[key] || 0) + 1;
-      v.no = noCounters[key];
+      var key = (v.word || '记') + '|' + (v.date || '').slice(0, 7);
+      (noPairs[key] = noPairs[key] || []).push(+v.no || 0);
     });
+    var needsRenum = false;
+    Object.keys(noPairs).forEach(function (k) {
+      var arr = noPairs[k].slice().sort(function (a, b) { return a - b; });
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] !== i + 1) { needsRenum = true; break; }
+      }
+    });
+    if (needsRenum) {
+      var noCounters = {};
+      vchOrder.forEach(function (v) {
+        var key = (v.word || '记') + '|' + (v.date || '').slice(0, 7);
+        noCounters[key] = (noCounters[key] || 0) + 1;
+        v.no = noCounters[key];
+      });
+    }
     var vouchers = vchOrder;
 
     // 3. 期初余额：见下方（需先确定账套真实启用期，跨年账套才能正确取"开业期初"行）

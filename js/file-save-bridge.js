@@ -99,16 +99,16 @@
       var overlay = d.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:2147483646;';
       var box = d.createElement('div');
-      box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden;font-size:14px;color:#222;';
+      box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden;font-size:var(--fs-md);color:#222;';
       box.innerHTML =
         '<div style="padding:14px 18px;font-weight:600;border-bottom:1px solid #eee;">导出完成</div>' +
         '<div style="padding:18px;word-break:break-all;line-height:1.6;">' +
           '<div style="color:#666;margin-bottom:6px;">文件已保存到：</div>' +
-          '<div style="font-family:monospace;font-size:13px;color:#1565c0;background:#e3f2fd;padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
+          '<div style="font-family:monospace;font-size:var(--fs-sm);color:#1565c0;background:#e3f2fd;padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
         '</div>' +
         '<div style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #eee;">' +
-          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:14px;">打开文件夹</button>' +
-          '<button class="ty-export-close" style="padding:7px 16px;border:1px solid #ccd;background:#fff;border-radius:6px;cursor:pointer;font-size:14px;">关闭</button>' +
+          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:var(--fs-md);">打开文件夹</button>' +
+          '<button class="ty-export-close" style="padding:7px 16px;border:1px solid #ccd;background:#fff;border-radius:6px;cursor:pointer;font-size:var(--fs-md);">关闭</button>' +
         '</div>';
       overlay.appendChild(box);
       d.body.appendChild(overlay);

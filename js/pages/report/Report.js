@@ -157,7 +157,8 @@ function renderBs(month) {
     var pl = S.profitStatement(period);
     var glRow = (S.generalLedger(period) || []).filter(function (x) { return x.code === '3103'; })[0];
     var carried = 0;
-    if (glRow) carried = (glRow.normal === 'cr' ? glRow.endCr - glRow.endDr : glRow.endDr - glRow.endCr);
+    // 余额换算走 store.displayBalance（唯一实现）：此处需 3103 按贷方为正的净值
+    if (glRow) carried = S.displayBalance(glRow.endDr - glRow.endCr, glRow.normal).amount;
     var net = pl ? pl.netProfit : 0;
     var residual = Math.abs((net - carried) - diff) < 1; // 差额≈未结转损益净额？
     var txt = '资产负债表恒等式暂不平衡：资产比负债及所有者权益' +

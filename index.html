@@ -332,7 +332,10 @@
             </div>
           </div>
 
-          <div class="voucher-grid-wrap">
+          <!-- scroll-area：与全站统一的冻结结构 —— 工具栏与凭证抬头固定不动，
+               只让分录表格区滚动，表头吸在表格区顶部（此前本页无滚动区，整页滚动，
+               导致工具栏/抬头随页面滚走，与其他页行为不一致）。 -->
+          <div class="voucher-grid-wrap scroll-area">
           <table class="grid voucher-grid" id="vGrid">
             <thead>
               <tr>
@@ -537,7 +540,8 @@
         <div class="dl-layout">
           <div class="dl-main">
             <table class="grid" id="dlGrid">
-              <thead><tr><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th class="ta-r">余额</th><th>方向</th></tr></thead>
+              <!-- 列序与金蝶明细账一致：…借方｜贷方｜方向｜余额（方向在余额前） -->
+              <thead><tr><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th></tr></thead>
               <tbody id="dlBody"></tbody>
             </table>
           </div>
@@ -691,7 +695,7 @@
                它只影响「计提折旧 / 清理」的记账期间，而表格的「期末累计折旧」却固定读 currentPeriod()，
                于是改期间时表格数字不变、看起来像失效。现统一为一个期间源（data-period="asset"）。 -->
           <div data-period="asset" data-default="currentPeriod" data-on-change="__renderAssets"></div>
-          <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-sm);"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
           <span class="orig-btn-sep"></span>
           <button class="btn btn-primary" id="btnNewAsset">新增</button>
           <button class="btn" id="btnAssetGenVoucher" title="按左侧期间对「全部应计提折旧的资产」计提并生成折旧凭证 —— 面向全部资产，不按勾选筛选（同一期间重复点击不会重复计提）">计提折旧</button>
@@ -736,13 +740,23 @@
 
         <div class="orig-body orig-body-sider-right">
           <div class="orig-sider" id="assetSider">
-            <div class="orig-sider-box">
-              <div class="orig-sider-title">资产类别</div>
-              <ul class="orig-tree" id="assetCatTree"></ul>
+            <!-- 收起 / 展开：复用明细账科目快速切换栏的通用类（.dl-panel-head / -min / -restore），
+                 不另造一套。收起后只剩 30px 竖把，表格多出 200px。状态由 Asset.js
+                 的 initAssetSiderCollapse() 存 localStorage（键 assetFilterPanel.closed）。 -->
+            <div class="dl-panel-head">
+              <span>筛选</span>
+              <button type="button" class="dl-panel-min" id="assetSiderMin" title="收起筛选栏">»</button>
             </div>
-            <div class="orig-sider-box orig-sider-box-bottom">
-              <div class="orig-sider-title">部门</div>
-              <ul class="orig-tree" id="assetDeptTree"></ul>
+            <button type="button" class="dl-panel-restore" id="assetSiderRestore" title="展开筛选（资产类别 / 部门）">«</button>
+            <div class="orig-sider-body">
+              <div class="orig-sider-box">
+                <div class="orig-sider-title">资产类别</div>
+                <ul class="orig-tree" id="assetCatTree"></ul>
+              </div>
+              <div class="orig-sider-box orig-sider-box-bottom">
+                <div class="orig-sider-title">部门</div>
+                <ul class="orig-tree" id="assetDeptTree"></ul>
+              </div>
             </div>
           </div>
           <div class="orig-table-wrap">
@@ -1133,7 +1147,7 @@
                       <tbody id="settleTmplNewBody"></tbody>
                     </table>
                   </div>
-                  <div id="settleTmplNewTotal" style="margin-top:8px;font-size:12px;color:var(--ty-text-2);"></div>
+                  <div id="settleTmplNewTotal" style="margin-top:8px;font-size:var(--fs-xs);color:var(--ty-text-2);"></div>
                 </div>
               </div>
               </div>

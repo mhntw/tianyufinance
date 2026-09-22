@@ -325,7 +325,8 @@ function refreshExpenseDetail() {
   months.forEach(m => {
     const gl = S.generalLedger(m) || [];
     glByMonth[m] = {};
-    gl.forEach(r => { glByMonth[m][r.code] = r.normal === 'dr' ? (r.periodDr || 0) : (r.periodCr || 0); });
+    // 按科目正常方向取发生额：走 store.normalSideAmount（唯一实现）
+    gl.forEach(r => { glByMonth[m][r.code] = S.normalSideAmount(r); });
   });
 
   // 去年同期（用于「较同期」），与本期口径一致：去年同月逐月对应
@@ -335,7 +336,7 @@ function refreshExpenseDetail() {
   yearMonths.forEach(m => {
     const gl = S.generalLedger(m) || [];
     yearGlByMonth[m] = {};
-    gl.forEach(r => { yearGlByMonth[m][r.code] = r.normal === 'dr' ? (r.periodDr || 0) : (r.periodCr || 0); });
+    gl.forEach(r => { yearGlByMonth[m][r.code] = S.normalSideAmount(r); });
   });
   const yearTotalsByCode = {};
   yearMonths.forEach(m => {
@@ -532,6 +533,13 @@ function renderEDPagination(totalRoots) {
 
 // 导出（xlsx，与全账套报表统一）：直接基于 refreshExpenseDetail 缓存的全量数据构造，不解析 DOM。
 // 金额列写数值（Excel 可再算，免去旧 CSV 的千分位/引号转义脆弱逻辑）；百分比列沿用界面 pct 文本。
+// 费用明细表导出。
+// 【同源约束，勿破】取数与汇总一律复用 renderExpenseDetail 缓存的 edExportData
+//   （months / opts / totals / displayRoots），**不得在此自行重算**：
+//   · 一旦这里另起一套取数，就会重演「屏幕与导出各写一份口径」的分叉 ——
+//     账簿页与报表页都因此出过缺陷（见 tools/verify_cross_page.js 头部说明）。
+//   · 与屏幕有意的差异只有三处，且都是**格式**而非数值：
+//     树展开状态（导出给完整层级）、金额类型（屏幕文本 / 导出数字）、缩进方式（span / 空格）。
 function exportED() {
   if (!edExportData) { showToast('请先打开费用明细表再导出', 'warn'); return; }
   var XLSX = globalThis.XLSX;

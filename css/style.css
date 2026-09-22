@@ -26,32 +26,60 @@
   --ty-nav-text:    var(--ty-text);
   --ty-nav-active-bg: #e8f1ff; /* 菜单 hover/active 底：白侧栏上须用浅灰（原 #fff 白上白无反馈） */
   --ty-nav-active:  #3a66d4;   /* 菜单选中文字：品牌蓝，白底清晰 */
-  --ty-border:      #E3E8EE;   /* 边框/分隔线色 */
-  --ty-border-2:    #c2d1e4;
-  --ty-text:        #022433;   /* 添钰文字主色（标题/正文） */
+  --ty-border:      #e2e7ec;   /* 边框/分隔线色（色相 214°，与页面底同阶） */
+  --ty-border-2:    #ccd4db;   /* 二级边框：同色相、降饱和（原 #c2d1e4 偏蓝偏艳） */
+  /* 【2026-09-22 对比度校准】原先 #022433 对白底 = **16.12:1**，属"过头"：
+     近乎纯黑 on 纯白会产生光晕感（halation），久读刺痛 —— 这是"字调大了仍疲劳"的主因之一，
+     因为疲劳来自**对比度**而非字号。WCAG AAA 只要 7:1，专业舒适区约 9–12:1。
+     现取值按目标带（正文 10.5–12.5 / 次要 7–9 / 辅助 4.5–6）反推，并统一色相 214°（与主色同源）。 */
+  --ty-text:        #2b3844;   /* 正文主色 白底 11.99:1（目标带 10.5–12.5） */
   --ty-text-1:      var(--ty-text);
-  --ty-text-2:      #5c6d74;   /* 添钰次要文字色 */
-  --ty-text-3:      #99A1AC;   /* 添钰三级/占位文字色（统一，消除各处 fallback 不一致） */
+  --ty-text-2:      #4b5763;   /* 次要文字色 白底 7.39:1（原 5.39:1 偏弱） */
+  /* 【2026-09-22】原 #99A1AC（白底 2.61:1 / 浅蓝底 2.29:1）**不达 WCAG 4.5:1**，
+     却承载 104 处辅助文字（且多为 12px）—— 实测"发虚、看久疲劳"的主因在此，不在字号。
+     现加深为 #6E7681（白底 4.59:1 ✓）。规则：**凡承载文字一律不低于本值**；
+     箭头 / 分隔线 / 虚线框等纯装饰改用 --ty-deco（保留原浅色外观，零视觉变化）。 */
+  --ty-text-3:      #69737f;   /* 三级/占位文字色 白底 4.82:1（WCAG 4.5:1 达标） */
+  --ty-deco:        #99A1AC;   /* 纯装饰：下拉箭头 / 分隔线 / 虚线框（不承载文字） */
   --ty-muted:       var(--ty-text-3);
   /* 首页财务指标卡：卡片头部标题/控件与内容区的统一横向边距。
      改此处一处，所有卡片头部 + 内容区左右留白全局同步（原各规则硬编码 20px/28px，易漏）。 */
   --card-pad-x:     28px;
 
   /* 统一字号阶梯（风格整数 px，全站文字均引用，避免 11.5/12.5 等碎片） */
-  --fs-2xs: 11px;   /* 极小辅助标签 / 徽标 */
-  --fs-xs:  12px;   /* 辅助说明 / 占位 / 次要标签 */
-  --fs-sm:  13px;   /* 次要文字 / 表单标签 */
-  --fs-md:  14px;   /* 正文基准（14px） */
-  --fs-lg:  15px;   /* 卡片标题 / 稍大 */
-  --fs-xl:  16px;   /* 区块标题 */
-  --fs-2xl: 17px;   /* 页面主标题 */
-  --ty-th-bg:       #e8f1ff;   /* 表头浅蓝 #e8f1ff（与原斑马纹同色，单一浅蓝+白两色） */
-  --ty-row-hover:   #e8f1ff;   /* 鼠标定位行高亮（与 .grid tbody tr:hover 实际值一致） */
+  /* 【2026-09-22 整体 +1px】原档位 11/12/13/14/15/16/17 实测反馈"字小、易疲劳"。
+     ⚠ 受益最大的不是 --fs-md 这一档：全站 371 处字号声明里 --fs-xs(12)+--fs-sm(13) 共 231 处（62%），
+       表格正文 / 科目名 / 表单标签全在这两档 —— 只调基准看不出变化，必须整条阶梯一起上移。
+     行高与单元格内边距**刻意不动**（37px 装 15px 文字仍宽松），故一屏行数一点不损失。 */
+  --fs-2xs: 12px;   /* 极小辅助标签 / 徽标 */
+  --fs-xs:  13px;   /* 辅助说明 / 占位 / 次要标签 */
+  --fs-sm:  14px;   /* 次要文字 / 表单标签 */
+  --fs-md:  15px;   /* 正文基准（15px） */
+  --fs-lg:  16px;   /* 卡片标题 / 稍大 */
+  --fs-xl:  17px;   /* 区块标题 */
+  --fs-2xl: 19px;   /* 页面主标题 */
+  /* ---- 滚动条：全站唯一规范（详见文末「全站滚动条」块）----
+     原先并存 6px 蓝 / 4px 灰 / 8px 蓝 / 系统默认 四种，同一屏里粗细颜色都不同。
+     现集中到这几个令牌：改这里一处，全站滚动条同步。 */
+  --sb-size: 8px;                        /* 全站统一宽度（不再按容器分档，一致性优先） */
+  --sb-thumb: var(--ty-deco);            /* 常态：纯装饰浅色（不承载文字，沿用装饰令牌） */
+  --sb-thumb-hover: var(--ty-text-3);    /* 悬停/拖动：加深一档，便于抓取 */
+  --sb-track: transparent;               /* 轨道透明，只在有内容滚动时才看见滑块 */
+  /* ---- 表格底色：三层（白 / 斑马纹淡蓝 / 浅蓝）----
+     【2026-09-22】斑马纹原与表头**同色**（#e8f1ff），带来三个问题：
+       ① 密排表格整片全行蓝底偏重，久看疲劳（实测反馈"斑马纹蓝色有点深了"）；
+       ② 斑马纹与 --ty-row-hover **同色** → 鼠标扫过偶数行毫无变化，行定位形同虚设（隐性缺陷）；
+       ③ 表头 / 斑马纹 / 小计 / 新增行四者一色，层级被压平，分不清"这是表头还是数据行"。
+     现拆成三层：白底 → 斑马纹(淡，只做行分隔) → 表头/小计/悬浮/新增行(浅蓝，重一档)。 */
+  --ty-row-alt:     #f4f8ff;   /* 斑马纹（偶行）—— 刻意比表头淡一档 */
+  --ty-th-bg:       #e8f1ff;   /* 表头 / 列标题 / 弹窗标题栏 / 搜索分组标题 */
+  --ty-row-hover:   #e8f1ff;   /* 鼠标定位行高亮 —— 必须与 --ty-row-alt 不同色，否则偶行悬浮看不见 */
   --ty-subtotal-bg: #e8f1ff;   /* 小计行背景（折旧/费用明细分组末行） */
   --ty-cur-add-bg:  #e8f1ff;   /* 当前添加行背景（科目表新增行、凭证分录新增行） */
-  /* 表头边框复用 --ty-border-2（同值 #c2d1e4）：语义已被「二级边框」覆盖，无需独立令牌 */
+  /* 表头横线走二级边框色 --ty-border-2；**表头竖线**已改用 --grid-line-v
+     （2026-09-22 网格线分两档强度，见下方 --grid-line 说明。原注释写"复用 --ty-border-2"已失效） */
   --th-border:      var(--ty-border-2);
-  --th-border-r:    var(--ty-border-2);
+  --th-border-r:    var(--grid-line-v);   /* 表头竖线：跟随竖线强度，不再用二级边框色 */
   --ty-btn:         var(--ty-blue);   /* 添钰 主按钮蓝（复用 --ty-blue） */
   --ty-btn-hover:   #3a66d4;   /* 主按钮 hover 深一档 */
   /* 强调色（2026-09-19 按 WCAG 校准）——
@@ -80,8 +108,15 @@
   --st-danger-bg: var(--ty-red-bg); --st-danger-fg: var(--ty-red);
   --st-ok-bg:   var(--ty-green-bg); --st-ok-fg:   var(--ty-green);
   --st-panel-bg: var(--ty-border);  --st-panel-bg2: #e8f1ff; --st-panel-bd: var(--ty-content-bg);
-  --ty-content-bg:  #f0f0f0;   /* 内容区外底色（工作区浅灰白） */
-  --grid-line:      var(--ty-border);   /* 单元格网格线（与边框同色，原独立写死 #e3e8ee） */
+  /* 中性色阶统一到主色色相 214°，一条台阶（避免"纯中性灰"与"偏蓝的灰"两套色打架：
+     原 #f0f0f0 是中性灰(0°)、#E3E8EE 是偏蓝灰(213°)，同屏并存会让界面显得脏、层次不清）：
+       #f5f7f9 页面底 ／ #eef1f4 浅底·竖线 ／ #e2e7ec 横线·边框 ／ #ccd4db 强边框 */
+  --ty-content-bg:  #f5f7f9;   /* 内容区外底色（工作区浅灰白） */
+  /* 网格线分两档强度：**横线（行分隔）要清楚，竖线（列对齐）只要隐约可见**。
+     原因：密排表格里竖线与横线同色时，格子被四边全框，数百条灰线形成主要视觉噪音源。
+     2026-09-22 用户定：竖线保留但更浅 —— 兼顾"列可追踪"与"减少噪音"。 */
+  --grid-line:      var(--ty-border);   /* 横线 / 边框 / 表格外框（#e2e7ec） */
+  --grid-line-v:    #eef1f4;            /* 竖线（列分隔）—— 比横线浅一档，只做隐约列对齐 */
   --grid-text:      var(--ty-text);   /* 表格正文主色（复用 --ty-text） */
 
   --topbar-h: 60px;   /* 方案 C：加高以容纳完整品牌标题（原 48px 紧凑高度，品牌搬进顶栏后放宽） */
@@ -103,7 +138,7 @@ html, body {
 
 body {
   font-family: var(--ty-font);   /* 全站统一字体栈（与表格/标题一致，消除字体割裂） */
-  font-size: var(--fs-md);       /* 正文基准 14px */
+  font-size: var(--fs-md);       /* 正文基准（数值见 :root 的 --fs-md，勿在此写死数字） */
   color: var(--ty-text);
   background: var(--ty-content-bg);
   overflow: hidden;
@@ -153,6 +188,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 h1, h2, h3, h4, h5, h6, p { margin: 0; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; cursor: pointer; border: none; background: none; }
+/* 【2026-09-22】form 控件默认**不继承字号**：浏览器给 input/select/textarea 固定 13.33px，
+   于是它们既比正文小、又**改字号令牌也调不到** —— "界面字小"的一处隐形来源（button 早已 font:inherit，
+   唯独输入框漏了）。此处只继承 font-family/font-size：刻意**不用 font: inherit**，
+   免得把父级 line-height（如顶栏 48px）一起带进来撑坏输入框的垂直居中。 */
+input, select, textarea { font-family: inherit; font-size: inherit; }
 img, svg { display: block; max-width: 100%; }
 
 /* ---------- 通用工具类（原 jdy-base.css §4 尾部） ---------- */
@@ -416,8 +456,8 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* 左侧顶部：账套 + 期间 + 搜索 + 用户 */
-.sidenav::-webkit-scrollbar { width: 6px; }
-.sidenav::-webkit-scrollbar-thumb { background: var(--ty-blue-2); border-radius: 3px; }
+/* （侧栏滚动条原先在此单独写 6px 蓝 —— 已收口到文末「全站滚动条」唯一规范，勿再逐处补写。
+    顺带修掉一处旧缺陷：滑块色 var(--ty-blue-2) 与侧栏自身底色同族，在浅蓝底上几乎看不见。） */
 
 /* 导航分组（账簿 / 报表） */
 .nav-group { }
@@ -643,13 +683,13 @@ img, svg { display: block; max-width: 100%; }
 .vch-tpl-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-radius: 6px; }
 .vch-tpl-row:hover { background: var(--ty-blue-2); }   /* 悬停底走全站 hover token（原写死 #eef4fd） */
 .vch-tpl-main { flex: 1; min-width: 0; }
-.vch-tpl-name { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ty-text); }
+.vch-tpl-name { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--ty-text); }
 .vch-tpl-name b { font-weight: 600; }
 .vch-tpl-word {
   display: inline-block; min-width: 18px; text-align: center; font-size: var(--fs-2xs); line-height: 16px;
   color: var(--ty-blue); background: rgba(47, 149, 255, .08); border-radius: 3px; padding: 0 4px;
 }
-.vch-tpl-tag { font-size: 10px; line-height: 1; padding: 2px 5px; color: var(--ty-blue-dark); background: var(--ty-blue-2); border-radius: 3px; }
+.vch-tpl-tag { font-size: var(--fs-2xs); line-height: 1; padding: 2px 5px; color: var(--ty-blue-dark); background: var(--ty-blue-2); border-radius: 3px; }
 .vch-tpl-preview {
   font-size: var(--fs-xs); color: var(--ty-text-3); margin-top: 3px; line-height: 1.7;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -709,7 +749,7 @@ img, svg { display: block; max-width: 100%; }
 /* 名称列/编码列宽度同样走全站标准（树形缩进由内容自然撑开） */
 /* sticky 单元格必须不透明，且跟随斑马纹/hover：否则横滚时透字、鼠标悬停时右侧出现白块 */
 #subjGrid tbody td.col-op { z-index: 1; background: var(--ty-white); }
-#subjGrid tbody tr:nth-child(even) td.col-op { background: var(--ty-th-bg); }
+#subjGrid tbody tr:nth-child(even) td.col-op { background: var(--ty-row-alt); }   /* 跟随斑马纹（勿用表头色，否则与偶数行不同色） */
 #subjGrid tbody tr:hover td.col-op { background: var(--ty-row-hover); }
 
 /* 科目树形显示（默认一级收拢，行首箭头逐级展开） */
@@ -1201,7 +1241,7 @@ select:not([class]),
 .ed-subj-caret {
   position: absolute; right: 8px; top: 50%; width: 0; height: 0;
   border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid var(--ty-text-3); transform: translateY(-50%); pointer-events: none;
+  border-top: 5px solid var(--ty-deco); transform: translateY(-50%); pointer-events: none;
 }
 .ed-subj-pop {
   position: absolute; z-index: 50; top: calc(100% + 4px); left: 0;
@@ -1275,7 +1315,7 @@ label.req::before {
    ty 原先这些字段没有任何说明，而「期初累计折旧」恰恰是最需要说明的（它必须是
    锚点月末的余额，填错时点会与总账差整期折旧）。空内容时自动隐藏，不留空隙。 */
 .form-hint {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--ty-text-3);
   margin-left: 6px;
   white-space: nowrap;
@@ -1373,7 +1413,10 @@ label.req::before {
 /* 表头统一 token：全站表头高度 / 字号 / 内边距由这三处集中控制，任何表改一处即全站同步。
    对齐策略：默认居中；金额/数值列（.col-amt / .ta-r / .num）右对齐、操作列（.col-op）左对齐，
    即「按列类型统一」，跨页一致。 */
-:root { --grid-row-h: 37px; --th-fs: 14px; --grid-row-pad: 0 12px; }
+/* ⚠ --th-fs 必须与**表体**字号一致：.grid td 不写 font-size，继承 body 的 --fs-md，
+   而 .grid th 走本令牌 —— 只改一处就会出现"表头比表体小"（表头字重 400，看着更弱）。
+   2026-09-22 字号整体 +1px 时 --fs-md 变 15px，此处同步 14 → 15。 */
+:root { --grid-row-h: 37px; --th-fs: 15px; --grid-row-pad: 0 12px; }
 /* ============ 全站表格列对齐【唯一约定，改表先读这里】 ============
  * 只有两类列，同一列的表头与内容使用同一个类（不依赖任何"默认居中"的隐含行为）：
  *   ① 金额 / 数量 列      → 加 ta-r  → 表头与内容都「右」
@@ -1440,12 +1483,13 @@ label.req::before {
   height: var(--grid-row-h);                             /* 与表头同高（token 统一） */
   padding: var(--grid-row-pad);                          /* 与表头同内边距（token 统一） */
   border-bottom: 1px solid var(--grid-line);  /* 内部网格线（报表覆盖为 #e4ecf4） */
-  border-right: 1px solid var(--grid-line);
+  border-right: 1px solid var(--grid-line-v);
   color: var(--grid-text);
 }
 
-/* 表体奇偶行：奇行白、偶行浅蓝（与表头同色 var(--ty-th-bg)），整体为「浅蓝 + 白」两色 */
-.grid tbody tr:nth-child(even) { background: var(--ty-th-bg); }
+/* 表体奇偶行：奇行白、偶行**淡**蓝（var(--ty-row-alt)）。刻意不再与表头同色 ——
+   密排表格整片浅蓝偏重，且同色会让"偶行悬浮高亮"完全看不出来。 */
+.grid tbody tr:nth-child(even) { background: var(--ty-row-alt); }
 /* 鼠标定位行高亮 var(--ty-row-hover)（原生 ty-table-row:hover td），覆盖斑马纹 */
 .grid tbody tr:hover { background: var(--ty-row-hover) !important; }
 
@@ -1596,7 +1640,7 @@ label.req::before {
    ⚠️ 表头线【不再跟着一起改色】—— 全站表头线由 .grid th 统一用 --th-border / --th-border-r
    （比表体线深一档，用于区分表头与正文）；报表此前把 th 也改成浅线，
    导致报表表头线比其它所有表浅一格（全站体检发现）。 */
-.rpt-grid td { border-color: var(--grid-line); border-bottom: 1px solid var(--grid-line); border-right: 1px solid var(--grid-line); }
+.rpt-grid td { border-color: var(--grid-line); border-bottom: 1px solid var(--grid-line); border-right: 1px solid var(--grid-line-v); }
 
 /* 行次列：宽度走全站标准（自动），此处只保留 nowrap */
 .rpt-grid th.col-amt,
@@ -1817,7 +1861,7 @@ label.req::before {
    小字 + 弱化色，避免被误读为数据行。 */
 .tb-note .tb-note-cell {
   color: var(--ty-muted);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   text-align: left;
   line-height: 1.6;
 }
@@ -1977,12 +2021,37 @@ label.req::before {
  * 采用定宽表格 + 外层横向滚动，确保金额列 198px 永不被压缩，
  * 从而 letter-spacing:9px 与 11×9.0909% 位格严格对齐（像素级）。
  */
-/* 凭证表格外层：同样不自己滚动，交给 .page.active 统一横滚 + 纵滚（表头吸顶、无双滚动条）。
+/* 凭证表格外层：编辑视图下作为滚动区（见下方 .scroll-area 规则）；
+   其余场景仍不自己滚动，交给 .page.active 统一横滚 + 纵滚（表头吸顶、无双滚动条）。
    内层 .voucher-grid 固定 1096px，确保金额位列宽不被压缩。
-   注：凭证表是定宽 1096px 设计，窗口窄于此时由 .page.active 横滚承接。 */
+   注：凭证表是定宽 1096px 设计，窗口窄于此时由本容器横滚承接。 */
 .voucher-grid-wrap {
   width: 100%;
   overflow: visible;
+}
+/* ---- 录凭证「编辑视图」改用全站统一的冻结结构（2026-09-22）----
+ * 全站其余页面都是「工具栏/筛选条固定 + 只有表格区滚动」，靠 .scroll-area 实现：
+ *   .page.active:has(.scroll-area) → 页面变弹性列 → .scroll-area 吃满剩余高度并自身滚动，
+ *   thead th 的 position:sticky 吸在滚动区顶部。
+ * 本页此前**没有滚动区**：滚动祖先是 .page.active → 整页滚动，
+ *   工具栏「保存/更多」与凭证抬头（凭证字/号/日期）会随页面一起滚走；
+ *   表头虽吸顶，吸的却是整页顶部 —— 这就是与其他页「不一致」的成因。
+ * 现给 .voucher-grid-wrap 加上 .scroll-area（见 index.html），滚动区即本容器：
+ *   工具栏 + 凭证抬头固定不动，只有分录表格滚动，表头吸在其顶部。
+ * ⚠ #vEditView 的显隐由 JS 用 style.display = '' 切换（不是 'block'），
+ *   故下面 display:flex 不会被内联样式盖掉；将来若改成 display='block' 需同步调整。
+ * ⚠ .voucher-grid-wrap 自身的 overflow:visible（上方）会盖掉 .scroll-area 的 overflow:auto，
+ *   故按「双类名」提高优先级显式改回来。 */
+#vEditView {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.voucher-grid-wrap.scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 .voucher-grid {
   table-layout: fixed;
@@ -1999,7 +2068,7 @@ label.req::before {
   background: var(--ty-th-bg);   /* 列标题浅蓝底，与全站表头同源（同吃 token，改一处全站同步） */
   /* 表头格子线与表体同色（覆盖全局 .grid th 的偏蓝边框），深浅粗细统一 */
   border-bottom: 1px solid var(--grid-line);
-  border-right: 1px solid var(--grid-line);
+  border-right: 1px solid var(--grid-line-v);
 }
 /* 定宽列（与 1:1：序号70 摘要261 科目349 金额208×2 = 1096px）。
  * 作用域收进 .voucher-grid：这三个类是凭证录入表的专有列（fixed 布局的定宽拼图），
@@ -2072,10 +2141,13 @@ label.req::before {
  * 关键：容器宽度固定，letter-spacing 与位格宽度严格匹配
  * ============================================================ */
 
-/* 金额列定宽：11格 × 18.9px ≈ 208px（与 1:1） */
+/* 金额列定宽：11格 × 18.9px ≈ 208px（与 1:1）
+ * ⚠ 本规则同时作用于 th（表头金额列）与 td（数据金额格），故**不得在此写 position**
+ *   —— th 必须保持 .grid th 的 position:sticky，否则金额表头不吸顶：
+ *   滚动时表现为「摘要/科目」吸住、而「借方金额/贷方金额」跟着滚走（2026-09-22 修复）。
+ *   td 需要的 position:relative 已在下方按 td 限定单独给出。 */
 .voucher-grid .col-amount,
 .voucher-grid .amount {
-  position: relative;
   padding: 0 !important;
   width: 208px;
   min-width: 208px;
@@ -2085,7 +2157,8 @@ label.req::before {
   color: var(--grid-text);
   /* 位格线单一定义：::after 与编辑态 focus 共用。
      百分比随列宽自适应（11 格 = 100%/11），永不因字号/列宽漂移。
-     元|角=浅红(100%*9/11)；千|百、百万|十万=浅蓝(100%*2/11、100%*7/11)；其余每格细线。 */
+     元|角=浅红(100%*9/11)；千|百、百万|十万=浅蓝(100%*2/11、100%*7/11)；其余每格细线。
+     注：th 也要吃到这些变量 —— 表头位格（.amt-units-wrap .amt-bg::after）同样靠它画线。 */
   --amt-red: var(--ty-red-bg);    /* 元|角 浅红 */
   --amt-blue: var(--ty-blue-2);   /* 千|百、百万|十万 浅蓝 */
   --amt-grid: var(--grid-line);
@@ -2099,14 +2172,22 @@ label.req::before {
     /* 每格细线 */
     repeating-linear-gradient(to right, transparent 0, transparent calc(100% / 11 - 1px), var(--amt-grid) calc(100% / 11 - 1px), var(--amt-grid) calc(100% / 11));
 }
+/* position:relative 只给**数据格**：位格线（.amt-bg::after）与金额输入框（.amt-edit-input）
+   都是绝对定位，需要本格作定位父级。
+   ⚠ 千万不要把 th 带进来 —— 那会覆盖 .grid th 的 sticky，导致金额表头不吸顶。 */
+.voucher-grid td.col-amount,
+.voucher-grid td.amount {
+  position: relative;
+}
 /* 合计行外观吃全局 .grid（常规字重、白底灰线） */
 /* 金额列竖线与其它列一致（不再 border-right:none，否则借/贷两列间缺线、粗细不一） */
 .voucher-grid th.amount,
 .voucher-grid td.col-amount {
-  border-right: 1px solid var(--grid-line);
+  border-right: 1px solid var(--grid-line-v);
 }
 
-/* 位格背景容器（amountLineBgWrapper：position:relative;width:100%;font-size:16px;font-weight:700）
+/* 位格背景容器 —— 【来源备案：jdy 原值，**不是当前值**】原名 amountLineBgWrapper，
+ * 原规则 position:relative;width:100%;font-size:16px;font-weight:700。当前值见下方 .amt-bg（走令牌）。
  * 用 flex 等分避免 float 塌陷导致编辑行高度归零、数字层看不见 */
 .amt-bg {
   position: relative;
@@ -2262,7 +2343,7 @@ label.req::before {
 .tag {
   display: inline-block;
   padding: 2px 9px;
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   border-radius: 10px;
   margin-left: 4px;
 }
@@ -2303,6 +2384,37 @@ label.req::before {
   background: var(--ty-red-bg);
   font-weight: 400;
 }
+
+/* ---------- 对账提示：摘要常驻 + 明细折叠 ----------
+ * 【为什么】固定资产卡片页的这个提示挂在表格**上方**，逐笔明细一铺开就有十几行，
+ *   把下面的卡片清单整个挤下去（2026-09-22 实测反馈"太占空间"）。
+ *   常驻**恰好一行**（结论 + 各差额），逐笔凭证/卡片明细、口径说明、常见原因全部收进折叠区 ——
+ *   2026-09-22 二次反馈"摘要两行还是太占空间"，故进一步压到一行（改为 flex：结论省略号截断、右侧固定「查看明细」）。
+ * 注意：本块必须排在 .open-check.warn 之后 —— 两者特异性相同 (0,2,0)，
+ *   .rc-detail 要靠源顺序覆盖 warn 的红色文字色（明细里是日期/凭证号/金额，整片标红反而难读）。 */
+.open-check .rc-line + .rc-line { margin-top: 2px; }
+.open-check .rc-toggle {
+  /* flex 而非 inline-block：结论段可收缩 + 省略号，保证无论窗口多窄入口**只占一行**、右侧提示不被挤掉 */
+  display: flex; align-items: baseline; gap: 10px;
+  margin-top: 2px;
+  color: var(--ty-blue); font-size: var(--fs-xs); text-decoration: none; cursor: pointer;
+}
+.open-check .rc-toggle .rc-tip {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.open-check .rc-toggle .rc-hint { flex: none; white-space: nowrap; text-decoration: underline; opacity: .85; }
+.open-check .rc-toggle::before { content: '▸\00a0'; flex: none; }
+.open-check .rc-toggle.open::before { content: '▾\00a0'; }
+.open-check .rc-toggle:hover .rc-tip { text-decoration: underline; }
+.open-check .rc-detail {
+  margin-top: 6px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .72);   /* 白底把明细与红色告警底分开，金额更清楚 */
+  border-radius: 4px;
+  color: var(--ty-text-2);
+  line-height: 1.8;
+}
+.open-check .rc-detail[hidden] { display: none; }
 
 /* ============================================================
  * 弹窗
@@ -2833,12 +2945,12 @@ label.req::before {
   cursor: pointer;
 }
 .settle-tmpl-help {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
   background: var(--ty-blue);
   color: var(--ty-white);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   font-style: normal;
   line-height: 15px;
   text-align: center;
@@ -2931,7 +3043,7 @@ label.req::before {
   height: 37px;
   padding: 0 12px;
   border-bottom: 1px solid var(--grid-line);
-  border-right: 1px solid var(--grid-line);
+  border-right: 1px solid var(--grid-line-v);
   font-size: var(--fs-md);
   color: var(--grid-text);
   vertical-align: middle;
@@ -2955,8 +3067,9 @@ label.req::before {
 .tmpl-subj-bal {
   flex: none;
   margin-left: 4px;
-  max-width: 108px;
-  font-size: 11.5px;
+  max-width: 122px;   /* 原 108px 是按 11.5px 字号量的；字号归并到 --fs-xs(13px) 后
+                         同宽会少放约 1 个汉字，故按比例放大，保持"能放多少字"不变 */
+  font-size: var(--fs-xs);
   color: var(--ty-text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -3235,7 +3348,7 @@ label.req::before {
 }
 /* 科目余额提示（式）：科目名下方一行小字，无科目时不占位 */
 #vRows .v-subj-bal {
-  font-size: 11.5px; line-height: 1.5; color: var(--ty-text-3);
+  font-size: var(--fs-xs); line-height: 1.5; color: var(--ty-text-3);
   padding-left: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #vRows .v-subj-bal:empty { display: none; }
@@ -3449,7 +3562,9 @@ label.req::before {
 }
 .qk-new-ico svg { width: 20px; height: 20px; stroke: var(--ty-white) !important; }
 .qk-new-title { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text); }
-/*  voucherBtn span：font-size:12px;color:#8e9ca1 */
+/* 【来源备案：jdy 原值，**不是当前值**】voucherBtn span 原 font-size:12px / color:#8e9ca1。
+   当前值见下方 .qk-new-sub（走令牌 --fs-xs / --ty-blue）。
+   提示：备案值与现值不一致时极易被误读成"已实现"，改口径时请同步更新或删除本注释。 */
 .qk-new-sub { font-size: var(--fs-xs); color: var(--ty-blue); margin-top: 2px; }
 
 /* 右侧：图标网格（contentR---qyET，最多 10 个图标，超出自动换行） */
@@ -3642,7 +3757,7 @@ label.req::before {
   color: var(--ty-text, var(--ty-text-2));
   font-weight: 500;
   /* 默认无底色：只留文字 + 箭头（箭头是唯一提示「可下拉」的线索，必须保留） */
-  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
+  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%234b5763" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
   background-size: 10px 6px;
   /* 关键：用 transparent 而不是把 border 去掉 —— 保留 1px 占位，
      否则 hover 加边框时盒模型变化会让文字左右跳动。 */
@@ -3705,7 +3820,7 @@ label.req::before {
 }
 .formula-row .formula-cell .formula-label {
   color: var(--ty-text-3);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -3869,7 +3984,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   font-size: inherit;
   font-family: inherit;
   color: inherit;
-  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235c6d74" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right center;
+  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%234b5763" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right center;
   background-size: 10px 6px;
   padding: 0 14px 0 0;
   cursor: pointer;
@@ -3928,12 +4043,9 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .fv2 .fv2-v { color: var(--ty-text); font-size: var(--fs-xs); letter-spacing: 0; }   /* 原版 fv2-v 为黑色 var(--ty-text) */
 
 /* 应收应付卡片：合计标题下的各往来单位明细项（风格：名称 + 金额） */
-.arap-items { margin-top: 8px; max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-/* 弱化滚动条：默认几乎不可见，仅在滚动时轻微显现 */
-.arap-items::-webkit-scrollbar { width: 4px; }
-.arap-items::-webkit-scrollbar-thumb { background: rgba(170,182,190,0.35); border-radius: 4px; }
-.arap-items::-webkit-scrollbar-thumb:hover { background: rgba(150,164,172,0.55); }
-.arap-items::-webkit-scrollbar-track { background: transparent; }
+.arap-items { margin-top: 8px; max-height: 200px; overflow-y: auto; }
+/* （滚动条原先在此单独写 4px 灰，且 Firefox 侧刻意为透明（几乎看不见）——
+    已收口到文末「全站滚动条」唯一规范，与其余页面同款。） */
 .arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--ty-blue-2); }
 .arap-item:last-child { border-bottom: none; }
 .arap-item .ai-name { color: var(--ty-text-2); font-size: var(--fs-xs); letter-spacing: 0; word-break: break-all; margin-right: 8px; flex: 1 1 auto; min-width: 0; }
@@ -4002,7 +4114,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .cost-card .detail-split-wrapper .fv5-f,
 .cost-card .detail-split-wrapper .fv5-v { text-align: left; }
 .detail-split-wrapper .split-line {
-  width: 1px; align-self: stretch; background: var(--ty-text-3); margin: 0 8px;   /*  split-line background:var(--ty-text-3) */
+  width: 1px; align-self: stretch; background: var(--ty-deco); margin: 0 8px;   /*  split-line background:var(--ty-text-3) */
 }
 
 /* ---- 净利润 / 收入成本 详情区（detail 两栏，口径）---- */
@@ -4375,7 +4487,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   border-radius: 2px; box-shadow: 0 4px 10px rgba(0,0,0,.2);
   padding: 4px 0;
 }
-.search-group-title { padding: 4px 12px 2px; font-size: 11.5px; color: var(--ty-muted); background: var(--ty-th-bg); }
+.search-group-title { padding: 4px 12px 2px; font-size: var(--fs-xs); color: var(--ty-muted); background: var(--ty-th-bg); }
 .search-item { padding: 0 12px; height: 32px; font-size: var(--fs-sm); cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 0; border-bottom: 1px solid var(--ty-border); }
 .search-item .si-main { display: flex; justify-content: space-between; gap: 10px; line-height: 18px; }
 .search-item:hover { background: var(--ty-blue-2); }
@@ -4543,7 +4655,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 }
 .settle-layout-toggle:hover { background: var(--ty-blue-2); }
 .settle-drop { position: relative; display: inline-block; }
-.settle-drop .btn .caret { font-size: 10px; margin-left: 4px; font-style: normal; }
+.settle-drop .btn .caret { font-size: var(--fs-2xs); margin-left: 4px; font-style: normal; }
 .settle-drop-menu {
   display: none;
   position: absolute;
@@ -4652,11 +4764,11 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   min-width: 0;
 }
 .settle-card-help {
-  width: 14px; height: 14px;
+  width: 16px; height: 16px;
   border-radius: 50%;
   background: var(--ty-blue);
   color: var(--ty-white);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   text-align: center;
   line-height: 14px;
   font-style: normal;
@@ -4735,7 +4847,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .settle-add-card:hover { border-color: var(--ty-blue); color: var(--ty-blue); background: var(--ty-blue-2); }
 .settle-add-icon {
   width: 36px; height: 36px;
-  border: 1px dashed var(--ty-text-3);
+  border: 1px dashed var(--ty-deco);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 22px;
@@ -4896,7 +5008,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   font-size: var(--fs-sm);
   color: var(--ty-blue-dark);
   background: var(--ty-blue-2);
-  border: 1px solid var(--ty-text-3);
+  border: 1px solid var(--ty-deco);
   border-radius: 4px;
   padding: 8px 12px;
 }
@@ -4988,7 +5100,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   color: var(--ty-green);
 }
 /* 已结账：头部变绿 + 整体浅绿 */
@@ -5092,7 +5204,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
   display: block;
   padding: 9px 16px;
   color: var(--ty-text);
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   text-decoration: none;
   cursor: pointer;
@@ -5146,7 +5258,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .qs-group { margin-bottom: 16px; }
 .qs-group:last-child { margin-bottom: 0; }
 .qs-group-title {
-  font-size: 13.5px; font-weight: 400; color: var(--ty-text);
+  font-size: var(--fs-sm); font-weight: 400; color: var(--ty-text);
   margin-bottom: 8px;
 }
 .qs-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; align-items: start; }
@@ -5174,7 +5286,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .qs-item-fixed label { cursor: default; color: var(--ty-text); }
 .qs-fixed-tag {
   display: inline-block; margin-left: 5px; padding: 0 4px;
-  font-size: 10px; line-height: 15px; color: var(--ty-blue-dark);
+  font-size: var(--fs-2xs); line-height: 17px; color: var(--ty-blue-dark);
   background: var(--ty-blue-2); border-radius: 3px; vertical-align: 1px;
 }
 .qs-footer {
@@ -5318,7 +5430,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
     background: var(--ty-white) !important;
     color: var(--grid-text);
     border-bottom: 1px solid var(--grid-line);
-    border-right: 1px solid var(--grid-line);
+    border-right: 1px solid var(--grid-line-v);
     height: auto;
     padding: 8px 4px;
     -webkit-print-color-adjust: exact;
@@ -5328,7 +5440,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
     background: var(--ty-white) !important;
     color: var(--grid-text);
     border-bottom: 1px solid var(--grid-line);
-    border-right: 1px solid var(--grid-line);
+    border-right: 1px solid var(--grid-line-v);
     height: 40px;
   }
   /* 录凭证录入态文字打印为深灰（输入框透明，打印直接出文字） */
@@ -5479,7 +5591,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .ty-sort-icon {
   display: inline-block;
   margin-left: 4px;
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   color: var(--ty-text-3);
 }
 .ty-sort-icon.on { color: var(--ty-blue); }
@@ -5605,7 +5717,7 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .link-vw-del { color: var(--ty-red); cursor: pointer; }
 .link-vw-del:hover { text-decoration: underline; }
 .ok-tag { display: inline-block; padding: 0 6px; margin-left: 4px; font-size: var(--fs-2xs); line-height: 16px;
-  color: var(--ty-blue); background: var(--ty-blue-2); border-radius: 3px; border: 1px solid var(--ty-text-3); }
+  color: var(--ty-blue); background: var(--ty-blue-2); border-radius: 3px; border: 1px solid var(--ty-deco); }
 
 /* 辅助核算：左侧类别 + 右侧档案 */
 .aux-layout { display: flex; gap: 16px; align-items: flex-start; }
@@ -5715,7 +5827,7 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
   background: var(--ty-white);
   border-color: var(--ty-border-2);
 }
-#cloudSyncModal #btnCsClear:hover { color: var(--ty-text); border-color: var(--ty-text-3); }
+#cloudSyncModal #btnCsClear:hover { color: var(--ty-text); border-color: var(--ty-deco); }
 /* 基本信息只读值（在 .form-ctrl-row 内，不参与撑开行宽） */
 .card .info-value { line-height: 32px; color: var(--ty-text); }
 /* 复选/单选行：起点与 form-row 控件列一致（label 96px + gap 10px = 106px），checkbox 与输入框同列成线 */
@@ -5762,7 +5874,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .log-audit-detail .la-after { background: var(--st-ok-bg); color: var(--st-ok-fg); }
 .log-audit-detail .la-pre { margin: 4px 0 0; padding: 6px 8px; background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px; font-family: ui-monospace, Menlo, monospace; font-size: var(--fs-2xs); white-space: pre; line-height: 1.5; color: var(--ty-text); }
 /* 结构化动作标签 */
-.act-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 500; margin-left: 4px; vertical-align: middle; }
+.act-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: var(--fs-2xs); font-weight: 500; margin-left: 4px; vertical-align: middle; }
 .act-tag-create { background: var(--st-ok-bg); color: var(--st-ok-fg); }       /* 新增-绿 */
 .act-tag-update { background: var(--st-tip-bg); color: var(--st-hl-fg); }      /* 修改-橙（字色改深黄棕：原橙在浅黄底仅 2.24） */
 .act-tag-delete { background: var(--st-danger-bg); color: var(--st-danger-fg); }  /* 删除-红 */
@@ -5845,23 +5957,49 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 /*  ykj-page1 wrapper 类 siderRight：侧栏（树）位于右侧，表格在左侧 */
 .orig-body-sider-right { flex-direction: row-reverse; }
 .orig-sider {
-  width: 200px; flex: 0 0 200px; border-left: 1px solid var(--ty-border); background: var(--ty-blue-2); padding: 0;
-  overflow-y: auto;
+  /* 可收起（照抄明细账 .dl-panel 范式，见下）：宽度交给 transition 过渡，收窄到 30px 时裁掉内容。
+     ⚠ 滚动必须从「整栏滚动」下移到 .orig-sider-body：否则收起态下 30px 竖把里会套一个滚动容器，
+     且展开时头部会跟着内容滚走（头部应固定，只有类别/部门两个列表滚动）。 */
+  position: relative;                 /* .dl-panel-restore 是 position:absolute; inset:0，需要定位上下文 */
+  /* 底色改用白：原先是 --ty-blue-2 浅蓝，与左侧表格的斑马纹/悬浮同色系，
+     一整条蓝底既抢视线又压过内容（2026-09-22 反馈"背景颜色太深"）。
+     与卡片表格同为白底后，层级靠**左侧 1px 分隔线**区分，观感干净且与其他页面一致。 */
+  width: 200px; flex: 0 0 200px; border-left: 1px solid var(--ty-border); background: var(--ty-white); padding: 0;
+  display: flex; flex-direction: column; min-height: 0;
+  overflow: hidden;
+  transition: width .15s ease, flex-basis .15s ease;   /* 与明细账面板同款过渡时长 */
 }
+.orig-sider .dl-panel-head { padding: 7px 6px 7px 12px; }
+/* 收起态：宽 30px（.dl-panel-closed 已给出 width/min/max，这里补 flex-basis —— 本栏宽由 flex 决定，
+   只改 width 无效）；体内两个列表隐藏，只留铺满竖把的 « 展开按钮。 */
+.orig-sider.dl-panel-closed { flex: 0 0 30px !important; }
+.orig-sider.dl-panel-closed .orig-sider-body { display: none; }
+.orig-sider-body { flex: 1; min-height: 0; overflow-y: auto; }
 /*  table-left-box / bottom-box：上=资产类别树，下=部门树，各有小标题 */
 .orig-sider-box { padding: 6px 0; }
-.orig-sider-box-bottom { border-top: 1px solid var(--ty-blue-2); }
+/* 「资产类别 / 部门」两组的分隔线：原先是 --ty-blue-2，在旧蓝底上几乎看不见；
+   白底后改用 --ty-border（与页面分隔线同款），层级清楚又可辨。 */
+.orig-sider-box-bottom { border-top: 1px solid var(--ty-border); }
 .orig-sider-title { padding: 6px 12px; font-size: var(--fs-xs); font-weight: 400; color: var(--ty-text-2); }
-/* 树对齐参考实现 ty-tree：节点高32px、hover浅蓝、选中蓝底白字、根节点带展开箭头、子节点缩进 */
+/* 树对齐参考实现 ty-tree：节点高32px、hover浅蓝、选中斑马纹浅蓝+加粗、根节点带展开箭头、子节点缩进 */
 .orig-tree { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); }
 .orig-tree li { height: 32px; line-height: 32px; padding: 0 12px; cursor: pointer; color: var(--ty-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .orig-tree li:hover { background: var(--ty-row-hover); }
-.orig-tree li.selected { background: var(--ty-blue); color: var(--ty-white); }
+/* 选中行：**斑马纹那档浅蓝**（--ty-row-alt）+ 正文深色 + 加粗。
+   【演变史，别走回头路】
+     ① 「白字 + --ty-blue 亮蓝底」：对比度仅 **3.06:1**，不达标（WCAG 正文要 4.5:1）；
+     ② 「金底深字」：对比度 5.93:1 ✓，但金色与全站的"警示 / 提示 / 当前科目"语义撞车，
+        且用户反馈偏重；
+     ③ 现按用户要求改为 --ty-row-alt（#f4f8ff，比 hover 的 --ty-row-hover 更淡一档）。
+   ⚠ 这档蓝很淡，光靠底色**不足以分辨"选中 vs 未选中"** —— 故叠加**加粗**作第二重标识
+     （不引入新颜色）。鼠标扫过选中行时再升到 --ty-row-hover，保证悬浮仍有反馈。 */
+.orig-tree li.selected { background: var(--ty-row-alt); color: var(--ty-text); font-weight: 600; }
+.orig-tree li.selected:hover { background: var(--ty-row-hover); }
 .orig-tree li.selected .tree-arrow,
-.orig-tree li.selected .tyicon { color: var(--ty-white); }
+.orig-tree li.selected .tyicon { color: var(--ty-text); }
 .orig-tree .tree-parent { font-weight: 400; }
 .orig-tree .tree-parent .tree-arrow { display: inline-block; width: 16px; vertical-align: middle;
-  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--ty-text-3); }
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--ty-deco); }
 .orig-tree .tree-child { color: var(--ty-text-2); font-weight: 400; }   /* 缩进走全站统一 .indent-3（32px），原 padding-left:32px 已移除 */
 
 .orig-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
@@ -5958,7 +6096,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   content: ''; position: absolute; right: 9px; top: 50%;
   width: 0; height: 0;
   border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid var(--ty-text-3); transform: translateY(-50%); pointer-events: none;
+  border-top: 5px solid var(--ty-deco); transform: translateY(-50%); pointer-events: none;
 }
 
 /* popover：position:fixed 定位到 trigger 下方，无遮罩 */
@@ -6190,9 +6328,16 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 }
 .dl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 当前科目：金色选中 */
-.dl-cur { background: var(--st-hl-bg); color: var(--st-hl-fg); }
-.dl-cur .dl-code { color: var(--st-hl-fg); }
-.dl-cur:hover { background: var(--st-hl-bd); }
+/* 当前科目：与资产页筛选树**同一套浅蓝**，不再用金底。
+   【为什么改】金色（--st-hl-*）是全站"警示 / 提示 / 需注意"的语义色，拿来做"当前选中"
+     既撞车又偏重 —— 按用户要求统一成斑马纹那档浅蓝（--ty-row-alt），两处观感一致。
+     ⚠ 这档蓝很淡，光靠底色分不出"当前 vs 普通"，故叠加**加粗**作第二重标识（不引入新颜色）。
+   ⚠ --st-hl-* 令牌**不要动**：状态标签 / 警示图标 / 首页备份提示等仍依赖它的金色语义。 */
+.dl-cur { background: var(--ty-row-alt); color: var(--ty-text); font-weight: 600; }
+.dl-cur .dl-code { color: var(--ty-text-2); }
+/* 悬浮：原先写的是 --st-hl-bd —— 它与 --st-hl-bg **同值**，等于悬浮毫无变化（隐性缺陷）。
+   现升到 hover 那档蓝（--ty-row-hover），鼠标扫过当前科目也有反馈。 */
+.dl-cur:hover { background: var(--ty-row-hover); }
 .dl-hide { display: none; }
 
 /* 收起态：仅保留一条窄把，中间是「向左展开」图标 */
@@ -6211,16 +6356,45 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .dl-panel-closed .dl-body { display: none; }
 .dl-panel-closed .dl-panel-restore { display: flex; align-items: center; justify-content: center; }
 
-/* 明细账两个工作区滚动条细化（细条、低饱和，与侧栏/列表细条风格一致） */
-.dl-main::-webkit-scrollbar,
-.dl-body::-webkit-scrollbar { width: 8px; height: 8px; }
-.dl-main::-webkit-scrollbar-track,
-.dl-body::-webkit-scrollbar-track { background: transparent; }
-.dl-main::-webkit-scrollbar-thumb,
-.dl-body::-webkit-scrollbar-thumb { background: var(--ty-blue-2); border-radius: 4px; }
-.dl-main::-webkit-scrollbar-thumb:hover,
-.dl-body::-webkit-scrollbar-thumb:hover { background: var(--ty-content-bg); }
-.dl-main, .dl-body { scrollbar-width: thin; scrollbar-color: var(--ty-blue-2) transparent; }
+/* ============================================================
+ * 全站滚动条 —— 唯一规范（2026-09-22）
+ * 【为什么要收这一刀】原先全站**并存四种**滚动条：
+ *     6px 蓝（侧栏 .sidenav）／4px 灰（.arap-items，且 Firefox 侧刻意透明）／
+ *     8px 蓝（明细账 .dl-main / .dl-body）／**系统默认**（其余十余处 ——
+ *     其中就包括用户最常看的主滚动区 .page.active 与 .scroll-area、各类弹层）。
+ *   后果：同一个窗口里两根滚动条粗细、颜色、圆角都可能不同，切页时滚动条还会跳变。
+ * 现用 * 选择器一条规则覆盖全部元素 —— 好处是**新增任何滚动容器都自动同款**，
+ *   不用再回头补选择器（否则又会退化成"各页各写一套"）。
+ * ⚠ 三条刻意的选择，改之前请先读：
+ *   1) **两条路径都写**（标准 scrollbar-width/color ＋ ::-webkit-scrollbar），因为两条路**互不完全覆盖**：
+ *       - ::-webkit-scrollbar 只能画「经典滚动条」（占布局宽度）；而 macOS 默认是
+ *         **悬浮滚动条（overlay）**——那条又粗又黑、盖在内容上的条就是它，它不吃这一路。
+ *         实测反馈「卡片滚动条还是大黑条」即由此而来。
+ *       - 标准属性 scrollbar-color 能**直接给悬浮滚动条上色**（macOS / Safari 18.2+、Chromium 121+、Firefox 均支持），
+ *         这正是治「黑条」的那一味药。
+ *     代价：Chromium 121+ 一旦设了标准属性，就会改用标准绘制并**忽略 ::-webkit-scrollbar**
+ *     （圆角与悬停态失效）。取舍是明确的——先保证"不是黑条、且全站一致"，圆角是次要的。
+ *   2) 宽度**不再按容器分档**（侧栏原 6px、明细账 8px）：分档就是不一致的来源，一致性优先。
+ *   3) --sb-size 只在走 ::-webkit-scrollbar 那条路时生效（标准路径下宽度由 thin 决定）；
+ *      两条路的颜色**同源**，所以即便引擎不同，看到的也是同一套颜色。
+ *   例外：.tab-bar 是刻意隐藏滚动条（标签栏横滑不露条），其类选择器特异性高于 `*`，照旧生效。
+ * 取值：滚动条属纯装饰、不承载文字 —— 常态 --ty-deco（浅）、悬停 --ty-text-3（深一档），
+ *   与色板"装饰 / 辅助"两档同源，不引入新颜色。
+ *   顺带修掉旧缺陷：明细账原先 hover 改成 --ty-content-bg（比常态更浅 —— 悬停反而变淡）；
+ *   侧栏滑块用 --ty-blue-2，与自身底色同族、在浅蓝底上几乎看不见。
+ * ============================================================ */
+/* 标准路径：给**悬浮滚动条**上色（治"大黑条"的关键；WKWebView / 新版 Chromium / Firefox 都认）。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+/* 兼容路径：老 WebKit / 未实现标准属性的 Chromium 走这一路（经典滚动条，可圆角、可悬停）。
+   两条路颜色同源，故无论落到哪条，观感一致。 */
+*::-webkit-scrollbar { width: var(--sb-size); height: var(--sb-size); }
+*::-webkit-scrollbar-track { background: var(--sb-track); }
+*::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: calc(var(--sb-size) / 2); }
+*::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); }
+*::-webkit-scrollbar-corner { background: var(--sb-track); }
 
 /* 打印时隐藏快速切换栏，只出主表 */
 @media print {
@@ -6248,7 +6422,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-tree .tree-parent .tree-arrow,
 .settle-tmpl-arrow, .ed-tree-spacer {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 12px; height: 12px; font-size: 10px; line-height: 1;
+  width: 14px; height: 14px; font-size: var(--fs-2xs); line-height: 1;
   color: var(--ty-text-3);
   vertical-align: middle; text-align: center;
 }

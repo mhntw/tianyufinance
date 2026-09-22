@@ -1232,7 +1232,9 @@ function renderQuery(start, end) {
   var sc = qSubjectCodes();
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
-  if (!vs.length) { tb.innerHTML = '<tr><td colspan="12" class="empty-hint">本期无凭证</td></tr>'; return; }
+  // colspan 随表头列数（10：复选/日期/字号/摘要/科目/借/贷/附件/原单据编号/制单人）。
+  // 旧值 12 是「含操作列」时留下的，移除操作列后应同步为 10。
+  if (!vs.length) { tb.innerHTML = '<tr><td colspan="10" class="empty-hint">本期无凭证</td></tr>'; return; }
   // 科目名显示口径：取科目表实时名称，科目改名后历史凭证显示同步更新；分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
   // 制单人取真实值：兼容 ty 新录的 maker 与金蝶导入的 preparer。
@@ -1284,7 +1286,10 @@ function renderQuery(start, end) {
   trt.innerHTML = '<td></td><td colspan="4" class="ta-r">合 计</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumDr) + '</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumCr) + '</td>' +
-    '<td colspan="4"></td>';
+    // 末尾补空列：表头 10 列，本行 = 1(空) + 4(合计) + 2(借贷) + 3(补空) = 10。
+    // ⚠ 此前是 colspan="4"（合计 11 列）—— 那是「还有操作列」时的旧值，
+    //   移除操作列后表头变 10 列却漏改此处，表格被撑成 11 列、表头与内容错位。
+    '<td colspan="3"></td>';
   tb.appendChild(trt);
 }
 
@@ -1586,7 +1591,7 @@ function renderVchTplList() {
   var sysF = sys.filter(pass), mineF = mine.filter(pass);
   function tplRow(t, builtin) {
     var segs = (t.entries || []).map(function (e) {
-      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + (tplSideOf(e) === 'cr' ? '贷' : '借') + '</i>'
+      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + S.dirName(tplSideOf(e)) + '</i>'
         + '<em class="muted">' + escHtml(e.code || '') + '</em> ' + escHtml(e.name || '')
         + (e.summary ? '<span class="muted vch-tpl-sum"> · ' + escHtml(e.summary) + '</span>' : '') + '</span>';
     }).join('<span class="vch-tpl-sep">／</span>');
@@ -1596,7 +1601,7 @@ function renderVchTplList() {
         + '，已跳过，套用后请补录</div>' : '';
     var use = t.entries.length
       ? '<button type="button" class="btn btn-xs btn-primary vch-tpl-use" data-id="' + escAttr(t.id) + '">使用</button>'
-      : '<span class="muted" style="font-size:12px">不可用</span>';
+      : '<span class="muted" style="font-size:var(--fs-xs)">不可用</span>';
     return '<div class="vch-tpl-row">'
       + '<div class="vch-tpl-main">'
       + '<div class="vch-tpl-name"><span class="vch-tpl-word">' + escHtml(t.word || '记') + '</span><b>' + escHtml(t.name) + '</b>'

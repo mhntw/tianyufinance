@@ -229,7 +229,14 @@
   }
   // 金额分位精度归一（会计金额精确到分）。消除二进制浮点累加误差（如 0.1+0.2），
   // 金额统一按 decimal 分位精度处理。用于新生成金额（调汇/结转）及对外输出金额。
-  function round2(n) { var v = Number(n); if (isNaN(v)) v = 0; return Math.round(v * 100) / 100; }
+  // 金额归零到「分」。
+  // ⚠ 必须把 -0 归一成 0：Math.round(-1.8e-10)/100 === -0，而 (-0).toLocaleString(...)
+  //   会显示成 "-0.00"，写进 Excel 也可能带上负号。金额里不存在"负零"这个概念。
+  function round2(n) {
+    var v = Number(n); if (isNaN(v)) v = 0;
+    var r = Math.round(v * 100) / 100;
+    return r === 0 ? 0 : r;
+  }
   /* 金额相等容差（半分 = 0.005 元），用于借贷平衡 / 结转阈值 / 零值判定，全局统一避免散落硬编码。
    *
    * 【为什么必须是半分而不能是 1 分】金额一律精确到「分」，两笔金额之差必然是 0.01 的整数倍。
@@ -1069,7 +1076,14 @@
     // 账套是一整个店的账，删除改为移入回收站（保留 7 天可还原），避免一次手滑造成不可逆损失。
     removeBook: function (id) {
       var self = this;
-      if (this.bookId === id) return Promise.resolve({ ok: false, msg: '不能删除当前账套' });
+      // 【2026-09-22】原实现在此直接拒绝「删除当前账套」。现允许删除，理由：
+      //   · 账套早已是「移入回收站、7 天内可还原」，并不存在不可逆风险；
+      //   · 拒绝删除当前账套只会带来额外操作负担（想清掉手上这个账套，
+      //     必须先切到别的账套再回来删）。
+      //   ⚠ 代价是**必须做收尾**：删除后当前账套指针会悬空 —— 若放任不管，
+      //     后续 persist / 自动备份会按这个已移入回收站的 id 继续写文件，
+      //     等于把回收站里的账套又"复活"成当前账套。收尾见 _settleAfterRemovingCurrent。
+      var wasCurrent = (this.bookId === id);
       // 以磁盘为准判定账套是否存在
       var ids = (this._bookList || []).map(function (b) { return b.id; });
       if (ids.indexOf(id) < 0) return Promise.resolve({ ok: false, msg: '账套不存在' });
@@ -1119,9 +1133,51 @@
         } catch (e) {}
         // 4) 待主账本真正删完后重建索引，确保列表与磁盘一致
         return self.refreshBookIndex().then(function () {
-          return { ok: true, name: name };
+          // 5) 若删的是「当前账套」，必须把当前账套指针移走（见下方方法说明）
+          if (!wasCurrent) return { ok: true, name: name };
+          return self._settleAfterRemovingCurrent(id, name);
         });
       });
+    },
+
+    // 删除「当前账套」后的收尾（仅由 removeBook 在删除成功后调用）
+    //   ① 还有别的账套 → 切到第一个可用账套（switchBook 内部会落盘指针 + 刷新界面）
+    //   ② 一个不剩   → 清空当前账套指针与内存状态，进入「无账套」态，
+    //                  由刷新流程给出「新建账套 / 导入账套」引导
+    // 不做的后果见 removeBook 顶部注释（指针悬空 → 已进回收站的账套被写活）。
+    _settleAfterRemovingCurrent: function (removedId, name) {
+      var self = this;
+      var rest = (this._bookList || []).filter(function (b) { return b.id !== removedId; });
+      if (rest.length) {
+        var target = rest[0];
+        return Promise.resolve(self.switchBook(target.id)).then(function (sr) {
+          if (sr && sr.ok) return { ok: true, name: name, switchedTo: (target.name || target.id) };
+          return {
+            ok: false,
+            msg: '已删除「' + name + '」，但切换到「' + (target.name || target.id) + '」失败：'
+              + ((sr && sr.msg) || '未知原因')
+          };
+        });
+      }
+      // 无账套可切：清空指针与内存状态，交由刷新流程显示「新建 / 导入账套」引导。
+      // ⚠ 必须连 state 一起换成空账套：只清 bookId 的话，界面会继续显示**已被删除的**那个
+      //   账套的数据（科目、凭证、报表全都还是它的），用户会以为"删了怎么还在"，
+      //   而且此后任何依赖 state 的统计都基于一个已不存在的账套。
+      //   persist 里有 `if (!bid) return` 兜底，故换成空账套不会把数据写到空 id 上。
+      self.bookId = '';
+      self._glCache = {};
+      try { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); } catch (e) { }
+      try { setCurBookId(''); } catch (e) { }
+      try {
+        if (typeof window.Storage !== 'undefined' && window.Storage.writeMeta) {
+          var meta = self._lastMeta || { last_book: null, disabled: {} };
+          meta.last_book = null;
+          self._lastMeta = meta;
+          window.Storage.writeMeta(meta).catch(function () { });
+        }
+      } catch (e) { }
+      if (typeof window.__refreshAll === 'function') window.__refreshAll();
+      return { ok: true, name: name, noBook: true };
     },
 
 
@@ -3200,6 +3256,70 @@
       return { period: month, checks: checks, summary: summary };
     },
 
+    // 账簿「隐藏零行」判据 —— 全站唯一实现（总账屏幕/导出、科目余额表屏幕/导出 共 4 处共用）。
+    // 口径对齐金蝶账套选项 GL_ShowZeroRecOnLdg：「在账簿中显示总发生额和余额都为零的记录」= false
+    //   → 只有**总发生额（本年累计）与余额全为 0** 的记录才隐藏。
+    // 【历史缺陷】原先四处各写一份判据，其中三处只判「期初/本期/期末」而漏了「本年累计」，
+    //   于是「期初 0、本期 0、期末 0，但本年累计非 0」的科目被误藏 ——
+    //   添钰来客 2026-08 实测命中 23 个（5801 所得税费用 527.93、5403 税金及附加 27,119.52、
+    //   540114 取暖费 36,710.46 …），与金蝶不一致。2026-09-22 收敛到此处，勿再各写一份。
+    isZeroLedgerRow: function (r) {
+      return r.obDr === 0 && r.obCr === 0 &&
+             r.periodDr === 0 && r.periodCr === 0 &&
+             r.ytdDr === 0 && r.ytdCr === 0 &&
+             r.balance === 0;
+    },
+
+    // ---- 余额显示口径（**全站唯一实现**，页面只许消费，勿再各写一份）----
+    // 背景：取数层给出的余额一律是「借正贷负」的净额（= 金蝶 GLBal.FEndBal 口径，
+    //   已由 verify_vs_ais.js 逐科目逐期逐字段验证一致）。页面要显示它时只有两种表式，
+    //   每种表式**各有且只有一个**正确换算；历史上正因为各页各写一份而分叉：
+    //   同一笔 1012 余额在总账显示「贷 2,000.12」、在明细账显示「借 -2,000.12」。
+    //
+    // 表式① 三栏式账簿（总账 / 明细账 / 多栏账）：方向列 + 带符号金额
+    //   dir    = 科目正常方向（净额为 0 时按 zeroText，总账用「平」、明细账用空串）
+    //   amount = 按科目正常方向为正的带符号金额（反方向为负，如「借 -2,000.12」）
+    //   依据：金蝶账套参数 GLPref.FAutoBalDC = true（添钰来客/绅蓝之星 2025·2026 四个账套全为 true），
+    //        1012 其他货币资金（借方科目）出现贷方余额 2,000.12 → 金蝶实测显示「借 -2,000.12」。
+    displayBalance: function (net, normal, zeroText) {
+      var n = Number(net) || 0;
+      var isDr = (normal !== 'cr');
+      var dir = (n === 0) ? (zeroText === undefined ? '平' : zeroText) : (isDr ? '借' : '贷');
+      return { dir: dir, amount: isDr ? n : -n };
+    },
+
+    // 表式② 借贷分列表（科目余额表 / 其导出）：金额落在「科目正常方向」所在列，反方向带负号
+    //   返回的 dr - cr 恒等于传入净额，故「借方列合计 − 贷方列合计」可直接肉眼验算平衡。
+    splitBalance: function (net, normal) {
+      var n = Number(net) || 0;
+      return (normal !== 'cr') ? { dr: n, cr: 0 } : { dr: 0, cr: -n };
+    },
+
+    // 「绝对值 + 实际方向」→「借正贷负」净额
+    //   明细账 store 层（detailLedgerRange）逐笔给的是 bal（绝对值）+ dir（实际方向），
+    //   页面要把它送进 displayBalance 就得先归一到净额 —— 这个还原也只许有一处实现。
+    netFromBalDir: function (bal, dir) {
+      var v = Number(bal) || 0;
+      return (dir === '借') ? v : -v;
+    },
+
+    // 方向文本（**唯一实现**）：'dr'/'D' → 「借」，其余 → 「贷」
+    //   用于所有「只显示一个方向字」的场景（科目档案方向、凭证模板行方向、结转模板行方向）；
+    //   各处各写一遍 (x === 'dr' ? '借' : '贷') 时，口径一调就会漏改。
+    dirName: function (side) {
+      var s = String(side == null ? '' : side).toUpperCase();
+      return (s === 'DR' || s === 'D') ? '借' : '贷';
+    },
+
+    // 按科目正常方向取「发生额」（**唯一实现**）：借方科目取借方发生额，贷方科目取贷方发生额。
+    //   费用明细表等按此口径统计 —— 月末结转损益会把费用贷方清零，用净额(借−贷)会恒为 0。
+    //   scope：'period'（本期，默认）| 'ytd'（本年累计）
+    normalSideAmount: function (r, scope) {
+      var isDr = (r.normal !== 'cr');
+      if (scope === 'ytd') return isDr ? (r.ytdDr || 0) : (r.ytdCr || 0);
+      return isDr ? (r.periodDr || 0) : (r.periodCr || 0);
+    },
+
     // 科目某期间借贷方发生额 + 期末余额（按正常方向）
     generalLedger: function (month) {
       var self = this;
@@ -3232,15 +3352,19 @@
         // 否则往月损益发生额会被累加进期初，导致「期初/期末」两列与标准口径对不上（本期/累计不受影响）。
         if (s.cls === 'revenue' || s.cls === 'expense') op = { dr: 0, cr: 0 };
         // 期末余额（按正常方向）
+        // 【零余额无方向】balance === 0 时 dir 留空（借/贷/空），由显示层映射为「平」。
+        // 原实现写成 `balance >= 0 ? '借' : '贷'`，把零余额当成"科目正常方向的余额"——
+        // 例：1122006 应收账款_首免全球购 期末 0 → dir='借'，于是账簿「本期合计/本年累计」
+        // 两行的方向列显示"借"（金蝶为"平"）。余额方向是余额的属性，余额为 0 就没有方向。
         var endDr = op.dr + periodDr, endCr = op.cr + periodCr;
         var balance = 0, dir = '';
-        if (s.normal === 'dr') { balance = endDr - endCr; dir = balance >= 0 ? '借' : '贷'; balance = Math.abs(balance); }
-        else { balance = endCr - endDr; dir = balance >= 0 ? '贷' : '借'; balance = Math.abs(balance); }
-        // 本年累计期末（按正常方向）
+        if (s.normal === 'dr') { balance = endDr - endCr; dir = balance > 0 ? '借' : (balance < 0 ? '贷' : ''); balance = Math.abs(balance); }
+        else { balance = endCr - endDr; dir = balance > 0 ? '贷' : (balance < 0 ? '借' : ''); balance = Math.abs(balance); }
+        // 本年累计期末（按正常方向）—— 零余额同样无方向
         var yEndDr = op.dr + ytdDr, yEndCr = op.cr + ytdCr;
         var ytdBalance = 0, ytdDir = '';
-        if (s.normal === 'dr') { ytdBalance = yEndDr - yEndCr; ytdDir = ytdBalance >= 0 ? '借' : '贷'; ytdBalance = Math.abs(ytdBalance); }
-        else { ytdBalance = yEndCr - yEndDr; ytdDir = ytdBalance >= 0 ? '贷' : '借'; ytdBalance = Math.abs(ytdBalance); }
+        if (s.normal === 'dr') { ytdBalance = yEndDr - yEndCr; ytdDir = ytdBalance > 0 ? '借' : (ytdBalance < 0 ? '贷' : ''); ytdBalance = Math.abs(ytdBalance); }
+        else { ytdBalance = yEndCr - yEndDr; ytdDir = ytdBalance > 0 ? '贷' : (ytdBalance < 0 ? '借' : ''); ytdBalance = Math.abs(ytdBalance); }
         return {
           code: s.code, name: s.name, cls: s.cls, normal: s.normal,
           obDr: op.dr, obCr: op.cr, periodDr: periodDr, periodCr: periodCr,
@@ -3342,9 +3466,9 @@
         v.entries.forEach(function (e) {
           if (codes.indexOf(e.code) < 0) return;
           dr += num(e.dr); cr += num(e.cr);
-          var bal = 0, dir = '';
-          if (s.normal === 'dr') { bal = dr - cr; dir = bal >= 0 ? '借' : '贷'; bal = Math.abs(bal); }
-          else { bal = cr - dr; dir = bal >= 0 ? '贷' : '借'; bal = Math.abs(bal); }
+          var bal = 0, dir = '';   // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）
+          if (s.normal === 'dr') { bal = dr - cr; dir = bal > 0 ? '借' : (bal < 0 ? '贷' : ''); bal = Math.abs(bal); }
+          else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); bal = Math.abs(bal); }
           rows.push({
             date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
             dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
@@ -3383,9 +3507,9 @@
           v.entries.forEach(function (e) {
             if (codes.indexOf(e.code) < 0) return;
             dr += num(e.dr); cr += num(e.cr);
-            var bal = 0, dir = '';
-            if (s.normal === 'dr') { bal = dr - cr; dir = bal >= 0 ? '借' : '贷'; bal = Math.abs(bal); }
-            else { bal = cr - dr; dir = bal >= 0 ? '贷' : '借'; bal = Math.abs(bal); }
+            var bal = 0, dir = '';   // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）
+            if (s.normal === 'dr') { bal = dr - cr; dir = bal > 0 ? '借' : (bal < 0 ? '贷' : ''); bal = Math.abs(bal); }
+            else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); bal = Math.abs(bal); }
             rows.push({
               date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
               dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
@@ -3742,13 +3866,18 @@
       function endBal(code) {
         var r = gl.filter(function (x) { return x.code === code; })[0];
         if (!r) return 0;
-        return r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr);
+        // 【为什么出口就归零】报表金额同一份数据要喂两处：屏幕走 money() 显示 2 位小数，
+        //   导出走 XLSX 直接写**原始数值**。源头若留浮点残差，同一格就会"屏幕 -0.00 /
+        //   Excel 里 -1.8189894035458565E-12"。2026-09-22 由 verify_cross_page --all-periods
+        //   在 添钰来客 2026-04「应交税费」一格上实测抓到（2221 及下级求和后的残差）。
+        //   故在取数出口统一归零到 2 位小数 —— 屏幕与导出自此必然同值，且不改变任何真实金额。
+        return round2(r.normal === 'dr' ? (r.endDr - r.endCr) : (r.endCr - r.endDr));
       }
       function yearBal(code) {
         // 年初余额：取当年 1 月初的期初余额（无上年数据时为建账期初）
         var op = self.openingOf(code, ys);
         var sign = (self.subject(code) || {}).normal === 'cr' ? -1 : 1;
-        return (op.dr - op.cr) * sign;
+        return round2((op.dr - op.cr) * sign);
       }
       // 报表项目取数：按科目（含末级上卷）取期末/年初余额
       // normal=dr 科目：余额 = dr-cr；normal=cr 科目：余额 = cr-dr（已在 endBal/yearBal 内处理）
@@ -3761,7 +3890,7 @@
         // codes/minus 一并带出：报表页面据此提供「点金额跳总账」下钻。
         // 抵减项（如固定资产净值 = 1601 − 1602）也一并带上，跳过去能同时看到
         // 资产与其累计折旧，否则净值无法在总账里对上。
-        return { label: it.label, end: e, year: y, codes: it.codes || [], minus: it.minus || [] };
+        return { label: it.label, end: round2(e), year: round2(y), codes: it.codes || [], minus: it.minus || [] };
       }
       // 资产负债表项目规则：优先读账套 state.reportRules.balanceSheet（配置化），
       // 缺失时回退内置默认（与改造前硬编码等价，兼容异常账套）。
@@ -3770,8 +3899,8 @@
         || {};
       function fillGroup(g) {
         var items = (g && g.items ? g.items : []).map(fillItem);
-        var se = items.reduce(function (s, x) { return s + x.end; }, 0);
-        var sy = items.reduce(function (s, x) { return s + x.year; }, 0);
+        var se = round2(items.reduce(function (s, x) { return s + x.end; }, 0));
+        var sy = round2(items.reduce(function (s, x) { return s + x.year; }, 0));
         return { title: (g && g.title) || '', subtotal: (g && g.subtotal) || '', items: items, subEnd: se, subYear: sy };
       }
       var ga = fillGroup(groups.assetCurrent), gn = fillGroup(groups.assetNonCurrent);
@@ -3789,18 +3918,18 @@
           plItem = { label: '未分配利润', end: 0, year: 0 };
           ge.items = (ge.items || []).concat([plItem]);
         }
-        plItem.end += unEnd;
-        plItem.year += unYear;
-        ge.subEnd = ge.items.reduce(function (s, x) { return s + x.end; }, 0);
-        ge.subYear = ge.items.reduce(function (s, x) { return s + x.year; }, 0);
+        plItem.end = round2(plItem.end + unEnd);
+        plItem.year = round2(plItem.year + unYear);
+        ge.subEnd = round2(ge.items.reduce(function (s, x) { return s + x.end; }, 0));
+        ge.subYear = round2(ge.items.reduce(function (s, x) { return s + x.year; }, 0));
       }
-      var totalAsset = ga.subEnd + gn.subEnd;
-      var totalLia = glc.subEnd + glnc.subEnd;
-      var totalEquity = ge.subEnd;
+      var totalAsset = round2(ga.subEnd + gn.subEnd);
+      var totalLia = round2(glc.subEnd + glnc.subEnd);
+      var totalEquity = round2(ge.subEnd);
       return {
         groups: { assetCurrent: ga, assetNonCurrent: gn, liaCurrent: glc, liaNonCurrent: glnc, equity: ge },
         totalAsset: totalAsset, totalLiability: totalLia, totalEquity: totalEquity,
-        totalAll: totalLia + totalEquity,
+        totalAll: round2(totalLia + totalEquity),
         month: month
       };
     },
