@@ -24,6 +24,14 @@ function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2)
   var raw = (value === '' || value == null || value === 0) ? '' : value.toString();
   var t = raw;
   if (force2 && t && parseFloat(t)) t = parseFloat(t).toFixed(2);
+  // 【负号在这里被剥离，负数只由红色表达（.amt-red）—— 这是刻意的口径，不是丢符号】
+  // 依据：位格是「亿千百十万千百十元角分」共 11 格、没有符号位；红字记账凭证本身就是
+  //   「以红字表示负数、不写减号」的惯例（2026-09-21 实测金蝶红字冲销凭证同样不显示负号）。
+  // ⚠ 所以不要"顺手把负号补回来"：曾按该思路改过一版（把 − 塞进最高有效位左边一格），
+  //   结果被「金额 ≥ 1 亿元时 11 格占满、负号无处可放」逼出一个兜底补丁 ——
+  //   同一个设计要改两次才自洽，说明方向错了，已回退。
+  // 【仅限本处】报表 / 账簿 / 列表走的是普通文本数字，那边【必须带负号】，
+  //   由 tools/check_money_sign.js 的规则 5 守着。
   t = t.replace('-', '');
   if (t.length > 12) {
     return '<div class="amt-bg amt-trillion' + (red ? ' amt-red' : '') + '">' +
@@ -291,11 +299,23 @@ function fillVoucherWord() {
   else w.value = words[0] ? (words[0].name || words[0].code) : '记';
 }
 
+// 新凭证的默认日期：今天落在当前工作期间内 → 今天；否则 → 该期最后一天；且不早于账套启用月。
+// 新增凭证（resetVoucherEdit）与「复制」（copyCurrentVoucher）共用，避免两处各写一遍口径。
+function defaultVoucherDate() {
+  var workMonth = currentPeriod();
+  var today = H.todayStr ? H.todayStr() : todayStr();
+  var comp = (S.state && S.state.company) || {};
+  var sm = comp.startMonth ? (comp.startMonth + '-01') : '';
+  var def = (today >= (workMonth + '-01') && today <= (workMonth + '-31')) ? today : U.lastDay(workMonth);
+  if (sm && def < sm) def = sm;
+  return def;
+}
+
 function resetVoucherEdit() {
   vEditId = null;
   vRows = [defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow()];
-  // 新增模式：隐藏删除、显示保存并新增
-  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.hidden = true;
+  // 新增模式：只切「保存并新增 / 保存」这一对按钮。
+  // 删除、红字冲销、复制都需要一张已打开的凭证，它们在「更多」菜单里按 vEditId 显隐（见 bindVchMore）。
   var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = false;
   fillVoucherWord();
   var w = $('vWord'); if (w) w.value = S.state.param.voucherWord || '记';
@@ -309,15 +329,7 @@ function resetVoucherEdit() {
     var sm = comp.startMonth ? (comp.startMonth + '-01') : '';
     if (sm) dt.min = sm;
     dt.max = today;
-    // 默认日期：今天在工作期间内 → 今天；否则 → 工作期间最后一天
-    var def;
-    if (today >= (workMonth + '-01') && today <= (workMonth + '-31')) {
-      def = today;
-    } else {
-      def = U.lastDay(workMonth);
-    }
-    if (sm && def < sm) def = sm;
-    dt.value = def;
+    dt.value = defaultVoucherDate();   // 口径见该函数
   }
   var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, workMonth);
 
@@ -441,6 +453,9 @@ function updateAmtTotals() {
   if (cnTd) {
     var bal = Math.abs(drT - crT) < 0.005 ? drT : Math.abs(drT - crT);
     cnTd.textContent = numToChinese(bal);
+    // 红字（负数）时大写一并标红：与本行金额位格的红色口径保持一致。
+    // numToChinese 已自带「负」字，颜色是额外的一层提示（金蝶红字冲销凭证的合计大写同为红色）。
+    if (bal < 0) cnTd.classList.add('ty-red'); else cnTd.classList.remove('ty-red');
   }
   var tip = $('vBalanceTip');
   if (vRows.length && Math.abs(drT - crT) >= 0.005) {
@@ -704,28 +719,8 @@ function setupVoucher() {
     var res = saveVoucher();
     if (res && res.ok && !res.unchanged) showToast('已保存凭证');
   });
-  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.addEventListener('click', async function () {
-    if (!vEditId) return;
-    // 审计留痕：删除凭证必须填写原因（写入凭证 deleteReason + 操作日志 reason 字段）。
-    // 写法与「反结账」一致：promptAsync 输入 → 判空 → 带原因的二次确认 → 落库。
-    // 注：本操作为可逆（软删除进回收站、可还原），故按「可逆免密码」不要求操作密码。
-    var reason = await H.promptAsync(
-      '删除凭证属于审计留痕操作，请填写删除原因（必填）：\n\n' +
-      '例如：金额录错重录、科目选错、重复录入',
-      '',
-      { title: '删除凭证' }
-    );
-    if (reason === null || reason === undefined) return;   // 用户取消
-    if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
-    if (!(await H.confirmAsync('确认删除该凭证？\n原因：' + reason.trim(), { title: '删除凭证确认' }))) return;
-    var r = S.removeVoucher(vEditId, reason.trim());
-    if (!r.ok) return showToast(r.msg, 'error');
-    syncAll();
-    showToast('已删除凭证');
-    resetVoucherEdit();
-  });
-  var bVPrint = $('btnVoucherPrint'); if (bVPrint) bVPrint.addEventListener('click', function () { printCurrentVoucher(); });
-  var bBlank = $('btnBlankVoucher'); if (bBlank) bBlank.addEventListener('click', function () { printBlankVoucher(); });
+  // 工具栏只剩「更多」一个下拉 —— 次级操作全在里面，绑定见 bindVchMore()。
+  // 平铺会稀释「保存 / 保存并新增」这两个主动作；删除这类危险操作也因此多了一层点击缓冲。
   var vWord = $('vWord'); if (vWord) vWord.addEventListener('change', function () {
     var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, currentPeriod());
   });
@@ -941,7 +936,9 @@ function saveVoucher() {
   var drT = v.entries.reduce(function (s, e) { return s + e.dr; }, 0);
   var crT = v.entries.reduce(function (s, e) { return s + e.cr; }, 0);
   if (Math.abs(drT - crT) >= 0.005) { showToast('借贷不平衡，无法保存', 'warn'); return { ok: false }; }
-  if (drT + crT < 0.01) { showToast('请填写凭证金额后再保存', 'warn'); return { ok: false }; }
+  // 用绝对值判断「金额是否全为 0」：红字凭证的 drT / crT 都是负数，
+  // 原写法 drT + crT < 0.01 会把【合法的红字/红字冲销凭证】误判成「未填金额」而拒绝保存。
+  if (Math.abs(drT) + Math.abs(crT) < 0.01) { showToast('请填写凭证金额后再保存', 'warn'); return { ok: false }; }
   // 科目存在性校验：分录的 code 必须存在于科目表，避免误录用不存在的科目（幽灵科目）
   var badCodes = [];
   v.entries.forEach(function (e) {
@@ -987,8 +984,7 @@ function loadVoucherToEdit(id) {
   }
   if (!v) { showToast('凭证不存在', 'error'); return; }
   vEditId = v.id;
-  // 编辑模式：显示删除、隐藏保存并新增
-  var bDel = $('btnDeleteVoucher'); if (bDel) bDel.hidden = false;
+  // 编辑模式：隐藏「保存并新增」（删除 / 红字冲销 / 复制在「更多」菜单里自动出现）
   var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = true;
   fillVoucherWord(); // 先确保 options 和 disabled 状态正确
   var w = $('vWord'); if (w) w.value = v.word || '记';
@@ -1140,15 +1136,13 @@ var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click',
   // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码（与「清空回收站」等不可逆操作区分）。
   // 但必须填写删除原因（审计留痕）：同一原因写入本批每张凭证的 deleteReason 与操作日志 reason 字段。
   var reason = await H.promptAsync(
-    '将删除选中的 ' + cks.length + ' 张凭证。\n\n' +
-    '删除凭证属于审计留痕操作，请填写删除原因（必填，将记入各凭证与操作日志）：\n\n' +
-    '例如：期间录错整批重录、重复导入',
+    '您确认要删除选中的 ' + cks.length + ' 张凭证吗？删除会产生断号。请填写删除原因（必填，将记入各凭证与操作日志）：',
     '',
     { title: '删除凭证' }
   );
   if (reason === null || reason === undefined) return;   // 用户取消
   if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
-  if (!(await H.confirmAsync('确认删除选中的 ' + cks.length + ' 张凭证？\n原因：' + reason.trim(), { title: '删除凭证确认' }))) return;
+  // 同单张删除：不再弹二次确认（理由见 bindVchMore 里删除项的注释）
   var n = 0, fail = 0, failMsg = '';
   cks.forEach(function (c) {
     var r = S.removeVoucher(c.getAttribute('data-id'), reason.trim());
@@ -1244,6 +1238,16 @@ function renderQuery(start, end) {
   // 制单人取真实值：兼容 ty 新录的 maker 与金蝶导入的 preparer。
   // 原实现写死 '本账套' —— 导出的 Excel 里每张凭证制单人都一样，等于没有制单人信息。
   var makerOf = function (v) { return (S && S.voucherMaker) ? S.voucherMaker(v) : (v.maker || v.preparer || ''); };
+  // 红字冲销关联索引（一次遍历建好，避免每行都扫全表）：
+  //   revOf[id]      = 冲销了 id 的那张【未删除】红字冲销凭证 —— 用于「已冲」标记 + 判断可否再红字冲销
+  //   reversedSet    = 本身即红字冲销凭证的 id 集合
+  // 刻意以账上【实际存在的凭证】为准，而不是读 v.reversedBy 字段 ——
+  // 后者在「红字冲销凭证又被删除」后会失真，导致原凭证被误判为「已被冲销」而再也无法红字冲销。
+  var revOf = {}, reversedSet = {};
+  (S.state.vouchers || []).forEach(function (x) {
+    if (x.deleted === 'y') return;
+    if (x.reverses) { revOf[x.reverses] = x; reversedSet[x.id] = true; }
+  });
   vs.forEach(function (v) {
     var first = true;
     v.entries.forEach(function (e) {
@@ -1253,7 +1257,7 @@ function renderQuery(start, end) {
       tr.setAttribute('data-vid', v.id);
       var chk = first ? '<input type="checkbox" class="row-check" data-id="' + v.id + '">' : '';
       var dateCell = first ? v.date : '';
-      var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>') : '';
+      var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>' + queryFlags(v, revOf, reversedSet)) : '';
       // 制单人来自账套数据（可能源自导入文件），必须转义后再拼进 HTML
       var makerCell = first ? escHtml(makerOf(v)) : '';
       tr.innerHTML =
@@ -1282,6 +1286,140 @@ function renderQuery(start, end) {
     '<td class="ta-r mono grp-amt">' + money(sumCr) + '</td>' +
     '<td colspan="4"></td>';
   tb.appendChild(trt);
+}
+
+/* —— 红字冲销（入口在录凭证页的「删除」旁边） ——
+ * 会计依据与口径见 store.reverseVoucher 的注释。此处只负责交互与期间口径：
+ *   目标期间取 app.js 的 currentPeriod()（最近已结账月 + 1），不在此另算一套。
+ * 列表页只保留「已冲 / 红字冲销 / 期末」关联标记（queryFlags），不再放操作入口。
+ */
+
+// 凭证列表的关联标记（仅在凭证首行渲染）。
+function queryFlags(v, revOf, reversedSet) {
+  var out = '';
+  var rev = revOf[v.id];
+  if (rev) {
+    out += '<span class="vq-flag" title="已被 ' + escAttr((rev.word || '记') + '-' + rev.no) + ' 红字冲销">已冲</span>';
+  }
+  if (reversedSet[v.id]) {
+    out += '<span class="vq-flag vq-flag-rev" title="本凭证是红字冲销凭证'
+      + (v.reverseReason ? '：' + escAttr(v.reverseReason) : '') + '">红字冲销</span>';
+  }
+  if (v.kind) {
+    out += '<span class="vq-flag vq-flag-kind" title="由「期末处理」自动生成，不走手工红字冲销">期末</span>';
+  }
+  return out;
+}
+
+// 红字冲销确认框的文案。纯函数（不读 DOM、不改状态），只依赖 money / S / U，便于独立核对。
+// 三个要点：
+//   ① 说清「原凭证不会被改动」—— 红字冲销最反直觉的地方（它像"撤销"，其实是"新增一张红字凭证"）
+//   ② 跨期时点明原期间 —— 否则用户看不出"被动的不是那张凭证所在的月份"
+//   ③ 标出原期间是否已结账 —— 已结账正是"这张凭证不能被改、只能被冲"的原因
+function reverseConfirmText(v, month, reason) {
+  var no = (v.word || '记') + '-' + (v.no != null ? v.no : '');
+  // 归期口径与页面既有实现一致（H.monthOf(v.date)，即日期前 7 位）。
+  // 注：导入凭证可能只有 period 没有 date，此时归期【无法得知】——
+  //     按"未知"如实展示，不要拼出「原期间：—」误导，也不要让下游拼出「被冲月份（）」这种空括号。
+  var origMonth = String(v.date || '').slice(0, 7);
+  var amt = (v.entries || []).reduce(function (s, e) { return s + U.num(e.dr); }, 0);
+  if (!amt) amt = (v.entries || []).reduce(function (s, e) { return s + U.num(e.cr); }, 0);
+  var info = [
+    '原凭证：' + (v.date || '') + '　' + no + '　合计 ' + money(amt),
+    '原期间：' + (origMonth
+      ? (origMonth + (S.isPeriodClosed(origMonth) ? '（已结账）' : '（未结账）'))
+      : '未知（该凭证没有日期字段）'),
+    '红字冲销后：新增红字凭证 ' + money(-amt) + '，记入 ' + month,
+    '· 原凭证不会被改动或删除' + (origMonth ? '，仍留在 ' + origMonth : '')
+  ];
+  // 只有确实知道原期间、且与目标期间不同时，才谈「不回溯」
+  if (origMonth && origMonth !== month) {
+    info.push('· 被冲月份（' + origMonth + '）的报表不回溯，年度累计在重新结转后正确');
+  }
+  info.push('', '红字冲销原因：' + reason);
+  return '确认红字冲销 ' + no + '？\n\n' + info.join('\n');
+}
+
+// 「复制」：把当前打开的凭证内容照抄进一张【新凭证】（含金额）。
+// 用途：重复业务照抄（如每月房租）、红字冲销后重录更正。
+// 与「模板」的分工：模板是主动保存的【结构】（可不含金额，长期复用）；
+// 复制是照抄账上【任意一张已存在的凭证】（含金额，一次性）。
+function copyCurrentVoucher() {
+  if (!vEditId) return showToast('请先打开一张凭证', 'warn');
+  var v = S.getVoucher(vEditId);
+  if (!v) return showToast('凭证不存在', 'error');
+  if (!(v.entries || []).length) return showToast('该凭证没有分录，无法复制', 'warn');
+  copyVoucherToNew(v);
+  showToast('已把「' + (v.word || '记') + '-' + (v.no != null ? v.no : '') + '」的内容复制到新凭证，改好后保存即可',
+    'info', 5000);
+}
+
+async function doReverseVoucher(id) {
+  var v = (S.state.vouchers || []).filter(function (x) { return x.id === id; })[0];
+  if (!v) return showToast('凭证不存在', 'error');
+  var no = (v.word || '记') + '-' + (v.no != null ? v.no : '');
+
+  // 目标期间 = 当前工作期间；已结账时提前拦下，避免用户填完原因才被拒
+  var month = currentPeriod();
+  if (S.isPeriodClosed(month)) {
+    return showToast('目标期间（' + month + '）已结账，无法录红字冲销凭证；请先反结账或等进入下一期间', 'error');
+  }
+
+  var reason = await H.promptAsync(
+    '红字冲销 ' + no + '：将生成一张红字反向凭证（借贷方向不变、金额取负），记入期间「' + month + '」。\n\n'
+    + '请填写红字冲销原因（必填，将记入操作日志供事后审计）：\n\n'
+    + '例如：原凭证金额录错、科目选错、重复录入',
+    '', { title: '红字冲销凭证 · ' + no });
+  if (reason === null || reason === undefined) return;      // 用户取消
+  if (!reason.trim()) return showToast('必须填写红字冲销原因，未填写则取消红字冲销', 'error');
+  // 确认框文案见 reverseConfirmText()（纯函数，便于独立核对）
+  if (!(await H.confirmAsync(reverseConfirmText(v, month, reason.trim()),
+    { title: '红字冲销确认' }))) return;
+
+  var r = S.reverseVoucher(id, { month: month, reason: reason.trim() });
+  if (!r || r.ok === false) return showToast((r && r.msg) || '红字冲销失败', 'error');
+
+  var created = r.voucher;            // 成功时返回 { ok, voucher, hint }，不是凭证本身
+  var newNo = (created.word || '记') + '-' + created.no;
+  refreshQuery();
+  if (H.refreshAll) H.refreshAll();
+  // 需要重录时不必在这里一步做完 —— 用户看到红字凭证已生成后，用「更多 → 复制当前凭证」
+  // 即可照抄原凭证（复制是通用能力，不跟红字冲销绑在一起）。
+  var base = '已红字冲销 ' + no + '，生成 ' + newNo;
+  // hint（如「打破已结转的损益，请重新结转」）必须与结果同时呈现，否则用户看不到、账就要分叉。
+  showToast(r.hint ? (base + '。' + r.hint) : base, r.hint ? 'warn' : 'success', r.hint ? 8000 : 3000);
+}
+
+// 把某张既有凭证的内容载入编辑器、作为【新凭证】—— 这是「复制」的实现。
+// 刻意不复用 loadVoucherToEdit：那个是「编辑既有凭证」，会把 vEditId 指回原凭证，
+// 保存时变成「修改原凭证」，与「复制一张新的」语义正好相反。
+function copyVoucherToNew(src) {
+  vEditId = null;
+  var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = false;
+  fillVoucherWord();
+  var w = $('vWord'); if (w && src.word) w.value = src.word;
+  var noInp = $('vNo'); if (noInp) noInp.value = '';   // 留空 → 保存时自动取同月下一个号
+  var dt = $('vDate');
+  if (dt) {
+    var today = H.todayStr ? H.todayStr() : todayStr();
+    var comp = (S.state && S.state.company) || {};
+    dt.min = comp.startMonth ? (comp.startMonth + '-01') : '';
+    dt.max = today;
+    // 复制出来的是【新业务】，日期按当前工作期间 —— 不沿用原凭证日期
+    dt.value = defaultVoucherDate();
+  }
+  var at = $('vAttach'); if (at) at.value = '';
+  vAttachFiles = [];
+  renderAttachPanel();
+  vRows = (src.entries || []).map(function (e) {
+    return {
+      summary: e.summary || '', code: e.code || '', name: e.name || '',
+      dr: U.num(e.dr) || 0, cr: U.num(e.cr) || 0, cashActivity: e.cashActivity || ''
+    };
+  });
+  if (vRows.length < 2) vRows.push(defaultVoucherRow());
+  renderVoucherRows();
+  openVoucherPage();
 }
 
 /* —— 跨页预填凭证分录（模块隔离，须经全局桥接调用） —— */
@@ -1528,13 +1666,86 @@ function applyVchTpl(t) {
       .then(function (ok) { if (ok) fill(); });
   } else fill();
 }
-(function bindVchTpl() {
-  var menu = $('vchTplMenu');
-  var bOpen = $('btnVchTpl');
+/* 「更多」下拉：把凭证页所有【次级操作】收在一处 —— 打印两项 / 红字冲销 / 复制 / 模板两项。
+ * 为什么收进下拉：凭证页的主动作是「录」，其余都是低频或次级的；平铺会让工具栏被次要按钮占满
+ * （历史上曾同时存在 打印、空白凭证、模板、红字冲销、冲销并重录 五个入口，后来「删除」也收了进来）。
+ *
+ * 【排列顺序按功能分组，不按可用条件】三组，用分隔线隔开：
+ *   ① 输出       打印当前凭证 / 打印空白凭证纸               —— 任何时候可用
+ *   ② 录入辅助   从模板生成凭证 / 保存为凭证模板 / 复制当前凭证  —— 取用或沉淀可复用的内容
+ *   ③ 更正与废弃 红字冲销 / 删除凭证                         —— 对【已入账】凭证的处置
+ * ③这两项统一染红（.vch-menu-red）：它们会【实际改动已入账的账务】，与①②组
+ *   「只读输出 / 录入辅助」性质不同，需要一眼区分。删除排在最后一位，危险项不放手指易扫到的位置。
+ *
+ * 【显隐】②里的「复制当前凭证」与③整组都需要一张已打开的凭证（vEditId），新增态下无处可用，
+ * 故在开菜单时按状态隐藏；③的分隔线随之一起隐藏，避免新增态下出现两条挨着的线。
+ * ②里其余两项与打印两项任何时候都可用（新增态可以打印正在录的这一张）。 */
+(function bindVchMore() {
+  var menu = $('vchMoreMenu');
+  var bOpen = $('btnVchMore');
   function hideMenu() { if (menu) menu.hidden = true; }
-  if (bOpen && menu) bOpen.addEventListener('click', function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  if (bOpen && menu) {
+    bOpen.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // 显隐用 inline style，不用 el.hidden：.vch-menu a 声明了 display:block，
+      // 会盖掉 [hidden] 的默认 display:none（与规则 4 那次「选择器压过属性」同类）。
+      var has = !!vEditId;
+      // 「复制当前凭证」与「更正/废弃」整组都需要一张已打开的凭证（分组依据见本函数上方注释）
+      ['vchMoreCopy', 'vchMoreReverse', 'vchMoreDelete', 'vchMoreSepAct'].forEach(function (id) {
+        var el = $(id); if (el) el.style.display = has ? '' : 'none';
+      });
+      menu.hidden = !menu.hidden;
+    });
+  }
   // 点击其它处关闭下拉
   document.addEventListener('click', hideMenu);
+  // 打印两项
+  var printCur = $('vchMorePrintCurrent');
+  if (printCur) printCur.addEventListener('click', function (e) {
+    e.preventDefault(); e.stopPropagation(); hideMenu(); printCurrentVoucher();
+  });
+  var printBlank = $('vchMorePrintBlank');
+  if (printBlank) printBlank.addEventListener('click', function (e) {
+    e.preventDefault(); e.stopPropagation(); hideMenu(); printBlankVoucher();
+  });
+  // 红字冲销（口径、防重复、来源拦截、期间校验全在 store.reverseVoucher 内，此处只转发）
+  var revItem = $('vchMoreReverse');
+  if (revItem) revItem.addEventListener('click', function (e) {
+    e.preventDefault(); e.stopPropagation(); hideMenu();
+    if (vEditId) doReverseVoucher(vEditId);
+  });
+  // 删除凭证（菜单最后一格，危险项）—— 原先是工具栏上的独立红按钮，移入菜单后
+  // 由 .vch-menu-red 保留红色警示，同时也多了一层点击缓冲、不易误触。
+  // 审计留痕：必须填写原因（写入凭证 deleteReason + 操作日志 reason 字段）。
+  // 【只弹一次】填原因的那个输入框就是唯一的确认闸门，不再叠二次确认框 ——
+  //   ① 提示语本身已含「您确认要删除此凭证吗？删除会产生断号」，语义上就是在确认；
+  //   ② 误删要「先填了原因再点确定」，空原因会被判空拦下，不是手滑一步就能删掉；
+  //   ③ 本操作可逆（软删除进回收站、可还原）。
+  // 与红字冲销的区别：红冲【保留】二次确认 —— 它生成的红字凭证无法撤销
+  //   （只能再冲一次、在账上多留一笔），代价比可还原的删除高。
+  var delItem = $('vchMoreDelete');
+  if (delItem) delItem.addEventListener('click', async function (e) {
+    e.preventDefault(); e.stopPropagation(); hideMenu();
+    if (!vEditId) return;
+    var reason = await H.promptAsync(
+      '您确认要删除此凭证吗？删除会产生断号。请填写删除原因（必填）：',
+      '',
+      { title: '删除凭证' }
+    );
+    if (reason === null || reason === undefined) return;   // 用户取消
+    if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
+    var r = S.removeVoucher(vEditId, reason.trim());
+    if (!r.ok) return showToast(r.msg, 'error');
+    syncAll();
+    showToast('已删除凭证');
+    resetVoucherEdit();
+  });
+  // 复制当前凭证
+  var copyItem = $('vchMoreCopy');
+  if (copyItem) copyItem.addEventListener('click', function (e) {
+    e.preventDefault(); e.stopPropagation(); hideMenu();
+    copyCurrentVoucher();
+  });
   // 「保存为模板」面板
   var saveModal = $('vchTplSaveModal');
   if (saveModal) {
@@ -1545,9 +1756,9 @@ function applyVchTpl(t) {
     if (bSaveCal) bSaveCal.addEventListener('click', hideSaveTpl);
     saveModal.addEventListener('click', function (e) { if (e.target === saveModal) hideSaveTpl(); });
   }
-  // 下拉两项（形态）
-  var sItem = $('vchTplSaveItem'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
-  var uItem = $('vchTplUseItem'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
+  // 模板两项（形态）
+  var sItem = $('vchMoreTplSave'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
+  var uItem = $('vchMoreTplUse'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
   var bClose = $('btnVchTplClose'); if (bClose) bClose.addEventListener('click', closeVchTpl);
   var tplSearch = $('vchTplSearch');
   if (tplSearch) tplSearch.addEventListener('input', function () { renderVchTplList(); });

@@ -1772,6 +1772,9 @@
     var t = raw;
     // 仅当 force2 时强制两位小数（合计行/借贷平衡检查用）；普通位格保持用户输入原样
     if (force2 && t && parseFloat(t)) t = parseFloat(t).toFixed(2);
+    // 剥离负号、负数只由红色表达 —— 口径与理由见 js/pages/voucher/Voucher.js 的同名函数。
+    // 另注：本函数与那份是【两份副本】。本份当前只被 amtHeaderHtml 用于表头单位行
+    // （value 是 '亿千百十万千百十元角分'、red 恒为 false），不渲染实际金额。
     t = t.replace('-', '');
     // 万亿模式：超过 12 位直接纯文本显示
     if (t.length > 12) {

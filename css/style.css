@@ -671,16 +671,28 @@ img, svg { display: block; max-width: 100%; }
 .vch-tpl-save-fields { display: flex; gap: 18px; margin: 2px 0 0; }
 .vch-tpl-save-fields .vtsf { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--ty-text); cursor: default; }
 .vch-tpl-save-fields .vtsf input { width: 16px; height: 16px; }
-/* 录凭证工具栏「模板」下拉 */
-.vch-tpl-wrap { position: relative; display: inline-flex; }
-.vch-tpl-menu {
+/* 凭证工具栏下拉（「更多」菜单）：相对定位包裹 + 绝对定位菜单。
+   原类名 vch-tpl-* 只服务于「模板」一个下拉；打印等操作陆续并进来后改为中性名，
+   避免出现「类名只对一半使用场景成立」。（配合 .btn.ty-dropdown 的箭头） */
+.vch-menu-wrap { position: relative; display: inline-flex; }
+.vch-menu {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 120;
   min-width: 148px; padding: 4px 0;
   background: var(--ty-white); border: 1px solid var(--ty-border);
   border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
 }
-.vch-tpl-menu a { display: block; padding: 7px 14px; font-size: var(--fs-sm); color: var(--ty-text); text-decoration: none; white-space: nowrap; }
-.vch-tpl-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
+/* 菜单内分组分隔线（「更多」里把 打印 / 录入辅助 / 更正与废弃 三组分开，见 Voucher.js 的 bindVchMore） */
+.vch-menu-sep { height: 1px; margin: 4px 0; background: var(--ty-border); }
+.vch-menu a { display: block; padding: 7px 14px; font-size: var(--fs-sm); color: var(--ty-text); text-decoration: none; white-space: nowrap; }
+.vch-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
+/* 红字项（红字冲销 / 删除凭证）：这两项都会【实际改动已入账的账务】，
+   与「打印 / 模板 / 复制」在性质上不同，需一眼区分。
+   类名取中性的 red 而非 danger —— 把红字冲销叫「危险操作」是错的，
+   它恰恰是规范推荐的更正手段；删除才是危险项。两者共用一条规则，故按颜色命名
+   （同 .amt-red 的既有命名法）。
+   悬停也要单独写 —— 否则会被上面的 a:hover 抢成蓝色，反而像普通项。 */
+.vch-menu a.vch-menu-red { color: var(--ty-red); }
+.vch-menu a.vch-menu-red:hover { background: var(--ty-red-bg); color: var(--ty-red); }
 /* 科目页表格（ty-table：表头左对齐；checkbox 列 40px sticky left 0；操作列 96px sticky left 40px） */
 /* 科目表：滚动全部交给外层 .scroll-area（全站「方案C 纯结构冻结」）。
    ⚠️ 原来给 #subjGrid 写了 display:block + overflow-x:auto 想让它"自己横滚"，但按 CSS 规则
@@ -1637,7 +1649,13 @@ label.req::before {
 }
 
 /* 负数红字（标准） */
-.ty-red { color: var(--ty-red); }
+/* 语义色：负值 / 警示红。
+   ⚠ 这里刻意写成「双类名」.ty-red.ty-red 提一档特异性（0,2,0）。
+   原因：本文件里有大量单类选择器，而 CSS 规则是「同特异性时后定义者胜」——
+   只要有任何一条设置 color 的单类规则排在本规则之后（例如 .total-label-cn 在 2183 行），
+   它就会把 .ty-red 静默盖掉，表现为「代码里明明加了 ty-red，屏幕上却不变红」，极难排查。
+   凭证合计行的大写金额就踩过这个坑（红字冲销凭证的大写该红却没红）。 */
+.ty-red, .ty-red.ty-red { color: var(--ty-red); }
 
 /* 对齐与数字字体 */
 .ta-r, .col-amt, .col-amount { text-align: right; }   /* 约定①：金额/数量列（col-amt/col-amount 为历史同义类名） */
@@ -5448,6 +5466,16 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
    fixed 会把 colgroup 像素宽当比例重分配，正是窄窗口列被压扁的根因。 */
 /* 凭证字号排序（ty-sort-icon） */
 .vq-th-no { cursor: pointer; user-select: none; white-space: nowrap; }
+/* 凭证列表的关联标记（红字冲销）：
+     · .vq-flag     已冲 —— 本凭证已被某张红字冲销凭证冲销
+     · .vq-flag-rev 红字冲销 —— 本凭证本身就是红字冲销凭证
+     · .vq-flag-kind 期末 —— 由「期末处理」自动生成，不走手工红字冲销
+   色值全部复用既有令牌，不新增变量。 */
+.vq-flag { display: inline-block; margin-left: 4px; padding: 0 4px; border-radius: 3px;
+           font-size: var(--fs-xs); line-height: 16px; vertical-align: 1px;
+           background: var(--ty-red-bg); color: var(--ty-red); white-space: nowrap; }
+.vq-flag-rev { background: var(--ty-blue-2); color: var(--ty-blue-dark); }
+.vq-flag-kind { background: var(--ty-border); color: var(--ty-text-2); }
 .ty-sort-icon {
   display: inline-block;
   margin-left: 4px;

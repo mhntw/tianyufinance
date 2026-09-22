@@ -25,8 +25,18 @@
  *           _shared.js 的 export 与两个页面的 import 差点漏改（ESM 会直接报错）。
  *     4. 打印件的自包含样式里必须有 .ty-red
  *        —— 打印件不引 css/style.css，缺这条则打印出的报表负数不标红、与正数难分辨。
+ *     5. 报表负号不可隐藏（行为断言 + 静态禁令）
+ *        a) 实测 signed(-1234.56) / moneyRed(-1234.56) 的输出里必须真的有 "-"，正数则不得有
+ *           —— 报表的负数出口就这两个函数，所以断言它们的【实际输出】，
+ *              而不是"看代码里有没有 (n < 0 ?) 判断"。
+ *              第一版正是这个错：把 moneyRed 里的负号删掉后它仍 PASS ——
+ *              那个 < 0 判断还在，但已不再输出负号（检查太松＝摆设）。
+ *        b) 报表页（js/pages/report/**）不得调用 absFmt(…) —— 它是专门抹符号的工具，
+ *           报表里出现即意味着负值会被显示成正数
+ *           （资产负债表「未分配利润」历史上已发作过一次，见 app.js moneyRed 注释）。
+ *        注：账簿页（ledger）不在此列 —— 那边是「金额取正 + 独立方向列」，方向未被隐藏。
  *   ⚠ 提示（不影响退出码）
- *     5. 页面里的 absFmt(…) / money(Math.abs(…)) 调用点 —— 列出供人工确认
+ *     6. 其余页面的 absFmt(…) / money(Math.abs(…)) 调用点 —— 列出供人工确认方向由上下文表达
  *        方向确已由上下文（标签 / Tab / 文字）表达
  *
  * 【2026-09-21 扩大排查的结论（已在下方固化为规则）】
@@ -193,6 +203,72 @@ walkJs(PAGES).forEach(function (file) {
       + '缺这条会让打印出来的报表负数不标红、与正数难以分辨。'
       + '请在样式拼接中加入 ".ty-red{color:#cf2e2e;}"（色值同 --ty-red）。');
   }
+})();
+
+/* ---------------- 规则 5：报表负号不可隐藏（行为断言 + 静态禁令） ---------------- */
+(function () {
+  // 为什么必须用【行为断言】而不是静态找 "< 0 ?"：
+  //   本规则第一版就是这么写的，自测时把 moneyRed 里的 '-' 删掉，它照样 PASS ——
+  //   那个 < 0 判断还在，但函数已经不再输出负号。静态"看起来有补丁"不等于"真的输出了负号"。
+  //   报表的负数出口只有 signed() 与 moneyRed() 两个，直接把它们抓出来实跑即可。
+  const stub = function (n) { return '[' + n + ']'; };   // 桩 money：把入参原样露出（含符号），便于判断 abs 是否被调用
+  function load(name) {
+    const at = appSrc.indexOf('function ' + name + '(');
+    if (at < 0) return null;
+    // 花括号配平取整段：不能用 bodyOf 的 [^}]*（函数体可能含对象字面量/嵌套块，会被首个 } 截断）
+    let i = appSrc.indexOf('{', at), depth = 0, end = -1;
+    for (let k = i; k < appSrc.length; k++) {
+      if (appSrc[k] === '{') depth++;
+      else if (appSrc[k] === '}') { depth--; if (depth === 0) { end = k + 1; break; } }
+    }
+    return new Function('money', 'return (' + appSrc.slice(at, end) + ')')(stub);
+  }
+
+  // 5a. signed / moneyRed 必须真的把负号输出到结果里（且正数不得出现负号）
+  // ⚠ 找负号必须【先剥掉标签】：moneyRed 的输出里含 class="ty-red" —— 这个 CSS 类名自带连字符，
+  //   直接在原始 HTML 上 indexOf('-') 会命中它，于是"负号被删掉"也照样通过。
+  //   （自测时确实踩了：把 moneyRed 的 '-' 删掉后本检查仍 PASS。
+  //     与规则 4 当年「.ty-red 命中了说明注释」是同一类"检查太松"的坑。）
+  const stripTags = function (s) { return String(s).replace(/<[^>]*>/g, ''); };
+  [{ name: 'signed', signs: ['-'], raw: [] },
+   { name: 'moneyRed', signs: ['-'], raw: ['ty-red'] }].forEach(function (spec) {
+    const fn = load(spec.name);
+    if (!fn) { fails.push('js/app.js  找不到 ' + spec.name + '() —— 资产负债表的负数显示契约无法校验。'); return; }
+    const negRaw = String(fn(-1234.56));
+    const negPlain = stripTags(negRaw);
+    spec.signs.forEach(function (token) {
+      if (negPlain.indexOf(token) < 0) {
+        fails.push('js/app.js  ' + spec.name + '(-1234.56) 的实际输出里没有 "' + token + '" —— '
+          + '负值会被显示成正数。（去标签后）实测输出：' + JSON.stringify(negPlain));
+      }
+    });
+    spec.raw.forEach(function (token) {
+      if (negRaw.indexOf(token) < 0) {
+        fails.push('js/app.js  ' + spec.name + '(-1234.56) 的输出里没有 "' + token + '" —— '
+          + '报表负数不会标红，与正数难以分辨。实测输出：' + JSON.stringify(negRaw));
+      }
+    });
+    const posPlain = stripTags(fn(1234.56));
+    if (posPlain.indexOf('-') >= 0) {
+      fails.push('js/app.js  ' + spec.name + '(1234.56) 的输出里出现了负号 —— 正值被显示成负数。'
+        + '（去标签后）实测输出：' + JSON.stringify(posPlain));
+    }
+  });
+
+  // 5b. 报表页不得调用 absFmt（专门抹符号的工具）。
+  //     判据只认 absFmt( 这一种确凿写法，不含 Math.abs 的比较/算术用途
+  //     （差额判定、零值判定等），因此不会误报。
+  walkJs(path.join(PAGES, 'report')).forEach(function (file) {
+    fs.readFileSync(file, 'utf8').split('\n').forEach(function (line, i) {
+      if (line.trim().indexOf('//') === 0) return;
+      if (/\babsFmt\s*\(/.test(line)) {
+        fails.push(rel(file) + ':' + (i + 1)
+          + '  报表页调用了 absFmt()（专门抹符号）—— 负值会被显示成正数。'
+          + '请改用 money()（保号）或 signed() / moneyRed()（保号 + 标红）。  → '
+          + line.trim().slice(0, 80));
+      }
+    });
+  });
 })();
 
 /* ---------------- 输出 ---------------- */

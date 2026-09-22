@@ -1874,6 +1874,174 @@
         { id: id, action_type: 'restore', target_name: (v.word || '') + '-' + (v.no != null ? v.no : ''), result: 'success' });
       return { ok: true };
     },
+
+    /* ---------- 红字冲销（已结账期间的常规更正手段） ----------
+     * 【会计依据】《会计基础工作规范》第五十一条：已登记入账的记账凭证发生错误，
+     *   科目、金额等有错的，可另填一张「红字」记账凭证冲销原错误记录。
+     *
+     * 【与「反结账」的分工】反结账是把历史期间重新打开、直接改历史凭证 —— 会抹掉痕迹，
+     *   这正是它「违反会计法规」的根源；红字冲销不动历史期间，只在当前工作期间生成一张红字
+     *   反向凭证 —— 错误凭证与冲销凭证都留在账上、因果清晰，是审计要求的形态。
+     *   代价：被冲月份的报表不再事后修正（月报非法定口径，年报仍正确）。
+     *
+     * 【红字口径】沿用本软件统一的「负数同方向」（账套 meta.redStyle === 'native'）：
+     *   借贷方向【不变】、金额【取负】。刻意不用「借贷对调」—— 那会把冲销变成一笔新业务，
+     *   既改变发生额方向，也让「冲销」与「更正」在账上无法区分。
+     *
+     * 【为什么 month 必须由调用方传入】期间口径的【唯一实现】是 app.js 的 currentPeriod()
+     *   （最近已结账月 + 1；从未结账则取最近有凭证月；上限当前自然月）。
+     *   本方法刻意不自己算一遍，避免出现第二套口径 —— 页面请传 H.currentPeriod()。
+     *
+     * @param {string} id   被冲销凭证的 id
+     * @param {object} opts { month: 'YYYY-MM'（必填，目标期间，须未结账）
+     *                        reason: string（红字冲销原因，审计留痕；UI 层强制必填） }
+     * @returns {object} 成功 → { ok:true, voucher:<新生成的红字凭证>, hint:<给 UI 的提示，可能为 null> }
+     *                   失败 → { ok:false, msg }
+     *   注：成功时【不】直接返回凭证对象 —— 凭证会被原样持久化进账套，
+     *       往它身上挂 hint 之类的临时字段会污染账套数据。故另起一层包住。
+     */
+    reverseVoucher: function (id, opts) {
+      opts = opts || {};
+      var self = this;
+      var orig = (this.state.vouchers || []).filter(function (x) { return x.id === id; })[0];
+      if (!orig) return { ok: false, msg: '凭证不存在' };
+      if (orig.deleted === 'y') return { ok: false, msg: '该凭证已删除，请先在回收站还原后再红字冲销' };
+      if (!orig.entries || !orig.entries.length) return { ok: false, msg: '该凭证没有分录，无法红字冲销' };
+
+      var month = String(opts.month || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(month))
+        return { ok: false, msg: '缺少目标期间（须由调用方传入当前工作期间 currentPeriod()）' };
+      if (this.isPeriodClosed(month))
+        return { ok: false, msg: '目标期间（' + month + '）已结账，无法录入红字冲销凭证。'
+          + '请先在「结账 → 反结账」打开该期间，或等进入下一期间后再红字冲销' };
+
+      // ---------- 凭什么凭证不能手工红字冲销：按【来源】逐类判定，不能只看 kind ----------
+      // 本软件里「凭证由哪个业务模块生成」有多套标记，只认一套必漏（同类教训见 _voucherRefs 注释）：
+      //   ① 期末处理类 —— v.kind（结转损益/本年利润/成本/折旧/利润分配/工资计提发放）
+      //   ② 固定资产   —— 卡片上的 deprVoucher / cleanVoucher 存【凭证号 word-no】，与 kind 无关
+      //                   （外部导入的折旧凭证没有 kind，但卡片有 deprVoucher）
+      //   ③ 工资模块   —— v.payroll 标记
+      // 三类都不该手工红字冲销，但【理由不同】：
+      //   · 期末类 / 工资：官方入口是「重新生成」，会先删旧凭证、再按最新数据重算；
+      //     手工红字冲销后结账清单仍认为本期已结转/已计提，两套判定打架，账反而更乱。
+      //   · 固定资产折旧 / 清理：红字冲销【不会回退卡片】—— 只有「删除凭证」才会
+      //     （_revertAssetDepr / _revertAssetClean）。红字冲销后卡片的累计折旧、清理状态
+      //     会与总账脱节，账实不符。
+      var vno = (orig.word || '记') + '-' + (orig.no != null ? orig.no : '');
+      var assets = this.state.fixedAssets || [];
+      var faDepr = assets.filter(function (f) { return f.deprVoucher === vno; })[0];
+      if (faDepr) {
+        return { ok: false, msg: '该凭证是固定资产「计提折旧」凭证（卡片 ' + (faDepr.code || '') + '）。'
+          + '红字冲销不会回退卡片的累计折旧，会造成账实不符。如需更正，请到「期末处理」用「计提折旧」重新生成'
+          + '（会先删原凭证、再按最新数据重算，同时回退卡片）' };
+      }
+      var faClean = assets.filter(function (f) { return f.cleanVoucher === vno; })[0];
+      if (faClean) {
+        return { ok: false, msg: '该凭证是固定资产「清理」凭证（卡片 ' + (faClean.code || '') + '）。'
+          + '红字冲销不会撤销处置业务，会造成账实不符。请先到「固定资产」对该卡片执行「取消清理」，'
+          + '系统会同时删掉这张凭证' };
+      }
+      if (orig.payroll) {
+        return { ok: false, msg: '该凭证由「工资」模块生成。红字冲销不改动工资记录，会造成「工资已发、账上无凭证」。'
+          + '请先到工资模块处理对应工资记录，再用工资模块重新生成凭证' };
+      }
+      if (orig.kind) {
+        var K = this.VOUCHER_KINDS, KIND_LABEL = {}, KIND_WHERE = {};
+        KIND_LABEL[K.CARRY_PL] = '结转损益';
+        KIND_LABEL[K.CARRY_YE] = '结转本年利润';
+        KIND_LABEL[K.CARRY_COST] = '结转销售成本';
+        KIND_LABEL[K.DEPR] = '计提折旧';
+        KIND_LABEL[K.PAYROLL_ACC] = '计提工资';
+        KIND_LABEL[K.PAYROLL_PAY] = '发放工资';
+        KIND_LABEL[K.PROFIT_DIST] = '利润分配';
+        KIND_WHERE[K.DEPR] = '「固定资产 → 计提折旧」或「期末处理」';
+        KIND_WHERE[K.PAYROLL_ACC] = '「工资」模块';
+        KIND_WHERE[K.PAYROLL_PAY] = '「工资」模块';
+        return { ok: false, msg: '该凭证是「' + (KIND_LABEL[orig.kind] || '期末业务') + '」自动生成的凭证，'
+          + '不应手工红字冲销（它的自动逻辑自带「重新生成」入口，会先删旧再按最新数据重算）。'
+          + '如需更正，请到' + (KIND_WHERE[orig.kind] || '「结账 → 期末处理」') + '重新生成' };
+      }
+
+      // 防重复红字冲销：以账上【实际存在的未删除红字冲销凭证】为准，而不是只看 orig.reversedBy 字段
+      // —— 后者在「红字冲销凭证又被删除」时会失真，导致原凭证无法再次红字冲销。
+      var exist = (this.state.vouchers || []).filter(function (x) {
+        return x.reverses === id && x.deleted !== 'y';
+      })[0];
+      if (exist) {
+        return { ok: false, msg: '该凭证已被 ' + (exist.word || '记') + '-' + exist.no + ' 红字冲销，请勿重复冲销'
+          + '（若要撤销这次红字冲销，可对其红字冲销凭证再做一次红字冲销）' };
+      }
+
+      // 摘要口径（对齐金蝶）：「冲销 + 期间(YYYYMM) + 原凭证字号 + 原摘要」
+      //   例：原凭证 记-63（2026-08）摘要「结转餐厅厨房原材料」
+      //       → 红字冲销凭证摘要「冲销202608记-63结转餐厅厨房原材料」
+      // 每一行沿用【本行自己的原摘要】，多行不同摘要的凭证冲销后才不会串味。
+      var sign = '冲销' + month.replace('-', '') + vno;
+      // 构造红字分录：方向不变、金额取负（num(e.dr) === 0 时显式写 0，避免出现 -0）
+      var entries = orig.entries.map(function (e) {
+        var row = {
+          code: e.code,
+          name: e.name,
+          summary: sign + (e.summary || ''),
+          dr: num(e.dr) === 0 ? 0 : -num(e.dr),
+          cr: num(e.cr) === 0 ? 0 : -num(e.cr)
+        };
+        if (e.cashActivity) row.cashActivity = e.cashActivity;   // 现金流量映射随分录一并继承
+        return row;
+      });
+      // 红字冲销后要不要提示「重新结转」—— 判据必须收紧，否则天天误报就成噪音：
+      //   ① 本期【原本已结转】：用 carryForwardState()，它是「本期是否已结转」的单点实现
+      //   ② 红字冲销【打破了】那个已结平的状态：用 periodProfitNet() 取前后两次对比
+      // 两者缺一不可，各自排除一类误报：
+      //   · 本期还没结转（月中红字冲销）→ 不提示（期末正常结转即可，此时提示反而误导）
+      //   · 本期已结转，但红字冲销没动损益类科目 → 不提示（结转不受影响）
+      // 判据口径与 settleChecklist / carryForwardProfit 完全一致（三者共用 periodProfitNet），
+      // 避免出现「红字冲销说不用结转、结账说必须结转」这种两套口径打架的老问题。
+      var carryBefore = this.carryForwardState(month).done;
+      var netBefore = this.periodProfitNet(month);
+      function plSettled(o) { return Math.abs(o.rev) < EPS && Math.abs(o.exp) < EPS; }
+      // 日期：目标期间即当前自然月用今天，否则用该月最后一天 —— 保证日期落在目标期间内，
+      // 否则 voucherMonth() 会把凭证归到别的月份，与目标期间不符。
+      var natMonth = fmtDate(new Date()).slice(0, 7);
+      var date = (month === natMonth) ? fmtDate(new Date()) : lastDay(month);
+
+      var created = this.addVoucher({
+        word: orig.word || '记',
+        date: date,
+        attach: 0,
+        summary: entries.length ? entries[0].summary : sign,
+        entries: entries,
+        reverses: orig.id,                                        // 本凭证冲销了谁（关联追溯）
+        reverseReason: String(opts.reason == null ? '' : opts.reason).trim()
+      });
+      if (!created || created.ok === false) return created || { ok: false, msg: '红字冲销失败' };
+
+      // 双向关联：原凭证记下「被谁冲销」，供列表标记与事后追溯
+      orig.reversedBy = created.id;
+      orig.reversedAt = fmtDateTime(new Date());
+      this.persist();
+      this.addLog('红字冲销凭证',
+        (created.word || '记') + '-' + created.no + ' 冲销 ' + vno,
+        '凭证', created.reverseReason || '(未填写)',
+        vno + (orig.summary ? ' ' + orig.summary : ''),
+        null,
+        { id: created.id, action_type: 'reverse',
+          target_name: (created.word || '记') + '-' + created.no,
+          related_id: orig.id, result: 'success' });
+      // 红字冲销落库后再取一次损益净额，与红字冲销前对比：
+      // 只有「原本结平 → 现在不结平」才算被打破（此时才提示；否则一声不吭）。
+      var netAfter = this.periodProfitNet(month);
+      var brokeCarry = carryBefore && plSettled(netBefore) && !plSettled(netAfter);
+      return {
+        ok: true,
+        voucher: created,
+        hint: brokeCarry
+          ? '本次红字冲销打破了「' + month + '」已完成（且当时是结平的）损益结转 —— 请到「结账 → 期末处理」'
+            + '重新结转本期损益，否则报表净利润会与结转损益凭证金额分叉'
+          : null
+      };
+    },
+
     // 列出已软删凭证（供 UI「回收站」入口展示）
     deletedVouchers: function () {
       return (this.state.vouchers || []).filter(function (v) { return v.deleted === 'y'; });
@@ -2063,7 +2231,7 @@
 
     // ============ 立即存档（手动按钮与结账/结转等触发点共用） ============
     // 立即落一份「自动存档」（最近 10 份滚动），不依赖 3 秒防抖窗口。
-    // 说明：录错账不靠备份（走红冲/反结账更正），错删账套走回收站还原；
+    // 说明：录错账不靠备份（走红字冲销/反结账更正），错删账套走回收站还原；
     // 「导入 / 恢复备份」等整本覆盖动作前的回退，由「覆盖前存档」saveRestoreSnapshot 单独承担。
     backupNow: function () {
       var bid = this.currentBookId();
@@ -2131,6 +2299,11 @@
       var self = this;
       var es = (v && v.entries) || [];
       if (!es.length) return undefined;
+      // 红字冲销凭证（v.reverses）不参与期末业务识别：它是「某张凭证的镜像」，不是一笔新业务。
+      // 必须显式排除：若原凭证是【手工做的】结转损益类结构（借收入 / 贷本年利润），
+      // 红字冲销后金额全为负、但结构特征仍在 —— 会被误判成 carryPL，污染结账清单
+      // 「本期是否已结转」的判定。（ensureVoucherKinds 只回填无 kind 的凭证，故这里必须挡。）
+      if (v && v.reverses) return undefined;
       var codes = {}, hasPL = false;
       es.forEach(function (e) {
         var c = String(e.code == null ? '' : e.code);
@@ -3330,7 +3503,7 @@
       // 结转损益凭证：含「本年利润 3103」或「利润分配 3104」分录的凭证。
       // 【为什么必须整张排除】结转凭证会把每个损益科目做反向分录结平（借收入 / 贷费用）：
       //   若把它的分录计入，取净额会得到 0 —— 这正是旧实现被迫改用「单边发生额」的原因。
-      //   但单边口径（收入只算贷方、费用只算借方）会连同**真实的红冲/冲减**一起漏掉，
+      //   但单边口径（收入只算贷方、费用只算借方）会连同**真实的红字冲销/冲减**一起漏掉，
       //   例如「借 待摊费用 / 贷 管理费用」这类冲减是真实发生的，必须抵减该费用。
       //   结果是利润表净利润与结转金额对不上（实测真实账套 6/8 个月偏差，最大 -47429.72）。
       // 正确做法：排除结转凭证后取【净额】—— 冲减被保留、结转被排除，与结转口径逐分一致。
@@ -3825,8 +3998,8 @@
             var act = String(e.cashActivity);
             var inId = act === 'investing' ? 'cf_invothin' : (act === 'financing' ? 'cf_finother' : 'cf_opother');
             var outId = act === 'investing' ? 'cf_invothp' : (act === 'financing' ? 'cf_finothp' : 'cf_opothp');
-            if (cr) add(bucket, inId, cr);       // 贷方发生额→该类流入(+)，负数红冲(-)
-            if (dr) add(bucket, outId, -dr);     // 借方发生额→该类流出(-)，负数红冲(+)
+            if (cr) add(bucket, inId, cr);       // 贷方发生额→该类流入(+)，负数红字冲销(-)
+            if (dr) add(bucket, outId, -dr);     // 借方发生额→该类流出(-)，负数红字冲销(+)
           });
           return;
         }
@@ -3836,14 +4009,14 @@
           var cr = num(e.cr), dr = num(e.dr);
           // 未映射或该方向未配置映射时，必须回落到「其他经营收/付」兜底，
           // 不得静默丢弃金额（否则 Σ三项净额 ≠ 现金净变动，恒等式被打破）。
-          // 金额判断用 != 0 而非 > 0：真实账套存在负数红冲分录（如客房收入贷方 -126），按 > 0 会整笔漏归、破坏恒等式；带符号归类后红冲自然抵减对应项目。
+          // 金额判断用 != 0 而非 > 0：真实账套存在负数红字冲销分录（如客房收入贷方 -126），按 > 0 会整笔漏归、破坏恒等式；带符号归类后红字冲销自然抵减对应项目。
           if (cr) {
             if (!m || !m.credit) add(bucket, 'cf_opother', cr);
-            else add(bucket, m.credit, cr);     // 贷方发生额→该项目流入(+)，负数为红冲(-)
+            else add(bucket, m.credit, cr);     // 贷方发生额→该项目流入(+)，负数为红字冲销(-)
           }
           if (dr) {
             if (!m || !m.debit) add(bucket, 'cf_opothp', -dr);
-            else add(bucket, m.debit, -dr);     // 借方发生额→该项目流出(-)，负数为红冲(+)
+            else add(bucket, m.debit, -dr);     // 借方发生额→该项目流出(-)，负数为红字冲销(+)
           }
         });
       };

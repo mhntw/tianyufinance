@@ -287,16 +287,20 @@
           <div class="voucher-toolbar">
             <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
             <button class="btn" id="btnSaveVoucher">保存</button>
-            <button class="btn" id="btnVoucherPrint" title="打印当前凭证">打印</button>
-            <button class="btn" id="btnBlankVoucher" title="打印空白凭证纸（手填用）">空白凭证</button>
-            <div class="vch-tpl-wrap">
-              <button class="btn ty-dropdown" id="btnVchTpl" title="凭证模板">模板</button>
-              <div class="vch-tpl-menu" id="vchTplMenu" hidden>
-                <a href="#" id="vchTplSaveItem">保存为凭证模板</a>
-                <a href="#" id="vchTplUseItem">从模板生成凭证</a>
+            <div class="vch-menu-wrap">
+              <button class="btn ty-dropdown" id="btnVchMore" title="更多凭证操作">更多</button>
+              <div class="vch-menu" id="vchMoreMenu" hidden>
+                <a href="#" id="vchMorePrintCurrent">打印当前凭证</a>
+                <a href="#" id="vchMorePrintBlank">打印空白凭证纸</a>
+                <div class="vch-menu-sep"></div>
+                <a href="#" id="vchMoreTplUse">从模板生成凭证</a>
+                <a href="#" id="vchMoreTplSave">保存为凭证模板</a>
+                <a href="#" id="vchMoreCopy">复制当前凭证</a>
+                <div class="vch-menu-sep" id="vchMoreSepAct"></div>
+                <a href="#" id="vchMoreReverse" class="vch-menu-red">红字冲销</a>
+                <a href="#" id="vchMoreDelete" class="vch-menu-red">删除凭证</a>
               </div>
             </div>
-            <button class="btn btn-danger" id="btnDeleteVoucher" hidden>删除</button>
           </div>
 
           <div class="voucher-head-row">
