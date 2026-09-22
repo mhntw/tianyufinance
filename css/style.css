@@ -58,13 +58,15 @@
   --fs-lg:  16px;   /* 卡片标题 / 稍大 */
   --fs-xl:  17px;   /* 区块标题 */
   --fs-2xl: 19px;   /* 页面主标题 */
-  /* ---- 滚动条：全站唯一规范（详见文末「全站滚动条」块）----
-     原先并存 6px 蓝 / 4px 灰 / 8px 蓝 / 系统默认 四种，同一屏里粗细颜色都不同。
-     现集中到这几个令牌：改这里一处，全站滚动条同步。 */
-  --sb-size: 8px;                        /* 全站统一宽度（不再按容器分档，一致性优先） */
-  --sb-thumb: var(--ty-deco);            /* 常态：纯装饰浅色（不承载文字，沿用装饰令牌） */
-  --sb-thumb-hover: var(--ty-text-3);    /* 悬停/拖动：加深一档，便于抓取 */
-  --sb-track: transparent;               /* 轨道透明，只在有内容滚动时才看见滑块 */
+  /* ---- 滚动条：2026-09-22 起**全部恢复系统默认**，不再有任何自定义 ----
+     历史（别重蹈覆辙）：
+       · 825684e 只对 .dl-main / .dl-body 两处做细条化（类选择器）—— 那是唯一被确认生效过的写法；
+       · v0.6.14 收口为「*::-webkit-scrollbar + 标准属性」双路径，实测在 **WKWebView（本应用运行时
+         的引擎）上不生效**（`*` + 该伪元素疑似不被 WebKit 支持，标准属性又被其绕开），
+         结果「规则写着、效果没有」，反而把原本生效的两处也弄没了（用户反馈"全部失效"）。
+     ⚠ 教训：滚动条样式**必须在真实运行引擎里验证** —— Chromium 里量到 8px 的绿灯不作数。
+     现状：一致性交给系统 —— macOS = 悬浮条（不占布局，0px），Windows = 常驻细条。
+     若将来仍要做，请先读本地 CHANGELOG 的 v0.6.14 条目，并从「类选择器 + 真机验证」起步。 */
   /* ---- 表格底色：三层（白 / 斑马纹淡蓝 / 浅蓝）----
      【2026-09-22】斑马纹原与表头**同色**（#e8f1ff），带来三个问题：
        ① 密排表格整片全行蓝底偏重，久看疲劳（实测反馈"斑马纹蓝色有点深了"）；
@@ -104,7 +106,9 @@
   --st-info-bg: var(--ty-border);   --st-info-bd: var(--ty-border);   --st-info-fg: var(--ty-blue-dark);
   --st-info-tag-bd: var(--ty-border);
   --st-tip-bg:  var(--st-warn-bg);  --st-tip-bd:  var(--st-warn-bg);  --st-tip-fg:  var(--ty-text-2);
-  --st-hl-bg:   var(--st-warn-bg);  --st-hl-bd:   var(--st-warn-bg);  --st-hl-fg:   #7A5B00;
+  /* （--st-hl-bg 已于 2026-09-22 删除：它是"金底高亮"的旧底，两个使用方（明细账当前科目、资产树选中行）
+       都已改为斑马纹浅蓝 --ty-row-alt，令牌不再被任何 var() 引用 —— 留着就是死令牌。） */
+  --st-hl-bd:   var(--st-warn-bg);  --st-hl-fg:   #7A5B00;
   --st-danger-bg: var(--ty-red-bg); --st-danger-fg: var(--ty-red);
   --st-ok-bg:   var(--ty-green-bg); --st-ok-fg:   var(--ty-green);
   --st-panel-bg: var(--ty-border);  --st-panel-bg2: #e8f1ff; --st-panel-bd: var(--ty-content-bg);
@@ -124,7 +128,14 @@
   --nav-w-active: var(--nav-w);   /* 当前侧栏宽度（JS 在收起时切为 collapsed 值） */
   --ty-white: #fff;   /* 纯白（背景/文字/边框通用），收敛原先散落的 #fff 字面量 */
  /* 纯黑（阴影/描边等），收敛原 6 处 #000 */
-  --ty-red-bg: #fceded;     /* 危险/警示浅底（错误提示框、差异行） */
+  /* 【2026-09-22】原 #fceded 粉底 → **并入全站警示浅底**（--st-warn-bg #fff8e1）。
+     原因：粉底与软件蓝灰主调不搭（反馈"粉色提示条和整体颜色不搭配"），且全站警示本就该一个样子。
+     ⚠ 保留本令牌名是为了**不动那 13 处引用**（删除按钮悬停、凭证借贷不平衡、已冲销标记、
+       结账检查失败项、操作日志重开行/删除原因、金额位格元角底…）—— 改这一处即全站同步，
+       以后调警示底只改 --st-warn-bg。
+     ⚠ 红**字** --ty-red（#cf2e2e）**不动**：财务上红字＝负数是行业惯例（红字冲销/负数金额），
+       它在浅黄底上的对比度为 4.83:1，仍达标。 */
+  --ty-red-bg: var(--st-warn-bg);   /* 危险/警示浅底（错误提示框、差异行） */
   --ty-green-bg: #e6f4e6;   /* 成功/通过浅底（余额平、状态标签） */
 }
 
@@ -579,9 +590,10 @@ img, svg { display: block; max-width: 100%; }
   gap: 16px;
   flex: 1;
   overflow-x: auto;
-  scrollbar-width: none; /* Firefox */
+  /* （2026-09-22 移除：原先在此刻意隐藏滚动条。按"全部恢复系统默认"的要求一并去掉。
+     若标签栏横滑时出现滚动条影响观感，只在此处恢复 `display:none` 即可 ——
+     它属于"标签栏不露条"的刻意设计，与"滚动条美化"不是一回事。） */
 }
-.tab-bar::-webkit-scrollbar { display: none; }
 
 /* ===================== 空状态组件 ty-empty（复刻） ===================== */
 .ty-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 0; }
@@ -1813,7 +1825,7 @@ label.req::before {
   width: 120px;
 }
 .history-table td.h-before {
-  color: #b91c1c;
+  color: var(--ty-red);   /* 原硬编码 #b91c1c —— 收进 --ty-red（同一色值两处维护，调色必漏一处） */
   text-align: right;
 }
 .history-table td.h-arrow {
@@ -2058,7 +2070,21 @@ label.req::before {
   width: 1096px;
   border-collapse: separate;
   border-spacing: 0;
-  border: 1px solid var(--grid-line);
+  /* 【2026-09-22】外框用 **outline**、不用 border —— 差 2px，决定横滚条在不在。
+     本表是定宽单据：各列定宽之和 = 1096，金额列是 11 格位格 + letter-spacing:9px 的
+     **像素级对齐**，一旦压缩数字就会跳出格子，故不可自适应。
+     但 border 会**额外计入表格占宽**：1096(列宽) + 2(左右边框) = 1098 > 容器可用 1096
+     → 哪怕窗口刚好放得下，也会凭空多出一条横向滚动条（实测占 15px）。
+     实测三种改法只有这条有效：
+       ① width 1096→1094：无效（table-layout:fixed 下各列定宽之和优先，表格不缩）
+       ② border→outline：有效（表格回到 1096 = 容器可用宽）← 采用
+       ③ width:100% + min-width:1096：无效（min-width 1096 + 边框 2 = 1098）
+     outline **不占布局**，故：窗口够宽 → 无横滚条；窗口真窄于 1096 → 仍横滚（保底不丢内容）。
+     ⚠ 别改回 border；也别用 overflow-x:hidden —— 那会让窄窗口下的金额列永远看不到。
+     另：本表同时带 .grid 类，全局 .grid 有 border:1px —— 必须显式 border:none 压掉，
+     否则边框照样回来（第一次改就漏了这条，实测表格仍是 1098）。 */
+  border: none;
+  outline: 1px solid var(--grid-line);
 }
 .voucher-grid thead th {
   padding: var(--grid-row-pad);
@@ -2380,10 +2406,23 @@ label.req::before {
 }
 
 .open-check.warn {
-  color: var(--ty-red);
-  background: var(--ty-red-bg);
+  /* 【2026-09-22】并入全站「警示」语义色，不再用粉底红字：
+     原 #fceded 粉底 + #cf2e2e 红字与软件蓝灰主调不搭（反馈"粉色提示条和整体颜色不搭配"）。
+     现与 .k-tip.warn（报表/在建提示）、.status-tag.warn、首页备份提示**同族**，全站警示一个样子。
+     取值全部走 --st-* 语义令牌，不引入新颜色。 */
+  color: var(--st-hl-fg);        /* #7A5B00，浅黄底 5.95:1 ✓ */
+  background: var(--st-warn-bg); /* #fff8e1 */
+  /* 【2026-09-22】下边框**去掉**（连基类 .open-check 那道浅灰线一起去掉）：
+     底色本身已经把提示条与下面的表格分开，再压一条线反而显重，且橙线（--st-warn-bd = #FA8C16）
+     在浅黄底上过跳 —— 用户反馈"去掉下面那一条深色横线"。 */
+  border-bottom: none;
   font-weight: 400;
 }
+/* ⚠ 顺带修一个**原本就有**的缺陷：这条提示的一行文字其实是链接（.rc-toggle，蓝 #2f95ff）——
+   它在旧粉底上只有 2.69:1、换浅黄底后也只有 2.88:1，**都不达标**（WCAG 正文 4.5:1）。
+   浅底上必须用深一档的蓝 --ty-blue-dark（#3a66d4，浅黄底 4.91:1 ✓）。 */
+.open-check.warn .rc-toggle { color: var(--ty-blue-dark); }
+.open-check.warn .rc-toggle:hover .rc-tip { color: var(--ty-blue-dark); }
 
 /* ---------- 对账提示：摘要常驻 + 明细折叠 ----------
  * 【为什么】固定资产卡片页的这个提示挂在表格**上方**，逐笔明细一铺开就有十几行，
@@ -3600,6 +3639,11 @@ label.req::before {
   border-radius: 10px;
   font-size: var(--fs-md);
   font-weight: 400;
+  /* 【2026-09-22】底色改为**全站统一主蓝**，不再逐项指定颜色（原先 24 项十几种色，反馈"太杂太复杂"）。
+     背景从内联 style 收回 CSS：以后调色只改这一处，不会再出现"同一色值散落 20 多处、调色必漏"。
+     ⚠ 用深一档的 --ty-blue-dark 而非 --ty-blue：圆点里是**白字**，白字在 #2f95ff 上仅 3.06:1
+       （不达标），在 #3a66d4 上为 5.21:1 ✓。js/app.js 的 QUICK_MENU_ITEMS 已不再带 color 字段。 */
+  background: var(--ty-blue-dark);
   color: var(--ty-white);
   box-shadow: none;
   margin-top: 4px;
@@ -6357,44 +6401,21 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .dl-panel-closed .dl-panel-restore { display: flex; align-items: center; justify-content: center; }
 
 /* ============================================================
- * 全站滚动条 —— 唯一规范（2026-09-22）
- * 【为什么要收这一刀】原先全站**并存四种**滚动条：
- *     6px 蓝（侧栏 .sidenav）／4px 灰（.arap-items，且 Firefox 侧刻意透明）／
- *     8px 蓝（明细账 .dl-main / .dl-body）／**系统默认**（其余十余处 ——
- *     其中就包括用户最常看的主滚动区 .page.active 与 .scroll-area、各类弹层）。
- *   后果：同一个窗口里两根滚动条粗细、颜色、圆角都可能不同，切页时滚动条还会跳变。
- * 现用 * 选择器一条规则覆盖全部元素 —— 好处是**新增任何滚动容器都自动同款**，
- *   不用再回头补选择器（否则又会退化成"各页各写一套"）。
- * ⚠ 三条刻意的选择，改之前请先读：
- *   1) **两条路径都写**（标准 scrollbar-width/color ＋ ::-webkit-scrollbar），因为两条路**互不完全覆盖**：
- *       - ::-webkit-scrollbar 只能画「经典滚动条」（占布局宽度）；而 macOS 默认是
- *         **悬浮滚动条（overlay）**——那条又粗又黑、盖在内容上的条就是它，它不吃这一路。
- *         实测反馈「卡片滚动条还是大黑条」即由此而来。
- *       - 标准属性 scrollbar-color 能**直接给悬浮滚动条上色**（macOS / Safari 18.2+、Chromium 121+、Firefox 均支持），
- *         这正是治「黑条」的那一味药。
- *     代价：Chromium 121+ 一旦设了标准属性，就会改用标准绘制并**忽略 ::-webkit-scrollbar**
- *     （圆角与悬停态失效）。取舍是明确的——先保证"不是黑条、且全站一致"，圆角是次要的。
- *   2) 宽度**不再按容器分档**（侧栏原 6px、明细账 8px）：分档就是不一致的来源，一致性优先。
- *   3) --sb-size 只在走 ::-webkit-scrollbar 那条路时生效（标准路径下宽度由 thin 决定）；
- *      两条路的颜色**同源**，所以即便引擎不同，看到的也是同一套颜色。
- *   例外：.tab-bar 是刻意隐藏滚动条（标签栏横滑不露条），其类选择器特异性高于 `*`，照旧生效。
- * 取值：滚动条属纯装饰、不承载文字 —— 常态 --ty-deco（浅）、悬停 --ty-text-3（深一档），
- *   与色板"装饰 / 辅助"两档同源，不引入新颜色。
- *   顺带修掉旧缺陷：明细账原先 hover 改成 --ty-content-bg（比常态更浅 —— 悬停反而变淡）；
- *   侧栏滑块用 --ty-blue-2，与自身底色同族、在浅蓝底上几乎看不见。
+ * 滚动条 —— 全部恢复系统默认（2026-09-22）
+ *
+ * 这里原先是「全站滚动条唯一规范」（*::-webkit-scrollbar ＋ 标准属性双路径），
+ * 现**整块移除**，理由与教训见 :root 里「滚动条」那节的注释，要点如下：
+ *   1. 本应用运行在 WKWebView（WebKit）。`*::-webkit-scrollbar` 在 Chromium 里生效
+ *      （实测 width=8px、占位 8px），但在 WebKit 上**不生效** ——
+ *      历史上唯一被确认生效的写法是**类选择器**（825684e 的 .dl-main / .dl-body）。
+ *   2. 教训不只是"这条规则不行"，而是**验证环境 ≠ 运行环境**：
+ *      我只在 Chromium 里验过就交付，于是出现"规则写着、效果没有"的半成品状态。
+ *      凡涉及渲染引擎差异的改动（滚动条、字体、输入法、打印…），必须在真机引擎上验。
+ *   3. 回收的代价：一致性改由**系统**保证 —— macOS 悬浮条（不占布局 0px）、
+ *      Windows 常驻细条（约 15–17px）。这也顺带让表格可用宽度多出 8–13px。
+ *
+ * 若将来仍要做：起点是「类选择器 + 真机验证」，不要再用 `*`。
  * ============================================================ */
-/* 标准路径：给**悬浮滚动条**上色（治"大黑条"的关键；WKWebView / 新版 Chromium / Firefox 都认）。 */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--sb-thumb) var(--sb-track);
-}
-/* 兼容路径：老 WebKit / 未实现标准属性的 Chromium 走这一路（经典滚动条，可圆角、可悬停）。
-   两条路颜色同源，故无论落到哪条，观感一致。 */
-*::-webkit-scrollbar { width: var(--sb-size); height: var(--sb-size); }
-*::-webkit-scrollbar-track { background: var(--sb-track); }
-*::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: calc(var(--sb-size) / 2); }
-*::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); }
-*::-webkit-scrollbar-corner { background: var(--sb-track); }
 
 /* 打印时隐藏快速切换栏，只出主表 */
 @media print {

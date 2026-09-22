@@ -871,43 +871,43 @@
   /** 所有可选菜单项（按功能分类） */
   var QUICK_MENU_ITEMS = [
     { group: '凭证', items: [
-      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',        color: '#5582f3' },
-      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query',  color: '#06B6D4' },
-      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum',    color: '#8B5CF6' },
+      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher' },
+      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query' },
+      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum' },
     ]},
     { group: '账簿', items: [
-      { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger',  color: '#6366F1' },
-      { key: 'general-ledger',  name: '总账',         page: 'general-ledger', color: '#F97316' },
-      { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance',  color: '#F59E0B' },
-      { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger',  color: '#EC4899' },
+      { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger' },
+      { key: 'general-ledger',  name: '总账',         page: 'general-ledger' },
+      { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance' },
+      { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger' },
     ]},
     { group: '报表', items: [
-      { key: 'report-balance',  name: '资产负债表',   page: 'report-balance', color: '#EF4444' },
-      { key: 'report-profit',   name: '利润表',       page: 'report-profit',  color: '#EC4899' },
-      { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow',color:'#06B6D4' },
-      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',color:'#E11D48' },
-      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',color: '#8B5CF6' },
+      { key: 'report-balance',  name: '资产负债表',   page: 'report-balance' },
+      { key: 'report-profit',   name: '利润表',       page: 'report-profit' },
+      { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow' },
+      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax' },
+      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail' },
     ]},
     /* 标准：结账（独立页面，无子菜单，含期末处理/反结账 Tab） */
     { group: '结账', direct: true, page: 'settle', items: [
-      { key: 'settle-close', name: '期末处理', page: 'settle', color: '#0EA5E9' },
+      { key: 'settle-close', name: '期末处理', page: 'settle' },
     ]},
     { group: '资产', items: [
-      { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card',          color: '#14B8A6' },
-      { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',      color: '#0EA5E9' },
-      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',   color: '#6366F1' },
+      { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card' },
+      { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum' },
+      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail' },
     ]},
     { group: '工资', items: [
-      { key: 'salary-table', name: '工资',   page: 'salary',           color: '#E11D48' },
-      { key: 'salary-statistics', name: '工资统计', page: 'salary-statistics', color: '#F97316' },
+      { key: 'salary-table', name: '工资',   page: 'salary' },
+      { key: 'salary-statistics', name: '工资统计', page: 'salary-statistics' },
     ]},
     { group: '设置', items: [
-      { key: 'account-setup',       name: '科目',             page: 'subject',             color: '#64748B' },
-      { key: 'init-balance',        name: '期初余额',     page: 'opening',             color: '#0891B2' },
-      { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init',       color: '#0D9488' },
-      { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project',    color: '#059669' },
-      { key: 'system-settings',     name: '系统设置',         page: 'system-settings',     color: '#475569' },
-      { key: 'operation-logs',      name: '操作日志',         page: 'operation-logs',      color: '#7C3AED' },
+      { key: 'account-setup',       name: '科目',             page: 'subject' },
+      { key: 'init-balance',        name: '期初余额',     page: 'opening' },
+      { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init' },
+      { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project' },
+      { key: 'system-settings',     name: '系统设置',         page: 'system-settings' },
+      { key: 'operation-logs',      name: '操作日志',         page: 'operation-logs' },
     ]},
   ];
 
@@ -1014,7 +1014,9 @@
       a.setAttribute('data-page', item.page);
       // 用名称首字作为图标文字
       var ch = item.name.charAt(0);
-      a.innerHTML = '<span class="qk-circle" style="background:' + item.color + '">' + ch + '</span><span class="qk-label">' + item.name + '</span>';
+      // 圆点底色**不再内联**（原为 item.color，24 项十几种色，反馈"太杂太复杂"）——
+      // 统一交给 CSS 的 .qk-circle（--ty-blue-dark），改色只改样式表一处。
+      a.innerHTML = '<span class="qk-circle">' + ch + '</span><span class="qk-label">' + item.name + '</span>';
       grid.appendChild(a);
     });
   }
