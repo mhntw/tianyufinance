@@ -11,7 +11,8 @@
  *   「测试写了不跑，等于没写」的同构问题：跑了不等于覆盖了。
  *
  * 【覆盖范围】红字口径 / 双向关联 / 摘要口径 / 期间落点 / 防重复 / 四类来源拦截 /
- *   期间与入参校验 / 红冲凭证被删后可再冲 / 可对红字凭证再冲销（撤销冲销）/ 返工提示的开关。
+ *   期间与入参校验 / 红冲凭证被删后可再冲 / 可对红字凭证再冲销（撤销冲销）/ 返工提示的开关 /
+ *   红冲关联的只读锁定与「删红字即解锁」唯一出口（防镜像破裂、防互锁死循环）。
  *
  * 【数据隔离】全程在【内存构造】的账套上跑，不读不写任何真实账套目录：
  *   persist / addLog / backupNow 均被 mock 成空函数，零 fs 写操作
@@ -385,6 +386,40 @@ console.log('【14】「需重新结转」提示 —— 只在真正打破已结
   const rC = S.reverseVoucher('记-1@2026-08', { month: TARGET, reason: '划转取消' });
   ck('14.3 已结转但红冲未动损益 ⇒ 不提示（避免噪音）',
     !!(rC && rC.ok === true && rC.hint === null), rC && JSON.stringify(rC.hint));
+}
+
+/* ══════════ 15. 红冲关联的只读锁定与「删红字即解锁」出口 ══════════ */
+console.log('');
+console.log('【15】红冲关联锁定（防镜像破裂）与唯一出口（防死循环）');
+{
+  const st = mkBook();
+  const orig = putVoucher(st, { no: '1', summary: '销售收入', entries: saleEntries('销售收入', 500) });
+  const r = S.reverseVoucher(orig.id, { month: TARGET, reason: '科目选错' });
+  const red = r.voucher;
+  const fake = { entries: [{ code: '1001', dr: 1, cr: 0 }, { code: '1002', dr: 0, cr: 1 }] };
+
+  const e1 = S.updateVoucher(red.id, fake);
+  ck('15.1 红字冲销凭证本身不可编辑（否则不再是原凭证的镜像）', e1.ok === false, e1.msg);
+  const e2 = S.updateVoucher(orig.id, fake);
+  ck('15.2 已被红冲的原凭证不可编辑（否则账上「原+红字」不再相抵）', e2.ok === false, e2.msg);
+  const d3 = S.removeVoucher(orig.id, '误删');
+  ck('15.3 已被红冲的原凭证不可删除（否则红字的反向引用悬空）', d3.ok === false, d3.msg);
+
+  // 出口：删红字凭证 —— 单向解锁、链条必然终止。
+  // 【切勿】把出口改成「对红字凭证再冲一次来撤销」：那会 红1→红2→红3… 无限套娃，永远解不开。
+  ck('15.4 出口存在：红字凭证可删除', S.removeVoucher(red.id, '撤销红冲').ok === true);
+  ck('15.5 删红字后原凭证恢复可编辑', S.updateVoucher(orig.id, { entries: saleEntries('销售收入', 500) }).ok === true);
+  const r2 = S.reverseVoucher(orig.id, { month: TARGET, reason: '重新红冲' });
+  ck('15.6 删红字后可再次红冲（锁按实际凭证重建，不残留）', !!(r2 && r2.ok === true), r2 && r2.msg);
+  ck('15.7 再次红冲后原凭证又被锁（幂等）', S.removeVoucher(orig.id, '误删').ok === false);
+
+  // 软删的红字凭证【不】构成锁（与防重复同口径：只认账上活凭证）
+  const st2 = mkBook();
+  const o2 = putVoucher(st2, { no: '1', summary: '销售收入', entries: saleEntries('销售收入', 500) });
+  const rr = S.reverseVoucher(o2.id, { month: TARGET, reason: 'x' });
+  S.removeVoucher(rr.voucher.id, '撤销');
+  ck('15.8 红字凭证被软删后，原凭证立即可编辑（锁已解除）',
+    S.updateVoucher(o2.id, { entries: saleEntries('销售收入', 500) }).ok === true);
 }
 
 /* ══════════ 汇总 ══════════ */

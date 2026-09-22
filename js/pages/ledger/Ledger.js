@@ -65,6 +65,10 @@ const periodRangeValues = H.periodRangeValues || function (prefix) {
 
 // 利润表金额跳转来的总账科目过滤（Set(code) | null）：仅显示对应编码，跳转目标强制显示
 var glFilterCodes = null;
+// 跳转高亮开关：仅当过滤是【从别处跳转进来】时置 true（首页指标卡 / 利润表行 → 总账），
+// 此时给过滤后剩余的行整体加 .row-hl（与利润表同款：浅蓝底 + 左侧蓝条），常驻到「清除筛选」。
+// 手动用「科目」筛选框过滤时置 false —— 手动筛选只过滤、不加亮，保持原有行为不被改变。
+var glJumpHl = false;
 
 // 金额点击触发：按科目编码跳总账并定位
 // codes: 科目编码数组（多科目行全部带入）
@@ -82,6 +86,7 @@ globalThis.__glJumpTo = function (codes, month) {
   }
   if (globalThis.goPage) globalThis.goPage('general-ledger');
   glFilterCodes = new Set((codes || []).map(String)); // 跳转来的编码始终有效，直接写入过滤集合
+  glJumpHl = true;                                    // 跳转进来的：过滤 + 高亮（见 renderGl）
   refreshGl();
 };
 
@@ -108,6 +113,7 @@ if (!globalThis.__glFilterClearBound) {
     if (!a) return;
     e.preventDefault();
     glFilterCodes = null;
+    glJumpHl = false;                 // 清除筛选时一并撤掉跳转高亮（两者生命周期绑定）
     var gi = document.getElementById('glCode');
     if (gi) gi.value = '';
     refreshGl();
@@ -127,6 +133,7 @@ function glSubjectPicker() {
         var gi = document.getElementById('glCode');
         if (gi) gi.value = code; // 框内显示当前选中（重开弹层时与录凭证同款：先看到当前科目）
         glFilterCodes = glCodesFor(code);
+        glJumpHl = false;             // 手动筛选：只过滤不加亮（与跳转来的过滤区分开）
         refreshGl();
       }
     });
@@ -185,8 +192,11 @@ function renderGl(month) {
     var obDir = _ob.dir, obSigned = _ob.amount;
     var endDir = _end.dir, endSigned = _end.amount;
     // Row 1: 期初余额（前两列 rowspan=3；编码列不缩进，名称列缩进——与余额表统一）
+    // 跳转高亮：过滤态下渲染出来的行本就是全部命中行（非命中的在上面已 return），
+    // 故给该科目的 3 行（期初/本期/本年累计）整体标记，样式直接复用利润表的 .row-hl。
+    var hlCls = (glJumpHl && glFilterCodes) ? ' row-hl' : '';
     var tr1 = document.createElement('tr');
-    tr1.className = 'gl-subject';
+    tr1.className = 'gl-subject' + hlCls;
     tr1.innerHTML =
       '<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="' + escAttr(r.code) + '">' + escHtml(r.code) + '</a></td>' +
       '<td rowspan="3" class="gl-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) + '</td>' +
@@ -199,7 +209,7 @@ function renderGl(month) {
     tb.appendChild(tr1);
     // Row 2: 本期合计
     var tr2 = document.createElement('tr');
-    tr2.className = 'gl-sub';
+    tr2.className = 'gl-sub' + hlCls;
     tr2.innerHTML =
       '<td class="gl-period">' + escHtml(month) + '</td>' +
       '<td class="gl-seg">本期合计</td>' +
@@ -210,7 +220,7 @@ function renderGl(month) {
     tb.appendChild(tr2);
     // Row 3: 本年累计
     var tr3 = document.createElement('tr');
-    tr3.className = 'gl-sub gl-last';
+    tr3.className = 'gl-sub gl-last' + hlCls;
     tr3.innerHTML =
       '<td class="gl-period">' + escHtml(month) + '</td>' +
       '<td class="gl-seg">本年累计</td>' +

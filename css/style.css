@@ -40,7 +40,7 @@
      现加深为 #6E7681（白底 4.59:1 ✓）。规则：**凡承载文字一律不低于本值**；
      箭头 / 分隔线 / 虚线框等纯装饰改用 --ty-deco（保留原浅色外观，零视觉变化）。 */
   --ty-text-3:      #69737f;   /* 三级/占位文字色 白底 4.82:1（WCAG 4.5:1 达标） */
-  --ty-deco:        #99A1AC;   /* 纯装饰：下拉箭头 / 分隔线 / 虚线框（不承载文字） */
+  --ty-deco:        #99A1AC;   /* 装饰/禁用：下拉箭头 / 分隔线 / 虚线框 / 禁用态文字 */
   --ty-muted:       var(--ty-text-3);
   /* 首页财务指标卡：卡片头部标题/控件与内容区的统一横向边距。
      改此处一处，所有卡片头部 + 内容区左右留白全局同步（原各规则硬编码 20px/28px，易漏）。 */
@@ -3835,65 +3835,24 @@ label.req::before {
   outline: none;
 }
 
-/* 费用卡片公式行：两行布局
- *   销售费用 + 管理费用 + 财务费用
- *   ¥8.00    +     ¥12.00   +  ¥2.00
- * flex-wrap: wrap 自动处理多子项：空间够一行排完，不够折两行，
- * 卡片高度有限时 overflow 兜底裁剪（和卡片整体风格一致）。
- * 每个 cell 固定 min-width 保证折行后不会被挤成一团。
+/* 费用卡片子项行：改用与「预计可用资金」卡片下方三项相同的 .fv2 行式排版
+ *   销售费用                    ¥8.00
+ *   管理费用                   ¥12.00
+ *   财务费用                    ¥2.00
+ * 容器只负责纵向堆叠与撑满卡宽（.cost-card .detail 是 align-items:flex-start，
+ * 容器不撑满会让 .fv2 的 space-between 失效、标签与金额挤在一起）；
+ * 行距直接复用 .fv2 自带的 margin-top:16px，与「预计可用资金」卡片完全一致。
+ * 已废弃「标签在上 + 金额在下 + 加号分隔」的 .formula-cell / .formula-sep 及其全部规则。
  */
 .formula-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 2px;
-  margin-top: 4px;
-  font-size: var(--fs-2xs);
-  line-height: 1.4;
+  display: block;
+  width: 100%;
 }
-.formula-row .formula-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  padding: 1px 4px;
-  border-radius: 3px;
-  transition: background-color 0.15s ease;
-  flex: 0 0 auto;
-  min-width: 0;
-}
-.formula-row .formula-cell .formula-label {
-  color: var(--ty-text-3);
-  font-size: var(--fs-2xs);
-  line-height: 1.2;
-  white-space: nowrap;
-}
-.formula-row .formula-cell .formula-amt {
-  color: var(--ty-text, var(--ty-text-2));
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-xs);
-  line-height: 1.3;
-  white-space: nowrap;
-}
-.formula-row .formula-cell.amt-link {
-  cursor: pointer;
-}
-.formula-row .formula-cell.amt-link:hover {
-  background-color: var(--ty-blue-3);
-}
-.formula-row .formula-cell.amt-link:hover .formula-label,
-.formula-row .formula-cell.amt-link:hover .formula-amt {
+/* 可点行（点击跳利润表对应行）：外观沿用 .fv2，只补 hover 变蓝；
+   .fv2-f / .fv2-v 各自带 color，故必须显式覆盖子元素，否则 hover 只有下划线不变色。 */
+.formula-row .fv2.amt-link:hover .fv2-f,
+.formula-row .fv2.amt-link:hover .fv2-v {
   color: var(--ty-blue);
-}
-.formula-row .formula-sep {
-  color: var(--ty-text-3);
-  font-size: var(--fs-2xs);
-  font-weight: 500;
-  line-height: 2.5;
-  user-select: none;
-  flex: 0 0 auto;
-  padding: 0 1px;
 }
 /* 财务指标标题栏：左「财务指标」+ 右期间选择（flex 两端对齐）。
    期间下拉从卡片头移到此处后，卡片头只剩标题 —— 6 列窄卡下标题不会再被右侧控件挤掉。 */
@@ -4540,8 +4499,24 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 .search-item .si-sub { font-size: var(--fs-xs); color: var(--ty-muted); }
 .search-item .si-amt { color: var(--ty-red); font-family: var(--ty-font); }
 .search-empty { padding: 24px 12px; text-align: center; color: var(--ty-muted); font-size: var(--fs-sm); }
-/* 搜索跳转高亮行（定位行：浅蓝底） */
-.row-hl { background: var(--ty-blue-2) !important; box-shadow: inset 3px 0 0 var(--ty-blue); }
+/* 定位/命中行高亮（利润表跳转 / 总账跳转 / 全局搜索 三处共用同一套）
+   下面三点缺一个就会「看不出来」，勿随意回退：
+   ① 底色改用琥珀底 --st-warn-bg，且保留 !important。
+      原实现用 --ty-blue-2，而它与表格悬停色 --ty-row-hover 是同一个值 #e8f1ff ——
+      点完跳转看过去，和「鼠标正好压在那行」完全一样，等于没高亮。
+   ② 特异性必须压过 .grid tbody tr:hover（0,2,2 + !important），否则悬停会把高亮盖掉。
+      故这里显式写 .grid tbody tr.row-hl（同为 0,2,2，且本规则在文件中更靠后 → 生效）。
+   ③ 左侧定位条改为首列 td 上的 inset box-shadow。直接画在 <tr> 上的 box-shadow
+      WebKit 不可靠、多数不渲染 —— 这正是原来那条 3px 蓝条看不见的原因；
+      用 inset 而非 border-left，是为了不挤动首列文字、与表头保持左对齐。 */
+.row-hl,
+.grid tbody tr.row-hl { background: var(--st-warn-bg) !important; }
+tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
+/* 总账特例：每个科目渲染 3 行（期初/本期/本年累计），其中只有第 1 行的「编码·名称」格带
+   rowspan=3、真正贴住表格左边缘；第 2/3 行的首格是「期间」列，起点在表格中间 ——
+   若不排除，会在表格中间多画出两条橙线。排除不带 rowspan 的首格即可：
+   带 rowspan 的那一格纵跨 3 行，本身就是一条连续的定位竖线。 */
+.gl-grid tr.row-hl > td:first-child:not([rowspan]) { box-shadow: none; }
 
 /* ============================================================
  * 凭证审核状态标签 / 现金流量
@@ -6172,8 +6147,8 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-range-hint {
   font-size: var(--fs-xs); color: var(--ty-blue); padding: 4px 0 8px; text-align: center;
 }
-.ty-period-cell.disabled { color: var(--ty-content-bg); background: var(--ty-content-bg); cursor: not-allowed; }
-.ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: var(--ty-content-bg); }
+.ty-period-cell.disabled { color: var(--ty-deco); background: var(--ty-content-bg); cursor: not-allowed; }
+.ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: var(--ty-deco); }
 
 /* ============ 浏览器存储模式横幅（防丢数据告警） ============ */
 .server-banner {

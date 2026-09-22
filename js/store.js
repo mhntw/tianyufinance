@@ -1643,6 +1643,15 @@
       this.state.vouchers.forEach(function (x, i) { if (x.id === id) idx = i; });
       if (idx < 0) return { ok: false, msg: '凭证不存在' };
       if (this.state.vouchers[idx].deleted === 'y') return { ok: false, msg: '凭证已删除，请先还原再修改' };
+      // 红字冲销是「原凭证 ⇄ 红字凭证」只读镜像：一侧改了另一侧就对不上，故两侧都锁编辑。
+      // 解锁出口【只有一个方向】——删除红字凭证（见 removeVoucher），链条必然终止，不会互锁。
+      if (this.state.vouchers[idx].reverses) {
+        return { ok: false, msg: '红字冲销凭证不可修改。如需更正，请先删除本红字凭证，再修改原凭证。' };
+      }
+      var _rvUpd = this._liveReverseOf(id);
+      if (_rvUpd) {
+        return { ok: false, msg: '该凭证已被「' + (_rvUpd.word || '记') + '-' + _rvUpd.no + '」红字冲销，不可修改；请先删除该红字凭证。' };
+      }
       // 借贷平衡校验（与 addVoucher 口径完全一致）：修改也不能改成不平衡
       var bal = this.voucherBalance(v.entries);
       if (!bal.balanced) {
@@ -1841,6 +1850,14 @@
       if (v && v.payroll) hits.push('工资');
       return hits;
     },
+    // 查「活」的红字冲销凭证（软删的不算，与 reverseVoucher 防重复同口径）。
+    // 红字冲销建立的是「原凭证 ⇄ 红字凭证」只读镜像：原凭证变了、红字不再相抵；
+    // 原凭证删了、红字的反向引用悬空。故两侧锁编辑/删除，解锁只走「删红字凭证」一条路。
+    _liveReverseOf: function (id) {
+      return (this.state.vouchers || []).filter(function (x) {
+        return x.reverses === id && x.deleted !== 'y';
+      })[0] || null;
+    },
     // reason：删除原因（审计留痕）。
     // 【为什么是可选参数、且本层不强制】本方法有三类调用方，其中两类是【系统调用】，不该被要求填原因：
     //   · 人工删除（凭证页单张 / 批量）→ UI 层强制必填后传入；
@@ -1866,6 +1883,12 @@
       if (v.deleted === 'y') return { ok: false, msg: '凭证已删除' };
       if (this.isPeriodClosed(voucherMonth(v)))
         return { ok: false, msg: '该凭证所在月份已结账，不可删除' };
+      // 已被红冲的原凭证不可删：否则红字凭证的 reverses 会指向一张已删凭证，成了悬空引用。
+      // 出口：先删除红字凭证 —— 单向解锁，与「删掉红字凭证即可再冲」对称，不构成互锁。
+      var _rvDel = this._liveReverseOf(id);
+      if (_rvDel) {
+        return { ok: false, msg: '该凭证已被「' + (_rvDel.word || '记') + '-' + _rvDel.no + '」红字冲销，不可删除；请先删除该红字凭证。' };
+      }
       // 财务严谨：校验凭证是否被业务单据引用（固定资产/工资等），有引用则禁删
       var ref = this._voucherRefs(id);
       if (ref && ref.length) {
@@ -1943,6 +1966,15 @@
      * 【红字口径】沿用本软件统一的「负数同方向」（账套 meta.redStyle === 'native'）：
      *   借贷方向【不变】、金额【取负】。刻意不用「借贷对调」—— 那会把冲销变成一笔新业务，
      *   既改变发生额方向，也让「冲销」与「更正」在账上无法区分。
+     *
+     * 【红冲红字凭证的规则】红字冲销凭证本身也是正式记账凭证，【一律允许】被再次红字冲销
+     *   （《会计基础工作规范》第五十一条对红字凭证同样适用；禁止会导致「红字凭证所在期间
+     *   一旦结账，就再也无法合规撤销」，只剩违规的反结账一条路）。
+     *   撤销一次冲销有两条路径，按红字凭证所在期间是否结账自动分流，任一时刻路径唯一：
+     *     · 该红字凭证所在期间【未结账】→ 直接删除它（软删、可还原、留日志），最简；
+     *     · 该红字凭证所在期间【已结账】→ 只能在当前期间对它再做一次红字冲销（跨期撤销）。
+     *   链条沿 reverses 单向回退（被冲者锁定，直到其冲销凭证被删除），长度有限、可终止、不互锁。
+     *   摘要沿用统一口径继续叠加（不特判），确认框会按上述分流给出「可删除」的引导。
      *
      * 【为什么 month 必须由调用方传入】期间口径的【唯一实现】是 app.js 的 currentPeriod()
      *   （最近已结账月 + 1；从未结账则取最近有凭证月；上限当前自然月）。
@@ -2025,7 +2057,7 @@
       })[0];
       if (exist) {
         return { ok: false, msg: '该凭证已被 ' + (exist.word || '记') + '-' + exist.no + ' 红字冲销，请勿重复冲销'
-          + '（若要撤销这次红字冲销，可对其红字冲销凭证再做一次红字冲销）' };
+          + '（若要撤销这次红字冲销，请删除该红字冲销凭证）' };
       }
 
       // 摘要口径（对齐金蝶）：「冲销 + 期间(YYYYMM) + 原凭证字号 + 原摘要」

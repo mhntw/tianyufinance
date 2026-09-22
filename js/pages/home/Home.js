@@ -290,33 +290,22 @@ function fillMetrics() {
   setEl('bExpense', signed(feeAmt));
   setEl('feeToIncome', revForFee ? (feeAmt / revForFee * 100).toFixed(1) + '%' : '--%');
   hintPlMissing(plFee.expense, 'bExpense', '期间费用（销售+管理+财务）');
-  // 费用公式行：把 plFee.expense.formula 渲染成
-  // "销售费用 ¥12万 + 管理费用 ¥8万 + 财务费用 ¥2万" 的可点链接
-  // 用户改利润表规则（增删费用行）时自动跟随，老账套无 periodExpenseTotal 时 fallback 也有
+  // 费用子项：格式与「预计可用资金」卡片下方的三项完全一致（.fv2）——
+  // 一行一项、标签在左、金额在右，不再用「标签在上 + 金额在下 + 加号分隔」的相加式排版。
+  // 取数来源不变：仍是利润表费用公式行（用户增删费用行时自动跟随），
+  // 可点行照旧带 amt-link + data-pl-rows（点进去高亮利润表对应行）。
   var formulaEl = $('feeFormula');
   if (formulaEl && plFee.expense.formula && plFee.expense.formula.length) {
-    // 两行布局：标签在上、金额在下，加号对齐
-    // 销售费用 + 管理费用 + 财务费用
-    // ¥8.00    +     ¥12.00   +  ¥2.00
-    var items = plFee.expense.formula.map(function (f) {
+    formulaEl.innerHTML = plFee.expense.formula.map(function (f) {
       var val = round2(plIsYearFee ? f.ytd : f.cur);
       var amtHtml = (val < 0 ? '−' : '') + absFmt(Math.abs(val));
-      var cls = f.ids && f.ids.length ? 'formula-cell amt-link' : 'formula-cell';
+      var cls = f.ids && f.ids.length ? 'fv2 amt-link' : 'fv2';
       var attrs = f.ids && f.ids.length ? ' data-pl-rows="' + f.ids.join(',') + '"' : '';
       return '<div class="' + cls + '"' + attrs + '>'
-           + '<div class="formula-label">' + esc(f.label) + '</div>'
-           + '<div class="formula-amt">' + amtHtml + '</div>'
+           + '<div class="fv2-f">' + esc(f.label) + '</div>'
+           + '<div class="fv2-v">' + amtHtml + '</div>'
            + '</div>';
-    });
-    var seps = [];
-    for (var si = 0; si < items.length - 1; si++) seps.push('<div class="formula-sep">+</div>');
-    // 组合：cell sep cell sep cell ...
-    var combo = '';
-    for (var ci = 0; ci < items.length; ci++) {
-      combo += items[ci];
-      if (ci < seps.length) combo += seps[ci];
-    }
-    formulaEl.innerHTML = combo;
+    }).join('');
   } else if (formulaEl) {
     formulaEl.innerHTML = '';
   }

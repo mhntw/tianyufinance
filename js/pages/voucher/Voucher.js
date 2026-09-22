@@ -1341,6 +1341,14 @@ function reverseConfirmText(v, month, reason) {
   if (origMonth && origMonth !== month) {
     info.push('· 被冲月份（' + origMonth + '）的报表不回溯，年度累计在重新结转后正确');
   }
+  // 被冲的本身就是红字冲销凭证（红冲红字）时给「可删除」的引导：
+  // 官方规则是「一律允许再冲销」（红字凭证也是正式凭证），但同期间下【删除它】更简单直接；
+  // 仅当它所在期间已结账、删不掉时，本次冲销才是跨期撤销上一次冲销的唯一合规手段。
+  if (v.reverses) {
+    info.push(S.isPeriodClosed(origMonth)
+      ? '· 这张本身就是红字冲销凭证，且所在期间已结账、无法删除；本次冲销即为其跨期撤销'
+      : '· 这张本身就是红字冲销凭证；若只是想撤销上一次冲销，直接删除它（' + no + '）即可，无需再冲销');
+  }
   info.push('', '红字冲销原因：' + reason);
   return '确认红字冲销 ' + no + '？\n\n' + info.join('\n');
 }
