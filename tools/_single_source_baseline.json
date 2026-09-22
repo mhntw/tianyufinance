@@ -1,0 +1,10 @@
+{
+  "_comment": "check_single_source.js 基线：口径实现的当前命中数，只许减少不许增加。收口后请用 --write 下调。",
+  "_updated": "auto",
+  "counts": {
+    "balance-arith": 0,
+    "inline-zero-row": 0,
+    "dir-sign-convert": 0,
+    "inline-dir-text": 0
+  }
+}

@@ -53,15 +53,34 @@ function newestBook() {
   const dir = booksDir();
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.includes('.bak'))
-    .map(f => ({ p: path.join(dir, f), m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m);
+    .map(f => ({ p: path.join(dir, f), m: fs.statSync(path.join(dir, f)).mtimeMs }))
+    // 【2026-09-22 补】同 sim_book.js：只挑**有凭证、有科目**的账套。
+    // 否则会选中 books/ 里的开发空账套（名为「测试」），把样本问题伪装成测试失败。
+    .filter(b => {
+      try {
+        const o = JSON.parse(fs.readFileSync(b.p, 'utf8'));
+        return (o.vouchers || []).length > 0 && (o.subjects || []).length > 10;
+      } catch (e) { return false; }
+    })
+    .sort((a, b) => b.m - a.m);
   return files.length ? files[0].p : null;
 }
 
 const BOOK_FILE = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[2] : newestBook();
 const SEED = Number(process.argv[3]) || 20260920;
 if (!BOOK_FILE) {
-  console.log('跳过：未找到账套（' + booksDir() + '）');
-  console.log('本脚本重放【真实凭证】，需要至少一个账套作为样本。');
+  console.log('跳过：未找到可用账套（' + booksDir() + '）');
+  console.log('本脚本重放【真实凭证】，需要至少一个「有凭证」的账套作为样本。');
+  // 提示回收站：账套的"删除"是移入 trash/（7 天内可还原）。账套都在回收站时本测试会跳过，
+  // 跳过 ≠ 通过，别把它读成"绿"。
+  try {
+    const trash = path.join(path.dirname(booksDir()), 'trash');
+    if (fs.existsSync(trash)) {
+      const n = fs.readdirSync(trash).filter(f => f.endsWith('.json')).length;
+      if (n) console.log('  注：回收站里还有 ' + n + ' 个账套。想真正跑这个深度测试，'
+        + '请先在软件里还原其中一个。');
+    }
+  } catch (e) { }
   console.log('无账套的环境（如 CI）自动跳过，返回 0，不计为失败。');
   process.exit(0);
 }

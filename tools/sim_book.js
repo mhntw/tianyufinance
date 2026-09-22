@@ -77,14 +77,35 @@ function newestBook() {
   const files = fs.readdirSync(dir)
     .filter(f => f.endsWith('.json') && !f.includes('.bak'))
     .map(f => ({ f, p: path.join(dir, f), m: fs.statSync(path.join(dir, f)).mtimeMs }))
+    // 【2026-09-22 补】只在**可用账套**（有凭证、有科目）里挑最新。
+    // 实测踩过：books/ 里残留开发用空账套（名为「测试」、69 个科目、0 张凭证），
+    // 按 mtime 挑最新会选中它，于是模拟记账在空数据上跑并报错 ——
+    // 把「样本不合用」伪装成「测试失败」，正是让人对红色告警脱敏的那种假警报。
+    // 与 verify_vs_ais.js 的「配对纪律」同源。
+    .filter(b => {
+      try {
+        const o = JSON.parse(fs.readFileSync(b.p, 'utf8'));
+        return (o.vouchers || []).length > 0 && (o.subjects || []).length > 10;
+      } catch (e) { return false; }
+    })
     .sort((a, b) => b.m - a.m);
   return files.length ? files[0].p : null;
 }
 
 const BOOK_FILE = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[2] : newestBook();
 if (!BOOK_FILE) {
-  console.log('跳过：未找到账套（' + booksDir() + '）');
-  console.log('本脚本在【真实账套副本】上模拟记账，需要至少一个账套作为样本。');
+  console.log('跳过：未找到可用账套（' + booksDir() + '）');
+  console.log('本脚本在【真实账套副本】上模拟记账，需要至少一个「有凭证」的账套作为样本。');
+  // 提示回收站：账套的"删除"是移入 trash/（7 天内可还原）。若账套都在回收站里，
+  // 本测试会跳过 —— 跳过 ≠ 通过，别把它读成"绿"。
+  try {
+    const trash = path.join(path.dirname(booksDir()), 'trash');
+    if (fs.existsSync(trash)) {
+      const n = fs.readdirSync(trash).filter(f => f.endsWith('.json')).length;
+      if (n) console.log('  注：回收站里还有 ' + n + ' 个账套。想在 CI/本机真正跑这个深度测试，'
+        + '请先在软件里还原其中一个。');
+    }
+  } catch (e) { }
   console.log('无账套的环境（如 CI）自动跳过，返回 0，不计为失败。');
   process.exit(0);
 }
