@@ -4360,7 +4360,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "ty"
-version = "0.6.12"
+version = "0.6.13"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
