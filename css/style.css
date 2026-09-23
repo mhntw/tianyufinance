@@ -2660,7 +2660,7 @@ label.req::before {
  * 关键在 flex:1 + min-height:0 —— 它让本容器从父级 .orig-table-wrap
  * （flex column，高度由 .orig-body 的 stretch 决定）拿到**确定高度**，
  * 再配 overflow:auto，容器自身就能横向 + 纵向滚动。这同时解决三件事：
- *   ① 表格 max-content（31 列，数千像素）被约束在容器内横滚，
+ *   ① 表格 max-content（30 列，数千像素）被约束在容器内横滚，
  *      不会把 .page 撑宽，右侧 200px 侧栏（资产类别/部门树）也就不会被
  *      推到视口外 —— 此前「侧栏跑中间」正是页面被撑宽后横滚导致的。
  *   ② thead th 的 position:sticky 相对本容器生效，表头正常吸顶。
@@ -5869,7 +5869,7 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 /* card-head 右侧操作链接（蓝色文字，非按钮） */
 .card-head-op { margin-left: 10px; color: var(--ty-blue); font-size: var(--fs-sm); cursor: pointer; user-select: none; }
 .card-head-op:hover { text-decoration: underline; }
-.card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--st-panel-bg); }
+.card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--ty-white); }   /* 原为 var(--st-panel-bg)（= --ty-border #e2e7ec 灰底），与白卡不协调，改白；全站仅操作日志卡使用 */
 .card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .card-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ty-text-3); white-space: nowrap; }
 .card-filter label input, .card-filter label select { height: 28px; min-width: 140px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }

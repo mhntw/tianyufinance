@@ -270,7 +270,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         sNE += Math.max(0, num(fa.original) - ae - num(fa.impairment));
       });
       var trf = document.createElement('tr');
-      trf.innerHTML = '<td></td><td>合计</td><td colspan="6"></td>' +
+      // 前置列 = 勾选(1) + 操作「合计」(2) + 编码/名称/类别/部门/开始使用日期(5) = 7 列
+      // 2026-09-23 修复：此前 colspan="6" 是「录入期间」列还在时的写法，
+      // 该列于 f2f460dd 删除后本行未同步，合计行比表头多 1 列 → 所有金额右移一列。
+      trf.innerHTML = '<td></td><td>合计</td><td colspan="5"></td>' +
         '<td class="ta-r mono">' + money(sOrig) + '</td>' +
         '<td class="ta-r mono">' + money(sB) + '</td>' +
         '<td class="ta-r mono">' + money(sE) + '</td>' +
