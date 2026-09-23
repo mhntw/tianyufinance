@@ -1254,8 +1254,8 @@
     var name = String(inputEl ? inputEl.value : '').trim();
     if (!name) { showToast('请输入你的真实姓名', 'warn'); return; }
     if (name.length > 20) { showToast('姓名过长（最多20字）', 'warn'); return; }
-    // 引导：不允许把「会计/记账员」这类占位默认值当真名保存，必须填真实姓名
-    if (name === '会计' || name === '记账员') { showToast('请填写你的真实姓名，不要使用默认名称「' + name + '」', 'warn'); return; }
+    // 引导：不允许把「财务/记账员」这类占位默认值当真名保存，必须填真实姓名
+    if (name === '财务' || name === '记账员') { showToast('请填写你的真实姓名，不要使用默认名称「' + name + '」', 'warn'); return; }
     if (name === cur) { closeModal('operatorModal'); return; } // 未变化
     S.state.company.bookkeeper = name;
     // 持久化：localStorage + 服务端主账本 + 自动备份

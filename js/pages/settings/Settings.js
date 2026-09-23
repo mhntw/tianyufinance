@@ -264,7 +264,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     // 首次进入：操作人下拉从日志数据去重生成一次
     if (!logInitDone) {
       var users = {};
-      (S.getLogs() || []).forEach(function (l) { users[l.user || '会计'] = 1; });
+      (S.getLogs() || []).forEach(function (l) { users[l.user || '财务'] = 1; });
       var optUser = Object.keys(users).sort();
       $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {
         return '<option value="' + esc(u) + '">' + esc(u) + '</option>';

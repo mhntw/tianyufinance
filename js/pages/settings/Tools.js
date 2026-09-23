@@ -398,7 +398,7 @@ if (trashBtn && trashBox) {
 function logSysEvent(action, detail, bookId) {
   try {
     if (typeof window.Storage === 'undefined' || typeof window.Storage.appendChangeLog !== 'function') return;
-    var user = (S && S.state && S.state.company && S.state.company.bookkeeper) || '会计';
+    var user = (S && S.state && S.state.company && S.state.company.bookkeeper) || '财务';
     window.Storage.appendChangeLog({ bookId: bookId || '', action: action, module: '账套', detail: detail, user: user })
       .catch(function () {});
   } catch (e) {}

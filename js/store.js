@@ -364,7 +364,7 @@
       schemaVersion: SCHEMA_VERSION,
       standard: stdKey,
       reportRules: snap ? snap.reportRules : {},
-      company: { name: '演示账套', currency: '人民币', bookkeeper: '会计', startMonth: fmtDate(new Date()).slice(0, 7) },
+      company: { name: '演示账套', currency: '人民币', bookkeeper: '财务', startMonth: fmtDate(new Date()).slice(0, 7) },
       subjects: (snap ? snap.subjects : DEFAULT_SUBJECTS).map(function (s) { return Object.assign({}, s); }),
       openingBalances: {},   // { code: { dr:0, cr:0 } }
       vouchers: [],          // 凭证（全账套）
@@ -1115,7 +1115,7 @@
           if (typeof window.Storage !== 'undefined') {
             window.Storage.appendChangeLog({
               bookId: id, action: '删除账套', module: '账套', detail: '删除账套「' + name + '」',
-              user: (self.state.company && self.state.company.bookkeeper) || '会计'
+              user: (self.state.company && self.state.company.bookkeeper) || '财务'
             }).catch(function () {});
           }
         } catch (e) {}
@@ -1535,7 +1535,7 @@
       // （体现为：刷新后引用对不上号，对应业务单据保护失效）。
       v.id = this._calcVoucherId(v.word, v.no, voucherMonth(v));
       // 记录制单人
-      if (!v.maker) v.maker = (this.state.company && this.state.company.bookkeeper) || '会计';
+      if (!v.maker) v.maker = (this.state.company && this.state.company.bookkeeper) || '财务';
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
       this.state.vouchers.push(v);
       this._glCache = {}; // 凭证变化，作废总账记忆化缓存（否则后续查询会命中旧值）
@@ -1905,7 +1905,7 @@
       var deprReverted = this._revertAssetDepr(v);
       // 清理凭证同理：撤销处置业务 → 卡片回到「正常」并可继续计提（见 _revertAssetClean）
       var cleanReverted = this._revertAssetClean(v);
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
+      var curUser = (this.state.company && this.state.company.bookkeeper) || '财务';
       // 软删除：打 deleted='y' 标记，凭证留在账套可还原（参考 jinbooks jbx_voucher.deleted 设计）
       // 所有凭证查询入口（periodVouchers/getVoucher 等）已过滤 deleted，账簿/报表不再计入
       v.deleted = 'y';
@@ -1947,7 +1947,7 @@
       }
       this._glCache = {};
       this.persist();
-      var curUser = (this.state.company && this.state.company.bookkeeper) || '会计';
+      var curUser = (this.state.company && this.state.company.bookkeeper) || '财务';
       this.addLog('还原凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
         null, null, (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''),
         { id: id, action_type: 'restore', target_name: (v.word || '') + '-' + (v.no != null ? v.no : ''), result: 'success' });
@@ -5123,7 +5123,7 @@
       // 仅在传入时落字段，避免污染普通操作日志条目（老日志条目无这些字段，渲染时容错）
       var entry = {
         time: fmtDateTime(new Date()),
-        user: (this.state.company && this.state.company.bookkeeper) || '会计',
+        user: (this.state.company && this.state.company.bookkeeper) || '财务',
         action: action,
         module: module || '设置',
         detail: detail || ''
@@ -5149,7 +5149,7 @@
           action: action,
           module: module || '设置',
           detail: detail || '',
-          user: (this.state.company && this.state.company.bookkeeper) || '会计'
+          user: (this.state.company && this.state.company.bookkeeper) || '财务'
         }).catch(function () {});
       }
       if (typeof this.persist === 'function') this.persist();
