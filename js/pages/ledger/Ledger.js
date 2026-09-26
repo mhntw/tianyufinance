@@ -479,8 +479,14 @@ function mlSubjectCode() {
   return { code: mlCurCode || '', err: '' };
 }
 function refreshMl() {
-  // 换账套：多栏账的当前科目/科目选择器属于上一本账套（否则按旧账套的 code 查，多半是空表）
-  if (bookScopeChanged('ml')) { mlCurCode = null; mlSubjPicker = null; }
+  /* 换账套：多栏账「当前科目」是**账套数据**（旧账套的 code 在新账套多半不存在 → 查出空表），必须清。
+     ⚠ 但**不要**顺手把选择器句柄（mlSubjPicker）也置 null —— 本处初版这么写过，是错的：
+       ① `bindSubjectPicker` 有幂等保护（在元素 dataset 上打标记），已绑过再调会**直接 return undefined**，
+          于是句柄再也拿不回来，之后每次刷新都白调一次；
+       ② 它的 getSubjects 是 `function () { return S.subjects(); }`，**实时**读科目表，
+          本就不会留旧账套的科目 —— 需要复位的只有「当前科目」这个账套数据。
+       本文件 mlSubjectCode() 也确实只读 mlCurCode、不解引用句柄，故句柄无需动。 */
+  if (bookScopeChanged('ml')) { mlCurCode = null; }
   var month = periodRangeValue('mlPeriod');
   var r = mlSubjectCode();
   renderMl(r.code, month, r.err);

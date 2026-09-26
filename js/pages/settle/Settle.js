@@ -555,7 +555,16 @@ function refreshSettle() {
   // 换账套：结账/反结账的选期属于上一本账套，一律回到新账套的当前期。
   // （下面的「空期间回退」只兜 selMonth 的一部分情形 —— 若新账套该月有凭证就不回退；
   //   selReopenMonth 此前完全无回退。）
-  if (bookScopeChanged('settle')) { selMonth = currentPeriod(); selReopenMonth = currentPeriod(); }
+  if (bookScopeChanged('settle')) {
+    selMonth = currentPeriod(); selReopenMonth = currentPeriod();
+    /* 正在编辑的**自定义结转模板**同属上一本账套 —— 性质与「编辑中的凭证」相同：
+       不复位则模板行会带着旧账套的科目一路保存进新账套。
+       ⚠ 以下两项**刻意不在此处复位**，别"顺手补齐"：
+         · currentVat —— 增值税面板每次打开都会 `currentVat = S.vatEditGet(month)` 重算，留旧值读不到；
+         · 科目选择器句柄 —— 它 getSubjects 是实时读 S.subjects()，且 bindSubjectPicker 有幂等保护，
+           置 null 会**拿不回句柄**（详见 Ledger 多栏账处的同名说明）。 */
+    newTplRows = []; editingCustomId = null;
+  }
   // 每次刷新都重新加载模板列表（导入账套/切换账套后 settleTemplates 会变）
   settleTmplList = loadSettleTemplates();
   // 模板启用状态以 store 为权威（结账检查清单数据源），进入页面/切换账套时同步

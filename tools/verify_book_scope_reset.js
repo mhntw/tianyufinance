@@ -295,13 +295,20 @@ globalThis.__PAGE_HOOK__ = {
 globalThis.__PAGE_HOOK__ = {
   refreshSettle: refreshSettle,
   get selMonth() { return selMonth; }, set selMonth(v) { selMonth = v; },
-  get selReopenMonth() { return selReopenMonth; }, set selReopenMonth(v) { selReopenMonth = v; }
+  get selReopenMonth() { return selReopenMonth; }, set selReopenMonth(v) { selReopenMonth = v; },
+  get newTplRows() { return newTplRows; }, set newTplRows(v) { newTplRows = v; },
+  get editingCustomId() { return editingCustomId; }, set editingCustomId(v) { editingCustomId = v; }
 };`);
   check(!!T, 'Settle.js 应能加载并暴露调试钩子');
   if (!T) return;
   BOOK = 'A|2024-01';
   T.refreshSettle();
   T.selMonth = '2025-06'; T.selReopenMonth = '2025-05';   // 用户在 A 账套选的历史期
+  T.newTplRows = [{ code: '1002', dir: 'dr' }]; T.editingCustomId = 'tpl-of-A';   // 用户正在编辑的结转模板
+  T.refreshSettle();                                      // 同一账套内刷新：以上都不得被清
+  check(T.newTplRows.length === 1 && T.editingCustomId === 'tpl-of-A',
+    '同一账套内刷新：编辑中的自定义结转模板不得被清（否则用户编到一半被清空）',
+    '模板行 ' + T.newTplRows.length + ' / 编辑 id ' + T.editingCustomId);
   BOOK = 'B|2024-01';
   T.refreshSettle();
   check(T.selMonth === CUR_M,
@@ -310,6 +317,9 @@ globalThis.__PAGE_HOOK__ = {
   check(T.selReopenMonth === CUR_M,
     '换账套：反结账选期应回到新账套当前期（此处原先完全没有回退逻辑）',
     '实际 ' + T.selReopenMonth + ' 期望 ' + CUR_M);
+  check(T.newTplRows.length === 0 && T.editingCustomId === null,
+    '换账套：编辑中的自定义结转模板必须复位（否则模板行会带着旧账套科目保存进新账套）',
+    '模板行 ' + T.newTplRows.length + ' / 编辑 id ' + T.editingCustomId);
 })();
 
 /* ============================================================
@@ -362,6 +372,26 @@ globalThis.__PAGE_HOOK__ = {
       check(re.test(src), p[0] + ' 应在刷新入口调用 bookScopeChanged("' + k + '") 做复位');
     });
   });
+  /* ⚠ 反向约定（防止后来者"顺手补齐"）：**不得**把科目选择器句柄置 null 当作"换账套复位" ——
+     bindSubjectPicker 有幂等保护（在元素 dataset 打标记），已绑过再调会**直接 return undefined**，
+     句柄再也拿不回来；而它的 getSubjects 是实时读 S.subjects()，本就不会留旧账套的科目。
+     （本约定源自一次真实返工：多栏账那处初版就写了 `mlSubjPicker = null`，随后被查出是错的。） */
+  [['js/pages/ledger/Ledger.js', 'mlSubjPicker'], ['js/pages/voucher/Voucher.js', 'qSubjPicker']]
+    .forEach(function (p) {
+      const src = fs.readFileSync(path.join(ROOT, p[0]), 'utf8');
+      const n = (src.match(new RegExp(p[1] + '\\s*=\\s*null', 'g')) || []).length;
+      check(n === 1, p[0] + ' 只应有「声明处」一次 ' + p[1] + ' = null —— 不得在换账套复位里再置 null'
+        + '（重绑会直接 return undefined，句柄拿不回来）', '实测出现 ' + n + ' 次');
+    });
+  // 结账页的守卫必须复位「编辑中的自定义结转模板」（否则模板行带旧账套科目保存进新账套）
+  (function () {
+    const src = fs.readFileSync(path.join(ROOT, 'js/pages/settle/Settle.js'), 'utf8');
+    const i = src.indexOf("bookScopeChanged('settle')");
+    const seg = i < 0 ? '' : src.slice(i, i + 600);
+    check(/newTplRows\s*=\s*\[\]/.test(seg) && /editingCustomId\s*=\s*null/.test(seg),
+      'Settle 的换账套复位里应清 newTplRows / editingCustomId（编辑中的模板属上一本账套）');
+  })();
+
   const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
   check(/bookScopeChanged\s*:\s*pick\(bookScopeChanged\)/.test(app),
     'app.js 应把 bookScopeChanged 挂到 __TY_HELPERS__（页面才拿得到）');
