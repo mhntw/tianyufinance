@@ -16,7 +16,11 @@ const nowTimeStr = H.nowTimeStr || (() => {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 });
 
-function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+/* 【2026-09-26 收口】此处原先自带**第三份**「金额归零」实现（`Math.round((Number(n)||0)*100)/100`）——
+   与 store.js 的规范版相比**同样少了 `-0` 归一**（(-0).toLocaleString() 会显示 "-0.00"、写进 Excel 可能带负号）。
+   同一口径当时共三份（store.js / app.js / 本文件），改一处必漏两处。
+   现统一委托 store 的唯一实现（经 util.round2 暴露；store.js 必然先于页面加载，故此处不会取空）。 */
+function round2(n) { return window.util.round2(n); }
 
 // 月份区间展开为月份列表（含首尾）。实现已下沉到 store（见 store.js 的 monthList），此处仅转发。
 // 改名理由：本函数原本叫 monthsBetween 且返回「列表」，而 store.monthsBetween 返回「相差整月数」——

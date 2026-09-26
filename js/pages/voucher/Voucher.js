@@ -15,6 +15,8 @@ const H = globalThis.__TY_HELPERS__ || {};
 const periodRangeValue = H.periodRangeValue;
 const U = H.U || window.util;
 const S = H.S || window.S;
+// 金额归零到分：走**单点实现**（含 -0 → 0 归一）。原先 numToChinese 里内联了一份 Math.round(x*100)/100。
+const round2 = H.round2 || (U && U.round2) || (window.util && window.util.round2);
 const $ = function (id) { return document.getElementById(id); };
 import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { subjectFullName } from '../../common/subject-name.js';
@@ -52,7 +54,9 @@ function isRed(val) {
 // 金额转中文大写（通用财务口径）：壹万捌仟捌佰壹拾伍元整 / 壹佰贰拾叁元肆角伍分
 function numToChinese(n) {
   if (n == null || isNaN(n)) return '';
-  var num = Math.round(parseFloat(n) * 100) / 100;
+  // 金额归零走单点实现（原先是内联的「四舍五入到分」，已收口；见 check_single_source 的 inline-round2 类目）
+  // ⚠ 注释里别写出那段源码样子 —— 行尾注释不会被跳过，会被本项目的静态规则当成真实现命中。
+  var num = round2(parseFloat(n));
   if (num === 0) return '零元整';
   var neg = num < 0;
   num = Math.abs(num);

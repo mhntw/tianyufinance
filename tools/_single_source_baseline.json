@@ -5,6 +5,7 @@
     "balance-arith": 0,
     "inline-zero-row": 0,
     "dir-sign-convert": 0,
-    "inline-dir-text": 0
+    "inline-dir-text": 0,
+    "inline-round2": 0
   }
 }

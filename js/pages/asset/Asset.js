@@ -17,6 +17,9 @@ const syncAll = H.syncAll;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);
 const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
+// 金额归零到分：走**单点实现**（store.js 的 round2 → util → app.js 暴露；含 -0 → 0 归一）。
+// 原先本文件两处各写一遍 round2(x) —— 已收口（见 check_single_source 的 inline-round2 类目）。
+const round2 = H.round2 || (U && U.round2) || (window.util && window.util.round2);
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 
@@ -420,8 +423,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       active.forEach(function (fa) { cardTotal += _accumDeprAt(fa, month, S.assetMonthlyDepr(fa)); });
       var ledgerEnd = endBalOf(depSubj.code);
       if (ledgerEnd !== null) {
-        var d1 = Math.round((cardTotal - ledgerEnd) * 100) / 100;
-        var tol = Math.round((active.length * 0.01 + 0.01) * 100) / 100;
+        var d1 = round2(cardTotal - ledgerEnd);
+        var tol = round2(active.length * 0.01 + 0.01);
         depr = { subject: depSubj, cardTotal: cardTotal, ledgerTotal: ledgerEnd, diff: d1,
           tolerance: tol, ok: Math.abs(d1) <= tol };
       }
@@ -448,7 +451,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var led = endBalOf(c) || 0;
       ledgerOrig += led;
       var d = { code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c].sum,
-        ledger: led, diff: Math.round((byAcct[c].sum - led) * 100) / 100 };
+        ledger: led, diff: round2(byAcct[c].sum - led) };
       // 有差额才做「落到具体凭证/卡片」的定位（无谓开销避免掉）
       if (Math.abs(d.diff) > 0.01) {
         var loc = _faLocateDiff(c, byAcct[c].cards, month);
@@ -459,7 +462,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       detail.push(d);
     });
     detail.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
-    var d2 = Math.round((cardOrig - ledgerOrig) * 100) / 100;
+    var d2 = round2(cardOrig - ledgerOrig);
     var orig = { cardTotal: cardOrig, ledgerTotal: ledgerOrig, diff: d2, tolerance: 0.01,
       ok: Math.abs(d2) <= 0.01, detail: detail, orphan: orphan };
 
@@ -510,7 +513,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (!/^\d{4}-\d{2}$/.test(ym) || ym > month) return;
       (v.entries || []).forEach(function (e) {
         if (String(e.code) !== String(code)) return;
-        var amt = Math.round((num(e.dr) - num(e.cr)) * 100) / 100;
+        var amt = round2(num(e.dr) - num(e.cr));
         if (!amt) return;
         entries.push({ amt: amt, date: String(v.date || ''), vch: _faVoucherLabel(v),
           sum: String(e.summary || v.summary || '') });
@@ -582,8 +585,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         var lines = [], unSum = 0, coSum = 0;
         un.forEach(function (e) { unSum += e.amt; });
         co.forEach(function (c) { coSum += c.amt; });
-        unSum = Math.round(unSum * 100) / 100;
-        coSum = Math.round(coSum * 100) / 100;
+        unSum = round2(unSum );
+        coSum = round2(coSum );
         lines.push('按金额逐笔配对（账、卡之间没有关联字段，以下为<b>按金额推断</b>，请对照实物/原始凭证确认）：');
         if (un.length) {
           lines.push('· 账上有、卡片中找不到对应：<b>' + un.length + ' 笔</b>，合计 <b>' + money(unSum) + '</b>');
@@ -606,13 +609,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           badge.push('已对冲 ' + pairs + ' 组');
         }
         // 两侧相抵应与所报差额吻合；不吻合说明还有期初余额等落不到凭证的部分
-        var net = Math.round((unSum - coSum) * 100) / 100;
+        var net = round2(unSum - coSum);
         if (Math.abs(net + rc.orig.diff) < 0.01) {
           lines.push('核对：账上多出 ' + money(unSum) + ' － 卡片多出 ' + money(coSum) + ' ＝ ' +
             money(net) + '，与所报差额 ' + money(rc.orig.diff) + ' 金额一致（方向相反）✓');
         } else {
           lines.push('⚠ 上列合计 ' + money(net) + ' 与差额 ' + money(-rc.orig.diff) + ' 相差 ' +
-            money(Math.round((net + rc.orig.diff) * 100) / 100) +
+            money(round2(net + rc.orig.diff)) +
             '，可能还有一部分差额来自期初余额录入（无凭证可定位）。');
         }
         more.push(lines.join('<br>'));

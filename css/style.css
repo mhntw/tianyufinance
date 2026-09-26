@@ -1202,11 +1202,9 @@ select:not([class]),
   font-family: inherit;
   transition: background .15s, border-color .15s;
 }
-.ty-btn-primary {
-  background: var(--ty-btn);
-  color: var(--ty-white);
-}
-.ty-btn-primary:hover { background: var(--ty-blue-dark); }
+/* 【2026-09-26 删除重复定义】此处原有 `.ty-btn-primary` 的第二份定义（background/color/hover 与
+   文件前部「主按钮基类」一节**完全相同**）。同特异性重复定义是最难查的一类问题：
+   改了前一处、后一处又把值盖回去，表现为"改了不生效"。完整定义见文件前部那一节，此处不再重复。 */
 
 /* 费用明细表 科目 下拉勾选浮层（费用明细表：tag框 + 共N项框 + 浅蓝树形弹层）
    触发框宽度自适应内容：容器为 min-width（label 35px + content 自适应），
@@ -4492,9 +4490,11 @@ body.ty-privacy .estimated-balance-card .padding { position: relative; }
 }
 .search-group-title { padding: 4px 12px 2px; font-size: var(--fs-xs); color: var(--ty-muted); background: var(--ty-th-bg); }
 .search-item { padding: 0 12px; height: 32px; font-size: var(--fs-sm); cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 0; border-bottom: 1px solid var(--ty-border); }
+/* 【2026-09-26 合并重复定义】原为相邻两条 `.search-item .si-main`（同特异性），
+   后者只少了 line-height —— 按 CSS 逐属性级联，两条合起来等价于下面这一条。
+   合并后避免"改第一条不生效"（第二条同特异性仍在，只是恰好没写那几个属性）。 */
 .search-item .si-main { display: flex; justify-content: space-between; gap: 10px; line-height: 18px; }
 .search-item:hover { background: var(--ty-blue-2); }
-.search-item .si-main { display: flex; justify-content: space-between; gap: 10px; }
 .search-item .si-title { font-weight: 400; color: var(--ty-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-item .si-sub { font-size: var(--fs-xs); color: var(--ty-muted); }
 .search-item .si-amt { color: var(--ty-red); font-family: var(--ty-font); }

@@ -237,6 +237,22 @@
     var r = Math.round(v * 100) / 100;
     return r === 0 ? 0 : r;
   }
+
+  /* 明细账「逐笔行」的余额表式（**唯一实现**，2026-09-26 收口）：
+       dir = **实际方向**（借/贷，零余额留空）、bal = **绝对值**。
+     原先是 detailLedger 与 detailLedgerRange 各写一份**逐字相同**的 if/else，同一口径两份实现。
+     ⚠ 它与 displayBalance 是**两种表式，不可互相替换**（历史上同屏显示同一笔余额却不同，就是这么来的）：
+       · displayBalance(net, normal) → dir 恒为**科目正常方向**、amount 为**带符号**金额
+         （三栏式账簿里的「借 -2,000.12」）；
+       · 本函数(dr, cr, normal)      → dir 为**实际方向**、bal 为**绝对值**
+         （明细账逐笔行；页面再用 netFromBalDir(bal, dir) 还原净额后送 displayBalance）。 */
+  function actualDirBalance(dr, cr, normal) {
+    var bal;
+    var dir;
+    if (normal === 'dr') { bal = dr - cr; dir = bal > 0 ? '借' : (bal < 0 ? '贷' : ''); }
+    else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); }
+    return { bal: Math.abs(bal), dir: dir };
+  }
   /* 金额相等容差（半分 = 0.005 元），用于借贷平衡 / 结转阈值 / 零值判定，全局统一避免散落硬编码。
    *
    * 【为什么必须是半分而不能是 1 分】金额一律精确到「分」，两笔金额之差必然是 0.01 的整数倍。
@@ -2694,7 +2710,9 @@
       // 注意：已结账账套中损益科目已被结转凭证平掉，profitStatement 逐分录累加会因
       // 「借费用 贷3103」「借3103 贷收入」导致发生额重复计入而失真；故直接以 CARRY_YE
       // 凭证中 借3103(本年利润) / 贷3104(利润分配-未分配利润及其明细) 的金额为准。
-      var R = function (x) { return Math.round(x * 100) / 100; };
+      /* 【2026-09-26 收口】此处原先自带一份 `var R = x => Math.round(x*100)/100` ——
+         round2 的**重复实现**，且比规范版少了 `-0` 归一（见 round2 注释：(-0).toLocaleString 会显示
+         "-0.00"、写进 Excel 也可能带负号）。同一口径两份实现，改一处必漏另一处，故直接用 round2。 */
       var net = 0;
       ye.forEach(function (v) {
         v.entries.forEach(function (e) {
@@ -2702,7 +2720,7 @@
           if (/^3104/.test(e.code) || e.code === undist.code) net += num(e.cr);
         });
       });
-      net = R(net);
+      net = round2(net);
       if (!(net > 0.005)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };
       // 找科目：优先明细（310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
       function findSub(kw, code) {
@@ -3498,9 +3516,10 @@
         v.entries.forEach(function (e) {
           if (codes.indexOf(e.code) < 0) return;
           dr += num(e.dr); cr += num(e.cr);
-          var bal = 0, dir = '';   // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）
-          if (s.normal === 'dr') { bal = dr - cr; dir = bal > 0 ? '借' : (bal < 0 ? '贷' : ''); bal = Math.abs(bal); }
-          else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); bal = Math.abs(bal); }
+          // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）；
+          // 表式与「实际方向 + 绝对值」的唯一实现见 actualDirBalance()。
+          var _bd = actualDirBalance(dr, cr, s.normal);
+          var bal = _bd.bal, dir = _bd.dir;
           rows.push({
             date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
             dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
@@ -3539,9 +3558,10 @@
           v.entries.forEach(function (e) {
             if (codes.indexOf(e.code) < 0) return;
             dr += num(e.dr); cr += num(e.cr);
-            var bal = 0, dir = '';   // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）
-            if (s.normal === 'dr') { bal = dr - cr; dir = bal > 0 ? '借' : (bal < 0 ? '贷' : ''); bal = Math.abs(bal); }
-            else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); bal = Math.abs(bal); }
+            // 零余额无方向：bal === 0 时 dir 留空（详见 generalLedger 同名注释）；
+            // 表式与「实际方向 + 绝对值」的唯一实现见 actualDirBalance()。
+            var _bd = actualDirBalance(dr, cr, s.normal);
+            var bal = _bd.bal, dir = _bd.dir;
             rows.push({
               date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
               dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
@@ -5361,7 +5381,11 @@
   global.ACCOUNT_CLASSES = ACCOUNT_CLASSES;
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
-    prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money
+    prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+    /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
+       此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
+       同一口径两份实现（且其中一份漏了那个坑）。现由这里唯一提供，app.js 只做委托。 */
+    round2: round2
   };
 
   // B 方案迁移：新增 ESM 导出（不破坏旧全局）。后续页面模块通过 import 使用。
@@ -5370,7 +5394,8 @@
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
-      prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money
+      prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+      round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }
   };
   // 支持 <script type="module"> 的 import；旧 <script src> 走上面的 global。

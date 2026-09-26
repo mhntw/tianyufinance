@@ -362,7 +362,11 @@
   // 历史实现 money(Math.abs(n)) 只染红、丢掉负号，导致资产负债表「未分配利润」等
   // 负值被渲染成正数（如 -2,424,599.93 显示为红色 2,424,599.93），符号方向相反。
   function moneyRed(n) { return n < 0 ? '<span class="ty-red">-' + money(Math.abs(n)) + '</span>' : money(n); }
-  function round2(n) { return Math.round(U.num(n) * 100) / 100; }
+  /* 【2026-09-26 收口】此处原先自带一份「金额归零」实现 —— **且少了 -0 归一**，
+     而 store 的 round2 已把 -0 归一成 0（(-0).toLocaleString() 会显示 "-0.00"、写进 Excel 可能带负号；
+     金额里不存在"负零"）。同一口径两份实现必漏一处，故改为**委托 store 的唯一实现**。
+     安全性：store.js 先于本文件加载（index.html 脚本顺序），且本文件对 U 的依赖早已存在（见 money()）。 */
+  function round2(n) { return U.round2(n); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   // 期间取值单点实现：此前各页面各自实现、口径雷同，现统一在此，页面经 H.periodRangeValue 引用。
   // 口径：回填默认期间并同步触发器文本，返回该期间。期间控件是单期形态，两端恒等。
@@ -1945,8 +1949,11 @@
     /* 工资收敛：部门职员/凭证模板已并回工资页弹窗，旧键保持可用（渲染到弹窗内表体） */
     'department-staff': renderVia('DeptStaff'), 'salary-tpl': renderVia('SalaryTpl'), 'salary-guide': renderVia('Salary'),
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
-    // 报表扩展页：费用明细表 / 报表中心
-    'report-expense-detail': renderVia('ExpenseDetail'),
+    /* 【2026-09-26 删除死映射】此处原有 `'report-expense-detail': renderVia('ExpenseDetail')`，
+       但 index.html 里没有 `#page-report-expense-detail`（真实 section 是 `#page-expense-detail`），
+       全库也无任何地方用这个键跳转 —— 属**死映射**（永远不会被命中）。
+       费用明细表的真实入口是上面的 `if (page === 'expense-detail')` 特判 + main.js 的 extraPages 注册，
+       删掉它不影响任何入口；留着只会让人误以为"有两条路进这张表"。 */
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
     'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
     // 操作日志独立页：当前账套日志 + 跨账套操作日志
@@ -1957,7 +1964,25 @@
   globalThis.__PAGE_REFRESHERS__ = PAGE_REFRESHERS;
 
   // 服务端账本加载完成后统一刷新当前界面
+  /* 【2026-09-26 修】切换账套后，各页的期间控件必须回到**新账套**的默认期间。
+     原先不会：periodRangeValue / periodRangeValues 取的是「输入框已有值就直接用、为空才填默认值」——
+     为保证"用户选过的期间不被重置"而写成"只填一次"，副作用是**账套换了它也不换**：
+     于是可能出现"顶栏显示 B 账套、某页用的却是 A 账套期间"的错看（且不报错、极难发现）。
+     修法：只在**账套标识变化**时清空各页期间控件（下一次取期间会按新账套的 data-default 重新回填）；
+     同一账套内的 syncAll（保存凭证等触发的刷新）**不清空**，用户选定的期间照样保留。
+     ⚠ 本注释不要写出"给期间控件赋值"的源码样子 —— tools/check_period_contract.js 逐行扫赋值，
+       一度把注释里的示例当成"只给 Start 侧赋值"的违规（表达式尾部还带着本行的破折号，配不上 End 侧）。 */
+  var _periodBookKey = null;
+  function _resetPeriodInputsIfBookChanged() {
+    var key = '';
+    try { key = (S && (S.bookId || (typeof S.currentBookId === 'function' ? S.currentBookId() : ''))) || ''; } catch (e) { }
+    if (key === _periodBookKey) return;
+    _periodBookKey = key;
+    var inputs = document.querySelectorAll('input[id$="PeriodStart"], input[id$="PeriodEnd"]');
+    for (var i = 0; i < inputs.length; i++) inputs[i].value = '';
+  }
   window.__refreshAll = function () {
+    _resetPeriodInputsIfBookChanged();
     var tp = $('topPeriodText'); if (tp) tp.textContent = formatPeriod(currentPeriod());
     var DEFAULT_COMPANY_NAME = '演示账套';
     var fallbackName = '';
