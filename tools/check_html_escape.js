@@ -159,12 +159,43 @@ if (problems.length) {
   console.log('      为：\'<td>\' + esc(p.name) + \'</td>\'');
   console.log('  确认安全可豁免：在相邻行写 /* escape-ok: 原因 */');
   console.log('');
-  /* 【退出码为何是 0】2026-09-19 引入本脚本时已修掉 15 处真实注入面
-     （搜索关键词、员工姓名、账套名、科目名/编码、报表行名、日志用户名、错误消息），
-     但剩余项里仍混有静态分析难以判定的误报（金额格式化、数组 join、数字计数）。
-     此时若直接以非零码阻断，CI 会长期变红而失去意义 —— 那正是本项目此前
-     「2 个测试长期失败无人管」的翻版。
-     待剩余清单逐项确认（该修的修、该豁免的加 escape-ok）后，把这里改回 process.exit(1)。 */
+  /* 【2026-09-26 由"软通过"改为"棘轮"】原状：发现问题仍 exit(0)，注释自陈"待逐项确认后改回 exit(1)"，
+     于是一个**发现了 17 处问题却永远不失败**的检查诞生了 —— 这是"假绿"的另一种形态。
+     "直接改回 exit(1)"的顾虑仍成立：17 处里混着静态分析难以判定的误报（金额格式化 / 数组 join / 数字计数），
+     直接阻断会让 CI 长期变红而失去意义。但"永远绿"同样不可接受。故取中间态 —— **棘轮**：
+       · 出现**基线之外的新增**未转义注入面 → exit(1)（这才是真正要防的回归）；
+       · 与基线一致 → exit(0)，且输出写明"已知 N 处待处理"，不伪装成"已通过"。
+     收敛路径不变：逐项确认 → 该修的修、该豁免的加 escape-ok 行内注释 → 跑 --write-baseline 把基线调小。
+     ⚠ 本块注释内不得出现注释定界符（第一次改就被它提前闭合，导致整个脚本 SyntaxError）。 */
+  const BASE = path.join(__dirname, '_html_escape_baseline.json');
+  /* 【2026-09-26 修正基线键】第一版用「文件:行号」为键 —— 结果**任何行号位移都会误报**：
+     同一次收口里动了 Asset.js 的行数，17 处已知项整体错位 → 全部被当成"新增 6 处"而转红。
+     行号是最不稳定的东西，故改为「**文件 + 该行代码内容**」为键：改文件别处、增删行都不影响，
+     真正新增一处未转义注入面才会命中。行号仍打印给人看，只是不当键。 */
+  const keyOf = p => p.rel + '|' + (p.code || '');
+  let base = [];
+  try { base = JSON.parse(fs.readFileSync(BASE, 'utf8')); } catch (e) { base = []; }
+  const cur = problems.map(keyOf);
+  if (process.argv.includes('--write-baseline')) {
+    fs.writeFileSync(BASE, JSON.stringify(cur, null, 1) + '\n');
+    console.log('已按当前结果重写基线（' + cur.length + ' 处）');
+    process.exit(0);
+  }
+  if (!base.length) {
+    fs.writeFileSync(BASE, JSON.stringify(cur, null, 1) + '\n');
+    console.log('首次运行：已建立基线（' + cur.length + ' 处），本次不阻断。');
+    process.exit(0);
+  }
+  const baseSet = new Set(base);
+  const fresh = problems.filter(p => !baseSet.has(keyOf(p)));
+  if (fresh.length) {
+    console.log('✗ 新增 ' + fresh.length + ' 处未转义注入面（基线 ' + base.length + ' 处之外）：');
+    fresh.forEach(p => console.log('   ' + p.rel + ':' + p.line + '  [' + p.vals.join(', ') + ']'));
+    console.log('  → 请 esc() 转义，或确认安全后写 /* escape-ok: 原因 */ 豁免；');
+    console.log('    确认无误再跑 `node tools/check_html_escape.js --write-baseline` 收敛基线。');
+    process.exit(1);
+  }
+  console.log('✓ 通过：未新增未转义注入面（已知 ' + problems.length + ' 处待处理，见基线）');
   process.exit(0);
 }
 console.log('✓ 通过');

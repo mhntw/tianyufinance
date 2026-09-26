@@ -390,6 +390,37 @@ function run(bookPath) {
   report('I11', '利润表净利润=结转金额', i11bad === 0,
     i11bad ? 'FAIL ' + i11bad + ' 个月不一致（报表口径与结转口径分叉）' : '');
 
+  /* --- I12：首页资金余额 = 总账父行期末合计（防"父子重复聚合"） --- */
+  // 【为什么需要】本项目已因「父行已含下级、调用方又加一遍子科目」翻车 4 次
+  //   （利润汇总、现金流量表、试算平衡合计、首页资金余额）。而「首页资金余额」这一条
+  //   **此前没有任何脚本真正覆盖**：verify_books_audit 里那条同名断言比的是"测试自己算的两个值"
+  //   （差值由构造决定），且被写成 `|| true` 恒真 —— 等于占着位置却不校验。本不变量补上它。
+  //   口径：前端有两条独立取数路径 —— cashBalance（经 subjectEndBalance）与 generalLedger（各自上卷）。
+  //   两者对 1001/1002/1012 的期末必须逐分一致；任一条重复聚合子科目，这里必然分叉。
+  console.log('--- I12: 首页资金余额 = 总账父行期末合计 ---');
+  const FUND_CODES = ['1001', '1002', '1012'];
+  let i12bad = [], i12checked = 0;
+  (S.allMonths ? S.allMonths() : monthList).forEach(m => {
+    const impl = round2(S.cashBalance(m));
+    const rows = S.generalLedger(m) || [];
+    let fromGl = 0, hit = false;
+    FUND_CODES.forEach(c => {
+      const r = rows.filter(x => String(x.code) === c)[0];
+      if (!r) return;
+      hit = true;
+      fromGl += (r.normal === 'dr' ? (_n(r.endDr) - _n(r.endCr)) : (_n(r.endCr) - _n(r.endDr)));
+    });
+    if (!hit) return;   // 该账套没有资金类科目，不适用
+    i12checked++;
+    if (Math.abs(impl - round2(fromGl)) > EPS) {
+      i12bad.push(m + ': cashBalance=' + impl + ' 总账父行=' + round2(fromGl));
+    }
+  });
+  i12bad.slice(0, 3).forEach(x => console.log('    ' + x));
+  if (!i12bad.length) console.log('      ✓ 已核对 ' + i12checked + ' 期，两条取数路径逐分一致');
+  report('I12', '首页资金余额=总账父行合计', i12bad.length === 0,
+    i12bad.length ? 'FAIL ' + i12bad.length + ' 期不一致（疑似父子重复聚合）' : '');
+
   /* --- 汇总 --- */
   console.log('');
   console.log('=== 汇总 ===');

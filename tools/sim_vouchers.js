@@ -74,6 +74,7 @@ function balOf(rows, code){
   const b=num(r.balance)||0; return r.dir==='借'?b:-b;
 }
 const before = S.generalLedger(MON);
+const plBefore = S.profitStatement(MON);   // 利润表基线（供场景7 做"较录入前增加"的真断言）
 function mkV(no, date, summary, entries){
   entries.forEach(e=>{ if(e.dr==null)e.dr=0; if(e.cr==null)e.cr=0; });
   return { word:'记', no, date, attach:1, summary, entries };
@@ -129,7 +130,12 @@ ok('录入后资产负债表平衡', eq(num(afterBS.assets)-num(afterBS.liabilit
 console.log('--- 场景7：利润表联动（用真实 pl.items 字段）---');
 const pl = S.profitStatement(MON);
 ok('利润表正常生成(items有数据)', pl && pl.items && pl.items.length>0, 'items='+(pl.items||[]).length);
-ok('利润表含新增收入10万', pl && Math.abs(num(pl.totalRevenue) - (num(pl._baseRev||0))) >= 0, 'totalRevenue='+(pl&&pl.totalRevenue));
+/* 【2026-09-26 修假绿】原断言为 `Math.abs(pl.totalRevenue - (pl._baseRev||0)) >= 0` ——
+   `>= 0` 恒真（且 `_baseRev` 在本文件从未定义，恒为 0），等于没断言。
+   现改为与**录入前基线**比较：场景 3 录入了 5001 主营业务收入 100000（贷），
+   故利润表营业收入必须恰好增加 100000；差一分都说明联动断了。 */
+ok('利润表营业收入较录入前 +100000', eq(num(pl.totalRevenue) - num(plBefore.totalRevenue), 100000),
+  '录入前=' + num(plBefore.totalRevenue) + ' 录入后=' + num(pl.totalRevenue));
 
 console.log('--- 场景8：明细账可见新凭证 ---');
 const pvs = S.periodVouchers(MON).filter(v=>[900,901,902].indexOf(num(v.no))>=0);

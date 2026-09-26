@@ -1,0 +1,19 @@
+[
+ "js/app.js|a.innerHTML = '<span class=\"qk-circle\">' + ch + '</span><span class=\"qk-labe",
+ "js/app.js|tab.innerHTML = '<span>' + t.name + '</span>';",
+ "js/pages/asset/Asset.js|el.innerHTML = '导入完成：新增 ' + addedCount + ' 张，按编码跳过重复 ' + dupCount + ' 张。' + ",
+ "js/pages/asset/Asset.js|trf.innerHTML = '<td>合计</td>' + DEPR_AMT_COLS.map(function (c) {",
+ "js/pages/ledger/Ledger.js|tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class=\"ta-r mono\"></td><",
+ "js/pages/ledger/Ledger.js|trc.innerHTML = '<td></td><td></td><td>本期合计</td><td class=\"ta-r mono\">' + mo",
+ "js/pages/ledger/Ledger.js|try_.innerHTML = '<td></td><td></td><td>本年累计</td><td class=\"ta-r mono\">' + m",
+ "js/pages/ledger/Ledger.js|tb.innerHTML = '<tr><td colspan=\"7\" class=\"empty-hint\">' + emptyText + '</td",
+ "js/pages/ledger/Ledger.js|tbody.innerHTML = '<tr><td colspan=\"' + colspan + '\" class=\"empty-hint\">' + ",
+ "js/pages/report/Report.js|el.innerHTML = '<th colspan=\"' + (cols > 1 ? cols : 1) + '\">'",
+ "js/pages/settings/Opening.js|else { el.innerHTML = '借贷不平衡：借 ' + money(c.dr) + ' ≠ 贷 ' + money(c.cr) + '（差",
+ "js/pages/settings/Tools.js|tip.innerHTML = '<span class=\"muted\">导出完成：' + full + '</span> ' +",
+ "js/pages/settle/Settle.js|if (enUl) { enUl.innerHTML = enHtml || '<li class=\"stm-empty\">暂无启用的模板</li>';",
+ "js/pages/settle/Settle.js|if (vchUl) { vchUl.innerHTML = vchHtml || '<li class=\"stm-empty\">暂无凭证模板</li>",
+ "js/pages/settle/Settle.js|if (disUl) { disUl.innerHTML = disHtml || '<li class=\"stm-empty\">暂无禁用的模板</li",
+ "js/pages/voucher/Voucher.js|if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额',",
+ "js/pages/voucher/Voucher.js|if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额',"
+]

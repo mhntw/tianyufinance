@@ -139,8 +139,16 @@ function audit(file) {
   });
   fundWrong = r2(fundWrong);
   const inflated = r2(fundWrong - fundRight);
-  add('资金余额（三行口径，未重复聚合）', Math.abs(inflated) <= EPS || true,
-    '正确 ' + fundRight + '；若重复聚合会显示成 ' + fundWrong + '（虚增 ' + inflated + '）');
+  /* 【2026-09-26 撤掉一条假断言】此处原为：
+       add('资金余额（三行口径，未重复聚合）', Math.abs(inflated) <= EPS || true, …)
+     两个毛病：① `|| true` 使其恒真；② 即便去掉 `|| true` 也没意义 —— 它比的是**本脚本自己算的**
+     fundRight（父已含子）与 fundWrong（父 + 子重复计）两个值，差值由构造决定，与实现无关。
+     真正的"未重复聚合"必须加载 store 与实现比对，而本脚本的设计原则恰是"不复用前端代码"（见文件头）。
+     故这里只**打印数值**供人参考，不再假装断言；真断言已移到加载 store 的脚本：
+       tools/verify_invariants.js 的 **I12**（cashBalance vs generalLedger 两条取数路径逐分一致，全期间）。
+     保留打印的理由：fundWrong 这个"错误示范值"能让人一眼看到重复聚合会虚增多少。 */
+  console.log('    · 资金余额参考：三行口径（正确）' + fundRight + '；若重复聚合会显示成 '
+    + fundWrong + '（虚增 ' + inflated + '）→ 真断言见 verify_invariants.js 的 I12');
 
   // ④ 上卷自洽：资产类「顶级合计」应等于「末级合计」
   //    （只对资产类比较：若对全部科目比，借贷相抵恒为 0，检查会失去意义）

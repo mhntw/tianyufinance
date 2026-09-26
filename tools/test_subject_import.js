@@ -62,7 +62,7 @@ function T(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name)
 
 console.log(`金蝶科目文件: ${rows.length} 行, 现有账套科目: ${initialCount}`);
 console.log('【导入逻辑】');
-let ok = 0, skipped = 0, firstErr = null;
+let ok = 0, skipped = 0, attempted = 0, firstErr = null;
 rows.forEach(r => {
   const code = String(r['编码'] || '').trim();
   const name = String(r['名称'] || '').trim();
@@ -74,12 +74,21 @@ rows.forEach(r => {
   if (auxStr) auxStr.split(/[\/、]/).forEach(a => { const k = TY_AUX_MAP[a.trim()]; if (k && aux.indexOf(k) < 0) aux.push(k); });
   const isQty = String(r['数量核算'] || '') === '√' || /^\d+$/.test(String(r['数量核算'] || '').trim());
   const isFgn = /^(?!RMB$)/.test(String(r['外币核算'] || 'RMB').trim());
+  attempted++;   // 供「不丢行」恒等式断言用（见下方）
   const res = addSubject(code, name, cls, { aux, qty: isQty, foreign: isFgn });
   if (res.ok) ok++; else { skipped++; if (!firstErr) firstErr = code + ':' + res.msg; }
 });
 
 T('导入成功数 > 0', ok > 0, `成功 ${ok}`);
-T('跳过数(已存在)合理', skipped >= 0, `跳过 ${skipped}`);
+/* 【2026-09-26 修假绿】原断言 `skipped >= 0` 恒真（计数不可能为负）—— 等于没断言。
+   改为两条有内容的：
+     ① 不丢行：每一条被处理的科目行，要么导入成功、要么被明确跳过（attempted === ok + skipped）；
+     ② 跳过原因必须是「编码已存在」；若出现其它原因（如"父科目不存在"），
+        说明金蝶表里子科目排在父科目之前、导入顺序有问题 —— 那正是要暴露的真问题。 */
+T('每行要么导入成功、要么被明确跳过（不丢行）', attempted === ok + skipped,
+  `尝试 ${attempted} = 成功 ${ok} + 跳过 ${skipped}`);
+T('跳过原因均为「编码已存在」', skipped === 0 || /已存在/.test(firstErr || ''),
+  `首个跳过原因：${firstErr || '无'}`);
 T('父科目校验: 100101 父=1001 存在', subject('100101') && subject('100101').parent === '1001');
 T('段式编码: 100101 level=1', subject('100101') && subject('100101').level === 1);
 T('类别映射: 库存现金→asset', subject('1001') && subject('1001').cls === 'asset');

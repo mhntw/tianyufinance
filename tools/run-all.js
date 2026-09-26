@@ -51,8 +51,9 @@ const ALL = fs.readdirSync(__dirname)
 const scripts = QUICK ? ALL.filter(n => !/^sim_/.test(n)) : ALL;
 const skipped = QUICK ? ALL.filter(n => /^sim_/.test(n)) : [];
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skipCount = 0;
 const failures = [];
+const skips = [];
 const t0 = Date.now();
 
 console.log('回归自检（' + scripts.length + ' 个脚本'
@@ -78,7 +79,25 @@ scripts.forEach(name => {
     out = String(e.stdout || '') + String(e.stderr || '');
   }
   const ms = Date.now() - started;
-  if (ok) {
+  /* 【2026-09-26】"跳过"必须与"通过"分开统计（本次假绿治理的第一刀）。
+     背景：约一半脚本在没有账套 / 没有 .ais / 没有 ~/Downloads 样本时，会打印"跳过：…"并 exit 0；
+     而这里原先把 exit 0 一律记 pass —— 于是干净环境（尤其 CI）下"全绿"几乎不含任何真实校验。
+     判据：退出码为 0 **且** 输出里有"跳过："**且** 输出里没有任何断言通过标记。
+     （只看片段性的"跳过（该 .ais 无 GLBal 表）"不算 —— 那种脚本仍有断言在跑。） */
+  const hasPassMark = /\d+ 项断言|项断言全部通过|结果：|通过 \d+ \/ 失败 \d+|全部通过|✓ 通过/.test(out);
+  /* 跳过标记：只认「跳过」出现在**行首**或**行尾**的场合 —— 脚本的跳过提示就是这两种形态：
+       「跳过：找不到 .ais → …」「跳过（该 .ais 无 GLBal 表）」「✗ 未找到金蝶科目文件，跳过」
+     ⚠ 不能只判「输出里含跳过」：正文与被打印的代码片段里也会出现这两个字 ——
+       实测 check_html_escape 打印的问题代码里就有「按编码跳过重复」，于是被误判成"跳过"。 */
+  const isSkip = ok && !hasPassMark && /(^|\n)\s*[✗·\-]?\s*跳过[：:（(]|跳过\s*$/m.test(out);
+  if (ok && isSkip) {
+    skipCount++;
+    skips.push(name);
+    if (!QUIET) {
+      const why = (out.match(/跳过[：:][^\n]*/) || [''])[0].replace(/^跳过[：:]\s*/, '').slice(0, 42);
+      console.log('  ⊘ ' + name.padEnd(36) + String(ms + 'ms').padStart(8) + '   跳过（未校验）：' + why);
+    }
+  } else if (ok) {
     pass++;
     if (!QUIET) {
       const summary = (out.match(/(结果：[^|\n]*|通过 \d+ \/ 失败 \d+|\d+ 项断言全部通过|全部通过[^\n]*)/g) || []).pop() || '';
@@ -102,5 +121,11 @@ if (failures.length) {
   console.log('');
 }
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
-console.log('通过 ' + pass + ' / 失败 ' + fail + '   耗时 ' + secs + 's');
+if (skips.length) {
+  console.log('跳过（本次未做任何校验，**不等于通过**）：');
+  skips.forEach(n => console.log('  ⊘ ' + n));
+  console.log('  → 这些脚本需要真实账套 / .ais 样本；要真正跑到它们，请在本机（有账套）跑全量。');
+  console.log('');
+}
+console.log('通过 ' + pass + ' / 跳过 ' + skipCount + ' / 失败 ' + fail + '   耗时 ' + secs + 's');
 process.exit(fail ? 1 : 0);
