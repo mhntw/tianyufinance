@@ -17,6 +17,8 @@ const U = H.U || window.util;
 const S = H.S || window.S;
 // 金额归零到分：走**单点实现**（含 -0 → 0 归一）。原先 numToChinese 里内联了一份 Math.round(x*100)/100。
 const round2 = H.round2 || (U && U.round2) || (window.util && window.util.round2);
+// 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态。
+const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 const $ = function (id) { return document.getElementById(id); };
 import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { subjectFullName } from '../../common/subject-name.js';
@@ -288,7 +290,10 @@ function syncAllSubjBals() {
 
 function refreshVoucher() {
   setupVoucher();
-  if (!vRows.length && !vEditId) resetVoucherEdit();
+  // 换账套：正在编辑的凭证表单属于**上一本账套**，必须复位 ——
+  // 不复位则新账套里继续显示旧账套的分录行，用户一保存就把旧账套的分录写进新账套（错账）。
+  if (bookScopeChanged('voucher')) resetVoucherEdit();
+  else if (!vRows.length && !vEditId) resetVoucherEdit();
 }
 
 // 填充录凭证"凭证字"下拉：按启用凭证字动态生成（停用字不出现，与设置页停用联动）

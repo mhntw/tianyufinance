@@ -58,6 +58,9 @@ import { updatePeriodRangeTrigger } from '../../components/PeriodRangePicker.js'
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
 const periodRangeValue = H.periodRangeValue;
 // 区间期间取值：返回 {start, end}，供明细账等支持范围选择的页面使用。
+// 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时为 true，用于复位本页模块级状态。
+// fallback 取 false = "不重置"，即退化成原有行为；绝不能写成 true —— 那会把用户当次选的科目/过滤每次刷新都清掉。
+const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 const periodRangeValues = H.periodRangeValues || function (prefix) {
   var e = periodRangeValue(prefix);
   return { start: e, end: e };
@@ -152,6 +155,9 @@ function glCodesFor(code) {
 }
 
 function refreshGl() {
+  // 换账套：总账的「科目过滤 / 跳转高亮」是**上一本账套**的上下文，必须清掉 ——
+  // 否则新账套的总账被旧过滤裁掉若干行（少行、不报错，属最难自查的一类）。
+  if (bookScopeChanged('gl')) { glFilterCodes = null; glJumpHl = false; }
   // 同步 glHideZero 勾选（仅在 __refreshAll 场景下有意义：切账套后 checkbox 要跟新账套的 param 对齐）
   // 不能删：否则用户在账套 A 勾选隐藏零行，切到账套 B 还是 checked 但 param 可能是 false
   var glHz = document.getElementById('glHideZero');
@@ -311,6 +317,12 @@ function dlFirstUsedCode() {
   return min;
 }
 function refreshDl() {
+  // 换账套：明细账的「当前科目 / 科目树 / 首次自动定位」全部属于上一本账套，必须复位。
+  // 尤其科目树的判据（原先 dlTreeSyncCurrent 里只比发生科目的**数量**）—— 两账套数量相同、
+  // 编码不同时树根本不会重建，会继续列出**旧账套的科目**；故这里把 dlTree 一并作废、强制重建。
+  if (bookScopeChanged('dl')) {
+    dlCurCode = null; dlTreeSig = ''; dlAutoFirstDone = false; dlTree = null;
+  }
   var range = periodRangeValues('dlPeriod');
   if (!dlAutoFirstDone) {
     dlAutoFirstDone = true;
@@ -467,6 +479,8 @@ function mlSubjectCode() {
   return { code: mlCurCode || '', err: '' };
 }
 function refreshMl() {
+  // 换账套：多栏账的当前科目/科目选择器属于上一本账套（否则按旧账套的 code 查，多半是空表）
+  if (bookScopeChanged('ml')) { mlCurCode = null; mlSubjPicker = null; }
   var month = periodRangeValue('mlPeriod');
   var r = mlSubjectCode();
   renderMl(r.code, month, r.err);

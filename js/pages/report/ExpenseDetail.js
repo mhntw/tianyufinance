@@ -10,6 +10,8 @@ const edState = {
 let edExportData = null;
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = (globalThis.__TY_HELPERS__ || {}).periodRangeValue;
+// 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页状态
+const bookScopeChanged = (globalThis.__TY_HELPERS__ || {}).bookScopeChanged || function () { return false; };
 
 export function renderExpenseDetail() {
   try {
@@ -287,6 +289,9 @@ function initEDFilters() {
 }
 
 function refreshExpenseDetail() {
+  // 换账套：手动展开的科目 code、分页、以及导出缓存全部属于上一本账套 —— 必须复位。
+  // （展开集里是**旧账套的科目编码**，新账套多半没有这些 code；导出缓存残留会把旧账套的数导出。）
+  if (bookScopeChanged('ed')) { edState.expanded.clear(); edState.page = 1; edExportData = null; }
   const dataMax = currentPeriod(); // 数据实际最后月份（最近有凭证的期间）
   // 查询上限 = 本月（当下自然月，与账套进度无关）：仅截断未来月份；
   // 账套未做到本月时该月显示空表属正常，不再被拉回账套数据最后月份

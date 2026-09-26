@@ -518,6 +518,8 @@
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
       closeModal: pick(closeModal), bookKey: pick(bookKey),
+      // 账套作用域守卫（单点）：页面用它判断「账套是否换了、本页模块状态是否该复位」，见其定义处注释
+      bookScopeChanged: pick(bookScopeChanged),
       currentPeriod: pick(currentPeriod), lastClosedPeriod: pick(lastClosedPeriod), num: U && U.num,
       // 起止期间取值统一在此提供单点实现，页面模块直接引用（见 PeriodRangePicker.js）。
       periodRangeValue: pick(periodRangeValue),
@@ -1949,11 +1951,14 @@
     /* 工资收敛：部门职员/凭证模板已并回工资页弹窗，旧键保持可用（渲染到弹窗内表体） */
     'department-staff': renderVia('DeptStaff'), 'salary-tpl': renderVia('SalaryTpl'), 'salary-guide': renderVia('Salary'),
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
-    /* 【2026-09-26 删除死映射】此处原有 `'report-expense-detail': renderVia('ExpenseDetail')`，
-       但 index.html 里没有 `#page-report-expense-detail`（真实 section 是 `#page-expense-detail`），
-       全库也无任何地方用这个键跳转 —— 属**死映射**（永远不会被命中）。
-       费用明细表的真实入口是上面的 `if (page === 'expense-detail')` 特判 + main.js 的 extraPages 注册，
-       删掉它不影响任何入口；留着只会让人误以为"有两条路进这张表"。 */
+    /* 【2026-09-26】费用明细表：把**真实的键**补上。
+       原先这里写的是 `'report-expense-detail': renderVia('ExpenseDetail')` —— 属**死映射**：
+       index.html 里没有 `#page-report-expense-detail`（真实 section 是 `#page-expense-detail`），
+       全库也无任何地方用这个键跳转，永远不会被命中（删掉不影响任何入口）。
+       而**真实键缺失是有实际后果的**：PAGE_REFRESHERS 是本文件唯一的「整页刷新」能力，
+       __refreshAll 切账套时只按当前 active 页取刷新函数 —— 缺这个键就意味着
+       「停在费用明细表时切账套，表格整页不重渲染，继续显示**上一本账套**的数据」（不报错、最难自查）。 */
+    'expense-detail': renderVia('ExpenseDetail'),
     // 系统设置 = 原系统设置 + 并入的数据与安全；旧 backup-restore 键保留并复用同一刷新（旧标签/直达兼容）
     'backup-restore': refreshSettingsAll, 'system-settings': refreshSettingsAll,
     // 操作日志独立页：当前账套日志 + 跨账套操作日志
@@ -1972,12 +1977,28 @@
      同一账套内的 syncAll（保存凭证等触发的刷新）**不清空**，用户选定的期间照样保留。
      ⚠ 本注释不要写出"给期间控件赋值"的源码样子 —— tools/check_period_contract.js 逐行扫赋值，
        一度把注释里的示例当成"只给 Start 侧赋值"的违规（表达式尾部还带着本行的破折号，配不上 End 侧）。 */
-  var _periodBookKey = null;
+  /* ---------- 账套作用域守卫（**单点实现**，2026-09-26）----------
+     【为什么要抽这一处】切片账套后，各页面模块里那些「记住上次所见」的模块级状态
+     （总账的科目过滤、明细账当前科目、科目树、展开集、正在编辑的凭证分录行…）**不会自己复位**，
+     于是一部分界面继续显示**上一本账套**的数据 —— 这类错数不报错、最难自查。
+     此前只有首页(syncBookScope)、试算平衡表(tbBookKey)、期间控件(_resetPeriodInputsIfBookChanged)
+     各自写了一份「和上次比账套标识」的逻辑，其余页面漏掉；其中明细账的“科目树签名”更是
+     只比科目**数量**，两账套数量相同就完全不重建树。
+     故抽成单点，页面只写一行：
+         if (bookScopeChanged('ledger')) { …把本页与账套相关的状态复位… }
+     语义：同一账套内反复调用返回 false（用户的选择得以保留）；换账套返回 true；首次调用返回 true。
+     判据复用既有的 bookKey()（bookId + 会计年度起始月）—— 起始月变了默认期间也变，故它才是完整标识。
+     ⚠ 别在页面里再各写一遍比较逻辑，也别把「账套标识」改成只有 bookId。 */
+  var _bookScopeSeen = {};
+  function bookScopeChanged(key) {
+    var cur = '';
+    try { cur = bookKey(); } catch (e) { }
+    var prev = Object.prototype.hasOwnProperty.call(_bookScopeSeen, key) ? _bookScopeSeen[key] : null;
+    _bookScopeSeen[key] = cur;
+    return prev !== cur;
+  }
   function _resetPeriodInputsIfBookChanged() {
-    var key = '';
-    try { key = (S && (S.bookId || (typeof S.currentBookId === 'function' ? S.currentBookId() : ''))) || ''; } catch (e) { }
-    if (key === _periodBookKey) return;
-    _periodBookKey = key;
+    if (!bookScopeChanged('__periodInputs__')) return;   // 判据与各页复位同源（见 bookScopeChanged）
     var inputs = document.querySelectorAll('input[id$="PeriodStart"], input[id$="PeriodEnd"]');
     for (var i = 0; i < inputs.length; i++) inputs[i].value = '';
   }
