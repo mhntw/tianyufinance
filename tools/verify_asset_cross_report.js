@@ -56,6 +56,29 @@ function accumAt(fa, month, md) {
   return v;
 }
 
+/* ---------------- 已知「有卡片、总账无计提」的卡片（数据问题，非代码缺陷） ----------------
+ * 【2026-09-26】卡片 0019「客房餐厅用品」（绅蓝之星）：原值 45,104.00、月折旧 751.74、2024-08 起提，
+ *   而总账 1602 **从未有过它的计提分录** —— 于是所有「卡片侧合计 vs 总账」的比较，
+ *   差额恒等于它的累计折旧（每月 +751.74，至 2026-08 为 13,531.09）。
+ *   定性依据：verify_vs_ais.js 对金蝶原账套**全期间 0 差异** ⇒ 总账忠实于源账套，
+ *   不一致的一方是**卡片数据**；app 侧的账实对账提示条报得没错（它本来就是这个用途）。
+ * 处理方式：比较前**先扣除**这些卡片的应计数，再要求相等 ——
+ *   而不是放宽容差。放宽等于同时放过真正的回归；扣除已知项则其它卡片一出问题立刻报警。
+ * ⚠ 将来补记入账 / 删卡：把本数组清空即可，断言自动恢复为"必须相等"；出现同类新卡片就加进来。 */
+const UNPOSTED_CODES = ['0019'];
+function unpostedOf(list, m) {
+  let beg = 0, per = 0, end = 0, ytd = 0;
+  const y = String(m).slice(0, 4);
+  list.forEach(fa => {
+    if (UNPOSTED_CODES.indexOf(String(fa.code)) < 0) return;
+    const md = S.assetMonthlyDepr(fa);
+    const ab = accumAt(fa, addMonths(m, -1), md), ae = accumAt(fa, m, md);
+    beg += ab; per += Math.max(0, ae - ab); end += ae;
+    ytd += Math.max(0, ae - accumAt(fa, addMonths(y + '-01', -1), md));
+  });
+  return { beg: beg, per: per, end: end, ytd: ytd, accum: end };
+}
+
 let pass = 0, fail = 0;
 const fails = [];
 const notes = [];   // 「账实不符」提示：反映的是账套数据本身，不计入失败
@@ -152,11 +175,18 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
     check(Math.abs(r2(cAe - rAe)) < 0.005, P + ' 卡片/报表 期末累计一致', cAe.toFixed(2) + ' vs ' + rAe.toFixed(2));
     check(Math.abs(r2(cNe - rNe)) < 0.005, P + ' 卡片/报表 期末净值一致', cNe.toFixed(2) + ' vs ' + rNe.toFixed(2));
 
-    // 与账核对（核心）
-    check(Math.abs(r2(rAb - ledBeg)) <= tol, P + ' 期初累计 = 总账期初', rAb.toFixed(2) + ' vs ' + ledBeg.toFixed(2));
-    check(Math.abs(r2(rMd - ledPer)) <= tol, P + ' 期间折旧 = 总账本期发生', rMd.toFixed(2) + ' vs ' + ledPer.toFixed(2));
-    check(Math.abs(r2(rAe - ledEnd)) <= tol, P + ' 期末累计 = 总账期末', rAe.toFixed(2) + ' vs ' + ledEnd.toFixed(2));
-    check(Math.abs(r2(rYd - ledYtd)) <= tol, P + ' 本年折旧 = 总账本年累计', rYd.toFixed(2) + ' vs ' + ledYtd.toFixed(2));
+    // 与账核对（核心）—— 先扣除「已知有卡片、总账无计提」的卡片（见文件顶部 UNPOSTED_CODES 说明）
+    const up = unpostedOf(cur, m);
+    const uTxt = up.accum ? '（另有未入账卡片累计 ' + up.accum.toFixed(2) + ' 已扣除）' : '';
+    check(Math.abs(r2((rAb - up.beg) - ledBeg)) <= tol, P + ' 期初累计 = 总账期初',
+      rAb.toFixed(2) + ' - ' + up.beg.toFixed(2) + ' vs ' + ledBeg.toFixed(2) + uTxt);
+    check(Math.abs(r2((rMd - up.per) - ledPer)) <= tol, P + ' 期间折旧 = 总账本期发生',
+      rMd.toFixed(2) + ' - ' + up.per.toFixed(2) + ' vs ' + ledPer.toFixed(2) + uTxt);
+    check(Math.abs(r2((rAe - up.end) - ledEnd)) <= tol, P + ' 期末累计 = 总账期末',
+      rAe.toFixed(2) + ' - ' + up.end.toFixed(2) + ' vs ' + ledEnd.toFixed(2) + uTxt);
+    check(Math.abs(r2((rYd - up.ytd) - ledYtd)) <= tol, P + ' 本年折旧 = 总账本年累计',
+      rYd.toFixed(2) + ' - ' + up.ytd.toFixed(2) + ' vs ' + ledYtd.toFixed(2) + uTxt);
+    if (up.accum) notes.push(P + ' 有卡片未入账：累计 ' + up.accum.toFixed(2) + '（' + UNPOSTED_CODES.join('/') + '）');
 
     // 原值合计 vs 总账 1601 期末。
     // 注意：这里只作「账实不符」提示，**不计入失败**。原因是 1601 上可能有并未建立卡片的资产
@@ -199,8 +229,22 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
     const lDep = endBal(dep.code);
     if (lDep !== null) {
       const d = r2(cDep - lDep), tol = r2(active.length * 0.01 + 0.01);
-      check(Math.abs(d) <= tol, short + ' ' + m + ' 对账①累计折旧应通过',
-        '差 ' + d.toFixed(2) + ' / 容差 ' + tol.toFixed(2));
+      /* 【2026-09-26 由「应通过」改为**精确断言**】原先只断言 |差| ≤ 容差，隐含假设"账实必然相等"。
+         该假设在**卡片 0019「客房餐厅用品」**出现后不再成立，且这是**数据**层面的事实、不是代码缺陷：
+           · 卡片侧：0019 原值 45,104.00、月折旧 751.74、2024-08 起提（故差额每月**增加 751.74**）；
+           · 总账侧：1602 里从未有过它的计提分录；
+           · **金蝶对照实测 0 差异**（verify_vs_ais.js 全期间）⇒ 总账忠实于源账套，不一致的一方是卡片数据。
+         故改为「要么已平，要么差额**恰好等于**该未入账卡片的累计折旧」——
+         这比原来的「应通过」信息量更大：将来**别的**卡片再出问题（差额对不上 0019）仍会立刻报警；
+         而原写法要么恒绿（若放宽容差）要么误报（若不放宽）。
+         ⚠ 若你将来把 0019 的折旧补记入账（那才是正确的修账），差额会变成 0，本断言会**失败** ——
+           那是"正确的失败"：把下面 knownCard 改成 null，或把已入账卡换成别的未入账卡即可。
+           **不要**退回去用「|差| ≤ 容差」把这条压绿。 */
+      const known = r2(unpostedOf(active, m).accum);   // 见文件顶部 UNPOSTED_CODES
+      check(Math.abs(r2(d - known)) <= tol,
+        short + ' ' + m + ' 对账①累计折旧：扣除非入账卡片后应相等',
+        '差 ' + d.toFixed(2) + ' - 未入账 ' + known.toFixed(2) + ' = ' + r2(d - known).toFixed(2)
+          + ' / 容差 ' + tol.toFixed(2));
     }
     // ② 原值：按卡片实际挂的科目分组（与页面实现同口径）
     const byAcct = {}; let cOrig = 0;
