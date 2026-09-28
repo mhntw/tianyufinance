@@ -8,13 +8,15 @@
  *      按文件**种类 + 数量**分流（判据是纯函数 js/common/import-classify.js）。
  *   ② 语义统一：该入口**只做新增，绝不覆盖当前账套** —— 用户看到"导入"二字想的是
  *      "加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉（名字与行为不符是最坏的
- *      一类不一致，因为他不会去细读确认框）。于是 .json 从"覆盖当前账套"改为"作为新账套导入"，
- *      而"覆盖当前账本"能力搬到「查看备份 → 从文件恢复…」，与列表里的「恢复」同处一个面板。
+ *      一类不一致，因为他不会去细读确认框）。于是 .json 从"覆盖当前账套"改为"作为新账套导入"。
+ *      随后（同日、用户要求）连"从外部 .json 覆盖"这条补救入口也删掉了 ——
+ *      **「查看备份 → 恢复」成为全应用唯一能覆盖当前账本的入口**。
  *
- * 【本脚本守的两条不变量（这是它存在的理由）】
+ * 【本脚本守的三条不变量（这是它存在的理由）】
  *   A. 判据永不产出"覆盖"动作 —— 否则 .json 又会悄悄换掉用户的账。
- *   B. 「覆盖当前账本」全应用只有一个入口文件（Tools.js，且都在「查看备份」面板里），
- *      且必须"先确认、后快照、再覆盖" —— 顺序错了等于没拦（首版静态断言就栽在这上面）。
+ *   B. 「覆盖当前账本」全应用只有一个入口文件（Tools.js）且只有一条路（列表里的「恢复」）；
+ *      外部文件那条补救入口**不得复活**（它一旦回来，"导入"与"覆盖"又会纠缠）。
+ *   C. 该唯一入口必须"先确认 → 再快照 → 最后覆盖" —— 顺序错了等于没拦（首版静态断言就栽在这上面）。
  *
  * 用法：node tools/verify_import_entry.js
  * ============================================================ */
@@ -90,8 +92,6 @@ function check(cond, label, detail) {
     });
   check(html.indexOf('id="btnBookImport"') >= 0, 'index.html 应有唯一入口按钮 id="btnBookImport"');
   check(html.indexOf('id="bookImportFile"') >= 0, 'index.html 应有统一文件选择器 id="bookImportFile"');
-  check(html.indexOf('id="restoreFromFileInput"') >= 0,
-    'index.html 应有「从文件恢复…」的选择器 id="restoreFromFileInput"');
   check((html.match(/id="btnBookImport"/g) || []).length === 1, '导入入口只应有一个按钮');
 
   // 旧绑定：不能留"删了 UI 留了死绑"（$('x').addEventListener 对 null 会抛 TypeError）
@@ -147,19 +147,26 @@ function check(cond, label, detail) {
   check(fs.readFileSync(path.join(ROOT, 'js/store.js'), 'utf8').indexOf('restoreBookState(') >= 0,
     '（store 内部实现的 restoreFromData 委托不算违规，保持现状）');
 
-  // Tools.js：从文件恢复的入口与保护
-  check(/\$\('restoreFromFileInput'\)/.test(tools), 'Tools.js 应绑定 #restoreFromFileInput');
-  check(/id="btnRestoreFromFile"/.test(tools), 'Tools.js 应在备份面板渲染「从文件恢复…」链接');
-  const iFn = tools.indexOf('function restoreFromFile(');
-  const fnBody = iFn < 0 ? '' : tools.slice(iFn, iFn + 2000);
-  check(iFn >= 0, 'Tools.js 应有 restoreFromFile 函数（外部 .json 覆盖恢复）');
-  check(/reader\.readAsText/.test(fnBody), '（判据自检）截取的函数体应完整到结尾', '长度 ' + fnBody.length);
-  check(/confirmAsync/.test(fnBody) && /覆盖当前账套/.test(fnBody),
-    '从文件恢复必须先明确告知"覆盖当前账套"并确认（破坏性语义不得藏起来）');
-  check(/guardBeforeRestore/.test(fnBody), '从文件恢复应保留覆盖前留存档守卫');
+  /* 不变量 B（后半）：外部文件覆盖那条补救入口**不得复活**。
+     它只存在过很短时间就被用户要求删除 —— 一旦回来，"导入"与"覆盖"又会在语义上纠缠。 */
+  check(html.indexOf('id="restoreFromFileInput"') < 0,
+    '不变量 B：index.html 不应再有"从文件恢复"的选择器（该入口已删除，不得复活）');
+  check(!/\$\('restoreFromFileInput'\)/.test(tools) && !/id="btnRestoreFromFile"/.test(tools),
+    '不变量 B：Tools.js 不应再引用或渲染"从文件恢复"入口');
+  check(!/function\s+restoreFromFile\s*\(/.test(tools),
+    '不变量 B：Tools.js 不应再有 restoreFromFile 函数（外部文件覆盖当前账套）');
+
+  // 不变量 C：**唯一**覆盖入口的保护与顺序（「查看备份」列表里的「恢复」）
+  const iFn = tools.indexOf('function restoreFromBackup(');
+  const fnBody = iFn < 0 ? '' : tools.slice(iFn, iFn + 2200);
+  check(iFn >= 0, 'Tools.js 应有 restoreFromBackup 函数（查看备份列表里的「恢复」）');
+  check(/storageLoadBackup\(/.test(fnBody), '（判据自检）截取的函数体应完整到结尾', '长度 ' + fnBody.length);
+  check(/confirmAsync/.test(fnBody) && /恢复当前账本/.test(fnBody),
+    '不变量 C：该入口必须先明确告知"恢复当前账本"并取得确认');
+  check(/guardBeforeRestore/.test(fnBody), '不变量 C：该入口应保留覆盖前留存档守卫');
   const iC = fnBody.indexOf('confirmAsync'), iG = fnBody.indexOf('guardBeforeRestore'), iR = fnBody.indexOf('restoreBookState(');
   check(iC >= 0 && iG > iC && iR > iG,
-    '顺序必须是「先确认 → 再留快照 → 最后覆盖」（顺序错了等于没拦；用户取消时也不该白留快照）',
+    '不变量 C：顺序必须是「先确认 → 再留快照 → 最后覆盖」（顺序错＝没拦；取消时也不该白留快照）',
     'confirmAt=' + iC + ' guardAt=' + iG + ' restoreAt=' + iR);
 })();
 

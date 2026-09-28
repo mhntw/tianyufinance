@@ -309,13 +309,9 @@ function renderBackupRows() {
   var box = $('backupList'); if (!box) return;
   var disk = box._bDisk || [], stats = box._bStats;
   var show = box._bAll ? disk : disk.slice(0, 1);
-  // 「从文件恢复…」：用一个**外部** .json 覆盖恢复当前账套。
-  //   【2026-09-28 搬家】它原先在「导入账套」里（当时 .json 分支=覆盖），现搬到这里 ——
-  //   语义上"覆盖当前账本"属于**恢复**，不属于**导入**；这样"覆盖当前账本"全应用只有本面板一处入口，
-  //   且与本列表里的「恢复」共用同一套保护（明确确认 → 覆盖前留存档 → 恢复 → 告知可撤销）。
-  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a>' +
-    '<a class="tool-link" id="btnRestoreFromFile" title="用一个外部账套备份文件(.json)覆盖恢复当前账套（覆盖前自动留存档，可回滚）">从文件恢复…</a>' +
-    '<span class="muted" style="font-size:var(--fs-xs)">共 ' +
+  // 面板工具栏只保留「刷新列表」：曾经短暂存在的「从文件恢复…」（外部 .json 覆盖）已按用户要求删除，
+  // 详见本文件下方该处的说明 —— 覆盖当前账本只走本列表里每行的「恢复」。
+  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:var(--fs-xs)">共 ' +
     disk.length + ' 份备份</span></div>';
   html += renderBackupHealth(stats, box._bCloud);
   if (disk.length) {
@@ -470,81 +466,53 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
    ⚠ store.backupNow() 保留：它仍被上述高风险操作调用（见 store.js 的 6 处 backupNow()）。 */
 // 查看备份 / 恢复
 $('btnListBackup').addEventListener('click', listBackups);
+/* 从**应用内快照**恢复（「查看备份」列表里每行的「恢复」）。
+   ⚠ 2026-09-28 之后这是**全应用唯一**能覆盖当前账本的入口（"从文件恢复…"已按用户要求删除），
+     故保护必须完整、且顺序不可颠倒：
+       ① 先明确确认（并说明本功能的正路是红冲 / 反结账 —— 它不是"改错账"的手段）
+       ② 再强制留覆盖前快照（快照失败要二次确认，避免"以为有回滚点其实没有"）
+       ③ 最后才 restoreBookState
+     顺序反了＝没拦：用户点取消时不该已经动过任何东西（也不该白留一份快照）。 */
+async function restoreFromBackup(file) {
+  const ok = await H.confirmAsync('确认用该备份恢复当前账本？\n（备份仅用于软件故障/文件损坏等意外找回；\n账务差错请用「红字冲销/反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
+  if (!ok) return;
+  // 覆盖前强制留快照：一旦恢复到的备份不对，可从快照回滚，不再是不可逆操作
+  const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续恢复将无法撤回。是否仍要继续？');
+  if (!goon) return;
+  storageLoadBackup(S.currentBookId(), file)
+    .then(function (st) {
+      if (!st) throw new Error('读取备份失败');
+      S.restoreBookState(st);
+      // 恢复是整本覆盖：账内日志会回到快照时刻，必须补一条「本次恢复」的续写日志，
+      // 让账内审计在恢复点后无缝衔接（全局操作流水同步留痕，不受覆盖影响）
+      try { S.addLog('恢复备份', '从备份列表恢复当前账本（' + (file || '') + '）', '账套'); } catch (e) {}
+      showToast('已恢复备份（如需撤销，可恢复「覆盖前存档」）');
+      refreshAll(); listBackups(); refreshTools();
+    })
+    .catch(function (err) { showToast('恢复失败：' + (err && err.message || err), 'error'); });
+}
 $('backupList').addEventListener('click', async function (e) {
   if (e.target.id === 'btnRefreshBk') { listBackups(); return; }
-  if (e.target.id === 'btnRestoreFromFile') {   // 从文件恢复：打开外部 .json 文件选择器
-    var rf = $('restoreFromFileInput'); if (rf) rf.click();
-    return;
-  }
   if (e.target.id === 'btnBkToggle') {
     var bb = $('backupList');
     if (bb) { bb._bAll = !bb._bAll; renderBackupRows(); }
     return;
   }
   if (e.target.tagName !== 'BUTTON') return;
-  const ok = await H.confirmAsync('确认用该备份恢复当前账本？\n（备份仅用于软件故障/文件损坏等意外找回；\n账务差错请用「红字冲销/反结账」更正；恢复前会自动留一份当前账本）', { title: '恢复备份' });
-  if (!ok) return;
-  // 覆盖前强制留快照：一旦恢复到的备份不对，可从快照回滚，不再是不可逆操作
-  const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续恢复将无法撤回。是否仍要继续？');
-  if (!goon) return;
   var file = e.target.getAttribute('data-file');
-  var bid = S.currentBookId();
-  var done = function (st) {
-    if (!st) return showToast('备份数据为空', 'error');
-    S.restoreBookState(st);
-    // 恢复是整本覆盖：账内日志会回到快照时刻，必须补一条「本次恢复」的续写日志，
-    // 让账内审计在恢复点后无缝衔接（全局操作流水同步留痕，不受覆盖影响）
-    try { S.addLog('恢复备份', '从备份列表恢复当前账本（' + (file || '') + '）', '账套'); } catch (e) {}
-    showToast('已恢复备份（如需撤销，可恢复「覆盖前存档」）');
-    refreshAll(); listBackups(); refreshTools();
-  };
-  if (file) {
-    storageLoadBackup(bid, file)
-      .then(function (st) {
-        if (!st) throw new Error('读取备份失败');
-        done(st);
-      })
-      .catch(function (err) { showToast('恢复失败：' + (err && err.message || err), 'error'); });
-  }
+  if (file) restoreFromBackup(file);
 });
-/* 「从文件恢复…」：用一个**外部** .json 覆盖恢复当前账套。
-   【2026-09-28 从 Settings.js 的「导入账套」搬来】它与上面列表里的「恢复」是同一件事
-   （都把当前账本换掉），只是来源不同（外部文件 vs 应用内快照），故保护逐条对齐：
-     ① 先明确确认：写明**文件名**与**将被覆盖的当前账套名**，并说明可回滚；
-     ② 覆盖前强制留快照（快照失败要二次确认，避免"以为有回滚点其实没有"）；
-     ③ 恢复后告知"如需撤销，可恢复「覆盖前存档」"。
-   ⚠ 顺序不可颠倒：先确认、后快照 —— 用户取消时不该白留一份快照（本文件首版曾把快照放在确认之前）。 */
-function restoreFromFile(f) {
-  var reader = new FileReader();
-  showToast('正在读取账套备份…');
-  reader.onload = async function (ev) {
-    try {
-      var st = JSON.parse(ev.target.result);
-      if (!st || (!st.company && !st.subjects)) { showToast('文件不是有效的账套备份', 'error'); return; }
-      var curName = (S.state && S.state.company && S.state.company.name) || '当前账套';
-      var goon = await H.confirmAsync(
-        '将用「' + (f.name || '所选文件') + '」覆盖当前账套「' + curName + '」的全部数据。\n'
-        + '覆盖前会自动留存档，之后可在「查看备份」列表里还原。是否继续？',
-        { title: '从文件恢复 · 覆盖当前账套' });
-      if (!goon) return;
-      const g2 = await guardBeforeRestore('未能创建「覆盖前存档」，继续恢复将无法撤回。是否仍要继续？');
-      if (!g2) return;
-      var ok = S.restoreBookState(st, { logWord: '恢复备份', logText: '从文件恢复当前账本（' + (f.name || '') + '）' });
-      if (!ok) { showToast('恢复失败：备份文件无效', 'error'); return; }
-      showToast('已从文件恢复（如需撤销，可恢复列表中的「覆盖前存档」）');
-      refreshAll(); listBackups(); refreshTools();
-    } catch (err) { showToast('恢复失败：' + (err && err.message || err), 'error'); }
-  };
-  reader.onerror = function () { showToast('读取文件失败', 'error'); };
-  reader.readAsText(f);
-}
-$('restoreFromFileInput').addEventListener('change', function (e) {
-  var inp = e.target;
-  var f = inp.files && inp.files[0];
-  if (!f) return;
-  inp.value = '';   // 允许再次选择同一个文件
-  restoreFromFile(f);
-});
+/* 【2026-09-28 已删除「从文件恢复…」入口（用户要求）】
+   它只存在了很短一段时间：为配合"导入只做新增"的语义统一，曾把"用外部 .json 覆盖当前账本"
+   搬到这里。用户看过之后决定不要这个入口 —— 于是：
+
+     **全应用能覆盖当前账本的，只有「查看备份」列表里的「恢复」一条路（从应用内快照回滚）。**
+
+   这更简单，也更安全：外部文件（.json / 导出到 U 盘的副本）只能**新增**为一本账套，
+   想用它换掉当前账，走「导入账套」导入成新账套后再把旧账套删进回收站即可
+   （两步，但每一步都可逆；比"一个入口既能新增又能覆盖"更难误操作）。
+   ⚠ 不要为了"方便"把外部文件恢复再加回来：一旦它回来，"导入"与"覆盖"又会在语义上纠缠，
+     而那正是本次一系列收敛要解决的问题。 */
 // 打开导出目录。
 // 实现：Tauri 下用 invoke('open_in_explorer', {path}) 在 Rust 端用 open crate 直接打开系统文件管理器，
 // 彻底绕过 opener 插件的 scope 限制，跨平台（macOS Finder / Windows 资源管理器）、打包后均稳。
@@ -623,14 +591,16 @@ $('btnBkAll').addEventListener('click', function () {
     });
   });
 });
-/* 【2026-09-28 两处搬家的最终形态，读之前先看这段】
-   1) 原「导入备份」（#btnImportBackup + #bkFile）的绑定删除 —— 能力并入统一入口；
+/* 【2026-09-28 最终形态，读之前先看这段】
+   1) 原「导入备份」（#btnImportBackup + #bkFile）的绑定删除 —— 其能力并入「导入账套」；
    2) 但**统一入口只做新增**（见 js/common/import-classify.js）：.json 现在是"作为新账套导入"，
-      不再覆盖当前账套。于是"用外部 .json 覆盖恢复当前账本"这件事**搬到了本文件**，
-      即上面的「从文件恢复…」→ #restoreFromFileInput（与列表里的「恢复」并列，同一个面板）。
-   结果：全应用能覆盖当前账本的入口**只有两处，都在本面板**（内部快照 / 外部文件），
-   且共用同一套保护（先确认 → 覆盖前留存档 → 恢复 → 告知可撤销）。
-   这样「导入账套」永远不会悄悄换掉用户正在用的账。 */
+      不再覆盖当前账套；
+   3) 期间曾把"用外部 .json 覆盖当前账本"搬到这里、做成「从文件恢复…」，**随后按用户要求删除**。
+   当前形态：
+     · 「导入账套」= 永远新增 —— 任何文件都不会换掉用户正在用的账；
+     · 「查看备份 → 恢复」= **全应用唯一**能覆盖当前账本的入口（从应用内快照回滚）。
+   外部副本（如导出到 U 盘的 .json）只能**新增**为一本账套；想用它换掉当前账，
+   导入成新账套后把旧账套删进回收站即可 —— 两步，但每一步都可逆，比"一个入口既能新增又能覆盖"更难误操作。 */
 // 暴露给 Settings.js 用于初始刷新备份状态
 globalThis.listBackups = listBackups;
 // 暴露覆盖前快照守卫：供其它"整本覆盖"入口复用同一套保护（当前仅本面板使用）
