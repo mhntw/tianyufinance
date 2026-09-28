@@ -1398,12 +1398,14 @@
           <div class="card-tools-wrap">
             <div class="book-toolbar">
               <button class="btn-link" id="btnNewBook">新建账套</button>
-              <!-- 【2026-09-28 三合一】原「导入账套 / 多年合并导入 / 导入备份」三个按钮合并为此一个：
+              <!-- 【2026-09-28 三合一 + 语义统一】原「导入账套 / 多年合并导入 / 导入备份」三个按钮合并为此一个：
                    按所选文件的**种类 + 数量**自动分流（判据见 js/common/import-classify.js）：
                      1 个 .ais → 新建账套 ； ≥2 个 .ais → 合并为一个连续多年账套 ；
-                     1 个 .json → 覆盖恢复当前账套（会先明确提示覆盖哪一本并确认）。
-                   旧按钮「多年合并导入」「导入备份」已删除，其能力全部包含在本按钮内。 -->
-              <button class="btn-link" id="btnBookImport" title="导入账套：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 备份（＝覆盖恢复当前账套）">导入账套</button>
+                     1 个 .json → 作为新账套导入。
+                   【核心不变量】本入口**只做新增，绝不覆盖当前账套** —— 用户看到"导入"二字想的是
+                   "加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉。
+                   "覆盖当前账本"全应用只有一处：「查看备份 → 恢复 / 从文件恢复…」。 -->
+              <button class="btn-link" id="btnBookImport" title="导入账套（均新增一本，不覆盖当前账套）：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 账套备份（＝作为新账套导入）。要用备份覆盖当前账套，请走「查看备份 → 从文件恢复…」">导入账套</button>
               <button class="btn-link" id="btnViewYearBoundary" title="查看当前合并账套的跨年一致性校验报告">查看校验报告</button>
               <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡等）">风险检测</button>
               <!-- 【2026-09-28 删除「手动备份」】它与**自动备份**是同一种产物、同一目录、同一个 10 份滚动池
@@ -1418,6 +1420,8 @@
               <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
                    原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->
               <input type="file" id="bookImportFile" accept=".ais,.json" multiple style="display:none">
+              <!-- 「查看备份 → 从文件恢复…」用的选择器：外部账套备份 .json（这是全应用唯一"覆盖当前账套"的入口） -->
+              <input type="file" id="restoreFromFileInput" accept=".json,application/json" style="display:none">
             </div>
 
             <div id="backupList" class="backup-list" style="display:none"></div>

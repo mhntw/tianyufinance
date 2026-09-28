@@ -394,15 +394,22 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     if (globalThis.__renderTools) globalThis.__renderTools();
   }
   /* ============================================================
-   * 【2026-09-28 三合一】导入账套（唯一入口，原「导入账套 / 多年合并导入 / 导入备份」）
+   * 【2026-09-28 三合一 + 语义统一】导入账套（唯一入口，原「导入账套 / 多年合并导入 / 导入备份」）
    *
-   * 三者原先各有一个按钮 + 隐藏 input + 一段处理逻辑，但**唯一的行为差异只有三条**：
-   *     ① 1 个 .json → 覆盖恢复**当前**账套
-   *     ② 1 个 .ais  → 解析后**新建**一个独立账套
-   *     ③ ≥2 个 .ais → 逐文件解析后**合并新建**一个连续多年账套
-   * 故合并为一个入口，按**文件种类 + 数量**分流（判据是纯函数 importPlanOf，可单独测试）；
-   * 判不出的情况（混选 .ais/.json、多个 .json、选了别的类型）明确报错，**不做猜测**。
-   * 底层实现一行未改：仍复用 handleImportAis / handleMultiYearImport / S.restoreBookState。
+   * 三者原先各有一个按钮 + 隐藏 input + 一段处理逻辑。按**文件种类 + 数量**分流即可
+   * （判据是纯函数 importPlanOf，可单独测试）：
+   *     ① 1 个 .ais  → 解析后**新建**一个独立账套
+   *     ② ≥2 个 .ais → 逐文件解析后**合并新建**一个连续多年账套
+   *     ③ 1 个 .json → **作为新账套导入**
+   *
+   * 【核心不变量：本入口只做新增，绝不覆盖当前账套】
+   *   用户看到"导入"二字时，心里想的是"加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉 ——
+   *   名字与行为不符是最坏的一类不一致，因为他不会去细读确认框（他"已经知道"这个按钮干什么了）。
+   *   故 ③ 由原来的"覆盖当前账套"改为"作为新账套导入"。
+   *   全应用只有一处能覆盖当前账本：「查看备份 → 恢复」（内部快照）与
+   *   「查看备份 → 从文件恢复…」（外部 .json）—— 后者原先就在本函数里，已搬到 Tools.js，
+   *   因为"覆盖当前账本"在语义上属于**恢复**、不属于**导入**。
+   *   判不出的情况（混选 .ais/.json、多个 .json、其它类型）明确报错，**不做猜测**。
    * ============================================================ */
   var bmFile = $('bookImportFile');
   if (bmFile) {
@@ -412,41 +419,37 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       // 立刻清空 input：否则"再次选同一个文件"不会触发 change（原先各分支各清一次，容易漏）
       bmFile.value = '';
       if (plan.action === 'error') { showToast(plan.msg, 'error'); return; }
-      if (plan.action === 'overwrite') { importJsonBackup(plan.files[0]); return; }   // ①
-      if (plan.action === 'new') { handleImportAis(plan.files[0]); return; }          // ②
-      handleMultiYearImport(plan.files);                                              // ③
+      if (plan.action === 'new-ais') { handleImportAis(plan.files[0]); return; }        // ①
+      if (plan.action === 'new-json') { importJsonAsNewBook(plan.files[0]); return; }   // ③
+      if (plan.action === 'merge-ais') { handleMultiYearImport(plan.files); return; }   // ②
+      // 兜底：判据将来新增动作、而这里忘了接时**绝不**落到"按合并处理"（那会静默按错误方式导入）。
+      // 宁可报一句看不懂的错，也不要悄悄做错事。
+      showToast('导入入口未识别的分流动作：' + plan.action + '（请把这一条反馈给开发）', 'error');
     });
   }
 
-  /* ① 的落地：.json 备份 → **覆盖当前账套**（三合一里唯一具破坏性的分支）。
-     ⚠ 旧 UI 把它单列成「导入备份」按钮，用户点它时心里有数；合并成一个入口后**必须先把后果讲清**，
-     否则"点导入账套、随手选了个备份"会静默覆盖当前账套 —— 这与"功能重复"是两回事，不能一起简化掉。
-     确认框里写明：文件名、将覆盖的当前账套名、以及可回滚（覆盖前自动留存档）。 */
-  function importJsonBackup(f) {
+  /* ③ .json 账套备份 → **作为新账套导入**（不是覆盖）。
+     与 .ais 导入共用同一条建账套/落盘路径 loadServerBookIntoLocal，保证两边数据整理口径一致；
+     另补两项 .json 特有的整理（.ais 由转换器保证、旧 .json 备份不一定有）：
+       · ensureVoucherIds     —— 凭证 id 缺失/不稳会导致"点凭证定位"失效
+       · ensureCashFlowFields —— 现金流量字段兜底（旧备份可能没有）
+     账套 id 用「名称 + 时间戳」（与 .ais 导入同一约定），避免与已有同名账套相互覆盖。 */
+  function importJsonAsNewBook(f) {
     var reader = new FileReader();
-    showToast('正在读取备份文件…');
-    reader.onload = async function () {
+    showToast('正在读取账套备份…');
+    reader.onload = function () {
       try {
         var data = JSON.parse(reader.result);
         if (!data || (!data.company && !data.subjects)) { showToast('文件不是有效的账套备份', 'error'); return; }
-        var curName = (S.state && S.state.company && S.state.company.name) || '当前账套';
-        var goon = await H.confirmAsync(
-          '将用「' + ((f && f.name) || '所选文件') + '」覆盖当前账套「' + curName + '」的全部数据。\n'
-          + '覆盖前会自动留存档，之后可在「查看备份」里还原。是否继续？',
-          { title: '导入账套 · 覆盖当前账套' });
-        if (!goon) return;
-        // 快照守卫：快照失败时二次确认，避免"以为有回滚点结果没有"（与「查看备份」的恢复同一套保护）
-        var guard = globalThis.__guardBeforeRestore;
-        if (guard) {
-          var goon2 = await guard('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
-          if (!goon2) return;
-        }
-        // 恢复实现已收敛为一处（store.restoreBookState，见 store.js 的说明）：
-        // 原先这里用 restoreFromData、Tools.js「导入备份」用 restoreBookState，两者行为有实差
-        // （前者只做防抖落盘 → 恢复后立刻刷新页面可能被旧数据覆盖；后者缺 ensureCashFlowFields）。
-        var ok = S.restoreBookState(data, { logWord: '导入账套', logText: '导入账套（JSON 备份覆盖）' + '（' + (data.subjects ? data.subjects.length : 0) + ' 科目 / ' + (data.vouchers ? data.vouchers.length : 0) + ' 凭证）' });
-        if (!ok) { showToast('导入失败：备份文件无效', 'error'); return; }
-        showToast('导入成功：' + (data.subjects ? data.subjects.length : 0) + ' 科目 / ' + (data.vouchers ? data.vouchers.length : 0) + ' 凭证');
+        var base = String((data.company && data.company.name)
+          || ((f && f.name) || '').replace(/\.[^.]+$/, '') || '导入账套').trim() || '导入账套';
+        var bid = base + '_' + Date.now();
+        loadServerBookIntoLocal(bid, data);
+        try { if (S.ensureVoucherIds) S.ensureVoucherIds(); } catch (e) { console.warn('[导入账套] ensureVoucherIds 失败：' + (e && e.message || e)); }
+        try { if (S.ensureCashFlowFields) S.ensureCashFlowFields(); } catch (e) { console.warn('[导入账套] ensureCashFlowFields 失败：' + (e && e.message || e)); }
+        if (S && S.persist) S.persist();
+        var cnt = (data.subjects ? data.subjects.length : 0), vcnt = (data.vouchers ? data.vouchers.length : 0);
+        showToast('已作为新账套「' + base + '」导入：' + cnt + ' 科目 / ' + vcnt + ' 凭证');
         refreshBookManage(); refreshAll();
       } catch (e) { showToast('导入出错：文件不是有效的账套备份(JSON)', 'error'); }
     };
