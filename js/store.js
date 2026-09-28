@@ -2255,7 +2255,11 @@
         var m = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (m) {
           var bs = this.balanceSheet(m);
-          if (Math.abs(bs.totalAsset - bs.totalAll) >= 0.01) {
+          // 【2026-09-28 统一容差】此处原为硬编码 `>= 0.01` —— 与 financialHealthCheck 的同类判据（EPS）
+          // 不一致，而合计已 round2 到分（见 balanceSheet：totalAsset/totalAll 都过 round2），
+          // 差额必是「分的整数倍」→ 0.01 会把**差 1 分**判成"平"（放行真实不平），
+          // 正是本文件 EPS 注释里标为 ✗ 的那种取值。故改用全局 EPS（半分）。
+          if (Math.abs(bs.totalAsset - bs.totalAll) >= EPS) {
             var diff = bs.totalAsset - bs.totalAll;
             var net = 0;
             try { net = this.profitStatement(m).netProfit; } catch (e) {}
@@ -3265,7 +3269,8 @@
       try {
         var bs = this.balanceSheet(month);
         var diff = bs.totalAsset - bs.totalAll;
-        if (Math.abs(diff) >= 0.005) {
+        // 与 runSelfTest 的同类判据共用全局 EPS（同一事实、同一容差 —— 不允许两处取值不同）
+        if (Math.abs(diff) >= EPS) {
           checks.push({
             type: 'bs_unbalanced', severity: 'high', title: '资产负债表恒等式不平衡',
             desc: '资产总计 ≠ 负债及所有者权益总计',
