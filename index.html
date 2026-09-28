@@ -1406,9 +1406,14 @@
               <button class="btn-link" id="btnBookImport" title="导入账套：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 备份（＝覆盖恢复当前账套）">导入账套</button>
               <button class="btn-link" id="btnViewYearBoundary" title="查看当前合并账套的跨年一致性校验报告">查看校验报告</button>
               <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡等）">风险检测</button>
-              <button class="btn-link" id="btnBkNow">手动备份</button>
-              <button class="btn-link" id="btnListBackup">查看备份</button>
+              <!-- 【2026-09-28 删除「手动备份」】它与**自动备份**是同一种产物、同一目录、同一个 10 份滚动池
+                   （见 store.js persist 的自动存档与 lib.rs 的 MAX_AUTO_BACKUPS），
+                   唯一增量只是"现在立刻多写一份、挤掉最旧的一份"，而自动备份已在
+                   「每次改动落盘后」「关窗时」「结账/反结账/年结/结转等高风险操作前」都各写一份。
+                   故对用户是纯粹的重复与困惑（按钮名还与「查看备份」相近）。
+                   注意：store.backupNow() 方法**保留**（仍被上述高风险操作调用），删的只是这个 UI 入口。 -->
               <button class="btn-link" id="btnBkAll">导出账套</button>
+              <button class="btn-link" id="btnListBackup">查看备份</button>
               <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
               <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
                    原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->

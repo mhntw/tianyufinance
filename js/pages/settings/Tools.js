@@ -323,7 +323,9 @@ function renderBackupRows() {
         (box._bAll ? '收起' : '还有 ' + (disk.length - 1) + ' 份 · 显示全部') + '</a></div>';
     }
   } else {
-    html += '<p class="muted">暂无备份（点击「立即备份」创建）</p>';
+    // 【2026-09-28】原提示写「点击『立即备份』创建」—— 与按钮名「手动备份」不一致，且按钮已删除。
+    // 现在备份**只由系统自动留存**（改动落盘/关窗/高风险操作前），故如实这么写。
+    html += '<p class="muted">暂无备份（保存数据后会自动留存，用于文件意外找回）</p>';
   }
   box.innerHTML = html;
 }
@@ -455,14 +457,11 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
     } catch (err) { showToast('还原失败：' + ((err && err.message) || err), 'error'); }
   }
 });
-// 手动备份：立即落 Rust 备份目录（<应用数据目录>/添钰财务/backups）。
-$('btnBkNow').addEventListener('click', function () {
-  var r = S.backupNow();
-  Promise.resolve(r).then(function (ok) {
-    if (ok) { showToast('已创建备份'); listBackups(); }
-    else showToast('备份失败，请查看软件控制台确认原因', 'error');
-  });
-});
+/* 【2026-09-28 删除「手动备份」按钮及其绑定】
+   它与自动备份同产物、同目录、同一 10 份滚动池，唯一增量是"当下立即多写一份、挤掉最旧一份"；
+   而自动备份已在「改动落盘后 3 秒内」「关窗时」「结账/反结账/年结/利润分配/结转成本/计提折旧前」
+   各写一份 —— 对用户是纯重复（按钮名还与「查看备份」相近，反而更容易点错理解错）。
+   ⚠ store.backupNow() 保留：它仍被上述高风险操作调用（见 store.js 的 6 处 backupNow()）。 */
 // 查看备份 / 恢复
 $('btnListBackup').addEventListener('click', listBackups);
 $('backupList').addEventListener('click', async function (e) {
