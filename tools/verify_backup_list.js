@@ -108,6 +108,31 @@ function check(cond, label, detail) {
   check(/disk\.length - show\.length/.test(tools), 'C：折叠提示应按实际被折叠的条数计算');
 })();
 
+/* ---------- 三、文案与实际行为一致（同一类"说了做不到"） ---------- */
+(function wordingAccuracy() {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const tools = fs.readFileSync(path.join(ROOT, 'js/pages/settings/Tools.js'), 'utf8');
+
+  // 「导出账套」是唯一能离开本机的副本，但点它只写到本机导出目录 —— 必须说清"再拷到 U 盘"
+  const btn = (html.match(/<button[^>]*id="btnBkAll"[^>]*>/) || [''])[0];
+  check(/title="/.test(btn), 'D 导出账套按钮应有 title 说明用途', btn.slice(0, 60));
+  check(/U 盘|网盘/.test(btn) && /离开本机/.test(btn),
+    'D 该 title 应说明「唯一能离开本机」并提示拷到 U 盘 / 网盘', btn.slice(0, 80));
+  // ⚠ 只扫**用户可见的那几行**（health-warn 文案）—— 整文件搜会把"记录旧文案"的注释也算命中
+  const warnLines = tools.match(/health-warn[^\n]*/g) || [];
+  check(warnLines.length > 0, 'D 应能定位到备份健康度提示文案（判据自检）', '找到 ' + warnLines.length + ' 行');
+  check(!warnLines.some(function (l) { return l.indexOf('点「导出账套」存一份到') >= 0; }),
+    'D 健康提示不得写「点「导出账套」存一份到 U 盘」—— 它只写到本机导出目录，不会进 U 盘',
+    warnLines.join(' | ').slice(0, 100));
+  check(warnLines.some(function (l) { return /再把它拷到 U 盘或网盘|再拷到 U 盘/.test(l); }),
+    'D 健康提示应把「生成副本 → 再拷到 U 盘 / 网盘」两步都写出来',
+    warnLines.join(' | ').slice(0, 100));
+  // 用户可见文案里不得混入 markdown 星号（会被原样显示）
+  check(!warnLines.some(function (l) { return l.indexOf('**') >= 0; }),
+    'D 用户可见文案里不得出现 markdown 星号（会原样显示成 **…**）',
+    warnLines.join(' | ').slice(0, 100));
+})();
+
 if (fail) {
   console.log('❌ 备份列表：' + fail + ' 项不符（通过 ' + pass + '）');
   fails.forEach(function (f) { console.log('   ✗ ' + f); });

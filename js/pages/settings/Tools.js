@@ -276,10 +276,14 @@ function renderBackupHealth(st, hasCloud) {
   // 已配置云备份时不再催（云端副本已满足"本机外"），本地备份仅作近时救援。
   if (!hasCloud) {
     var d = daysAgo(st.last_export_ts);
+    /* 【2026-09-28 文案改准】原写「建议点「导出账套」存一份到 U 盘或网盘」——
+       但点它只是把副本文件写进本机导出目录（exports/），**不会**进 U 盘：
+       用户照着做会以为已经做了本机外副本，实际还差"拷贝"这一步（"说了做不到"）。
+       现按实际步骤写：先导出成文件，再把它拷到 U 盘 / 网盘。 */
     if (st.last_export_ts === 0) {
-      html += '<div class="health-warn">尚未导出过账套副本。建议点「导出账套」存一份到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>';
+      html += '<div class="health-warn">尚未导出过账套副本。建议点「导出账套」生成一份副本文件，再把它拷到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>';
     } else if (d !== null && d > 7) {
-      html += '<div class="health-warn">已 ' + d + ' 天未导出账套副本（上次导出：' + fmtTs(st.last_export_ts) + '）。建议点「导出账套」存一份到 U 盘或网盘。</div>';
+      html += '<div class="health-warn">已 ' + d + ' 天未导出账套副本（上次导出：' + fmtTs(st.last_export_ts) + '）。建议点「导出账套」生成一份副本，再把它拷到 U 盘或网盘。</div>';
     }
   }
   html += '</div>';

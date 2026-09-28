@@ -1417,7 +1417,7 @@
                    「每次改动落盘后」「关窗时」「结账/反结账/年结/结转等高风险操作前」都各写一份。
                    故对用户是纯粹的重复与困惑（按钮名还与「查看备份」相近）。
                    注意：store.backupNow() 方法**保留**（仍被上述高风险操作调用），删的只是这个 UI 入口。 -->
-              <button class="btn-link" id="btnBkAll">导出账套</button>
+              <button class="btn-link" id="btnBkAll" title="把当前所有账套导出为完整副本文件（写到本机导出目录并提示路径）——这是唯一能离开本机的副本：生成后请把它拷到 U 盘 / 网盘；自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失">导出账套</button>
               <button class="btn-link" id="btnListBackup">查看备份</button>
               <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
               <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
