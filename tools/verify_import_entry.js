@@ -12,11 +12,12 @@
  *      随后（同日、用户要求）连"从外部 .json 覆盖"这条补救入口也删掉了 ——
  *      **「查看备份 → 恢复」成为全应用唯一能覆盖当前账本的入口**。
  *
- * 【本脚本守的三条不变量（这是它存在的理由）】
+ * 【本脚本守的四条不变量（这是它存在的理由）】
  *   A. 判据永不产出"覆盖"动作 —— 否则 .json 又会悄悄换掉用户的账。
  *   B. 「覆盖当前账本」全应用只有一个入口文件（Tools.js）且只有一条路（列表里的「恢复」）；
  *      外部文件那条补救入口**不得复活**（它一旦回来，"导入"与"覆盖"又会纠缠）。
  *   C. 该唯一入口必须"先确认 → 再快照 → 最后覆盖" —— 顺序错了等于没拦（首版静态断言就栽在这上面）。
+ *   D. 金蝶 .ais 导入**已冻结**：只修缺陷、不加功能（行数与第三方库哈希被锁，见【四】段）。
  *
  * 用法：node tools/verify_import_entry.js
  * ============================================================ */
@@ -222,9 +223,44 @@ function check(cond, label, detail) {
     '非法备份应返回失败而不是抛异常');
 })();
 
+/* ---------- 四、冻结段：金蝶 .ais 导入**只修缺陷，不加功能** ----------
+   为什么冻结：它是一次性迁移通道（一本账套导入一次），真正的成本是**逆向知识**
+   （js/kis-import.js 约 22% 的说明是"从真实账套试出来的"），重建远贵于保留 ——
+   故不删、不抽成独立程序，但也不再长大。
+   ⚠ 把"冻结"写成注释是不够的（三个月后没人记得），故此处把它变成**会咬人的卡口**。
+   合法地增行 / 升级第三方库：改下面的基线并**在本段写明理由**（别只改数字）。 */
+(function () {
+  const crypto = require('crypto');
+  const KIS_LINES = 1067;                       // 2026-09-28 冻结时行数（含冻结说明自身）
+  const VENDOR = {                              // 第三方库：内容哈希锁定（原地改必红）
+    'js/mdb-reader.js': 'd2004378ef866d0c',
+    'js/buffer.js': 'e7c24f84529843da'
+  };
+  const kis = fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8');
+  const lines = kis.split('\n').length;
+  check(lines <= KIS_LINES,
+    '冻结模块 js/kis-import.js 行数只许减不许增（只修缺陷，不加功能）',
+    '实测 ' + lines + ' 行 > 基线 ' + KIS_LINES + ' 行');
+  check(kis.indexOf('已冻结') >= 0,
+    'js/kis-import.js 头部必须保留"已冻结"声明（否则后人不知道这里的规矩）');
+  Object.keys(VENDOR).forEach(function (f) {
+    const p = path.join(ROOT, f);
+    const h = fs.existsSync(p)
+      ? crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 16) : '(文件缺失)';
+    check(h === VENDOR[f], '第三方库 ' + f + ' 不得原地修改（升级请同步基线并写明理由）',
+      '实测 ' + h + ' ≠ 基线 ' + VENDOR[f]);
+  });
+  // 界面上"能选 .ais 的入口"也算功能面：入口膨胀正是本次三合一要治的病
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const aisInputs = (html.match(/<input[^>]*>/g) || []).filter(function (t) { return /accept="[^"]*\.ais/.test(t); });
+  check(aisInputs.length === 1,
+    '界面上接受 .ais 的文件选择器只应有 1 个（维持"一个按钮"的三合一成果）',
+    '实测 ' + aisInputs.length + ' 个');
+})();
+
 if (fail) {
   console.log('❌ 导入账套入口：' + fail + ' 项不符（通过 ' + pass + '）');
   fails.forEach(function (f) { console.log('   ✗ ' + f); });
   process.exit(1);
 }
-console.log('✅ 导入账套入口：' + pass + ' 项通过（导入只新增 + 覆盖只在一处 + 恢复只许一处实现）');
+console.log('✅ 导入账套入口：' + pass + ' 项通过（导入只新增 + 覆盖只在一处 + 恢复只许一处实现 + .ais 导入已冻结）');
