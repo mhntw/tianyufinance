@@ -86,8 +86,17 @@
     });
   }
 
-  // 导出成功后提示，并提供「打开文件夹」入口（系统文件管理器打开 exports 目录）
-  function toastExported(path) {
+  // 导出成功后提示，并提供「在文件夹中显示」入口（在系统文件管理器里定位并选中刚导出的文件）
+  // opts（可选）：
+  //   desc     路径上方那行说明，默认「文件已保存到：」
+  //   select   要定位并选中的文件**绝对路径数组**；多文件会一次全部选中（各平台实现都支持多选）。
+  //            不传时默认把 path 当作单个文件（单文件导出的场景）。
+  //            账套导出是多文件、且 path 传的是目录，故必须显式给 select。
+  //   openPath 定位失败时兜底要打开的**目录**；默认取 path 的父目录。
+  //            ⚠ 账套导出传进来的是**目录本身**，必须显式给 openPath，
+  //            否则会被当文件名切掉最后一段、打开到上一级。
+  function toastExported(path, opts) {
+    var o = opts || {};
     if (!path) {
       if (typeof showToast === 'function') showToast('导出完成', 'success');
       else alert('导出完成');
@@ -103,11 +112,11 @@
       box.innerHTML =
         '<div style="padding:14px 18px;font-weight:600;border-bottom:1px solid #eee;">导出完成</div>' +
         '<div style="padding:18px;word-break:break-all;line-height:1.6;">' +
-          '<div style="color:#666;margin-bottom:6px;">文件已保存到：</div>' +
+          '<div style="color:#666;margin-bottom:6px;">' + escHtml(o.desc || '文件已保存到：') + '</div>' +
           '<div style="font-family:monospace;font-size:var(--fs-sm);color:#1565c0;background:#e3f2fd;padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
         '</div>' +
         '<div style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #eee;">' +
-          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:var(--fs-md);">打开文件夹</button>' +
+          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid #1565c0;background:#1565c0;color:#fff;border-radius:6px;cursor:pointer;font-size:var(--fs-md);">在文件夹中显示</button>' +
           '<button class="ty-export-close" style="padding:7px 16px;border:1px solid #ccd;background:#fff;border-radius:6px;cursor:pointer;font-size:var(--fs-md);">关闭</button>' +
         '</div>';
       overlay.appendChild(box);
@@ -117,23 +126,37 @@
       overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
       box.querySelector('.ty-export-open').onclick = function () {
         close();
-        // 打开 exports 所在目录（父目录），跨平台经 Rust open_in_explorer
         var exportsPath = String(path);
         // 跨平台切出父目录：Windows 路径用反斜杠 \，macOS/Linux 用 /，
         // 故同时匹配两种分隔符，避免 Windows 下把整条路径当文件名切掉导致打开失败。
-        var dir = exportsPath.replace(/[\\/][^\\/]*$/, ''); // 去掉末尾文件名
+        // 调用方给了 openPath 就直接用它 —— 账套导出传的是目录本身，不能再往上切一级。
+        var dir = o.openPath || exportsPath.replace(/[\\/][^\\/]*$/, ''); // 去掉末尾文件名
+        // 本次要定位选中的文件：调用方给了 select 就用它；否则 path 本身即文件（单文件导出）
+        var files = (o.select && o.select.length) ? o.select.slice() : (o.openPath ? [] : [exportsPath]);
         var tauri = global.__TAURI__ && global.__TAURI__.core;
-        if (tauri && tauri.invoke) {
-          // 防空兜底：极端路径切不出父目录时不再调 open（避免「路径为空」死提示），改直接展示文件位置
+        if (!tauri || !tauri.invoke) {
+          if (typeof showToast === 'function') showToast('文件位置：' + (dir || exportsPath), 'success');
+          return;
+        }
+        // 兜底：只打开目录（不选中文件）。极端路径切不出父目录时改为直接展示位置，避免「路径为空」死提示
+        function openDirOnly() {
           if (!dir) {
             if (typeof showToast === 'function') showToast('文件位置：' + exportsPath, 'success', 4000);
             return;
           }
           tauri.invoke('open_in_explorer', { path: dir })
             .catch(function (e) { if (typeof showToast === 'function') showToast('打开文件夹失败：' + (e && e.message || e), 'error'); });
-        } else if (typeof showToast === 'function') {
-          showToast('文件位置：' + (dir || exportsPath), 'success');
         }
+        if (!files.length) return openDirOnly();
+        /* 首选 opener 插件的原生「在文件管理器中定位并选中」：
+             macOS = NSWorkspace.activateFileViewerSelectingURLs、Windows = SHOpenFolderAndSelectItems、
+             Linux = org.freedesktop.FileManager1 —— 三平台**都支持一次选中多个文件**，
+             正好对上「一次导出多个账套」的场景（旧写法 open_in_explorer 只打开目录、不选中任何文件，
+             用户面对一目录几十个文件根本认不出哪几个是刚导出的）。
+           该命令不做 scope 校验，权限由默认能力 opener:default 授予，故无需改 Rust 或权限配置。
+           旧构建若没有这个命令会 reject，catch 后回落到 openDirOnly，行为不退化。 */
+        tauri.invoke('plugin:opener|reveal_item_in_dir', { paths: files })
+          .catch(openDirOnly);
       };
     } catch (e) {
       // 浮层构建失败兜底：退回 toast

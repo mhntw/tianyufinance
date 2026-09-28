@@ -527,35 +527,14 @@ $('backupList').addEventListener('click', async function (e) {
    （两步，但每一步都可逆；比"一个入口既能新增又能覆盖"更难误操作）。
    ⚠ 不要为了"方便"把外部文件恢复再加回来：一旦它回来，"导入"与"覆盖"又会在语义上纠缠，
      而那正是本次一系列收敛要解决的问题。 */
-// 打开导出目录。
-// 实现：Tauri 下用 invoke('open_in_explorer', {path}) 在 Rust 端用 open crate 直接打开系统文件管理器，
-// 彻底绕过 opener 插件的 scope 限制，跨平台（macOS Finder / Windows 资源管理器）、打包后均稳。
-// 非 Tauri 环境（浏览器 dev）：直接提示绝对路径。
-function openExportsFolder() {
-  if (typeof window.Storage === 'undefined') return;
-  window.Storage.getDataDir().then(function (dir) {
-    if (!dir) return showToast('无法获取导出目录', 'error');
-    var exportsDir = dir.replace(/\/?$/, '') + '/exports';
-    var tauri = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core : null;
-    if (tauri && tauri.invoke) {
-      return tauri.invoke('open_in_explorer', { path: exportsDir })
-        .then(function () {})
-        .catch(function (e) { showToast('打开文件夹失败：' + (e && e.message || e), 'error'); });
-    }
-    // 非 Tauri 环境：提示绝对路径，由用户手动打开
-    showToast('导出目录：' + exportsDir);
-  }).catch(function (e) {
-    showToast('无法获取导出目录：' + (e && e.message || e), 'error');
-  });
-}
 
 // 导出全部账套为独立 .json（逐账套导出到 <应用数据目录>/添钰财务/exports/，用户可在该目录取用）。
 // 数据来源：优先从存储引擎拉取磁盘权威完整 state，保证导出的是真实落盘数据。
-// 导出完成后明确展示完整绝对路径，并提供「打开文件夹」按钮（用系统文件管理器打开）。
+// 导出完成后明确展示完整绝对路径，并提供「在文件夹中显示」按钮（在系统文件管理器中定位选中本次导出的文件）。
 $('btnBkAll').addEventListener('click', function () {
   var books = S.listBooks();
   if (!books.length) return showToast('暂无账套可导出', 'error');
-  var total = books.length, done = 0, okCount = 0, lastFile = '';
+  var total = books.length, done = 0, okCount = 0, files = [];
   books.forEach(function (b) {
     var p;
     if (typeof window.Storage !== 'undefined') {
@@ -570,7 +549,12 @@ $('btnBkAll').addEventListener('click', function () {
       if (typeof window.Storage !== 'undefined') {
         return window.Storage.exportBook(b.id, JSON.stringify(st))
           .then(function (r) {
-            if (r && r.ok) { okCount++; lastFile = (r.filename || b.name); }
+            if (r && r.ok) {
+              okCount++;
+              // 记下本次落盘的文件名：导出结束后交给浮层「在文件夹中显示」一次性定位选中，
+              // 免得用户在 exports 目录的几十个文件里翻找哪几个是刚导出的。
+              if (r.filename) files.push(r.filename);
+            }
           })
           .catch(function (e) { showToast('导出「' + b.name + '」失败：' + (e && e.message || e), 'error'); });
       }
@@ -578,28 +562,26 @@ $('btnBkAll').addEventListener('click', function () {
       done++;
       if (done === total) {
         if (okCount === 0) return showToast('导出失败（磁盘写入异常）', 'error');
-        // 展示完整路径 + 打开文件夹入口
         window.Storage.getDataDir().then(function (dir) {
           var full = (dir ? dir.replace(/\/?$/, '') + '/exports' : 'exports 目录');
-          showToast('已导出 ' + okCount + ' 个账套到：' + full, 'success', 4000);
-        // 提示文案明确为「导出账套」，与「备份」（backups/ 自动备份）概念脱钩
-          // 在备份卡片区域追加一个「打开文件夹」入口
-          try {
-            var box = $('backupList');
-            if (box) {
-              var tip = document.getElementById('exportOpenTip');
-              if (!tip) {
-                tip = document.createElement('div');
-                tip.id = 'exportOpenTip';
-                tip.className = 'export-tip';
-                box.parentNode.insertBefore(tip, box);
-              }
-              tip.innerHTML = '<span class="muted">导出完成：' + full + '</span> ' +
-                '<button class="btn btn-xs" id="btnOpenExports">打开文件夹</button>';
-              var ob = document.getElementById('btnOpenExports');
-              if (ob) ob.addEventListener('click', openExportsFolder);
-            }
-          } catch (e) {}
+          /* 【2026-09-28 改为居中模态】原为「绿底 toast（4 秒后消失）」+「卡片内一行灰字 + btn-xs」
+             两套提示并存，二者都太弱：toast 带 pointer-events:none 点不了、长路径读不完；
+             内联那条 .export-tip 连 CSS 都没定义（裸 div，只有 muted 灰字）。
+             现统一复用「导出报表」那套浮层组件，全软件"导出成功"只有一种说法、一种观感：
+             标题「导出完成」+ 完整路径 + 「在文件夹中显示」/「关闭」。
+             ⚠ openPath 必须显式传目录本身 —— 否则浮层会按"文件"切掉最后一段，打开到上一级。
+             select 传本次导出的文件绝对路径（多本账套就是多个），点按钮即在文件管理器中一次性全选中。 */
+          var bridge = window.__fileSaveBridge;
+          if (bridge && bridge.toastExported) {
+            bridge.toastExported(full, {
+              desc: '已导出 ' + okCount + ' 个账套，保存在：',
+              openPath: dir ? full : undefined,
+              // 把本次导出的每个文件交给浮层「在文件夹中显示」（opener 原生定位选中，多文件一次全选中）
+              select: dir ? files.map(function (n) { return full + '/' + n; }) : undefined
+            });
+          } else {
+            showToast('导出完成：' + full, 'success', 4000);
+          }
         }).catch(function () { showToast('已导出 ' + okCount + ' 个账套', 'success'); });
       }
     });
