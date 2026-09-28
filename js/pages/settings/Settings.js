@@ -525,10 +525,15 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       });
   }
 
-  // 跨年校验报告渲染：渲染到页内卡片的 table（不依赖 modal）
-  function _renderYearBoundaryToCard(yearBoundaries, tbEl) {
+  /* 跨年校验报告渲染（渲染到传入的 table，不依赖 modal）。
+     【唯一实现】它被两处复用：独立的「跨年一致性校验报告」卡片（合并导入后自动弹）
+     与「风险检测」卡片里的跨年分区 —— 不复制第二份，否则两处迟早走样。
+     opts.keySubject：穿透链接的阈值（与风险检测同一口径，默认 ¥10 万）。
+     差异 ≥ 该阈值的科目编码变成可点的 .link-jump → 穿透到科目账。 */
+  function _renderYearBoundaryToCard(yearBoundaries, tbEl, opts) {
     tbEl = tbEl || $('yearBoundaryTableInPage');
     if (!tbEl) return;
+    var jumpThreshold = (opts && opts.keySubject) || 100000;
     if (!yearBoundaries || !yearBoundaries.length) {
       tbEl.innerHTML = '<thead><tr><th>校验结果</th></tr></thead><tbody><tr><td class="empty-hint" style="color:var(--ty-green)">✓ 无跨年差异，所有年度期初与上年期末完全一致</td></tr></tbody>';
       return;
@@ -550,7 +555,12 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (i === 0) {
           html += '<td rowspan="' + diffs.length + '" class="grp-label">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';
         }
-        html += '<td class="mono">' + esc(d.code) + (d.name ? ' ' + esc(d.name) : '') + '</td>';
+        // 差异超阈值 → 科目编码可点，直接穿透到该科目账（与风险检测的 year_jump 同一阈值口径）
+        var codeCell = (Math.abs(num(d.diff)) >= jumpThreshold)
+          ? '<a class="link-jump" data-jump="ledger" data-code="' + esc(d.code) + '"'
+            + ' title="差异超 ¥' + jumpThreshold + '，点此查该科目账">' + esc(d.code) + '</a>'
+          : esc(d.code);
+        html += '<td class="mono">' + codeCell + (d.name ? ' ' + esc(d.name) : '') + '</td>';
         html += '<td class="mono ta-r">' + num(d.prevEnd).toFixed(2) + '</td>';
         html += '<td class="mono ta-r">' + num(d.curOpen).toFixed(2) + '</td>';
         html += '<td class="mono ta-r ' + (Math.abs(d.diff) > 1 ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + num(d.diff).toFixed(2) + '</td>';
@@ -581,18 +591,13 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
 
   /* 【2026-09-28 三合一】原「多年合并导入」按钮及其 #multiAisFile 的绑定已删除 ——
      多选 .ais 的合并能力由统一的「导入账套」入口承担（判据 action==='merge' → handleMultiYearImport）。 */
-  // 绑定"查看校验报告"按钮：从当前账套 meta.yearBoundaries 读取并展示
-  var btnViewYearBoundary = document.getElementById('btnViewYearBoundary');
-  if (btnViewYearBoundary) {
-    btnViewYearBoundary.addEventListener('click', function () {
-      var meta = S && S.state && S.state.meta;
-      if (!meta || !meta.yearBoundaries || !meta.yearBoundaries.length) {
-        showToast('当前账套不是多年合并导入的账套，无校验报告', 'warn');
-        return;
-      }
-      _showYearBoundaryCard(meta.yearBoundaries);
-    });
-  }
+  /* 【2026-09-28 合并进「风险检测」，原「查看校验报告」按钮已删除】理由三条：
+     · 它只对**多年合并账套**有内容，其它账套点了只弹一句 toast —— 对绝大多数用户是死按钮；
+     · 而目标用户的价值已在**合并导入成功那一刻**自动交付（handleMultiYearImport 会弹卡片）；
+     · 跨年数据本来就在风险检测里被检（store.js 的检测 6 = year_jump，读同一份 meta.yearBoundaries）。
+     现在跨年**完整表**作为「风险检测」卡片里的一个分区呈现（healthYearSec / healthYearTable），
+     差异超风险阈值（默认 ¥10 万）的科目可直接点击穿透到科目账。
+     导入后自动弹卡片的路径（_showYearBoundaryCard）保留不动 —— 那是它最有用的时刻。 */
   // 绑定"风险检测"按钮：扫描当前账套，结果直接渲染到账套卡片和操作日志之间的卡片中（不依赖 modal）
   var btnFinancialHealth = document.getElementById('btnFinancialHealth');
   if (btnFinancialHealth) {
@@ -611,6 +616,21 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       try { r = S.financialHealthCheck({ largeVoucher: 50000, keySubject: 100000 }); }
       catch (e) { showToast('风险检测失败：' + (e && e.message || e), 'error', 6000); return; }
       _renderHealthCheckToCard(r, sm, tb);
+      /* 跨年校验分区（原「查看校验报告」的内容，2026-09-28 并入本卡片）。
+         数据来自 meta.yearBoundaries，仅多年合并账套有；复用同一套表格渲染（不复制第二份）。
+         ⚠ **无条件**设置显隐 —— 否则切换到普通账套后，上一本账套的跨年表会留在卡片里（错数）。 */
+      var ysec = document.getElementById('healthYearSec');
+      var ytb = $('healthYearTable');
+      if (ysec && ytb) {
+        var yb = (S.state && S.state.meta && S.state.meta.yearBoundaries) || null;
+        if (yb && yb.length) {
+          _renderYearBoundaryToCard(yb, ytb, { keySubject: 100000 });   // 阈值口径与本次检测一致
+          ysec.style.display = '';
+        } else {
+          ytb.innerHTML = '';
+          ysec.style.display = 'none';
+        }
+      }
       card.style.display = '';
       setTimeout(function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
@@ -683,11 +703,12 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     html += '</tbody>';
     tbEl.innerHTML = html;
   }
-  // 穿透链接：全局事件委托，只处理风险检测卡片内的 .link-jump
+  // 穿透链接：全局事件委托，处理风险检测卡片与跨年校验卡片内的 .link-jump
   document.addEventListener('click', function (e) {
     var a = e.target.closest('.link-jump');
     if (!a) return;
-    if (!a.closest('#healthCheckCard')) return;
+    // 跨年校验表在两处出现（风险检测卡片里的分区、独立的跨年报告卡片），两处都要能点
+    if (!a.closest('#healthCheckCard') && !a.closest('#yearBoundaryCard')) return;
     var jump = a.getAttribute('data-jump');
     var code = a.getAttribute('data-code');
     var vid = a.getAttribute('data-vid');

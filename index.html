@@ -1406,8 +1406,11 @@
                    "加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉。
                    "覆盖当前账本"全应用只有一处：「查看备份 → 恢复」（从应用内快照回滚）。 -->
               <button class="btn-link" id="btnBookImport" title="导入账套（均新增一本，不覆盖当前账套）：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 账套备份（＝作为新账套导入）。要用备份覆盖当前账套，请走「查看备份 → 恢复」">导入账套</button>
-              <button class="btn-link" id="btnViewYearBoundary" title="查看当前合并账套的跨年一致性校验报告">查看校验报告</button>
-              <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡等）">风险检测</button>
+              <!-- 【2026-09-28 删除「查看校验报告」按钮】它只对多年合并账套有内容（其它账套点了只弹 toast，
+                   对绝大多数用户是死按钮），而目标用户的价值已在合并导入成功那一刻自动弹卡片交付；
+                   跨年数据本来也在风险检测里被检（store.js 检测 6）→ 跨年**完整表**现作为
+                   「风险检测」卡片里的一个分区呈现，差异超阈值可直接穿透到科目账。 -->
+              <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡/跨年跳变等）">风险检测</button>
               <!-- 【2026-09-28 删除「手动备份」】它与**自动备份**是同一种产物、同一目录、同一个 10 份滚动池
                    （见 store.js persist 的自动存档与 lib.rs 的 MAX_AUTO_BACKUPS），
                    唯一增量只是"现在立刻多写一份、挤掉最旧的一份"，而自动备份已在
@@ -1472,6 +1475,17 @@
           <div id="healthCheckSummaryInPage" class="health-summary"></div>
           <div class="table-box">
             <table class="ty-table" id="healthCheckTableInPage"></table>
+          </div>
+          <!-- 跨年一致性校验分区（2026-09-28 由原独立按钮「查看校验报告」并入）：数据来自
+               meta.yearBoundaries，**只有多年合并账套才有**，故无数据时整段隐藏。
+               表格与独立卡片共用同一套渲染（Settings.js 的 _renderYearBoundaryToCard）。 -->
+          <div id="healthYearSec" style="display:none">
+            <p class="backup-sec-title">跨年一致性校验（仅多年合并账套）</p>
+            <p class="set-hint">下表对比各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。
+              差异 ≥ ¥100,000 的科目可直接点击编码穿透到该科目账。</p>
+            <div class="table-box">
+              <table class="ty-table" id="healthYearTable"></table>
+            </div>
           </div>
           <div class="card-note">
             说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。如发现异常，请穿透到对应科目/凭证核实。
