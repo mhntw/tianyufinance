@@ -57,7 +57,11 @@ function vch(no, dr, cr) {
   return { id: 'V' + no, word: '记', no: no, date: '2026-02-10', deleted: '', summary: '样本',
     entries: [{ code: '1001', dr: dr, cr: 0, summary: '样本' }, { code: '3001', dr: 0, cr: cr, summary: '样本' }] };
 }
-const OH = { largeVoucher: 50000, keySubject: 100000 };
+/* 检测参数与「风险检测」按钮**保持一致**（Settings.js 只传 keySubject）——
+   若这里自己造一套参数，测试就测不到用户真实看到的那份结果。
+   （首版这里传了 largeVoucher: 50000，结果掩盖了一个真问题：UI 也一直传着它，
+     导致 store 侧"按本账套分布自适应取 TOP30"的设计逻辑在生产里从不执行。） */
+const OH = { keySubject: 100000 };
 const typesOf = r => (r && r.checks ? r.checks : []).map(c => c.type);
 const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债表/.test(x.label || ''));
 
@@ -120,6 +124,22 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
     'C4 普通（非多年合并）账套不得产出 year_jump 检查项');
 })();
 
+/* ---------- E. 「必然命中」的条目不得计入风险点 ---------- */
+(function noAlarmFatigue() {
+  mkState([vch(5, 100, 100), vch(6, 200, 200)]);
+  const h = S.financialHealthCheck(OH);
+  const lv = (h.checks || []).filter(c => c.type === 'large_voucher')[0];
+  check(!!lv, 'E1 有凭证时就应产出「金额最大的 N 笔凭证」（它是参考清单）', typesOf(h).join(',') || '(无)');
+  check(lv && lv.severity === 'info',
+    'E2 该条等级应为 info —— 它必然命中，且 desc 自陈"大额不等于异常"', lv ? lv.severity : '-');
+  check(h.summary.total === h.summary.high + h.summary.medium,
+    'E3 summary.total 必须只统计 high + medium（不得把参考项算成风险点）', JSON.stringify(h.summary));
+  check(h.summary.total === 0,
+    'E4 正常账套应显示「风险点 0」—— 此前会因参考清单而永远至少显示 1 个风险点',
+    JSON.stringify(h.summary));
+  check(h.summary.info >= 1, 'E5 参考项数量应单独统计（不与风险点混在一起）', JSON.stringify(h.summary));
+})();
+
 /* ---------- D. 结构卡口 ---------- */
 (function structure() {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -156,6 +176,13 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
   check(/totalAsset - bs\.totalAll\)\s*>=\s*EPS/.test(rsBody),
     'D8a runSelfTest 的 BS 判据应使用 EPS（顶部横幅 / 结账清单那一份）',
     (rsBody.match(/totalAll\)\s*>=[^)]*/) || ['未找到'])[0]);
+  // UI 必须走 store 的设计口径（自适应 TOP-N），不得再传固定 largeVoucher 把它顶掉
+  const fhCall = (settings.match(/financialHealthCheck\(\{[^}]*\}\)/) || [''])[0];
+  check(fhCall.indexOf('largeVoucher') < 0,
+    'D10 「风险检测」按钮不得传 largeVoucher（否则 store 侧"按账套分布自适应取 TOP30"的设计逻辑永不执行）', fhCall);
+  check(/keySubject/.test(fhCall), 'D11 该按钮应传 keySubject（跨年/关键科目阈值口径）', fhCall);
+  check(store.indexOf('total: checks.length') < 0,
+    'D9 summary.total 不得再直接取 checks.length（那是"分类数"，会把参考项也算成风险点）');
   check(/Math\.abs\(diff\)\s*>=\s*EPS/.test(fhBody),
     'D8b financialHealthCheck 的 BS 判据应使用 EPS（风险检测那一份）',
     (fhBody.match(/>= ?[0-9.]+|>= EPS/g) || ['未找到']).join(' '));

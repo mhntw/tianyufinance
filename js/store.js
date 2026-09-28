@@ -3231,8 +3231,13 @@
       largeVouchers.sort(function (a, b) { return b.amount - a.amount; });
       if (largeVouchers.length > TOPN) largeVouchers = largeVouchers.slice(0, TOPN);
       if (largeVouchers.length) {
+        /* 【2026-09-28 由 medium 降为 info】本条**必然命中**（只要有凭证就会列出 TOPN 笔），
+           而 desc 自己也写着「大额不等于异常，仅提示重点关注」—— 把它算作"风险点"的后果是：
+           任何账套一点风险检测都显示"风险点：1 中危：1"，久了用户对真实告警脱敏（狼来了效应）。
+           与 runSelfTest 把「三表勾稽」设为 info、不进顶部横幅是同一条原则：
+           参考信息照常列出、但不计入风险点。 */
         checks.push({
-          type: 'large_voucher', severity: 'medium',
+          type: 'large_voucher', severity: 'info',
           title: '金额最大的 ' + largeVouchers.length + ' 笔凭证（≥ ¥' + Math.round(effThreshold).toLocaleString() + '）',
           desc: '按本账套金额分布取最大的若干笔供复核——大额不等于异常，仅提示重点关注',
           items: largeVouchers
@@ -3310,13 +3315,16 @@
         }
       }
 
-      // 汇总统计
-      var summary = { total: checks.length, high: 0, medium: 0, low: 0 };
+      /* 汇总统计：**只把 high / medium 计为"风险点"**，info 只作参考。
+         （原实现 total = checks.length 会把"必然命中的参考信息"也算成风险点 —— 见检测 3 的说明。
+          与 runSelfTest 的 info 级不进横幅同一原则：不让用户对真实告警脱敏。） */
+      var summary = { total: 0, high: 0, medium: 0, info: 0 };
       checks.forEach(function (c) {
         if (c.severity === 'high') summary.high++;
         else if (c.severity === 'medium') summary.medium++;
-        else summary.low++;
+        else summary.info++;
       });
+      summary.total = summary.high + summary.medium;
 
       return { period: month, checks: checks, summary: summary };
     },

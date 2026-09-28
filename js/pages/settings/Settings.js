@@ -613,7 +613,12 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       }
       var t0 = Date.now();
       var r;
-      try { r = S.financialHealthCheck({ largeVoucher: 50000, keySubject: 100000 }); }
+      /* 【2026-09-28】只传 keySubject，**不传 largeVoucher**：
+         store 侧给 largeVoucher 的默认行为是「按本账套金额分布自适应取 TOP30」（注释写明
+         "需要固定口径时才传 options.largeVoucher"），而此处原先一直传着固定 5 万 ——
+         等于让那段自适应逻辑在生产里从不执行：大账套会先命中 355 笔再截断，
+         清单既长又不代表该账套的"相对大额"。不传即走设计口径。 */
+      try { r = S.financialHealthCheck({ keySubject: 100000 }); }
       catch (e) { showToast('风险检测失败：' + (e && e.message || e), 'error', 6000); return; }
       _renderHealthCheckToCard(r, sm, tb);
       /* 跨年校验分区（原「查看校验报告」的内容，2026-09-28 并入本卡片）。
@@ -651,7 +656,9 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       smEl.innerHTML = '<span class="hs-period">检测期间：' + esc(r.period) + '</span>'
         + '<span class="hs-total">风险点：<b>' + r.summary.total + '</b></span>'
         + '<span class="hs-high">高危：<b>' + r.summary.high + '</b></span>'
-        + '<span class="hs-medium">中危：<b>' + r.summary.medium + '</b></span>';
+        + '<span class="hs-medium">中危：<b>' + r.summary.medium + '</b></span>'
+        // 参考项只在存在时显示：否则"风险点 0"配着表格里一条参考信息会让人困惑
+        + (r.summary.info ? '<span>参考：<b>' + r.summary.info + '</b></span>' : '');
     }
     if (!tbEl) return;
     if (!r.checks || !r.checks.length) {
@@ -661,8 +668,11 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     // 列宽走全站标准（原表头内联 width:18%/8%/30%/34%/10% 已删除）
     var html = '<thead><tr><th>检测项</th><th>等级</th><th>明细</th><th>说明</th><th>操作</th></tr></thead><tbody>';
     r.checks.forEach(function (c) {
+      // 等级标签：info 显示「参考」—— 它不是风险，只是提示关注（必然命中的条目不该叫"风险"，
+      // 否则用户会对真实告警脱敏；见 store.js 检测 3 的说明）
       var sev = c.severity === 'high' ? '<span class="tag tag-stop">高危</span>'
-        : (c.severity === 'medium' ? '<span class="tag tag-warn">中危</span>' : '<span class="tag">低危</span>');
+        : (c.severity === 'medium' ? '<span class="tag tag-warn">中危</span>'
+          : (c.severity === 'info' ? '<span class="tag">参考</span>' : '<span class="tag">低危</span>'));
       var items = c.items || [];
       items.forEach(function (it, i) {
         html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
