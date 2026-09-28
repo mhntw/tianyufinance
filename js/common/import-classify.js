@@ -54,3 +54,31 @@ export function importPlanOf(list) {
   if (ais.length === 1) return { action: 'new-ais', files: ais };         // ① 新建账套
   return { action: 'merge-ais', files: ais };                             // ② 合并新建
 }
+
+/**
+ * 把**导入器的原始异常**翻成用户能懂的一句话（纯函数，便于直接断言）。
+ *
+ * 【背景】2026-09-28 真机发现：选一个不是金蝶账套的 .ais 时，用户看到的是
+ *   `系统异常：Error: Wrong page type. Expected 0 but received 110. @ assertPageType (http…`
+ *   —— 既看不出"文件选错了"，也看不出下一步该干什么。原始异常来自 mdb-reader，
+ *   那是给开发者看的，不是给记账的人看的。
+ *
+ * 【为什么不干脆吞掉错误】"什么都提示成导入失败"会掩盖真问题；故只翻**能确定**的两类，
+ *   其余**原样透出**（导入器自己的报错如"不支持的输入类型"信息量本就足够）。
+ *   原文一律附在末尾 —— 用户可复制上报，我们也还能定位。
+ *
+ * @param {any} e 捕获到的异常（Error 或任何值）
+ * @returns {string} 直接可以 showToast 的一整句话
+ */
+export function importErrText(e) {
+  const d = String((e && e.message) || e || '').trim() || '未知错误';
+  // ① 选错文件 / 文件损坏：mdb-reader 在页类型断言处失败（英文、含内部常量名）
+  if (/Wrong page type|assertPageType|Expected \d+ but received|Invalid page|not a valid/i.test(d)) {
+    return '这不是有效的金蝶账套文件（.ais），或文件已损坏；'
+      + '请确认导出的是金蝶「账套文件(.ais)」（报表、凭证列表、Excel 都不是账套文件）。技术详情：' + d;
+  }
+  // ② 解析库没就绪：给出可执行的下一步，而不是把库名（MDBReader）甩给用户
+  if (/MDBReader|解析库/.test(d)) return '解析模块未加载，请刷新页面后重试';
+  // ③ 其余不猜，原样透出
+  return d;
+}

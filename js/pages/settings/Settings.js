@@ -6,7 +6,7 @@
 import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
-import { importPlanOf } from '../../common/import-classify.js?v=dev';
+import { importPlanOf, importErrText } from '../../common/import-classify.js?v=dev';
 const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
@@ -520,7 +520,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             }
           })
           .catch(function (e) {
-            showToast('合并导入失败：' + (e && e.message || e), 'error');
+            showToast('合并导入失败：' + importErrText(e), 'error');   // 同一套文案单点（见 importErrText）
           });
       });
   }
@@ -780,7 +780,10 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (window.__refreshAll) window.__refreshAll();
       })
       .catch(function (e) {
-        showToast('导入失败：' + (e && e.message || e), 'error');
+        // 经 importErrText 翻成人话（原始英文栈对记账的人毫无意义，见其定义处注释）。
+        // ⚠ 这条 catch 曾经是**死代码** —— parse 失败时外层 promise 永不结算，
+        //   用户只看到全局兜底的「系统异常」；修复见 js/kis-import.js 的 parse 注释。
+        showToast('导入失败：' + importErrText(e), 'error');
       });
   }
 

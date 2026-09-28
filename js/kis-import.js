@@ -755,6 +755,25 @@
     return _mdbPromise;
   }
 
+  /* ------------------------------------------------------------------
+   * 【2026-09-28 修复】解析失败必须**能传出去**
+   *
+   * 原实现三处都写成：
+   *     ensureMdbReader().then(function () { resolve(convert(buf, name)); }, reject);
+   * `convert(...)` 是**在 then 的回调里**调用的。它一旦抛错 —— 选错文件时
+   * `new MDBReader(...)` 就抛 "Wrong page type. Expected 0 but received 110." ——
+   * 这个抛错变成**内层 promise 的拒绝，而内层链没有任何人接**，后果是：
+   *   · 外层 new Promise **永远不 settle** → 调用方 Settings.js 的 .catch 永不执行，
+   *     那里写好的「导入失败：…」是**死代码**（用户永远看不到它）；
+   *   · 拒绝冒到全局兜底 → 用户看到 `系统异常：Error: Wrong page type…` 一串英文栈，
+   *     既不知道"文件选错了"，也不知道下一步该做什么。
+   *
+   * 修法：把内层链 **return 出来**，由末尾的 `.then(resolve, reject)` 统一收口 ——
+   * 取字节、等解析库、转换任一环的失败（含回调内抛错）都会到 reject。
+   * ⚠ 别退回 `resolve(convert(...))` 的写法：它失败时**静默变成永久 pending**，
+   *   而"卡住不报错"比报错难查得多（本缺陷只在真机上才显形 ——
+   *   只测成功路径的网永远发现不了它，见 tools/verify_import_failure.js）。
+   * ------------------------------------------------------------------ */
   function parse(input) {
     return new Promise(function (resolve, reject) {
       try {
@@ -763,20 +782,22 @@
         if (input && typeof input.arrayBuffer === 'function') {
           // 浏览器 File / Blob
           input.arrayBuffer().then(function (buf) {
-            ensureMdbReader().then(function () { resolve(convert(buf, name)); }, reject);
-          }).catch(reject);
+            // ⚠ 必须 `return` 内层链（见 parse 上方注释）：直接 resolve(convert(...)) 时，
+            //    convert 抛错会变成内层 promise 的拒绝 —— 没人接，外层就永不结算。
+            return ensureMdbReader().then(function () { return convert(buf, name); });
+          }).then(resolve, reject);
           return;
         }
         if (input instanceof ArrayBuffer ||
             (typeof Uint8Array !== 'undefined' && input instanceof Uint8Array) ||
             (global.Buffer && global.Buffer.isBuffer && global.Buffer.isBuffer(input)) ||
             (input && input.buffer instanceof ArrayBuffer)) {
-          ensureMdbReader().then(function () { resolve(convert(input, name)); }, reject);
+          ensureMdbReader().then(function () { return convert(input, name); }).then(resolve, reject);
           return;
         }
         if (input && input.byteLength != null && input.slice) {
           // 跨 realm 的 ArrayBuffer / TypedArray 兜底
-          ensureMdbReader().then(function () { resolve(convert(input, name)); }, reject);
+          ensureMdbReader().then(function () { return convert(input, name); }).then(resolve, reject);
           return;
         }
         reject(new Error('不支持的输入类型'));
