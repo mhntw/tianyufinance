@@ -576,29 +576,12 @@ $('btnBkAll').addEventListener('click', function () {
     });
   });
 });
-// 导入备份文件（.json 恢复）
-$('btnImportBackup').addEventListener('click', function () { $('bkFile').click(); });
-$('bkFile').addEventListener('change', function (e) {
-  var f = e.target.files[0]; if (!f) return;
-  var reader = new FileReader();
-  reader.onload = async function (ev) {
-    var input = e.target;
-    try {
-      var st = JSON.parse(ev.target.result);
-      if (!st || !st.company) { showToast('文件不是有效的账套备份', 'error'); input.value = ''; return; }
-      // 外部文件导入同样是整体覆盖当前账本，先留快照以便撤回
-      const goon = await guardBeforeRestore('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
-      if (!goon) { input.value = ''; return; }
-      S.restoreBookState(st);
-      try { S.addLog('恢复备份', '从备份文件恢复当前账本（' + (f.name || '文件') + '）', '账套'); } catch (e) {}
-      showToast('已从备份文件恢复（如需撤销，可恢复列表中「覆盖前存档」）');
-      refreshAll(); listBackups(); refreshTools();
-    } catch (err) { showToast('解析失败：' + err.message, 'error'); }
-    input.value = '';
-  };
-  reader.onerror = function () { showToast('读取文件失败', 'error'); e.target.value = ''; };
-  reader.readAsText(f);
-});
+/* 【2026-09-28 三合一】原「导入备份」（#btnImportBackup + #bkFile → S.restoreBookState）的绑定已删除：
+   它的能力被并入「导入账套」唯一入口 —— 选 1 个 .json 时即走"覆盖恢复当前账套"，
+   且**保留**了本处的全部保护（覆盖前留存档快照 guardBeforeRestore + 可回滚提示），
+   并额外增加了一次「将覆盖哪一本账套」的明确确认（见 Settings.js 的 importJsonBackup）。
+   注：备份列表里的「恢复」（下面的 backupList 点击 → restoreBookState）是**另一个功能**（从应用内备份还原），
+   不在本次合并范围内，保持原样。 */
 // 暴露给 Settings.js 用于初始刷新备份状态
 globalThis.listBackups = listBackups;
 // 暴露覆盖前快照守卫：Settings.js 的「导入账套」同为整体覆盖，复用同一套保护

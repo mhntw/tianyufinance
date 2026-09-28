@@ -5,6 +5,8 @@
 
 import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
+// 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
+import { importPlanOf } from '../../common/import-classify.js?v=dev';
 const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
@@ -391,43 +393,65 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     // 顶部"当前账套/启用期间"信息区已移除，仅保留账套列表刷新（refreshTools 经 globalThis.__renderTools 渲染）
     if (globalThis.__renderTools) globalThis.__renderTools();
   }
-  // 导入：复用 aisFile input（原 import-ais 的文件选择器，现移到 book-manage 页面内）
-  // 支持两种文件：
-  // 1) .json —— 本软件账套备份，直接前端 JSON.parse 恢复（原逻辑）
-  // 2) .ais ——   账套，浏览器内用 mdb-reader 直接解析（零依赖，无需服务端）
-  var bmFile = $('aisFile');
+  /* ============================================================
+   * 【2026-09-28 三合一】导入账套（唯一入口，原「导入账套 / 多年合并导入 / 导入备份」）
+   *
+   * 三者原先各有一个按钮 + 隐藏 input + 一段处理逻辑，但**唯一的行为差异只有三条**：
+   *     ① 1 个 .json → 覆盖恢复**当前**账套
+   *     ② 1 个 .ais  → 解析后**新建**一个独立账套
+   *     ③ ≥2 个 .ais → 逐文件解析后**合并新建**一个连续多年账套
+   * 故合并为一个入口，按**文件种类 + 数量**分流（判据是纯函数 importPlanOf，可单独测试）；
+   * 判不出的情况（混选 .ais/.json、多个 .json、选了别的类型）明确报错，**不做猜测**。
+   * 底层实现一行未改：仍复用 handleImportAis / handleMultiYearImport / S.restoreBookState。
+   * ============================================================ */
+  var bmFile = $('bookImportFile');
   if (bmFile) {
     bmFile.addEventListener('change', function () {
       if (!bmFile.files || !bmFile.files.length) return;
-      var f = bmFile.files[0];
-      var lower = (f.name || '').toLowerCase();
-      if (lower.endsWith('.ais')) { handleImportAis(f); bmFile.value = ''; return; }
-      // .json 备份恢复（原逻辑）
-      var reader = new FileReader();
-      showToast('正在读取备份文件…');
-      reader.onload = async function () {
-        try {
-          var data = JSON.parse(reader.result);
-          if (!data || !data.company) { showToast('文件不是有效的账套备份', 'error'); bmFile.value = ''; return; }
-          // 导入是整体覆盖当前账本，先留快照以便撤回（复用 Tools.js 的同一套保护）
-          var guard = globalThis.__guardBeforeRestore;
-          if (guard) {
-            const goon = await guard('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
-            if (!goon) { bmFile.value = ''; return; }
-          }
-          var r = S.restoreFromData(data);
-          if (!r.ok) { showToast(r.msg || '导入失败', 'error'); bmFile.value = ''; return; }
-          var cnt = (data.subjects ? data.subjects.length : 0), vcnt = (data.vouchers ? data.vouchers.length : 0);
-          // .json 备份恢复同样记入操作日志，保证操作日志能看到"导入账套"操作
-          S.addLog('导入账套', '导入账套（JSON备份恢复）' + '（' + cnt + ' 科目 / ' + vcnt + ' 凭证）', '账套');
-          showToast('导入成功：' + cnt + ' 科目 / ' + vcnt + ' 凭证');
-          refreshBookManage(); refreshAll();
-        } catch (e) { showToast('导入出错：文件不是有效的账套备份(JSON)', 'error'); }
-        bmFile.value = '';
-      };
-      reader.onerror = function () { showToast('读取文件失败', 'error'); bmFile.value = ''; };
-      reader.readAsText(f);
+      var plan = importPlanOf(bmFile.files);
+      // 立刻清空 input：否则"再次选同一个文件"不会触发 change（原先各分支各清一次，容易漏）
+      bmFile.value = '';
+      if (plan.action === 'error') { showToast(plan.msg, 'error'); return; }
+      if (plan.action === 'overwrite') { importJsonBackup(plan.files[0]); return; }   // ①
+      if (plan.action === 'new') { handleImportAis(plan.files[0]); return; }          // ②
+      handleMultiYearImport(plan.files);                                              // ③
     });
+  }
+
+  /* ① 的落地：.json 备份 → **覆盖当前账套**（三合一里唯一具破坏性的分支）。
+     ⚠ 旧 UI 把它单列成「导入备份」按钮，用户点它时心里有数；合并成一个入口后**必须先把后果讲清**，
+     否则"点导入账套、随手选了个备份"会静默覆盖当前账套 —— 这与"功能重复"是两回事，不能一起简化掉。
+     确认框里写明：文件名、将覆盖的当前账套名、以及可回滚（覆盖前自动留存档）。 */
+  function importJsonBackup(f) {
+    var reader = new FileReader();
+    showToast('正在读取备份文件…');
+    reader.onload = async function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!data || (!data.company && !data.subjects)) { showToast('文件不是有效的账套备份', 'error'); return; }
+        var curName = (S.state && S.state.company && S.state.company.name) || '当前账套';
+        var goon = await H.confirmAsync(
+          '将用「' + ((f && f.name) || '所选文件') + '」覆盖当前账套「' + curName + '」的全部数据。\n'
+          + '覆盖前会自动留存档，之后可在「查看备份」里还原。是否继续？',
+          { title: '导入账套 · 覆盖当前账套' });
+        if (!goon) return;
+        // 快照守卫：快照失败时二次确认，避免"以为有回滚点结果没有"（与「查看备份」的恢复同一套保护）
+        var guard = globalThis.__guardBeforeRestore;
+        if (guard) {
+          var goon2 = await guard('未能创建「覆盖前存档」，继续导入将无法撤回。是否仍要继续？');
+          if (!goon2) return;
+        }
+        // 恢复实现已收敛为一处（store.restoreBookState，见 store.js 的说明）：
+        // 原先这里用 restoreFromData、Tools.js「导入备份」用 restoreBookState，两者行为有实差
+        // （前者只做防抖落盘 → 恢复后立刻刷新页面可能被旧数据覆盖；后者缺 ensureCashFlowFields）。
+        var ok = S.restoreBookState(data, { logWord: '导入账套', logText: '导入账套（JSON 备份覆盖）' + '（' + (data.subjects ? data.subjects.length : 0) + ' 科目 / ' + (data.vouchers ? data.vouchers.length : 0) + ' 凭证）' });
+        if (!ok) { showToast('导入失败：备份文件无效', 'error'); return; }
+        showToast('导入成功：' + (data.subjects ? data.subjects.length : 0) + ' 科目 / ' + (data.vouchers ? data.vouchers.length : 0) + ' 凭证');
+        refreshBookManage(); refreshAll();
+      } catch (e) { showToast('导入出错：文件不是有效的账套备份(JSON)', 'error'); }
+    };
+    reader.onerror = function () { showToast('读取文件失败', 'error'); };
+    reader.readAsText(f);
   }
 
   //  多年账套合并导入：按年导出 .ais，本入口把同店多年 .ais 合并为一个连续多年账套。
@@ -553,16 +577,8 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     });
   }
 
-  // 绑定多年合并导入按钮
-  var btnMultiYearImport = document.getElementById('btnMultiYearImport');
-  if (btnMultiYearImport) {
-    btnMultiYearImport.addEventListener('click', function () {
-      var input = document.getElementById('multiAisFile');
-      if (!input) return;
-      input.value = '';
-      input.click();
-    });
-  }
+  /* 【2026-09-28 三合一】原「多年合并导入」按钮及其 #multiAisFile 的绑定已删除 ——
+     多选 .ais 的合并能力由统一的「导入账套」入口承担（判据 action==='merge' → handleMultiYearImport）。 */
   // 绑定"查看校验报告"按钮：从当前账套 meta.yearBoundaries 读取并展示
   var btnViewYearBoundary = document.getElementById('btnViewYearBoundary');
   if (btnViewYearBoundary) {
@@ -683,12 +699,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       if (typeof globalThis.goPage === 'function') globalThis.goPage('report');
     }
   });
-  var multiAisFile = document.getElementById('multiAisFile');
-  if (multiAisFile) {
-    multiAisFile.addEventListener('change', function () {
-      if (this.files && this.files.length) handleMultiYearImport(this.files);
-    });
-  }
+  /* 【2026-09-28 三合一】原 #multiAisFile 的 change 绑定已删除（合并进统一的导入入口）。 */
 
   //  账套 (.ais)：纯前端浏览器解析（零依赖，无需 Python / mdbtools / 服务器）。
   // 流程：浏览器内用 mdb-reader 直接读取 .ais -> KisImport 转换为账套结构 -> 本地载入。
@@ -760,7 +771,8 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     S.addLog('导入账套', '导入账套 ' + id + '（' + (book.subjects ? book.subjects.length : 0) + ' 科目 / ' + (book.vouchers ? book.vouchers.length : 0) + ' 凭证）', '账套');
     if (typeof S.refreshBookIndex === 'function') S.refreshBookIndex();
   }
-  $('btnBmImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
+  // 三合一入口：一个按钮 → 一个文件选择器（#bookImportFile，可多选 .ais）
+  $('btnBookImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
 
 // —— 系统设置聚合页（系统参数 + 凭证模板 + 操作日志 三 Tab 合一）——
 function refreshParam() {

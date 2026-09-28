@@ -22,7 +22,8 @@
             </span>
           </div>
 
-          <input type="file" id="aisFile" accept=".json,.ais" hidden>
+        <!-- 导入账套的文件选择器已合并到「账套管理」卡片工具栏内的 #bookImportFile
+             （原先这里还留着一个 #aisFile，与卡片里两个 input 重复，2026-09-28 一并清理） -->
         </div>
 
         <div class="topbar-center">
@@ -1397,17 +1398,21 @@
           <div class="card-tools-wrap">
             <div class="book-toolbar">
               <button class="btn-link" id="btnNewBook">新建账套</button>
-              <button class="btn-link" id="btnBmImport" title="导入一个独立的新账套（支持本软件 .json 备份 / 金蝶 KIS .ais）">导入账套</button>
-              <button class="btn-link" id="btnMultiYearImport" title="金蝶按年导出的多个 .ais 文件合并为一个连续多年账套">多年合并导入</button>
+              <!-- 【2026-09-28 三合一】原「导入账套 / 多年合并导入 / 导入备份」三个按钮合并为此一个：
+                   按所选文件的**种类 + 数量**自动分流（判据见 js/common/import-classify.js）：
+                     1 个 .ais → 新建账套 ； ≥2 个 .ais → 合并为一个连续多年账套 ；
+                     1 个 .json → 覆盖恢复当前账套（会先明确提示覆盖哪一本并确认）。
+                   旧按钮「多年合并导入」「导入备份」已删除，其能力全部包含在本按钮内。 -->
+              <button class="btn-link" id="btnBookImport" title="导入账套：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 备份（＝覆盖恢复当前账套）">导入账套</button>
               <button class="btn-link" id="btnViewYearBoundary" title="查看当前合并账套的跨年一致性校验报告">查看校验报告</button>
               <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡等）">风险检测</button>
               <button class="btn-link" id="btnBkNow">手动备份</button>
               <button class="btn-link" id="btnListBackup">查看备份</button>
               <button class="btn-link" id="btnBkAll">导出账套</button>
-              <button class="btn-link" id="btnImportBackup" title="用 .json 备份文件覆盖恢复当前账套">导入备份</button>
               <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
-              <input type="file" id="bkFile" accept=".json,application/json" style="display:none">
-              <input type="file" id="multiAisFile" accept=".ais" multiple style="display:none">
+              <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
+                   原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->
+              <input type="file" id="bookImportFile" accept=".ais,.json" multiple style="display:none">
             </div>
 
             <div id="backupList" class="backup-list" style="display:none"></div>
