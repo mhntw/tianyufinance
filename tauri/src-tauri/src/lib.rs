@@ -294,17 +294,30 @@ fn list_backups_of(bid: &str, kind: BackupKind) -> Vec<(u128, String)> {
 }
 
 // 环形保留：只留最近 keep 份，其余从旧到新删除。删除失败不阻断主流程（备份失败不该影响记账）。
+/// 纯函数：从**按 ts 升序**（最旧在前）的备份列表里选出「应删除」的文件名。
+/// 抽出来单独成函数并单测的理由与 backup_kind_of 相同：它决定**真删哪些文件** ——
+/// 判据错了就是数据事故，而带 fs 的版本没法在单测里安全地跑。
+fn drop_candidates(all: &[(u128, String)], keep: usize) -> Vec<String> {
+    if all.len() <= keep {
+        return Vec::new();
+    }
+    all.iter()
+        .take(all.len() - keep)
+        .map(|(_, n)| n.clone())
+        .collect()
+}
+
 fn rotate_backups(bid: &str, kind: BackupKind, keep: usize) {
     let all = list_backups_of(bid, kind);
-    if all.len() <= keep {
+    let names = drop_candidates(&all, keep);
+    if names.is_empty() {
         return;
     }
-    let drop = all.len() - keep;
     let dir = match backups_dir() {
         Ok(d) => d,
         Err(_) => return,
     };
-    for (_, name) in all.into_iter().take(drop) {
+    for name in names {
         let _ = fs::remove_file(dir.join(&name));
     }
 }
@@ -1000,9 +1013,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        backup_kind_of, backup_ts, data_root, decode_base64_lenient, is_plain_filename, now_ts,
-        parse_backup_owner, parse_trash_name, prune_backups_in, unique_path, APP_DATA_DIR_NAME,
-        BackupFileKind, BackupKind,
+        backup_kind_of, backup_ts, data_root, decode_base64_lenient, drop_candidates,
+        extract_book_name, is_plain_filename, now_ts, parse_backup_owner, parse_trash_name,
+        prune_backups_in, sanitize_filename, unique_path, APP_DATA_DIR_NAME, BackupFileKind,
+        BackupKind,
     };
     use base64::Engine as _;
     use std::fs;
@@ -1108,6 +1122,88 @@ mod tests {
         // 非 json / 空名一律不归类，避免误删无关文件
         assert_eq!(backup_kind_of("B1_1724000000000.txt", "B1"), None);
         assert_eq!(backup_kind_of("", "B1"), None);
+    }
+
+    // —— 环形保留：**该删哪些文件** ——
+    // 这是真删文件的判据（rotate_backups 用它决定删除清单），错一条就是数据事故，
+    // 故必须与 backup_kind_of 一样单测（带 fs 的 rotate_backups 自身不适合在单测里跑）。
+    #[test]
+    fn drop_candidates_keeps_newest_n() {
+        let mut all: Vec<(u128, String)> = (0..15)
+            .map(|i| (1700000000000 + i, format!("B1_{}.json", 1700000000000 + i)))
+            .collect();
+        all.sort_by_key(|(ts, _)| *ts); // list_backups_of 保证升序（最旧在前）
+        let drop = drop_candidates(&all, 10);
+        assert_eq!(drop.len(), 5, "15 份留 10 → 只应删最旧 5 份");
+        assert_eq!(
+            drop[0],
+            format!("B1_{}.json", 1700000000000u128),
+            "删除清单第一项应是最旧那份"
+        );
+        assert!(
+            !drop
+                .iter()
+                .any(|n| n == &format!("B1_{}.json", 1700000000014u128)),
+            "最新一份绝不能被列入删除清单"
+        );
+    }
+
+    #[test]
+    fn drop_candidates_noop_when_within_keep() {
+        let all: Vec<(u128, String)> = (0..10)
+            .map(|i| (1700000000000 + i, format!("B1_{}.json", 1700000000000 + i)))
+            .collect();
+        assert!(drop_candidates(&all, 10).is_empty(), "正好等于上限时不该删");
+        assert!(drop_candidates(&all, 50).is_empty(), "未超上限时不该删");
+        assert!(drop_candidates(&[], 10).is_empty(), "空列表不该 panic");
+        // 上限 0：当前无调用方，但语义必须明确（全部删除）
+        assert_eq!(drop_candidates(&all, 0).len(), 10);
+    }
+
+    #[test]
+    fn drop_candidates_drops_by_ts_not_by_name() {
+        // 文件名里的数字与顺序无关时，也必须按 ts 删最旧的（避免"看着像旧的"被误删）
+        let all = vec![
+            (100u128, "B1_pre_restore_900.json".to_string()),
+            (200u128, "B1_100.json".to_string()),
+            (300u128, "B1_050.json".to_string()),
+        ];
+        assert_eq!(
+            drop_candidates(&all, 1),
+            vec![
+                "B1_pre_restore_900.json".to_string(),
+                "B1_100.json".to_string()
+            ]
+        );
+    }
+
+    // —— 导出文件名规则（写错会互相覆盖或含非法字符）——
+    #[test]
+    fn sanitize_filename_replaces_illegal_chars() {
+        assert_eq!(sanitize_filename("a/b\\c:d*e?f\"g<h>i|j"), "a_b_c_d_e_f_g_h_i_j");
+        assert_eq!(sanitize_filename("  前后空格  "), "前后空格");
+        assert_eq!(sanitize_filename(""), "账套", "空名要兜底，避免生成无名文件");
+        assert_eq!(
+            sanitize_filename("绅蓝之星_合并_2026年"),
+            "绅蓝之星_合并_2026年",
+            "中文与下划线应原样保留"
+        );
+    }
+
+    #[test]
+    fn extract_book_name_reads_company_name() {
+        assert_eq!(
+            extract_book_name(r#"{"company":{"name":"绅蓝之星"}}"#),
+            Some("绅蓝之星".to_string())
+        );
+        assert_eq!(extract_book_name(r#"{"company":{}}"#), None, "无 name → None");
+        assert_eq!(
+            extract_book_name(r#"{"company":{"name":123}}"#),
+            None,
+            "name 非字符串 → None"
+        );
+        assert_eq!(extract_book_name("not json"), None, "非法 JSON 不得 panic");
+        assert_eq!(extract_book_name(""), None);
     }
 
     // —— 孤儿备份收敛：文件名归属解析 ——
