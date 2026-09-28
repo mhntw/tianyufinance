@@ -83,7 +83,15 @@ const backup = {
   subjects: SUBJ,
   vouchers: [{ id: 'V4', word: '记', no: 1, date: '2026-03-05', summary: '恢复后', entries: [{ code: '1001', dr: 777, cr: 0 }, { code: '6001', dr: 0, cr: 777 }] }]
 };
+// 落盘副作用在此 mock：restoreFromData 自 2026-09-28 起**委托 restoreBookState**（立即落盘 + 刷界面），
+// 而本测试只验证「缓存是否失效」，不验证落盘路径（与下面 2b 同样处理）。
+const _p1 = S.persist, _w1 = S._writeLocalBookSafe, _r1 = S.refreshBookIndex;
+S.persist = function () {}; S._writeLocalBookSafe = function () {}; S.refreshBookIndex = function () {};
+const _sb1 = (global.Storage && global.Storage.saveBook) || null;
+if (global.Storage) global.Storage.saveBook = function () { return Promise.resolve({ ok: true }); };
 const rr = S.restoreFromData(backup);
+S.persist = _p1; S._writeLocalBookSafe = _w1; S.refreshBookIndex = _r1;
+if (global.Storage && _sb1) global.Storage.saveBook = _sb1;
 ck(rr.ok, 'restoreFromData 成功');
 const afterRestore = glOf('1001', '2026-03');
 ck(afterRestore === 777, '恢复后 2026-03 现金 = 777（实际 ' + afterRestore + '，修复前会命中旧缓存返回3000）');

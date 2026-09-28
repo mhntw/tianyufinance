@@ -1003,20 +1003,30 @@
       setCurBookId(id || '');
     },
 
-    // 从备份（本地快照/备份文件）恢复账套状态，覆盖当前账本并刷新界面。
-    // 立即落真实文件（不依赖防抖），确保恢复结果同步到磁盘，刷新页面不会被旧数据覆盖。
-    restoreBookState: function (st) {
-      if (!st || !st.company) { console.warn('[restoreBookState] 无效备份数据'); return false; }
-      this.state = st;
+    /* 从备份（应用内快照 / 外部 .json 文件）恢复账套：**覆盖当前账本**，并落盘、刷新界面。
+     * 【2026-09-28 收敛为唯一实现】此前并存两条恢复路径，且差异正好落在"最容易出事"的两点上：
+     *     · restoreBookState（本函数）：立即落盘 + 刷新界面 + 记日志，但**缺 ensureCashFlowFields**；
+     *     · restoreFromData：合并空状态 + ensureCashFlowFields（旧备份更安全），
+     *       但只做**防抖落盘** —— 恢复后立刻刷新页面/关窗，盘上仍是旧数据（数据已换、盘未换）。
+     *   两条实现改一处必漏另一处，故合二为一（取并集），restoreFromData 改为委托本函数。
+     * 校验放宽为「company 或 subjects」二者之一（都是合法备份的特征：应用内快照带 company，
+     *   早期导出可能只有 subjects）。 */
+    restoreBookState: function (st, opts) {
+      opts = opts || {};
+      if (!st || (!st.company && !st.subjects)) { console.warn('[restoreBookState] 无效备份数据'); return false; }
+      // 合并进空状态：旧备份缺字段（如 payrolls / fixedAssets）时不至于让页面渲染崩掉
+      this.state = Object.assign({}, emptyState(), st);
+      this.state.schemaVersion = SCHEMA_VERSION;
       // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
       // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
-      // （switchBook 因换了 bookId 天然隔绝，故此前未暴露；restoreFromData 已显式清理，此处曾遗漏。）
+      // （switchBook 因换了 bookId 天然隔绝，故此前未暴露。）
       this._glCache = {};
       this.normalizeState();
       this.ensureVoucherIds();
+      this.ensureCashFlowFields();
       this._writeLocalBookSafe();
-      this.addLog('恢复备份', '从备份恢复账套状态', '账套');
-      // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json）
+      this.addLog(opts.logWord || '恢复备份', opts.logText || '从备份恢复账套状态', '账套');
+      // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json）—— 不依赖防抖
       if (typeof window.Storage !== 'undefined') {
         window.Storage.saveBook(this.bookId, JSON.stringify(this.state)).catch(function (e) {
           console.warn('[restoreBookState] 账套落盘失败：' + (e && e.message || e));
@@ -4888,22 +4898,15 @@
     //   state.originals 字段一并删除。两个账套实测 originals 均为 0 条，无数据残留。）
 
     /* ===================== 备份与恢复 ===================== */
+    /* 【2026-09-28 委托】本方法原先是一套**独立的恢复实现**，与 restoreBookState 并存且行为有实差
+       （见 restoreBookState 的说明）。现收敛为一处：委托 restoreBookState，仅保留原有返回契约
+       `{ok, msg}` 供既有调用方使用（如 tools/verify_gl_cache.js 断言 rr.ok）。
+       它当初修复过的问题（emptyState 私有函数误写成 this.emptyState()、缺三项 ensure、漏清 _glCache）
+       已全部并入 restoreBookState，不会再漏。 */
     restoreFromData: function (data) {
       if (!data || !data.subjects) return { ok: false, msg: '备份文件无效' };
-      // 修复：emptyState 是模块内私有函数、未挂在 S 上（原写法 this.emptyState() 必抛 TypeError，
-      // 导致备份恢复整体不可用）。此处直接调用私有函数，并补上与「加载账套」一致的兜底链路：
-      // normalizeState（缺字段补全）→ ensureVoucherIds（凭证 id 唯一）→ ensureCashFlowFields。
-      // 缺了这些，旧备份文件恢复后会因字段缺失导致部分页面渲染崩溃。
-      this.state = Object.assign({}, emptyState(), data);
-      this.state.schemaVersion = SCHEMA_VERSION;
-      this.normalizeState();
-      this.ensureVoucherIds();
-      this.ensureCashFlowFields();
-      // 关键：恢复备份后必须作废总账记忆化缓存。否则查询「同月份」时会命中恢复前的
-      // 缓存结果，导致账簿/报表显示恢复前的旧数据（数据已换但显示未换）。
-      this._glCache = {};
-      this.persist();
-      return { ok: true };
+      var ok = this.restoreBookState(data, { logWord: '导入账套', logText: '导入账套（JSON 备份恢复）' });
+      return ok ? { ok: true } : { ok: false, msg: '备份文件无效' };
     },
 
     /* ===================== 工资 ===================== */
