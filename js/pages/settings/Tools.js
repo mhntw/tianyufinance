@@ -7,6 +7,8 @@ const $ = H.$;
 const S = H.S || window.S;
 const showToast = H.showToast;
 const refreshAll = H.refreshAll;
+// 备份列表的分类判据（纯函数；命名规则与 Rust 的 backup_kind_of 同一条，见模块头说明）
+import { backupKindOf, backupLabelOf, pickVisibleBackups } from '../../common/backup-classify.js?v=dev';
 
 // 「重命名账套」弹窗目标 id（打开弹窗时暂存，确定后执行）
 var pendingRenameId = '';
@@ -36,8 +38,11 @@ function storageListBackups(bid) {
         if (!ts) return;
         file = (bid ? bid + '_' : '') + ts + '.json';
       }
-      // 不区分类型，一律按时间显示，财务人员只需知道"哪个时刻的备份"
-      out.push({ file: file, ts: ts, label: '备份 · ' + fmtTs(ts) });
+      /* 【2026-09-28 分类显示】原先一律写「备份 · 时间」、不区分类型 ——
+         而确认框/恢复提示让用户"可恢复『覆盖前存档』"，列表里却认不出是哪条（说了做不到）。
+         现按文件名判定类型：自动存档 / 覆盖前存档（规则与 Rust 的 backup_kind_of 同一条）。 */
+      var kind = backupKindOf(file);
+      out.push({ file: file, ts: ts, kind: kind, label: backupLabelOf(kind, fmtTs(ts)) });
     });
     out.sort(function (a, b) { return b.ts - a.ts; });
     return out;
@@ -308,7 +313,8 @@ function listBackups() {
 function renderBackupRows() {
   var box = $('backupList'); if (!box) return;
   var disk = box._bDisk || [], stats = box._bStats;
-  var show = box._bAll ? disk : disk.slice(0, 1);
+  // 折叠时 = 最新一份 + **全部「覆盖前存档」**（后者是撤销上次导入/恢复要用的那条，不能被折叠藏掉）
+  var show = pickVisibleBackups(disk, box._bAll);
   // 面板工具栏只保留「刷新列表」：曾经短暂存在的「从文件恢复…」（外部 .json 覆盖）已按用户要求删除，
   // 详见本文件下方该处的说明 —— 覆盖当前账本只走本列表里每行的「恢复」。
   var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:var(--fs-xs)">共 ' +
@@ -316,13 +322,17 @@ function renderBackupRows() {
   html += renderBackupHealth(stats, box._bCloud);
   if (disk.length) {
     html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
+    html += '<p class="set-hint">标「覆盖前存档」的那份是导入 / 恢复之前自动留的，用来撤销那次操作；其余是自动存档。</p>';
     show.forEach(function (b) {
-      html += '<div class="backup-item"><span>' + esc(b.label || '') + '</span>' +
+      // 「覆盖前存档」加粗突出：它是用来撤销危险操作的那一条，不该与普通自动存档长得一样
+      var txt = esc(b.label || '');
+      html += '<div class="backup-item"><span>' + (b.kind === 'pre' ? '<b>' + txt + '</b>' : txt) + '</span>' +
         '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
     });
-    if (disk.length > 1) {
+    if (disk.length > show.length) {
+      // 「还有 N 份」按**实际被折叠的条数**算：覆盖前存档始终显示，不算进隐藏数（原写死 -1 会算错）
       html += '<div style="margin:6px 16px"><a class="tool-link" id="btnBkToggle">' +
-        (box._bAll ? '收起' : '还有 ' + (disk.length - 1) + ' 份 · 显示全部') + '</a></div>';
+        (box._bAll ? '收起' : '还有 ' + (disk.length - show.length) + ' 份 · 显示全部') + '</a></div>';
     }
   } else {
     // 【2026-09-28】原提示写「点击『立即备份』创建」—— 与按钮名「手动备份」不一致，且按钮已删除。
