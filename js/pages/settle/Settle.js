@@ -206,9 +206,15 @@ function bindSettleEvents() {
     if (old.length) delMsg = '（已删除旧结转凭证 ' + old.length + ' 张）';
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'profit'; })[0] || {};
     var r = S.carryForwardProfit(month, { word: tpl.word, targetSubj: tpl.targetSubj, summary: tplSummary(tpl, month), separate: tpl.separate !== false, date: tmplVoucherDate(month, tpl) });
-    if (!r.ok) return showToast(r.msg, 'error');
+    // state==='zero' = 删掉旧结转凭证后本期已无损益（其对应的损益凭证早被删掉）。
+    // 此时过时凭证已作废、账已修好，必须按成功提示；否则用户看到红色「本期损益净额为零，无需结转」
+    // 会以为操作失败，而实际状态已恢复正常（结账检查的 carry 项也会随之转 ok）。
+    if (!r.ok && !(r.state === 'zero' && old.length)) return showToast(r.msg, 'error');
     var numV = (r.vouchers || []).length;
-    showToast('已' + (old.length ? '重新' : '') + '结转损益：' + money(r.net) + delMsg + '（生成 ' + numV + ' 张凭证）', 'success');
+    showToast(r.ok
+      ? ('已' + (old.length ? '重新' : '') + '结转损益：' + money(r.net) + delMsg + '（生成 ' + numV + ' 张凭证）')
+      : ('已作废过时结转凭证 ' + old.length + ' 张：本期已无损益发生，无需结转'),
+      'success');
     refreshSettle(); syncAll();
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
   });
@@ -340,7 +346,15 @@ function bindSettleEvents() {
         // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑
         var sysKindMap = { dep: S.VOUCHER_KINDS.DEPR, cost: S.VOUCHER_KINDS.CARRY_COST, profit: S.VOUCHER_KINDS.CARRY_PL };
         var existed = S.periodVouchersOfKind(month, sysKindMap[g.id]);
-        if (existed.length) { skipCount++; continue; }
+        if (existed.length) {
+          // 结转损益的凭证可能"过时"（其后损益凭证被删改，本期净额不再为零）：此时不能静默跳过，
+          // 否则结账检查报 blocking fail、批处理却说"跳过"，用户找不到出口。
+          // 批处理**不自动删凭证**（勾选式批处理无声删账的风险过高），只把跳过改成明确提示。
+          if (g.id === 'profit' && S.carryForwardStatus(month).state === 'stale') {
+            errCount++; msgs.push('结转损益：本期结转凭证与当前损益发生额不一致，请点「重新结转损益」重新生成');
+          } else { skipCount++; }
+          continue;
+        }
         // 直接调各按钮的处理函数（复用已有逻辑）
         var tpl = getSettleTemplates().filter(function (t) { return t.id === g.id; })[0] || {};
         if (g.id === 'profit') {

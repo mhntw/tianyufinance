@@ -795,8 +795,39 @@
     _onSaveOk: function () {
       if (this._saveFailCount) { this._saveFailCount = 0; if (typeof window.__onPersistOk === 'function') window.__onPersistOk(); }
     },
+    // 立即落盘并**判定成败**，返回 Promise<boolean>（true = 已写入磁盘）。
+    // 必须判 r.ok：Storage.saveBook 内部已 catch、恒为 resolved —— 不判就会把写盘失败当成功
+    // （原实现的致命缺陷）。抽成**一处实现**供 persist / 新建账套 / 导入账套共用：
+    // 这活儿原先抄了三份，而"新建账套"与"导入账套"那两份正是只挂了 .catch 的死代码，
+    // 于是写盘失败时照样弹"导入成功"（与红色告警横幅自相矛盾）。
+    _saveBookChecked: function (bid) {
+      var self = this;
+      if (typeof window.Storage === 'undefined' || !bid) return Promise.resolve(true);
+      var payload;
+      try {
+        payload = JSON.stringify(this.state);
+      } catch (e) {
+        // 序列化失败（如状态里混入循环引用）→ 直接告警，绝不静默
+        this._onSaveFail('账套序列化失败：' + (e && e.message || e));
+        return Promise.resolve(false);
+      }
+      return Promise.resolve(window.Storage.saveBook(bid, payload)).then(function (r) {
+        if (r && r.ok === false) {
+          self._setServerStatus(false);
+          self._onSaveFail((r && r.error) || '未知原因');
+          return false;
+        }
+        self._setServerStatus(true); // 桌面版恒为文件模式
+        self._onSaveOk();
+        return true;
+      }).catch(function (e) {
+        self._setServerStatus(false);
+        self._onSaveFail(e && e.message || e);
+        return false;
+      });
+    },
     persist: function () {
-      // 轻量持久化当前账套指针（真实数据由下方 Storage.saveBook 落盘）
+      // 轻量持久化当前账套指针（真实数据由下方 _saveBookChecked 落盘）
       this._writeLocalBookSafe();
       var self = this;
       var bid = this.bookId;
@@ -804,31 +835,8 @@
       // 空 id 提交给 Rust 会被拒绝而误触「保存失败」告警；账套数据由
       // load 完成后首次业务动作才需要持久化，此处绝不落空盘。
       if (!bid) return;
-      var payload;
-      try {
-        payload = JSON.stringify(this.state);
-      } catch (e) {
-        // 序列化失败（如状态里混入循环引用）→ 直接告警，绝不静默
-        this._onSaveFail('账套序列化失败：' + (e && e.message || e));
-        return;
-      }
       // 真实文件落盘（Storage.js → Rust 写 <应用数据目录>/添钰财务/books/<id>.json）
-      if (typeof window.Storage !== 'undefined') {
-        window.Storage.saveBook(bid, payload).then(function (r) {
-          // Storage.saveBook 内部已 catch，恒为 resolved：必须判 r.ok，
-          // 否则写盘失败也会被当成成功（原实现的致命缺陷）。
-          if (r && r.ok === false) {
-            self._setServerStatus(false);
-            self._onSaveFail((r && r.error) || '未知原因');
-            return;
-          }
-          self._setServerStatus(true); // 桌面版恒为文件模式
-          self._onSaveOk();
-        }).catch(function (e) {
-          self._setServerStatus(false);
-          self._onSaveFail(e && e.message || e);
-        });
-      }
+      this._saveBookChecked(bid);
       // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/添钰财务/backups，环形保留）。
       // 桌面版数据即文件，无需浏览器缓存兜底。
       // 备份失败连续 ≥3 次时，复用主账本保存失败的 UI 横幅告警——磁盘满/权限等问题
@@ -964,19 +972,41 @@
       this.ensureCashFlowMap();
       this.addLog('新建账套', '新建账套「' + (st.company.name || name || '') + '」', '账套');
       this.persist();
+      // 落盘成败必须判定（失败时 _saveBookChecked 会走"保存失败"告警横幅，不再静默）；
       // 落盘完成后（而非立即）再刷新账套列表，确保新建账套一定会出现在列表里
       // （避免 saveBook 异步写盘与 refreshBookIndex 读盘竞态导致刚建的账套短暂缺失）。
-      if (typeof window.Storage !== 'undefined') {
-        window.Storage.saveBook(id, JSON.stringify(st))
-          .then(function () { return self.refreshBookIndex(); })
-          .catch(function (e) {
-            console.warn('[newBook] 账套落盘失败：' + (e && e.message || e));
-            return self.refreshBookIndex();
-          });
-      } else {
-        this.refreshBookIndex();
-      }
+      this._saveBookChecked(id).then(function () { self.refreshBookIndex(); });
       return id;
+    },
+
+    /* 把**外部导入**的账套数据整理后作为新账套立即落盘（.json 备份 / 金蝶 .ais 共用同一条实现）。
+     * 返回 Promise<boolean>：true=已写入磁盘；false=落盘失败 —— 调用方**不得**再报"导入成功"。
+     *
+     * 【为什么在 store 而不是页面模块】这段是纯数据整理（补字段 / 稳凭证 id / 兜现金流字段 /
+     *   落盘 / 记 meta 指针），页面只该负责读文件与提示。原先它放在 Settings.js 里，
+     *   于是 Node 里的行为测试只能"手抄一份逻辑"来假装覆盖（见 tools/test_import_e2e.js 的注释）。
+     *   挪进来后这条路径可被真实跑通，落盘失败也有反例可测。 */
+    importExternalBook: function (id, book) {
+      var self = this;
+      this.bookId = id; this.state = book;
+      if (this.state.schemaVersion == null) this.state.schemaVersion = SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
+      // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目自动判定，
+      // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
+      if (typeof this.normalizeState === 'function') { try { this.normalizeState(); } catch (e) { console.warn('normalizeState 失败：' + e); } }
+      this.ensureCashFlowMap();
+      // 旧 .json 备份不一定有下面两项（.ais 由转换器保证）：
+      //   ensureVoucherIds     —— 凭证 id 缺失/不稳会导致"点凭证定位"失效
+      //   ensureCashFlowFields —— 现金流量字段缺失会让现金流量相关页面 forEach 崩溃（空白）
+      this.ensureVoucherIds();
+      this.ensureCashFlowFields();
+      // 记录「当前账套指针」到磁盘 meta，保证重开默认进入该导入账套
+      this.setCurrentBookMeta(id);
+      this.addLog('导入账套', '导入账套 ' + id + '（' + (book.subjects ? book.subjects.length : 0) + ' 科目 / ' + (book.vouchers ? book.vouchers.length : 0) + ' 凭证）', '账套');
+      // 立即落真实文件，不依赖防抖，防止刷新后丢失；成败交给调用方决定怎么提示
+      return this._saveBookChecked(id).then(function (ok) {
+        self.refreshBookIndex();
+        return ok;
+      });
     },
 
     isBookEnabled: function (id) {
@@ -1026,13 +1056,12 @@
       this.ensureCashFlowFields();
       this._writeLocalBookSafe();
       this.addLog(opts.logWord || '恢复备份', opts.logText || '从备份恢复账套状态', '账套');
-      // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json）—— 不依赖防抖
-      if (typeof window.Storage !== 'undefined') {
-        window.Storage.saveBook(this.bookId, JSON.stringify(this.state)).catch(function (e) {
-          console.warn('[restoreBookState] 账套落盘失败：' + (e && e.message || e));
-        });
-      }
-      this.persist(); // 防抖再确认一次（含变更日志）
+      // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json）—— 不依赖防抖。
+      // ⚠ 原先直接调 window.Storage.saveBook(...).catch(...)：saveBook 内部已 catch、恒 resolved，
+      //   那条 .catch 是**死代码** —— 恢复后界面已是新数据而盘上仍是旧数据，此处却一声不响。
+      //   改走唯一判定点 _saveBookChecked（写盘失败即触发保存失败告警横幅）。
+      this._saveBookChecked(this.bookId);
+      this.persist(); // 再确认一次（含自动备份 + 变更日志）
       // 纯本地单机版：数据已落本地，无需同步云端
       if (window.__refreshAll) window.__refreshAll();
       this.refreshBookIndex(); // 同步列表索引
@@ -2532,6 +2561,26 @@
       var vs = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_PL);
       return { done: vs.length > 0, vouchers: vs };
     },
+    // 本期结转损益的**四态判定 —— 唯一判定点**，供 settleChecklist / carryForwardProfit / 期末处理批量生成共用。
+    // 【为什么必须单点】「是否有结转损益凭证」（carryForwardState）与「本期损益净额是否为零」
+    // （periodProfitNet）是两个各自正确的口径，单看任何一个都会在下面的场景里给出相反结论：
+    //   结转损益之后，用户又删/改了本期的损益凭证 → 结转凭证没变、但损益净额不再为零。
+    //   只看"有没有结转凭证" → 答「已结转，请勿重复」；只看"净额是否为零" → 答「未结转，请先结转」。
+    //   两句提示互相矛盾，用户被踢皮球（在「新建账套 + 随机数据」测试中复现并锁定，见 tools/test_newbook_fuzz.js）。
+    // 四态：none（无损益发生）/ todo（需要结转）/ ok（已结转且仍有效）/ stale（结转凭证已过时，需重做）。
+    // 注：stale 并非只有未结账期才可能出现 —— 结账检查项被降级后强制结账，也能让已结账月停在 stale；
+    //     这类月份由 carryForwardProfit 的 isPeriodClosed 守卫兜住，返回「该月已结账，请先反结账」。
+    carryForwardStatus: function (month) {
+      var vs = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_PL);
+      var net = this.periodProfitNet(month);
+      var need = Math.abs(net.rev) >= EPS || Math.abs(net.exp) >= EPS;
+      var exists = vs.length > 0;
+      var nums = vs.map(function (v) { return (v.word || '转') + '-' + v.no; }).join('、');
+      return {
+        state: exists ? (need ? 'stale' : 'ok') : (need ? 'todo' : 'none'),
+        exists: exists, need: need, vouchers: vs, nums: nums, net: net
+      };
+    },
     // 是否已结转损益（布尔，兼容历史调用）
     hasCarryForward: function (month) {
       return this.carryForwardState(month).done;
@@ -2540,23 +2589,32 @@
     // 口径见 tools/audit_books.js「结转损益口径 = 利润表口径（逐期）」。
     // 纯可读性改动（花括号/缩进/拆辅助函数）不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑上述两脚本，全绿才算完成（决策记录见 CHANGELOG 2026-09-12）。
+    // 2026-09-29：幂等分支改用 carryForwardStatus() 四态判定（修「孤立结转凭证」提示矛盾），
+    //   口径与取数一字未动，仅"已存在结转凭证但净额不为零"这一态从「已结转请勿重复」改为明确的过时指引。
     carryForwardProfit: function (month, opts) {
       opts = opts || {};
-      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账，请先反结账' };
-      // 幂等（财务规范：一个期间只能结转一次损益）：按 v.kind 定位结转凭证，
-      // 兼容导入账套（其凭证无 summary，摘要正则恒不命中，必须靠结构识别）。
-      var st = this.carryForwardState(month);
-      if (st.done) {
-        var nums = st.vouchers.map(function (v) { return (v.word || '转') + '-' + v.no; }).join('、');
-        return { ok: false, msg: '本期损益已结转，请勿重复；如需重做请先删除结转凭证（' + nums + '）', vouchers: st.vouchers };
-      }
+      if (this.isPeriodClosed(month)) return { ok: false, state: 'closed', msg: '该月已结账，请先反结账' };
       // 取数口径与 settleChecklist 完全一致（共用 periodProfitNet），杜绝两边打架。
       var vs = this.periodVouchers(month);
-      var net0 = this.periodProfitNet(month);
-      var totalRev = net0.rev, totalExp = net0.exp;
       var self = this;
+      // 幂等（财务规范：一个期间只能结转一次损益）：按 v.kind 定位结转凭证，
+      // 兼容导入账套（其凭证无 summary，摘要正则恒不命中，必须靠结构识别）。
+      // 但「是否存在结转凭证」不足以判定"已结转"——结转后损益凭证被删改，结转凭证会过时，
+      // 故必须与「本期是否已结平」交叉判断（四态判定见 carryForwardStatus）。
+      // store 层不自动删除凭证（沿用「拒绝 + 提示先删旧凭证，由 UI 确认后重做」的既有约定）。
+      var st = this.carryForwardStatus(month);
+      var totalRev = st.net.rev, totalExp = st.net.exp;
+      if (st.exists) {
+        return st.state === 'stale'
+          ? { ok: false, state: 'stale',
+              msg: '本期结转凭证与当前损益发生额不一致，请点「重新结转损益」重新生成（将先删除旧结转凭证 ' + st.nums + '）',
+              vouchers: st.vouchers }
+          : { ok: false, state: 'ok',
+              msg: '本期损益已结转，请勿重复；如需重做请先删除结转凭证（' + st.nums + '）',
+              vouchers: st.vouchers };
+      }
       if (Math.abs(totalRev) < EPS && Math.abs(totalExp) < EPS)
-        return { ok: false, msg: '本期损益净额为零，无需结转' };
+        return { ok: false, state: 'zero', msg: '本期损益净额为零，无需结转' };
 
       // 汇总各收入/费用科目净发生额，逐一结转（排除结转科目 3103/3104，与上面一致）
       var map = {};
@@ -2642,7 +2700,7 @@
         doSave(entriesAll);
       }
       this.backupNow();
-      return { ok: true, vouchers: savedVouchers, totalRev: totalRev, totalExp: totalExp, net: net };
+      return { ok: true, state: 'done', vouchers: savedVouchers, totalRev: totalRev, totalExp: totalExp, net: net };
     },
 
     /* ===================== 年末结转本年利润 ===================== */
@@ -2870,14 +2928,19 @@
       }
 
       // 2. 损益结转（硬性：本期损益净额非 0 则必须结转）
-      // 关键：判定与 carryForwardProfit 共用同一个取数函数 periodProfitNet()，二者条件严格等价，
-      // 从根上消除「结账说未结转、点结转说无需结转」的死锁（曾出现于导入账套）。
+      // 判定统一走 carryForwardStatus()（唯一判定点），与 carryForwardProfit 严格同源 ——
+      // 既避免「结账说未结转、点结转说无需结转」的死锁（曾出现于导入账套），
+      // 也避免「结转凭证还在、但其对应损益凭证已被删改」时两处提示互相矛盾（2026-09-29 修）。
       // 文案另用利润表发生额口径区分「已结转」与「本期确无损益」，避免误导。
-      var netPL = self.periodProfitNet(month);
-      var needCarry = Math.abs(netPL.rev) >= EPS || Math.abs(netPL.exp) >= EPS;
+      var cs = self.carryForwardStatus(month);
       var hasPLActivity = Math.abs(num(est.totalRevenue)) >= EPS || Math.abs(num(est.totalExpense)) >= EPS;
-      if (!needCarry) {
+      if (!cs.need) {
         add('carry', '结转损益', 'ok', hasPLActivity ? '损益已结转（本期损益净额已清零）' : '本期无损益发生');
+      } else if (cs.exists) {
+        // stale：结转凭证仍在但净额不为零 → 结转凭证已过时，光说"未结转，请先结转"会把用户引到必然失败的路径上。
+        // 此处文案必须与 carryForwardProfit 的 stale 提示同口径（同一个出口：重新结转）。
+        add('carry', '结转损益', 'fail',
+          '本期结转凭证与当前损益发生额不一致，请点「重新结转损益」重新生成（将先删除旧结转凭证 ' + cs.nums + '）');
       } else {
         add('carry', '结转损益', 'fail', '本期损益未结转，请先结转损益');
       }

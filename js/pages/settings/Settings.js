@@ -6,7 +6,7 @@
 import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
-import { importPlanOf, importErrText } from '../../common/import-classify.js?v=dev';
+import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
 const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
@@ -428,11 +428,13 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
   }
 
   /* ③ .json 账套备份 → **作为新账套导入**（不是覆盖）。
-     与 .ais 导入共用同一条建账套/落盘路径 loadServerBookIntoLocal，保证两边数据整理口径一致；
-     另补两项 .json 特有的整理（.ais 由转换器保证、旧 .json 备份不一定有）：
-       · ensureVoucherIds     —— 凭证 id 缺失/不稳会导致"点凭证定位"失效
+     数据整理与落盘走 store 的同一条实现 S.importExternalBook（与 .ais 导入共用，
+     保证两边口径一致，且这条路径能被 Node 里的行为测试真实跑到 —— 见 js/store.js 该函数注释）：
+       · normalizeState     —— 补全旧备份缺的顶层/深层字段，并按科目自动判定准则
+       · ensureVoucherIds   —— 凭证 id 缺失/不稳会导致"点凭证定位"失效
        · ensureCashFlowFields —— 现金流量字段兜底（旧备份可能没有）
-     账套 id 用「名称 + 时间戳」（与 .ais 导入同一约定），避免与已有同名账套相互覆盖。 */
+     账套 id 用「名称 + 时间戳」（与 .ais 导入同一约定），避免与已有同名账套相互覆盖；
+     名称必须先经 safeIdOf 净化（id 会被 Rust 当文件名用，见该函数说明）。 */
   function importJsonAsNewBook(f) {
     var reader = new FileReader();
     showToast('正在读取账套备份…');
@@ -442,14 +444,15 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (!data || (!data.company && !data.subjects)) { showToast('文件不是有效的账套备份', 'error'); return; }
         var base = String((data.company && data.company.name)
           || ((f && f.name) || '').replace(/\.[^.]+$/, '') || '导入账套').trim() || '导入账套';
-        var bid = base + '_' + Date.now();
-        loadServerBookIntoLocal(bid, data);
-        try { if (S.ensureVoucherIds) S.ensureVoucherIds(); } catch (e) { console.warn('[导入账套] ensureVoucherIds 失败：' + (e && e.message || e)); }
-        try { if (S.ensureCashFlowFields) S.ensureCashFlowFields(); } catch (e) { console.warn('[导入账套] ensureCashFlowFields 失败：' + (e && e.message || e)); }
-        if (S && S.persist) S.persist();
-        var cnt = (data.subjects ? data.subjects.length : 0), vcnt = (data.vouchers ? data.vouchers.length : 0);
-        showToast('已作为新账套「' + base + '」导入：' + cnt + ' 科目 / ' + vcnt + ' 凭证');
-        refreshBookManage(); refreshAll();
+        var bid = safeIdOf(base) + '_' + Date.now();
+        // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出），
+        // 此时绝不能报"导入成功" —— 那与红色横幅自相矛盾，用户不知道信哪个。
+        S.importExternalBook(bid, data).then(function (saved) {
+          if (S && S.persist) S.persist();
+          var cnt = (data.subjects ? data.subjects.length : 0), vcnt = (data.vouchers ? data.vouchers.length : 0);
+          if (saved) showToast('已作为新账套「' + base + '」导入：' + cnt + ' 科目 / ' + vcnt + ' 凭证');
+          refreshBookManage(); refreshAll();
+        });
       } catch (e) { showToast('导入出错：文件不是有效的账套备份(JSON)', 'error'); }
     };
     reader.onerror = function () { showToast('读取文件失败', 'error'); };
@@ -487,9 +490,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             if (!Array.isArray(book.vouchers)) {
               showToast('导入中止：合并后凭证数据异常', 'error'); return;
             }
-            var bid = bookName.trim() + '_合并_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '_' + Date.now();
-            loadServerBookIntoLocal(bid, book);
-            if (S && S.persist) S.persist();
+            var bid = safeIdOf(bookName.trim()) + '_合并_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '_' + Date.now();
             var cnt = book.subjects.length, vcnt = book.vouchers.length;
             var years = (stats && stats.years || []).join('、');
             var tip = '多年合并导入成功：' + bookName + '（' + years + '），' + cnt + ' 科目 / ' + vcnt + ' 凭证';
@@ -511,13 +512,20 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
               }).join(' '));
             }
             if (warns.length) tip += '；' + warns.join('；');
-            showToast(tip, warns.length ? 'warn' : 'success', 8000);
-            refreshBookManage();
-            if (window.__refreshAll) window.__refreshAll();
-            // 合并完成时渲染跨年校验报告到页内卡片
-            if (stats && stats.yearBoundaries && stats.yearBoundaries.length) {
-              _showYearBoundaryCard(stats.yearBoundaries);
-            }
+            // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
+            // 此时报"合并导入成功"会与红色横幅自相矛盾；校验报告卡片同理只在成功时弹。
+            S.importExternalBook(bid, book).then(function (saved) {
+              if (S && S.persist) S.persist();
+              if (saved) {
+                showToast(tip, warns.length ? 'warn' : 'success', 8000);
+                // 合并完成时渲染跨年校验报告到页内卡片
+                if (stats && stats.yearBoundaries && stats.yearBoundaries.length) {
+                  _showYearBoundaryCard(stats.yearBoundaries);
+                }
+              }
+              refreshBookManage();
+              if (window.__refreshAll) window.__refreshAll();
+            });
           })
           .catch(function (e) {
             showToast('合并导入失败：' + importErrText(e), 'error');   // 同一套文案单点（见 importErrText）
@@ -753,12 +761,9 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (!Array.isArray(book.vouchers)) {
           showToast('导入中止：账套凭证数据异常，未导入', 'error'); return;
         }
-        // 账套 id：文件名去后缀 + 时间戳，避免覆盖同目录同名导入
+        // 账套 id：文件名去后缀 + 时间戳，避免覆盖同目录同名导入（名称须净化，见 safeIdOf）
         var base = (file.name || 'kis').replace(/\.[^.]+$/, '');
-        var bid = base + '_' + Date.now();
-        loadServerBookIntoLocal(bid, book);
-        // 立即持久化到本地
-        if (S && S.persist) S.persist();
+        var bid = safeIdOf(base) + '_' + Date.now();
         var cnt = book.subjects.length, vcnt = book.vouchers.length;
         var tip = '金蝶账套导入成功：' + ((stats && stats.company) || base) + '，' + cnt + ' 科目 / ' + vcnt + ' 凭证';
         var warns = [];
@@ -775,9 +780,14 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
           warns.push('已去重 ' + stats.dupSubjects.length + ' 个重复科目');
         }
         if (warns.length) tip += '；' + warns.join('；');
-        showToast(tip);
-        refreshBookManage();
-        if (window.__refreshAll) window.__refreshAll();
+        // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
+        // 此时报"导入成功"会与红色横幅自相矛盾，用户不知道信哪个。
+        S.importExternalBook(bid, book).then(function (saved) {
+          if (S && S.persist) S.persist();
+          if (saved) showToast(tip);
+          refreshBookManage();
+          if (window.__refreshAll) window.__refreshAll();
+        });
       })
       .catch(function (e) {
         // 经 importErrText 翻成人话（原始英文栈对记账的人毫无意义，见其定义处注释）。
@@ -787,26 +797,6 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
       });
   }
 
-  // 将导入的账套注入并立即落真实文件（桌面版账套真相源为 <应用数据目录>/添钰财务/books/）。
-  // 不再写 kis_books localStorage 缓存（账套以磁盘为准），仅记录当前账套指针到 meta。
-  function loadServerBookIntoLocal(id, book) {
-    S.bookId = id; S.state = book;
-    if (S.state.schemaVersion == null) S.state.schemaVersion = S.SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
-    // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目 5xxx/6xxx 自动判定，
-    // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
-    if (typeof S.normalizeState === 'function') { try { S.normalizeState(); } catch (e) { console.warn('normalizeState 失败：' + e); } }
-    S.ensureCashFlowMap();
-    // 立即落真实文件（<应用数据目录>/添钰财务/books/<id>.json），不依赖防抖，防止刷新后丢失
-    if (typeof window.Storage !== 'undefined') {
-      window.Storage.saveBook(id, JSON.stringify(S.state)).catch(function (e) {
-        showToast('导入账套落盘失败：' + (e && e.message || e), 'error');
-      });
-    }
-    // 记录「当前账套指针」到磁盘 meta，保证重开默认进入该导入账套
-    try { if (typeof S.setCurrentBookMeta === 'function') S.setCurrentBookMeta(id); } catch (e) {}
-    S.addLog('导入账套', '导入账套 ' + id + '（' + (book.subjects ? book.subjects.length : 0) + ' 科目 / ' + (book.vouchers ? book.vouchers.length : 0) + ' 凭证）', '账套');
-    if (typeof S.refreshBookIndex === 'function') S.refreshBookIndex();
-  }
   // 三合一入口：一个按钮 → 一个文件选择器（#bookImportFile，可多选 .ais）
   $('btnBookImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
 

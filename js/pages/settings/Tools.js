@@ -168,7 +168,9 @@ $('bookBody').addEventListener('click', async function (e) {
 // 名称/启用期间为账套开账元数据，创建后启用期间不可再改，名称改名走「重命名」
 $('btnNewBook').addEventListener('click', function () {
   var nameEl = $('nbName'); if (nameEl) nameEl.value = '';
-  var startEl = $('nbStart'); if (startEl) startEl.value = curMonthStr(); // 默认建账当月，可改为更早的起始月
+  // 默认建账当月，可改为更早的起始月；**上限就是当月**（见下方 btnCreateBook 的说明）
+  var startEl = $('nbStart');
+  if (startEl) { startEl.value = curMonthStr(); startEl.max = curMonthStr(); }
   if (H.openModal) H.openModal('newBookModal');
 });
 var nbCreate = $('btnCreateBook');
@@ -177,6 +179,10 @@ if (nbCreate) nbCreate.addEventListener('click', function () {
   if (!name) return showToast('请输入账套名称', 'warn');
   var key = 'small2013'; // 默认小企业准则
   var start = ($('nbStart') && $('nbStart').value) || curMonthStr();
+  // 启用期间晚于当前月份 = 账套生下来就录不进任何凭证（store.addVoucher 的「未来月」闸门会把
+  // 这张账套的每个月全部拒绝），用户只会看到"凭证日期不能晚于当前月份"这种摸不着头脑的错。
+  // 故直接拦住，不制造这种死账套。
+  if (start > curMonthStr()) return showToast('启用期间不能晚于当前月份（' + curMonthStr() + '）', 'warn');
   var STD = (typeof globalThis !== 'undefined' && globalThis.STANDARDS) || {};
   var standardLabel = (STD[key] && STD[key].label) || key;
   S.newBook(name, key, start);
@@ -459,10 +465,13 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
           if (dup && newName) {
             b.company.name = newName + '（已还原）';
             if (typeof window.Storage.saveBook === 'function') {
-              await window.Storage.saveBook(newId, JSON.stringify(b));
+              var sr = await window.Storage.saveBook(newId, JSON.stringify(b));
+              // 与「重命名账套」同一判据：Storage.saveBook 内部已 catch、恒 resolved，
+              // 不判 r.ok 就会把写盘失败当成功（这里表现为重名去重没落到盘上却浑然不知）。
+              if (sr && sr.ok === false) throw new Error((sr && sr.error) || '写盘失败');
             }
           }
-        } catch (e) { /* 读/改失败不阻断还原 */ }
+        } catch (e) { console.warn('[还原账套] 重名去重未生效（不阻断还原）：' + ((e && e.message) || e)); }
       }
       await S.refreshBookIndex();
       var suffixDup = (newId && (/_\d+$/.test(newId))) ? '（原 id 被占用，已换名）' : '';

@@ -56,6 +56,28 @@ export function importPlanOf(list) {
 }
 
 /**
+ * 由「账套名称」拼出 id 片段：**必须净化**，因为 id 会被 Rust 直接当文件名用。
+ *
+ * 【为什么需要】id 的生成散落在三处（.json 导入 / 单本 .ais / 多年合并），而 Rust 侧
+ *   save_book 是 `books_dir().join(format!("{id}.json"))` —— **不净化 id**（只有导出文件名
+ *   走 sanitize_filename）。于是名字里的 `/` `\` 会被当成路径分隔符：轻则因父目录不存在
+ *   而落盘失败（用户看到"导入成功"、账套却不在列表里），重则写到 books/ 之外（`../`）。
+ *   Windows 上 `: * ? " < > |` 同样是非法文件名字符。名字过长还会撑破文件名长度上限，
+ *   落盘同样失败 —— 故一并限长。
+ *   规则与 js/app.js、js/pages/voucher/Voucher.js 的导出文件名净化**同一条**。
+ *
+ * 【为什么放这里】它是要被测的纯函数（测试可直接加载本文件断言），见 tools/test_import_e2e.js。
+ *
+ * @param {any} name 账套名称（或文件名去后缀）
+ * @returns {string} 可直接拼进 id 的安全片段（可能为空串，调用方自行兜底默认名）
+ */
+export function safeIdOf(name) {
+  const s = String(name == null ? '' : name).replace(/[\\/:*?"<>|]/g, '_').trim();
+  // 按**码点**切，避免把代理对切成半个字符（半个字符进 JSON 会让 invoke 直接失败）
+  return Array.from(s).slice(0, 60).join('');
+}
+
+/**
  * 把**导入器的原始异常**翻成用户能懂的一句话（纯函数，便于直接断言）。
  *
  * 【背景】2026-09-28 真机发现：选一个不是金蝶账套的 .ais 时，用户看到的是
