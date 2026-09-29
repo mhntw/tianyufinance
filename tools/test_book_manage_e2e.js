@@ -84,6 +84,43 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   assert(S.currentBookId() === newId, '当前账套切到新建账套');
   assert(S.state.company.name === '测试新建账套', '切换后加载的是新账套磁盘权威 state');
 
+  console.log('\n=== 新建账套必须"开箱可用"：首屏就能录第一张凭证 ===');
+  // 自建账套若科目表为空 / 缺 param / 缺 cashFlowItems，用户建完就卡住（页面空白或存不进凭证），
+  // 而"新建账套"恰恰是唯一没有外部数据可参照的入口 —— 缺什么都不会有人提醒。
+  assert(Array.isArray(S.state.subjects) && S.state.subjects.length > 0,
+    '新账套自带准则科目表：' + (S.state.subjects || []).length + ' 个科目');
+  assert(!!(S.state.param && S.state.param.voucherWord), '新账套自带默认凭证字');
+  assert(Array.isArray(S.state.cashFlowItems) && S.state.cashFlowItems.length > 0, '新账套自带现金流量项目');
+  assert(S.state.standard === 'small2013', '新账套准则为小企业准则 2013：' + S.state.standard);
+  assert(S.state.company.startMonth === new Date().getFullYear() + '-' +
+    ('0' + (new Date().getMonth() + 1)).slice(-2), '启用期间默认当月：' + S.state.company.startMonth);
+  const subj0 = S.state.subjects[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const av = S.addVoucher({
+    word: '记', date: today,
+    entries: [{ code: subj0.code, name: subj0.name, dr: 100, cr: 0 },
+              { code: subj0.code, name: subj0.name, dr: 0, cr: 100 }]
+  });
+  // 注意契约不一致：addVoucher 成功时返回**凭证对象**（无 ok 字段），失败才返回 {ok:false,msg}
+  assert(av && av.id, '新建账套后能立即录入第一张凭证' + (av && av.msg ? '：' + av.msg : ''));
+  assert((S.state.vouchers || []).length === 1, '首张凭证已入账');
+
+  console.log('\n=== 启用期间晚于当前月份 = 死账套（故 UI 层必须拦住，见 Tools.js） ===');
+  // 这类账套一张凭证也录不进去：store.addVoucher 的「未来月」闸门会把每个月全部拒绝，
+  // 用户只会看到"凭证日期不能晚于当前月份"这种摸不着头脑的错。故新建账套时就不该允许。
+  const futureMonth = (new Date().getFullYear() + 1) + '-01';
+  const futureId = S.newBook('未来启用账套', 'small2013', futureMonth);
+  await wait(120);
+  const fv = S.addVoucher({
+    word: '记', date: futureMonth + '-05',
+    entries: [{ code: subj0.code, name: subj0.name, dr: 1, cr: 0 },
+              { code: subj0.code, name: subj0.name, dr: 0, cr: 1 }]
+  });
+  assert(fv && fv.ok === false && /晚于当前月份/.test(fv.msg || ''),
+    '未来启用期间的账套录不进凭证：' + (fv && fv.msg));
+  await S.removeBook(futureId);          // 别留在存储里干扰后面的列表断言
+  await S.switchBook('default'); await wait(150);
+
   console.log('\n=== 切回 default（验证 default 切换前的改动已落盘） ===');
   // 回到 default
   S.switchBook('default');

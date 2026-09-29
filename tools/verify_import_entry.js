@@ -34,10 +34,12 @@ function check(cond, label, detail) {
 (function plan() {
   const src0 = fs.readFileSync(path.join(ROOT, 'js', 'common', 'import-classify.js'), 'utf8');
   let src = src0.replace(/^\s*export\s+(function|const|let|var)\b/gm, '$1')
-               + '\n;globalThis.__PLAN__ = importPlanOf;';
+               + '\n;globalThis.__PLAN__ = importPlanOf; globalThis.__SAFEID__ = safeIdOf;';
   (0, eval)(src);
   const planOf = globalThis.__PLAN__;
+  const safeIdOf = globalThis.__SAFEID__;
   check(typeof planOf === 'function', '应能加载 js/common/import-classify.js 的 importPlanOf');
+  check(typeof safeIdOf === 'function', '应能加载 js/common/import-classify.js 的 safeIdOf');
 
   const F = names => names.map(n => ({ name: n }));
   const act = names => planOf(F(names)).action;
@@ -77,6 +79,20 @@ function check(cond, label, detail) {
   // 每个动作的文件列表只能含该动作对应的文件
   check(planOf(F(['x.json'])).files.length === 1, 'new-json 应只返回该 .json 文件');
   check(planOf(F(['a.ais', 'b.ais'])).files.length === 2, 'merge-ais 应返回全部 .ais 文件');
+
+  // 名称净化判据本身是纯函数，逐条断言（含路径分隔符与限长）
+  check(/export\s+function\s+safeIdOf/.test(src0), 'js/common/import-classify.js 应导出 safeIdOf');
+  check(safeIdOf('A/B公司') === 'A_B公司', 'safeIdOf 应把 / 换成 _（否则 id 会被当路径分隔符）',
+    safeIdOf('A/B公司'));
+  // 输入含两个非法字符（\ 与 :）→ 各换成一个 _，故结果为 C__账套_2026
+  check(safeIdOf('C:\\账套:2026') === 'C__账套_2026', 'safeIdOf 应处理 \\ 与 :', safeIdOf('C:\\账套:2026'));
+  check(!/[\\/:*?"<>|]/.test(safeIdOf('../x')),
+    'safeIdOf 不得留下任何路径分隔符（../x 不能把落盘路径带出 books/ 之外）', safeIdOf('../x'));
+  check(!/[\\/:*?"<>|]/.test(safeIdOf('绅蓝之星/客房部')), '（回归）当前账套名净化后仍是单个路径分量',
+    safeIdOf('绅蓝之星/客房部'));
+  check(safeIdOf('  账套  ') === '账套', 'safeIdOf 应去首尾空格（文件名带空格易出问题）');
+  check(safeIdOf('长'.repeat(200)).length === 60, 'safeIdOf 应限长（过长会撑破文件名长度上限）');
+  check(safeIdOf(null) === '' && safeIdOf(undefined) === '', 'safeIdOf 对空值返回空串（由调用方兜底默认名）');
 })();
 
 /* ---------- 二、接线卡口：旧入口真的消失、新入口真的接上、覆盖真的只有一处 ---------- */
@@ -124,10 +140,24 @@ function check(cond, label, detail) {
   const njBody = iNewJson < 0 ? '' : settings.slice(iNewJson, iNewJson + 2200);
   check(iNewJson >= 0, 'Settings.js 应有 importJsonAsNewBook（.json 作为新账套导入）');
   check(/reader\.readAsText/.test(njBody), '（判据自检）截取的函数体应完整到结尾', '长度 ' + njBody.length);
-  check(/loadServerBookIntoLocal\(/.test(njBody),
-    'importJsonAsNewBook 应走 loadServerBookIntoLocal（与 .ais 导入同一条建账套路径）');
-  check(/ensureVoucherIds/.test(njBody),
-    'importJsonAsNewBook 应补 ensureVoucherIds（旧 .json 备份的凭证 id 可能缺失/不稳，会导致点凭证定位失效）');
+  check(/S\.importExternalBook\(/.test(njBody),
+    'importJsonAsNewBook 应走 S.importExternalBook（与 .ais 导入同一条建账套路径）');
+  check(/safeIdOf\(/.test(njBody),
+    'importJsonAsNewBook 的账套 id 必须经 safeIdOf 净化（id 会被 Rust 当文件名用，名字里的 / 会让落盘失败）');
+  // 成败门控：写盘失败时不得报"导入成功"（否则与保存失败告警横幅自相矛盾）
+  check(/\.then\(function \(saved\)/.test(njBody) && /if \(saved\)[^\n]*showToast\(/.test(njBody),
+    'importJsonAsNewBook 的"导入成功"提示必须以落盘成功为条件（写盘失败不得谎报成功）');
+  //  .ais 两条路径同样必须门控：它们也曾无条件 showToast("金蝶账套导入成功"/"多年合并导入成功")
+  ['handleImportAis', 'handleMultiYearImport'].forEach(function (fn) {
+    const iFn = settings.indexOf('function ' + fn + '(');
+    const body = iFn < 0 ? '' : settings.slice(iFn, settings.indexOf('\n  }', iFn));
+    check(iFn >= 0, 'Settings.js 应有 ' + fn + '（.ais 导入路径）');
+    check(body.indexOf('safeIdOf(') >= 0, fn + ' 的账套 id 必须经 safeIdOf 净化（id 会被 Rust 当文件名用）');
+    check(/S\.importExternalBook\(/.test(body), fn + ' 应走 S.importExternalBook（唯一建账套实现）');
+    const iSaved = body.indexOf('if (saved)');
+    check(iSaved >= 0 && /showToast\(tip/.test(body.slice(iSaved)),
+      fn + ' 的"导入成功"提示（showToast(tip…) 必须在 if (saved) 之后（写盘失败不得谎报成功）');
+  });
 
   // 不变量 B：「覆盖当前账本」全应用只有 Tools.js 一个文件
   function callersOf(needle, dir, out) {
@@ -187,9 +217,30 @@ function check(cond, label, detail) {
     return i < 0 ? '' : storeSrc.slice(i, i + 900);
   };
   const rbs = bodyOf('restoreBookState'), rfd = bodyOf('restoreFromData');
+  // 导入账套（.json / .ais 共用）的数据整理必须在 store 一处实现：
+  // 原先它是 Settings.js 里的 loadServerBookIntoLocal，Node 测不到 —— 于是测试只能"手抄一份逻辑"假装覆盖。
+  const ieb = storeSrc.slice(storeSrc.indexOf('importExternalBook: function'), storeSrc.indexOf('importExternalBook: function') + 2000);
+  check(/importExternalBook: function/.test(storeSrc), 'store.js 应有 importExternalBook（导入账套的唯一建账套实现）');
+  check(/normalizeState\(\)/.test(ieb), 'importExternalBook 应补 normalizeState（旧备份缺字段会让页面渲染崩）');
+  check(/ensureVoucherIds\(\)/.test(ieb),
+    'importExternalBook 应补 ensureVoucherIds（旧 .json 备份的凭证 id 可能缺失/不稳，会导致点凭证定位失效）');
+  check(/ensureCashFlowFields\(\)/.test(ieb), 'importExternalBook 应补 ensureCashFlowFields（旧备份可能没有）');
+  check(/_saveBookChecked\(/.test(ieb) && !/saveBook\([^)]*\)\.catch\(/.test(ieb),
+    'importExternalBook 必须判落盘成败（_saveBookChecked），不得只挂 .catch 当成功');
   check(/ensureCashFlowFields\(\)/.test(rbs),
     'restoreBookState 应含 ensureCashFlowFields（原 restoreFromData 有、它缺 —— 合并时补上）');
-  check(/Storage\.saveBook/.test(rbs), 'restoreBookState 应立即落盘（不能只靠防抖 persist）');
+  // 落盘必须走**唯一判定点** _saveBookChecked：直接调 Storage.saveBook(...).catch(...) 是死代码
+  // （saveBook 内部已 catch、恒 resolved），写盘失败无人上报。
+  // 用「到下一个方法为止」的窗口而非定长 slice：bodyOf 只取 900 字符，注释一多就会截断，
+  // 而这里的落盘行在注释之后（曾被截断过一次，故改用自限窗口）。
+  // ⚠ 查反模式前**必须先剥注释**：代码里（也应该）把反模式写进注释作说明，
+//   否则卡口会被自己的说明文字命中 —— 这个坑 verify_import_failure.js 已经踩过一次。
+  const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ');
+  const iRbs = storeSrc.indexOf('restoreBookState: function');
+  const rbsWin = stripC(iRbs < 0 ? '' : storeSrc.slice(iRbs, storeSrc.indexOf('switchBook: function', iRbs)));
+  check(/this\._saveBookChecked\(/.test(rbsWin), 'restoreBookState 应立即落盘且判成败（走 _saveBookChecked，不得只靠 persist）');
+  check(!/Storage\.saveBook\([^)]*\)\s*\.catch\(/.test(rbsWin),
+    'restoreBookState 不得再用 Storage.saveBook(...).catch(...) 这种死代码写法');
   check(/this\.restoreBookState\(/.test(rfd),
     'restoreFromData 应委托 restoreBookState（恢复只许一处实现，否则改一处必漏另一处）');
   check(!/Object\.assign\(\{\},\s*emptyState\(\),\s*data\)/.test(rfd),

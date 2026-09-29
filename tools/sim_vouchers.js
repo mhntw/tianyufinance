@@ -125,7 +125,13 @@ ok('1001 库存现金-5800', eq(balOf(after,'1001')-balOf(before,'1001'), -5800)
 
 console.log('--- 场景6：资产负债表仍平衡 ---');
 const afterBS = S.balanceSheet(MON);
-ok('录入后资产负债表平衡', eq(num(afterBS.assets)-num(afterBS.liabilities)-num(afterBS.equity), 0), '差='+(num(afterBS.assets)-num(afterBS.liabilities)-num(afterBS.equity)).toFixed(2));
+/* 【2026-09-29 修假绿】原断言用 afterBS.assets / liabilities / equity —— 这三个字段
+   在 balanceSheet() 的返回值里**根本不存在**（实际为 totalAsset / totalLiability /
+   totalEquity / totalAll），经 num() 归一后全是 0，于是 0-0-0=0 恒真，等于没断言。
+   现改为产品自身结账检查所用的口径：资产合计 vs (负债+权益) 合计。 */
+const bsDiff = num(afterBS.totalAsset) - num(afterBS.totalAll);
+ok('录入后资产负债表平衡', eq(bsDiff, 0),
+  '差=' + bsDiff.toFixed(2) + '  资产=' + num(afterBS.totalAsset) + '  负债及权益=' + num(afterBS.totalAll));
 
 console.log('--- 场景7：利润表联动（用真实 pl.items 字段）---');
 const pl = S.profitStatement(MON);
