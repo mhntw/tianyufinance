@@ -16,8 +16,18 @@
  *
  * 【用法】
  *   node tools/version.js                打印四处版本 + 一致性
- *   node tools/version.js --check         不一致 / 非法 / tag 已存在 → 非零退出（发版卡口用）
+ *   node tools/version.js --check         不一致 / 非法 / tag 已存在 → 非零退出（**本地**发版卡口用）
+ *   node tools/version.js --check --expect v0.6.21
+ *                                         额外要求「四处版本 == 该 tag」→ CI 发版卡口用（见下）
  *   node tools/version.js --set 0.5.2     一次把四处都改成 0.5.2
+ *
+ * 【为什么 CI 要单独一个 --expect】发布工作流是由 **push tag** 触发的，
+ * 跑到卡口那一刻该 tag 必然已存在 —— 若照搬本地规则，门禁永远为红。
+ * 而发版真正要防的错是「打了 tag 却忘了 --set」：这时工作流仍会静默把
+ * tauri.conf.json 改成 tag 号（构建步骤里那段 node -e），Cargo.toml 却不动，
+ * 于是安装包与界面「软件版本」（读 CARGO_PKG_VERSION）不一致，
+ * 更新检查会永远认为有新版本（关于卡常驻「下载 vX →」入口）。
+ * 故 --expect 下改判「版本号是否等于本次要发的 tag」，tag 是否已存在不再有意义。
  * ============================================================ */
 'use strict';
 const fs = require('fs');
@@ -95,6 +105,9 @@ function main() {
   const argv = process.argv.slice(2);
   const setIdx = argv.indexOf('--set');
   const wantSet = setIdx >= 0 ? String(argv[setIdx + 1] || '').replace(/^v/, '') : null;
+  // CI 用：本次要发的 tag（发布工作流传 ${{ github.ref_name }}）。给了它就改判「版本 == tag」。
+  const expIdx = argv.indexOf('--expect');
+  const expect = expIdx >= 0 ? String(argv[expIdx + 1] || '').replace(/^v/, '') : null;
 
   if (wantSet) {
     if (!SEMVER.test(wantSet)) { console.error('✗ 版本号格式不对（应为三段数字，如 0.5.2）：' + wantSet); process.exit(1); }
@@ -119,15 +132,27 @@ function main() {
   if (r.uniq.length !== 1) { console.error('✗ 四处版本号不一致 —— 发版前必须统一（node tools/version.js --set <版本>）'); bad++; }
   if (r.v && !SEMVER.test(r.v)) { console.error('✗ 版本号非法：' + r.v); bad++; }
   if (r.v) {
-    const t = tags();
-    if (t.indexOf('v' + r.v) >= 0) { console.error('✗ tag v' + r.v + ' 已存在 —— 重复打 tag 会让工作流去更新既有 Release，请先升版本号'); bad++; }
-    // 提示性检查（不失败）：仓库里存在**比当前版本更高**的 tag，多半是历史品牌线
-    const higher = t.filter(x => {
-      const a = x.slice(1).split('.').map(Number), b = r.v.split('.').map(Number);
-      for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); }
-      return false;
-    });
-    if (higher.length) console.log('ℹ️ 仓库里存在比当前更高的 tag（历史品牌线，正常）：' + higher.slice(0, 3).join(', ') + (higher.length > 3 ? ' …' : ''));
+    // 「tag 已存在」只在**本地发版前**有意义（防重复打 tag）。
+    // CI 里工作流正是由该 tag 的 push 触发的 —— 那一刻 tag 必然已存在，照旧判就永远为红。
+    // 故给了 --expect 就整段跳过，改由下面那条「版本 == tag」承担发版卡口的职责。
+    if (!expect) {
+      const t = tags();
+      if (t.indexOf('v' + r.v) >= 0) { console.error('✗ tag v' + r.v + ' 已存在 —— 重复打 tag 会让工作流去更新既有 Release，请先升版本号'); bad++; }
+      // 提示性检查（不失败）：仓库里存在**比当前版本更高**的 tag，多半是历史品牌线
+      const higher = t.filter(x => {
+        const a = x.slice(1).split('.').map(Number), b = r.v.split('.').map(Number);
+        for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); }
+        return false;
+      });
+      if (higher.length) console.log('ℹ️ 仓库里存在比当前更高的 tag（历史品牌线，正常）：' + higher.slice(0, 3).join(', ') + (higher.length > 3 ? ' …' : ''));
+    } else if (r.v !== expect) {
+      console.error('✗ 仓库版本号 ' + r.v + ' ≠ 本次要发的 tag v' + expect
+        + ' —— 工作流会把 tauri.conf.json 静默改成 ' + expect + '，而 Cargo.toml 仍是 ' + r.v
+        + '，安装包与界面「软件版本」将不一致（更新检查永认为有新版本）。请先跑 node tools/version.js --set ' + expect);
+      bad++;
+    } else {
+      console.log('✓ 版本号与本次 tag 一致（v' + expect + '）');
+    }
   }
   console.log(bad ? '\n✗ 版本号自检未通过（' + bad + ' 项）' : '\n✓ 版本号自检通过（四处一致：' + r.v + '）');
   process.exit(bad ? 1 : 0);

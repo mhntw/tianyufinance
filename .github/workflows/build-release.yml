@@ -42,6 +42,18 @@ jobs:
       - name: 运行回归自检（tools/run-all.js）
         run: node tools/run-all.js
 
+      # run-all.js 只跑 Node 侧脚本，**不含** Rust 单测（见其文件头说明）。
+      # 而 Rust 侧有一条真正会删文件的判据（rotate_backups 的环形保留）与导出文件名规则，
+      # 此前只靠人记得手动跑 —— 现把它接进流水线（见 build-windows 的「Rust 单测」步骤）。
+      #
+      # 版本号卡口：必须带 --expect 传本次 tag。不能裸用 --check ——
+      # 本工作流是由 push tag 触发的，那一刻该 tag 必然已存在，而 --check 的
+      # 「tag 已存在 → 报错」是给**本地发版前**防重复打 tag 用的，裸用会让门禁永远为红。
+      # --expect 下改判「四处版本号是否等于本次 tag」：这正是发版真正要防的错
+      # （打了 tag 却忘了 --set → 安装包与界面「软件版本」不一致 → 更新检查永认为有新版本）。
+      - name: 版本号卡口（四处一致，且等于本次 tag）
+        run: node tools/version.js --check --expect ${{ github.ref_name }}
+
   build-windows:
     name: 构建 Windows
     needs: selftest
@@ -78,6 +90,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: tauri/src-tauri -> target
+
+      # Rust 单测（lib）：放在**构建机上**跑，而不是 selftest 那台 ubuntu ——
+      # 编译本 crate 需要 webkit2gtk 等系统依赖，ubuntu 上得额外 apt 装一堆，脆弱且更慢；
+      # 这里紧跟 rust-cache，用的正是构建要用的那份缓存，增量成本很低。
+      # 选立即判据是纯函数（drop_candidates / sanitize_filename / extract_book_name），与平台无关，
+      # 故只在先跑的 build-windows 里跑一次，不重复消耗 macOS 机时。
+      - name: Rust 单测（lib）
+        working-directory: tauri/src-tauri
+        run: cargo test --lib
 
       - name: 构建 Windows 并上传
         uses: tauri-apps/tauri-action@v0
