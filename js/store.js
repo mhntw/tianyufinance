@@ -13,32 +13,31 @@
  *    而当前 `if (globalThis.__renderXxx) globalThis.__renderXxx()` 虽土，但检查即安全。
  */
 
-/* 【金额精度约定 —— 现状、已知局限与改造方向】
+/* 【金额精度约定 —— 已于 2026-09-30 落地为**定点整数**】
  *
- * 现状：金额以**浮点**存储，逻辑精度为「分」（靠 round2 收敛），
- *       相等判断用容差 EPS（见下方注释「为什么必须是半分」）。
+ * 现状：金额以定点整数存储，单位 **×10000（万分之一元）**，与导入源精度对齐。
+ *   换算只有单点：`amt()`（元→整数）/ `yuan()`（整数→元），比例只在 `AMT_SCALE` 定义一处
+ *   （曾内联 10000 的页面/工具已全部收口，由 tools/check_single_source.js 的 inline-amt-scale 看着）。
+ *   相等判断一律**整数直接比较**（`=== 0` / `!== 0` / `< 0` / `> 0`）—— 浮点时代的 `EPS = 0.005`
+ *   已退场（见下方「EPS 退场」注释）。
  *
- * 已知局限（都是实际发生过的，不是理论担忧）：
- *   1. 正确性依赖纪律 —— 需要每处都记得调 round2。曾漏掉一处
- *      （openingBalanceCheck），导致「差 0」因浮点残留被误判成不相等。
- *   2. EPS 容易被改错 —— 曾有人（及一份方案文档）认为 0.005 元 = 5 分，
- *      要改成 0.01，实际是把容差**放大**、放行真实的 1 分不平。
- *      一个需要靠人理解「为什么是半分」的机制，本身就是风险。
- *   3. **导入即丢精度** —— 导入源原始金额是 4 位定点（见下），
- *      本项目只保留 2 位，导入时 0.0020 这类精度由**我们自己**舍掉。
- *   4. 多币种会放大误差 —— 外币 × 汇率 × 汇率 的浮点累积，
- *      而导入源保留 4 位正是为这个场景。
+ * 本改造要消灭的、**实际发生过**的四类事故（都是改造前浮点世界的真实事件，不是理论担忧）：
+ *   1. 正确性依赖纪律 —— 需每处都记得调 round2。曾漏掉一处（openingBalanceCheck），
+ *      导致「差 0」因浮点残留被误判成不相等。
+ *   2. EPS 容易被改错 —— 曾有人（及一份方案文档）认为 0.005 元 = 5 分，要改成 0.01，
+ *      实际是把容差**放大**、放行真实的 1 分不平。需靠人理解「为什么是半分」的机制本身就是风险。
+ *   3. **导入即丢精度** —— 导入源原始金额是 4 位定点，改造前只保留 2 位，0.0020 由我们自己舍掉。
+ *   4. 多币种会放大误差 —— 外币 × 汇率 × 汇率的浮点累积。
  *
- * 改造方向（若做，应一次做完，避免「半浮点半定点」的中间态）：
- *   · 金额字段 → 定点整数，单位 **×10000（万分之一元）**，与导入源精度对齐
- *     （不用 ×100：那会在导入 4 位精度数据时自己引入舍入误差）
- *   · **只需改金额字段** —— 汇率/单价/数量保持浮点即可，导入源也是如此
- *   · 相等判断改为整数直接比较，EPS 可退休
- *   · 除法场景（折旧摊销、汇率换算）需定义明确的「余数分配」规则
+ * 落地形态：
+ *   · **只有金额字段**是整数 —— 汇率/单价/数量保持浮点（导入源也是如此）
+ *   · 除法场景（折旧摊销、汇率换算）用对称四舍五入 + 余数并入末项（见 assetMonthlyDepr / genDeprVoucher）
+ *   · 磁盘 v5（元浮点）→ v6（整数）一次性迁移，见 migrateAmountsToV6；
+ *     **对外的写入 API 入参仍是「元」**（addVoucher/setOpening/updateFixedAsset/importExternalBook/restoreBookState）
+ *   · 模板（vchTemplates/settleTemplates）**有意保持元**，套用时再经 amt() 换算
  *
- * 前置条件：**先做测试架构改造**（把「算数据」从「写 DOM」里剥出来）。
- *   否则改完 store 的计算路径后，现有那批「正则抠函数」式的测试会静默失效，
- *   等于在没有安全网的情况下重写核心计算。
+ * 安全性由这些断言守着：verify_amount_shadow（新旧逐 0.0001 对照）、
+ *   verify_invariants 的 I15（金额字段整数完整性）、check_single_source（口径单点化棘轮）。
  *
  * 导入源侧的事实依据见 tools/read_ais.js 头部（可复现：跑该脚本读 .ais 表结构）。
  */
@@ -142,7 +141,7 @@
  * 内部工具函数（IIFE 私有，不暴露到 global S）
  *   pad2, fmtDate, monthOf, voucherMonth, voucherOrderCmp
  *   prevMonth, round2, monthsBetween, monthList, normMonth
- *   num, money, lastDay, EPS（金额容差半分）
+ *   num, money, lastDay, amt, yuan, AMT_SCALE（金额定点换算单点）
  *   emptyState, detectStandardBySubjects, backfillIncomeRowIds
  * ======================================================================= */
 (function (global) {
@@ -154,7 +153,7 @@
     try { require('./standards.js'); } catch (e) { /* 浏览器忽略 */ }
   }
 
-  var SCHEMA_VERSION = 5; // v5：新增凭证审核状态、账套启用停用、屏保密码、新手引导
+  var SCHEMA_VERSION = 6; // v6：金额改为内部定点整数（0.0001 元，见 migrateAmountsToV6）；v5 及更早为「元」浮点
 
   /* ---------- 科目类别定义（默认 5 类） ---------- */
   // normal: 余额正常方向；side: 借/贷
@@ -254,15 +253,15 @@
     else { bal = cr - dr; dir = bal > 0 ? '贷' : (bal < 0 ? '借' : ''); }
     return { bal: Math.abs(bal), dir: dir };
   }
-  /* 金额相等容差（半分 = 0.005 元），用于借贷平衡 / 结转阈值 / 零值判定，全局统一避免散落硬编码。
+  /* 【2026-09-30 EPS 退场】此处原有 `var EPS = 0.005`（浮点时代的「半分」容差），现已删除。
    *
-   * 【为什么必须是半分而不能是 1 分】金额一律精确到「分」，两笔金额之差必然是 0.01 的整数倍。
-   *   · EPS = 0.005 → 只有差 0 才判「相等」（差 1 分即 0.01 > 0.005，判为不等）；✓ 严格
-   *   · EPS = 0.01  → 差 1 分（0.01 <= 0.01）也会被判「相等」；✗ 放行真实的 1 分不平
-   * 后者会让「借贷差 1 分」「期初差 1 分」的凭证与账套悄悄通过校验，误差逐月累积到年末变成数元。
-   * 财务软件的平衡校验必须严格，容差只用来吸收「二进制浮点」的表示误差 —— 而那种误差由
-   * 比较前的 round2 消除（见 voucherBalance / openingBalanceCheck），不需要靠放大 EPS 兜底。 */
-  var EPS = 0.005;
+   * 定点化后金额是 0.0001 元的**整数**，两笔金额之差必然是「1 个最小单位的整数倍」：
+   * 容差不但不再需要，反而**有害** —— 0.005 放在整数域等价于「差 1 个单位就报警」，
+   * 比原意「差 1 分（=100 个单位）才报警」严了 100 倍，阈值语义被悄悄改写（且没人看得出来）。
+   * 故全部改为整数直接比较：
+   *   · 借贷平衡 / 期初平衡 / 恒等式差额：恒为整数，`=== 0` 即「真平」；
+   *   · 结转阈值 / 零值判定 / 方向判定：`!== 0` 即「确有发生额」，`< 0` / `> 0` 即「方向为负/正」。
+   * 这同时铲掉了「有人把 0.005 理解成 5 分、改成 0.01 就放行 1 分不平」这类事故的土壤。 */
   // 相差整月数（b - a），a/b 均为 'YYYY-MM' → 返回 number。
   // 注意与紧随其后的 monthList 区分：那个返回「月份列表」(array)。
   // 此前两者同名 monthsBetween 却有三种语义并存（本文件差月数 / report._shared.js 列表 /
@@ -303,12 +302,96 @@
     var n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }
-  // 金额显示：固定加千分位。
-  // 原「凭证录入偏好设置」里的千分位开关已移除（该弹窗连同赤字检查一并删除），千分位改为默认行为。
-  // 注意：导出 Excel 不受影响 —— 导出走原始数值（XLSX.utils.aoa_to_sheet 直接吃数字），不经过本函数；
-  //       粘贴回输入框也没问题（num() 会先剥离千分位逗号）。
-  function money(n) {
-    return num(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  /* ============================================================
+   * 金额定点底座（4 位定点整数）
+   *
+   * 【终点约定】内部金额一律是**整数**，单位 = 0.0001 元（AMT_SCALE = 10000），磁盘同单位。
+   *   价值有两处：
+   *     ① 根除二进制浮点的表示误差 —— 现值里出现过 `995288.7100000002`、
+   *        `65359.729999999996` 这类「值是对的、表现是错的」数；文件头记录的 4 起事故全属此类。
+   *     ② 与金蝶源数据对齐 —— 源账套本身就是 4 位定点，而此前导入被 round 到 2 位，
+   *        精度白白丢在入口（见 kis-import.js 的 Math.round(×100)/100）。
+   *   代价：金额比较从「容差比较」变为「严格相等」（浮点噪声不存在了，容差不再需要）。
+   *
+   * 【已落地】底座（AMT_SCALE / amt / yuan）与**全部调用点切换、EPS 退场**已同批完成
+   *   （2026-09-30）—— 「半浮点半定点」的中间态比全浮点更危险（容差已失效、严格相等还没建立），
+   *   所以当初不允许增量提交；现已无中间态残留，可 grep `\bEPS\b` 复核：只剩历史说明文字。
+   * ============================================================ */
+  var AMT_SCALE = 10000;   // 1 元 = 10000 个最小单位（0.0001 元）
+
+  /* 外部金额 → 内部定点整数。**唯一**入口：入参语义是「元」（用户输入、金蝶导入、
+     Excel 单元格、旧账套里的浮点值），出口是整数。
+     ⚠ 不得拿内部整数来调它（会被再乘 10000 倍）—— 内部值本身就是整数，应直接传递。
+     ⚠ 负数必须**对称**舍入：Math.round(-0.5) === -0（向 +∞ 取整），会让
+       -0.00005 → 0 而 +0.00005 → 1，借贷双方对同一笔金额得出不同结果。故显式取符号。 */
+  function amt(v) {
+    var n = num(v);
+    if (!isFinite(n)) return 0;
+    var a = Math.round(Math.abs(n) * AMT_SCALE);
+    return a === 0 ? 0 : (n < 0 ? -a : a);   // a===0 时显式返回 0，避免 -0
+  }
+
+  /* 内部定点整数 → 元（number）。只用于「必须交出元」的边界：xlsx 导出、图表数据、
+     交给外部模块的数值。**不要**用它做内部计算（那会退回浮点，前功尽弃）。 */
+  function yuan(a) {
+    var n = Number(a); if (!isFinite(n)) return 0;
+    return n / AMT_SCALE;
+  }
+  /* 金额显示：入参是**内部定点整数**（0.0001 元），输出 2 位千分位字符串。
+     舍入在整数域完成（÷100 对称取整到「分」），不先变元再舍入 —— 规避 0.5 分边界。
+     ⚠ 契约：入参必须是整数。若收到非整数（说明有调用点漏改、把「元」直接递了进来），
+       这里不静默吞掉，而是**显式告警 + 兜底按元换算**，把「界面金额差 10000 倍」这类
+       静默错误变成开发期可见的告警。 */
+  function money(a) {
+    if (!Number.isSafeInteger(a)) {
+      console.warn('[money] 期望内部定点整数（0.0001 元），实收非整数：', a, '——已按元兜底换算，请排查该调用点');
+      a = amt(a);
+    }
+    var cents = Math.round(Math.abs(a) / 100);          // 1 分 = 100 个最小单位，对称取整
+    var v = cents === 0 ? 0 : (a < 0 ? -cents : cents) / 100;
+    return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /* ============================================================
+   * 发生额矩阵查询（取数索引第二步：月份 × 科目）
+   *
+   * 矩阵行结构：{ ms: ['YYYY-MM', ...]（升序）, cd: [累计借...], cc: [累计贷...] }
+   *   由 _vchIndexOf 在**遍历凭证的同一次循环里**顺带累加，故随凭证数组引用/长度
+   *   变化自动重建（与 _invalidate 同一生命周期，不新增失效机制）。
+   *
+   * 为什么能精确相等：金额已是整数（0.0001 元定点），加法可结合 —— 索引路径按
+   *   「科目」「月份」分组累加，与原实现的「按凭证逐笔累加」次序不同，但结果**逐位相同**。
+   *   这正是把索引排在定点化之后的原因（浮点域下只能退化成容差比较）。
+   *
+   * ⚠ ms 里可能出现 ''（凭证既无 date 又无可用 period → voucherMonth 返回空）：
+   *   它按 `'' < 任何 'YYYY-MM'` 参与比较，与 vouchersBefore 的原口径一致 ——
+   *   这类凭证计入每一期的「期初（以前年度）」，但不计入任何真实月份的本期/本年累计。
+   * ============================================================ */
+  function _matCountLess(ms, m) {          // ms 中 < m 的个数（二分）
+    var lo = 0, hi = ms.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (ms[mid] < m) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+  function _matCountLE(ms, m) {            // ms 中 <= m 的个数（二分）
+    var lo = 0, hi = ms.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (ms[mid] <= m) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+  // 某科目「严格早于 month」的累计发生额（= 矩阵版的 vouchersBefore 求和）
+  function _matBefore(row, month) {
+    if (!row) return { dr: 0, cr: 0 };
+    var k = _matCountLess(row.ms, month);
+    return k ? { dr: row.cd[k - 1], cr: row.cc[k - 1] } : { dr: 0, cr: 0 };
+  }
+  // 某科目 [loMonth, hiMonth] 闭区间的累计发生额（求和共用一行，避免两次二分口径分叉）
+  function _matRange(row, loMonth, hiMonth) {
+    if (!row) return { dr: 0, cr: 0 };
+    var a = _matCountLess(row.ms, loMonth), b = _matCountLE(row.ms, hiMonth);
+    return {
+      dr: (b ? row.cd[b - 1] : 0) - (a ? row.cd[a - 1] : 0),
+      cr: (b ? row.cc[b - 1] : 0) - (a ? row.cc[a - 1] : 0)
+    };
   }
 
 
@@ -412,6 +495,61 @@
     };
   }
 
+  /* ============================================================
+   * 存量账套迁移：v5（金额=「元」浮点）→ v6（金额=内部定点整数，0.0001 元）。
+   *
+   * 【只乘白名单字段，绝不递归】递归会把 schemaVersion / 期间 / 比率 / 科目编码一起乘，必炸。
+   *   乘 10000：凭证分录金额、期初余额、固定资产金额字段、工资金额、现金流量初始余额、
+   *             凭证上的折旧回滚快照（v.deprReverted[].amt）。
+   *   不乘：schemaVersion、no/word、subjects[].level、assetCats/卡片 的 life/salvageRate/
+   *         periodUsed/qty、company.startMonth、param、closedPeriods、reportRules 全部。
+   *   模板（vchTemplates / settleTemplates）：它们的金额是**界面预置值（元）**，
+   *         由「套用模板」写回表单再经 addVoucher 定点化，从不参与账务算术，**保持元不动**
+   *         （salaryVchTpls 只存凭证字/类别，无金额）。
+   *
+   * 【幂等】迁移后置 schemaVersion=6，二次进入直接跳过（防重复 ×10000）。 */
+  function migrateAmountsToV6(book) {
+    if (!book || typeof book !== 'object') return book;
+    /* 【幂等必须由函数自己保证，不能只靠调用方判版本】本函数被校验脚本直接调用
+       （S.migrateAmountsToV6），若改动调用方一处漏判就会**重复 ×10000** —— 那是最难查的一类
+       数据事故（金额整体放大 1 亿倍且看起来"每个数都自洽"）。故这里自带门。 */
+    if (book.schemaVersion === 6) return book;
+    var mul = function (x) { return amt(x); }; // 元 → 整数（对称舍入，与外部入口同一口径）
+    var mulKeys = function (o, keys) {
+      if (!o) return;
+      keys.forEach(function (k) { if (o[k] != null) o[k] = mul(o[k]); });
+    };
+    // 1) 凭证分录金额 + 折旧回滚快照
+    (book.vouchers || []).forEach(function (v) {
+      if (!v) return;
+      (v.entries || []).forEach(function (e) { if (e) { e.dr = mul(e.dr); e.cr = mul(e.cr); } });
+      (v.deprReverted || []).forEach(function (s) { if (s && s.amt != null) s.amt = mul(s.amt); });
+    });
+    // 2) 期初余额 { code: {dr,cr,yb,ytdDr,ytdCr} }
+    var ob = book.openingBalances || {};
+    Object.keys(ob).forEach(function (c) { mulKeys(ob[c], ['dr', 'cr', 'yb', 'ytdDr', 'ytdCr']); });
+    // 3) 固定资产卡片（仅金额字段）
+    var FA_AMT = ['original', 'accumDeprBegin', 'accumDepr', 'salvage', 'impairment',
+      'netValueBegin', 'netValueEnd', 'yearDepr'];
+    (book.fixedAssets || []).forEach(function (fa) { mulKeys(fa, FA_AMT); });
+    // 4) 工资记录
+    (book.payrolls || []).forEach(function (p) { mulKeys(p, ['should', 'real']); });
+    // 5) 现金流量初始余额 { itemId: {ytd} }
+    var cf = book.cashFlowOpening || {};
+    Object.keys(cf).forEach(function (id) { mulKeys(cf[id], ['ytd']); });
+    // 6) 跨年校验报告 meta.yearBoundaries（由 kis-import 以「元」产出，同样是金额域；
+    //    checked/total 是科目计数，不乘）
+    ((book.meta || {}).yearBoundaries || []).forEach(function (b) {
+      if (!b) return;
+      mulKeys(b, ['maxDiff']);
+      ['samples', 'allDiffs'].forEach(function (k) {
+        (b[k] || []).forEach(function (d) { mulKeys(d, ['prevEnd', 'curOpen', 'diff']); });
+      });
+    });
+    book.schemaVersion = 6;
+    return book;
+  }
+
   /* ---------- 多账套索引（磁盘为真） ----------
    * 设计原则（/用友等桌面财务软件）：
    *   1. 账套列表与「账套是否存在」一律以磁盘（Storage.listBooks）为真相源，
@@ -490,6 +628,11 @@
   /* ---------- Store 单例 ---------- */
   var S = {
     SCHEMA_VERSION: SCHEMA_VERSION,
+    /* 存量账套「元 → 定点整数」迁移（见 migrateAmountsToV6 说明）。
+       暴露给**校验脚本**用真实实现：账套加载/导入/恢复入口都会调它，但那些入口
+       顺带写盘/刷新界面，测试直接调会污染用户账套。故留一个纯内存入口，
+       让校验走真实迁移而不是手抄一份（手抄 = 测的是抄本，不是产品）。 */
+    migrateAmountsToV6: migrateAmountsToV6,
     state: null,
     bookId: '',
     // 说明：
@@ -603,25 +746,105 @@
       }).catch(function () { return Promise.resolve(); });
     },
 
+    /* 解析并应用一段磁盘账套 JSON —— 两个加载入口（首次加载 / 刷新重载）共用同一实现。
+     * 版本分流：v6 直通；v5 或无版本号 → 自动迁移到 v6；其他版本 → 交 __onSchemaMismatch 由 UI 决策。
+     * resetOnMissing=true 时，文件缺失/损坏回落到空账套（首次加载场景）；false 则保留内存数据（刷新场景）。 */
+    _consumeDiskBook: function (txt, resetOnMissing) {
+      var self = this;
+      var reset = function () { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); };
+      if (!txt) { if (resetOnMissing) reset(); return Promise.resolve(); }
+      var res;
+      try { res = JSON.parse(txt); } catch (e) { throw new Error('parse_fail'); }
+      if (res && res.empty) { if (resetOnMissing) reset(); return Promise.resolve(); }
+      if (!(res && res.subjects && res.vouchers)) { if (resetOnMissing) reset(); return Promise.resolve(); }
+      if (res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION && res.schemaVersion !== 5) {
+        // 版本不一致（既非本版本、也非可迁移的 v5）：不静默忽略，交 UI 决策
+        console.warn('[Store] 账套文件版本(' + res.schemaVersion + ') 与程序(' + SCHEMA_VERSION + ') 不一致');
+        if (typeof window.__onSchemaMismatch === 'function') {
+          self._pendingServerState = res;
+          window.__onSchemaMismatch(res.schemaVersion, SCHEMA_VERSION, function applyServer() {
+            if (!self._pendingServerState) return;
+            self.state = self._pendingServerState;
+            self._pendingServerState = null;
+            self.ensureVoucherIds();
+            if (window.__refreshAll) window.__refreshAll();
+          });
+        } else {
+          console.warn('[Store] 未挂载版本冲突处理钩子，已保留本地账本');
+        }
+        return Promise.resolve();
+      }
+      return self._applyLoadedBookAndPersist(res, txt, self.bookId);
+    },
+
+    /* 按需把载入的账套迁移到 v6（金额定点化）。迁移链路顺序不可颠倒：
+     *   ① 快照原文成功 → ② 迁移内存副本 → （由调用方）落盘 → （由调用方）回读校验 → 才替换内存。
+     * 快照失败即中止迁移（绝不在无备份的情况下改动历史数据）；此时保留旧数据，
+     * money() 的「非整数兜底换算」让界面仍按元正确显示（算术退化为浮点，但不会错 10000 倍）。 */
+    _applyLoadedBook: function (res, rawText, bookId) {
+      var self = this;
+      var legacy = !!res && res.schemaVersion !== 6 && (res.schemaVersion == null || res.schemaVersion === 5);
+      if (!legacy) return Promise.resolve({ ok: true, book: res, migrated: false });
+      var snap = (typeof window.Storage !== 'undefined' && window.Storage.saveRestoreSnapshot && rawText != null)
+        ? window.Storage.saveRestoreSnapshot(bookId, rawText)
+        : Promise.resolve({ ok: true, mode: 'noop' });
+      return snap.catch(function (e) { return { ok: false, error: String(e) }; }).then(function (r) {
+        if (r && r.ok === false) {
+          self._migrationWarn('升级前的备份写入失败，已中止升级、未改动任何数据（保留 v5 原数据）：' + (r.error || ''));
+          return { ok: false, book: res, migrated: false, error: 'snapshot_failed' };
+        }
+        migrateAmountsToV6(res);
+        return { ok: true, book: res, migrated: true };
+      });
+    },
+
+    /* 载入账套的**唯一应用点**（两个入口共用：首次加载/刷新、切换账套）。
+     * 【为什么必须共用】此前「切换账套」自己写了一段加载逻辑，只把 `schemaVersion == null`
+     *   补成 6 就完事 —— v5 老账套切过去后金额不会被 ×10000，定点代码把「元」当最小单位用，
+     *   界面与报表整体错 10000 倍。合并到一处后，凡「从磁盘来的账套」都必然经过同一套迁移链路。
+     * 顺序：快照 → 迁移 → 落盘 → 刷新界面（步骤 ①失败即原样保留，绝不在无备份时改数据）。
+     * 返回值：true = 账套已用（可能是迁移后的）；false = 迁移未完成（数据仍是 v5 原样，已告警）。 */
+    _applyLoadedBookAndPersist: function (res, rawText, bid) {
+      var self = this;
+      var applyBook = function (book) {
+        self.state = book;
+        // 【必须作废取数缓存】此处是「账套数据整体替换」，而 bookId 可能不变
+        // （刷新重载、原地升级），缓存键 bookId|month 挡不住它 —— 不作废就会继续显示旧数据。
+        self._invalidate();
+        self.normalizeState();
+        self.ensureVoucherIds();
+        self.ensureCashFlowFields();
+      };
+      var refresh = function () { if (window.__refreshAll) window.__refreshAll(); };
+      return self._applyLoadedBook(res, rawText, bid).then(function (m) {
+        if (!m.ok) { applyBook(m.book); refresh(); return false; }   // 快照失败：已告警，盘未动
+        applyBook(m.book);
+        if (!m.migrated) { refresh(); return true; }                 // 已是 v6，直通
+        // 【迁移对用户完全无感知】不弹任何升级提示 —— 定点化是纯内部优化：用户看到的数字、
+        // 能做的操作都不变，没有需要他知晓或决定的事（曾有一条「账套已升级…」toast，已移除）。
+        // 失败路径仍走 _migrationWarn：那是「数据未改动、升级被中止」的**故障**告警，
+        // 不属于升级提示，不能静默（静默会让用户以为一切正常却停留在旧格式数据上）。
+        // 写盘成败由 _saveBookChecked 判定（失败会经 __onPersistError 弹红条横幅），此处不再二次回读校验：
+        // 迁移正确性已由 verify_amount_shadow.js 对两套真实账套逐字段对照锁定（35 万字段 0 差异），
+        // 运行时再读一遍磁盘只是重复一层，换不到额外的保护。
+        return self._saveBookChecked(bid).then(function (saved) { refresh(); return saved; });
+      });
+    },
+
+    // 账套升级相关的告警：复用「保存失败」红条横幅（数据安全类提示的唯一出口）
+    _migrationWarn: function (msg) {
+      console.error('[Store] 账套升级：' + msg);
+      try {
+        if (typeof window.__onPersistError === 'function') window.__onPersistError('[账套升级] ' + msg);
+      } catch (e) {}
+    },
+
     // 从磁盘加载当前 bookId 的完整 state（权威数据），失败则回滚到空账套并上报
     _loadCurrentBook: function () {
       var self = this;
       if (!self.bookId) { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); return Promise.resolve(); }
       return window.Storage.loadBook(self.bookId).then(function (txt) {
-        if (!txt) { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); return; }
-        var res;
-        try { res = JSON.parse(txt); } catch (e) { throw new Error('parse_fail'); }
-        if (res && res.empty) { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); return; }
-        if (res && res.subjects && res.vouchers) {
-          if (res.schemaVersion == null) res.schemaVersion = SCHEMA_VERSION;
-          self.state = res;
-          self.normalizeState();
-          self.ensureVoucherIds();
-          self.ensureCashFlowFields();
-          if (window.__refreshAll) window.__refreshAll();
-        } else {
-          self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields();
-        }
+        return self._consumeDiskBook(txt, true);
       }).catch(function (err) {
         console.error('[Store] 加载账套「' + self.bookId + '」失败：' + ((err && err.message) || err));
         self.state = emptyState(); self.normalizeState();
@@ -733,36 +956,7 @@
         return;
       }
       window.Storage.loadBook(this.bookId)
-        .then(function (txt) {
-          if (!txt) return; // 本地账套文件尚无该账套
-          var res;
-          try { res = JSON.parse(txt); } catch (e) { throw new Error('parse_fail'); }
-          if (res && res.empty) return; // 本地账套文件尚无该账套
-          if (res && res.subjects && res.vouchers) {
-            if (res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION) {
-              // 版本不一致：不再静默忽略（会悄悄丢数据），改为交由 UI 决策
-              console.warn('[Store] 本地账套文件版本(' + res.schemaVersion + ') 与程序(' + SCHEMA_VERSION + ') 不一致');
-              if (typeof window.__onSchemaMismatch === 'function') {
-                self._pendingServerState = res;
-                window.__onSchemaMismatch(res.schemaVersion, SCHEMA_VERSION, function applyServer() {
-                  if (!self._pendingServerState) return;
-                  self.state = self._pendingServerState;
-                  self._pendingServerState = null;
-                  self.ensureVoucherIds();
-                  if (window.__refreshAll) window.__refreshAll();
-                });
-              } else {
-                console.warn('[Store] 未挂载版本冲突处理钩子，已保留本地账本');
-              }
-              return;
-            }
-            self.state = res;
-            self.normalizeState();
-            self.ensureVoucherIds();
-            self.ensureCashFlowFields();
-            if (window.__refreshAll) window.__refreshAll();
-          }
-        })
+        .then(function (txt) { return self._consumeDiskBook(txt, false); })
         .catch(function (err) {
           var emsg = (err && err.message) || '';
           console.error('[Store] 读取本地账套文件「' + self.bookId + '」失败：' + emsg);
@@ -990,6 +1184,12 @@
     importExternalBook: function (id, book) {
       var self = this;
       this.bookId = id; this.state = book;
+      // 金额单位分流：只有 v6（内部定点整数）可直接用；其余（v5 / 旧 .json 无版本号 / 金蝶 .ais 导入产物）
+      // 一律按「元」迁移到 v6 —— v6 是本程序才引入的唯一整数格式，历史落盘与全部导入产物都是「元」。
+      // ⚠ kis-import **有意不**自行定点化、也**不打 schemaVersion**（见 js/kis-import.js：它输出的是
+      //   保留 4 位精度的「元」）。换算只此一处 —— 若哪天有人在转换器里补上 schemaVersion:6，
+      //   这里就会跳过迁移、金额被少乘 10000 倍；反之若转换器自己乘了 10000，这里会再多乘一次。
+      if (book.schemaVersion !== SCHEMA_VERSION) migrateAmountsToV6(book);
       if (this.state.schemaVersion == null) this.state.schemaVersion = SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
       // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目自动判定，
       // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
@@ -1045,12 +1245,16 @@
     restoreBookState: function (st, opts) {
       opts = opts || {};
       if (!st || (!st.company && !st.subjects)) { console.warn('[restoreBookState] 无效备份数据'); return false; }
-      // 合并进空状态：旧备份缺字段（如 payrolls / fixedAssets）时不至于让页面渲染崩掉
-      this.state = Object.assign({}, emptyState(), st);
+      // 备份可能是旧格式（v5/无版本，金额为「元」）→ 按需迁移（自带幂等门，见 migrateAmountsToV6）。
+      // ⚠ 必须在合并进空状态**之前**迁：emptyState() 自带 schemaVersion=6，合并后判据会被抹平。
+      // 克隆后再迁，不改动调用方手里的备份对象。
+      var inbound = st.schemaVersion !== SCHEMA_VERSION
+        ? (function () { var c = JSON.parse(JSON.stringify(st)); migrateAmountsToV6(c); return c; })()
+        : st;
+      this.state = Object.assign({}, emptyState(), inbound);   // 合并进空状态：旧备份缺字段时不至于渲染崩掉
       this.state.schemaVersion = SCHEMA_VERSION;
       // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
       // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
-      // （switchBook 因换了 bookId 天然隔绝，故此前未暴露。）
       this._invalidate();
       this.normalizeState();
       this.ensureVoucherIds();
@@ -1102,14 +1306,16 @@
           if (!txt) { self.state = prevState; self.bookId = prevId; setCurBookId(prevId); return; }
           var res;
           try { res = JSON.parse(txt); } catch (e) { self.state = prevState; self.bookId = prevId; setCurBookId(prevId); return; }
+          // 版本既不是本版本、也不是可迁移的 v5：不静默处理，回滚到原账套（与首次加载同一判据）
+          if (res && res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION && res.schemaVersion !== 5) {
+            console.warn('[Store] 目标账套版本(' + res.schemaVersion + ') 无法由本程序读取，已取消切换');
+            self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+            return;
+          }
           if (res && res.subjects && res.vouchers) {
-            if (res.schemaVersion == null) res.schemaVersion = SCHEMA_VERSION;
-            self.state = res;
-            self.normalizeState();
-            self.ensureVoucherIds();
-            self.ensureCashFlowFields();
-            self._invalidate(); // 新账套数据，作废取数缓存
-            if (window.__refreshAll) window.__refreshAll();
+            // 与首次加载共用**同一条**迁移链路（快照 → 迁移 → 自检 → 落盘 → 回读）。
+            // 此前这里只补一个版本号就完事，v5 老账套切过来会整体错 10000 倍。
+            self._applyLoadedBookAndPersist(res, txt, id);
           } else {
             // 目标账套数据异常：回滚到原账套
             self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
@@ -1489,7 +1695,7 @@
                : { dr: 0, cr: 0, yb: 0, ytdDr: 0, ytdCr: 0 };
     },
     setOpening: function (code, dr, cr, yb, ytdDr, ytdCr) {
-      dr = num(dr); cr = num(cr); yb = num(yb); ytdDr = num(ytdDr); ytdCr = num(ytdCr);
+      dr = amt(dr); cr = amt(cr); yb = amt(yb); ytdDr = amt(ytdDr); ytdCr = amt(ytdCr);
       // 期初口径：科目有下级（子目）时，父级期初=自身+子目合计（rollCodes 上卷）。
       // 若父科目自身也录期初，会被重复计入，故「有子目的科目」禁止录入自身期初，期初须放末级子目。
       // 返回 { ok:false, msg } 让前端提示；等于全 0 清空不受此限制（清空是安全的）。
@@ -1514,10 +1720,9 @@
         if (s.normal === 'dr') totalDr += num(o.dr) - num(o.cr);
         else totalCr += num(o.cr) - num(o.dr);
       });
-      // 与 voucherBalance 同口径：先 round2 消除累加浮点误差，再比 EPS。
-      // 不加 round2 时，0.1+0.2 这类累加会留下 0.30000000000000004，使「差 0」被误判成不相等。
+      // 与 voucherBalance 同口径：金额已是 0.0001 元整数，累加无误差（round2 保留，对元域入参仍归一 -0）。
       var drR = round2(totalDr), crR = round2(totalCr);
-      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) <= EPS };
+      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) === 0 };
     },
 
     /* ===================== 凭证 ===================== */
@@ -1548,7 +1753,16 @@
       });
       return count > 0 ? (base + '-' + (count + 1)) : base;
     },
+    /* 对外入口：分录金额是「元」（表单/Excel/外部导入），先定点化为内部整数再走统一落库。
+       程序内部生成的凭证（结转损益/年结/折旧/工资/红字冲销/期末模板…）金额**已是内部整数**，
+       它们直接调 _addVoucher 跳过这一步 —— 否则会被再乘 10000 倍。
+       两者共用同一落库体（校验/取号/id/日志/落盘），避免两条实现漂移。 */
     addVoucher: function (v) {
+      if (v && v.entries) v.entries.forEach(function (e) { e.dr = amt(e.dr); e.cr = amt(e.cr); });
+      return this._addVoucher(v);
+    },
+    // 内部落库（金额已是定点整数，不再转换）：见 addVoucher 说明
+    _addVoucher: function (v) {
       // v: { word, no, date, attach, summary, entries:[{code,name,summary,dr,cr,cashActivity?}] }
       // 借贷平衡校验：任何路径（导入/接口/脚本）写入的凭证都必须平衡，避免脏数据入总账
       var bal = this.voucherBalance(v.entries);
@@ -1592,7 +1806,6 @@
       v.id = this._calcVoucherId(v.word, v.no, voucherMonth(v));
       // 记录制单人
       if (!v.maker) v.maker = (this.state.company && this.state.company.bookkeeper) || '财务';
-      v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
       this.state.vouchers.push(v);
       this._invalidate(); // 凭证变化，作废取数缓存（否则后续查询会命中旧值）
       this.persist();
@@ -1755,7 +1968,7 @@
       // 分录级快照：记录修改前后借贷合计，便于审计追查"改了多少"
       var oldDr = round2(_oldVoucher.entries.reduce(function (s, e) { return s + num(e.dr); }, 0));
       var oldCr = round2(_oldVoucher.entries.reduce(function (s, e) { return s + num(e.cr); }, 0));
-      v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
+      v.entries.forEach(function (e) { e.dr = amt(e.dr); e.cr = amt(e.cr); });
       var newDr = round2(v.entries.reduce(function (s, e) { return s + num(e.dr); }, 0));
       var newCr = round2(v.entries.reduce(function (s, e) { return s + num(e.cr); }, 0));
       this.state.vouchers[idx] = Object.assign(this.state.vouchers[idx], v, { id: id });
@@ -1809,7 +2022,7 @@
       lines.forEach(function (l) { sum += l.amt; });
       sum = round2(sum);
       // 末尾月补足、历史脏数据会让单卡月折旧额与凭证金额差几分钱 —— 差额并入最后一张卡片对齐
-      if (vchTotal > 0 && Math.abs(sum - vchTotal) > EPS) {
+      if (vchTotal > 0 && sum !== vchTotal) {
         var last = lines[lines.length - 1];
         var fixed = round2(last.amt + (vchTotal - sum));
         last.amt = fixed > 0 ? fixed : 0;
@@ -2143,13 +2356,13 @@
       // 避免出现「红字冲销说不用结转、结账说必须结转」这种两套口径打架的老问题。
       var carryBefore = this.carryForwardState(month).done;
       var netBefore = this.periodProfitNet(month);
-      function plSettled(o) { return Math.abs(o.rev) < EPS && Math.abs(o.exp) < EPS; }
+      function plSettled(o) { return o.rev === 0 && o.exp === 0; }
       // 日期：目标期间即当前自然月用今天，否则用该月最后一天 —— 保证日期落在目标期间内，
       // 否则 voucherMonth() 会把凭证归到别的月份，与目标期间不符。
       var natMonth = fmtDate(new Date()).slice(0, 7);
       var date = (month === natMonth) ? fmtDate(new Date()) : lastDay(month);
 
-      var created = this.addVoucher({
+      var created = this._addVoucher({
         word: orig.word || '记',
         date: date,
         attach: 0,
@@ -2241,10 +2454,10 @@
     voucherBalance: function (entries) {
       var dr = 0, cr = 0;
       (entries || []).forEach(function (e) { dr += num(e.dr); cr += num(e.cr); });
-      // 合计后 round2 消除二进制浮点累积误差（0.1+0.1+...≠1.0），再与 EPS 比较。
-      // diff 也要 round2：Math.abs(100-100.01)=0.010000000000005116 ≠ 0.01，直接比会越过 EPS。
+      // 金额已是 0.0001 元整数，`=== 0` 即「借贷真正相等」。round2 保留：
+      // 入参若是元域浮点（旧调用方/测试），它仍负责归一 -0 与消除表示误差。
       var drR = round2(dr), crR = round2(cr);
-      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) <= EPS };
+      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) === 0 };
     },
 
     /* ===================== 运行期自检（防算错） =====================
@@ -2268,8 +2481,8 @@
         var o = obMap[k];
         opDr += num(o.dr); opCr += num(o.cr);
       });
-      if (Math.abs(opDr - opCr) >= 0.01) {
-        push('error', '期初余额借贷不平', '借方合计 ¥' + opDr.toFixed(2) + '，贷方合计 ¥' + opCr.toFixed(2) + '，差额 ¥' + Math.abs(opDr - opCr).toFixed(2));
+      if (Math.abs(opDr - opCr) >= 100) {   // 100 个最小单位 = 0.01 元（原硬编码 0.01，单位随之换域）
+        push('error', '期初余额借贷不平', '借方合计 ¥' + yuan(opDr).toFixed(2) + '，贷方合计 ¥' + yuan(opCr).toFixed(2) + '，差额 ¥' + yuan(Math.abs(opDr - opCr)).toFixed(2));
       }
       // 2、每张凭证借贷平衡（防止脏数据绕过 UI 校验进账）
       var badV = 0;
@@ -2285,11 +2498,10 @@
         var m = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (m) {
           var bs = this.balanceSheet(m);
-          // 【2026-09-28 统一容差】此处原为硬编码 `>= 0.01` —— 与 financialHealthCheck 的同类判据（EPS）
-          // 不一致，而合计已 round2 到分（见 balanceSheet：totalAsset/totalAll 都过 round2），
-          // 差额必是「分的整数倍」→ 0.01 会把**差 1 分**判成"平"（放行真实不平），
-          // 正是本文件 EPS 注释里标为 ✗ 的那种取值。故改用全局 EPS（半分）。
-          if (Math.abs(bs.totalAsset - bs.totalAll) >= EPS) {
+          // 合计已 round2 到分、且金额是整数 → 差额恒为整数，`!== 0` 即「确实不平衡」。
+          // （此处历史上两次踩坑：先硬编码 `>= 0.01` 会把「差 1 分」判成平；后改用浮点 EPS（半分），
+          //  定点化后 EPS 又变成「差 1 个最小单位就报」。整数域直接比才是唯一稳定的判据。）
+          if (bs.totalAsset !== bs.totalAll) {
             var diff = bs.totalAsset - bs.totalAll;
             var net = 0;
             try { net = this.profitStatement(m).netProfit; } catch (e) {}
@@ -2298,8 +2510,8 @@
               var eq = bs.groups.equity.items;
               for (var i = 0; i < eq.length; i++) { if (eq[i].label && eq[i].label.indexOf('本年利润') >= 0) carried = eq[i].end; }
             } catch (e) {}
-            var residual = Math.abs((net - carried) - diff) < 1;
-            var detail = '资产 ¥' + bs.totalAsset.toFixed(2) + '，负债及权益 ¥' + bs.totalAll.toFixed(2) + '，差额 ¥' + Math.abs(diff).toFixed(2);
+            var residual = Math.abs((net - carried) - diff) < AMT_SCALE;   // 容差 1 元（AMT_SCALE 个最小单位 = 1 元）
+            var detail = '资产 ¥' + yuan(bs.totalAsset).toFixed(2) + '，负债及权益 ¥' + yuan(bs.totalAll).toFixed(2) + '，差额 ¥' + yuan(Math.abs(diff)).toFixed(2);
             if (residual) {
               push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡');
             } else {
@@ -2344,9 +2556,9 @@
             this.generalLedger(mp).forEach(function (r) { if (String(r.code) === '3104') allocate += num(r.ytdDr); });
           } catch (e2) {}
           push('info', '三表勾稽（参考）',
-            '未分配利润本年变动 ¥' + profitDelta.toFixed(2) +
-            '，本期净利润 ¥' + pl.netProfit.toFixed(2) +
-            '，本年已分配利润 ¥' + allocate.toFixed(2) +
+            '未分配利润本年变动 ¥' + yuan(profitDelta).toFixed(2) +
+            '，本期净利润 ¥' + yuan(pl.netProfit).toFixed(2) +
+            '，本年已分配利润 ¥' + yuan(allocate).toFixed(2) +
             '；三者不等属常见（利润分配与结转结构所致），仅供参考，不影响账务正确性');
         }
       } catch (e) {}
@@ -2397,16 +2609,38 @@
       var byMonth = {};          // 'YYYY-MM' → 该月凭证（按 月份→凭证字→字号 排序；
                                  //   字号按数值比，避免「记-19 排在记-2 前」的字典序）
       var live = [];             // 未删除凭证，保持原始顺序（< month 的语义依赖它）
+      var acc = {};              // 发生额累加：code → 月份 → {dr,cr}（月份含 ''，见下方注释）
       for (var i = 0; i < vs.length; i++) {
         var v = vs[i];
         if (v.deleted === 'y') continue;
         live.push(v);
         var m = voucherMonth(v);
-        if (!m) continue;
-        (byMonth[m] || (byMonth[m] = [])).push(v);
+        if (m) (byMonth[m] || (byMonth[m] = [])).push(v);
+        /* 发生额矩阵：**在同一次遍历里**顺带累加，不再单独扫一遍全表。
+           m 可能为 ''（凭证既无 date 又无可用 period）—— 保留在矩阵内，因为
+           vouchersBefore 的字符串比较把 '' 视为「早于任何真实月份」（原实现如此）。 */
+        var es = v.entries || [];
+        for (var j = 0; j < es.length; j++) {
+          var e = es[j];
+          if (!e || e.code == null) continue;
+          var row = acc[e.code] || (acc[e.code] = {});
+          var cell = row[m] || (row[m] = { dr: 0, cr: 0 });
+          cell.dr += num(e.dr); cell.cr += num(e.cr);
+        }
       }
       Object.keys(byMonth).forEach(function (m) { byMonth[m].sort(voucherOrderCmp); });
-      this._vchIndex = { ref: vs, len: vs.length, live: live, byMonth: byMonth, before: {}, ytd: {} };
+      /* 每个科目：月份升序数组 + 累计前缀和，供 O(log N) 的区间取数（见 _matRange） */
+      var mat = {};
+      Object.keys(acc).forEach(function (c) {
+        var ms = Object.keys(acc[c]).sort();   // '' 排最前（字典序 = 时序）
+        var cd = [], cc = [], rd = 0, rc = 0;
+        for (var k = 0; k < ms.length; k++) {
+          rd += acc[c][ms[k]].dr; rc += acc[c][ms[k]].cr;
+          cd.push(rd); cc.push(rc);
+        }
+        mat[c] = { ms: ms, cd: cd, cc: cc };
+      });
+      this._vchIndex = { ref: vs, len: vs.length, live: live, byMonth: byMonth, before: {}, ytd: {}, mat: mat };
       return this._vchIndex;
     },
     periodVouchers: function (month) {
@@ -2635,7 +2869,7 @@
     carryForwardStatus: function (month) {
       var vs = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_PL);
       var net = this.periodProfitNet(month);
-      var need = Math.abs(net.rev) >= EPS || Math.abs(net.exp) >= EPS;
+      var need = net.rev !== 0 || net.exp !== 0;
       var exists = vs.length > 0;
       var nums = vs.map(function (v) { return (v.word || '转') + '-' + v.no; }).join('、');
       return {
@@ -2675,7 +2909,7 @@
               msg: '本期损益已结转，请勿重复；如需重做请先删除结转凭证（' + st.nums + '）',
               vouchers: st.vouchers };
       }
-      if (Math.abs(totalRev) < EPS && Math.abs(totalExp) < EPS)
+      if (totalRev === 0 && totalExp === 0)
         return { ok: false, state: 'zero', msg: '本期损益净额为零，无需结转' };
 
       // 汇总各收入/费用科目净发生额，逐一结转（排除结转科目 3103/3104，与上面一致）
@@ -2726,12 +2960,12 @@
           else if (_diff < 0) _last.dr = round2(num(_last.dr) - _diff); // 贷 > 借 → 补借
           // 必须留痕：plug 会**悄悄改变金额**，若汇总环节真有错会被它掩盖。
           // 差几分属正常的逐科目 round2 累积，差到「元」级则说明汇总有问题，需人工核查。
-          var _msg = '[结转] 损益结转借贷差 ' + _diff.toFixed(2) + ' 元，已调整末笔分录配平';
-          console.warn(_msg + (Math.abs(_diff) >= 1 ? '（差额较大，请核查科目汇总！）' : ''));
+          var _msg = '[结转] 损益结转借贷差 ' + yuan(_diff).toFixed(2) + ' 元，已调整末笔分录配平';
+          console.warn(_msg + (Math.abs(_diff) >= AMT_SCALE ? '（差额较大，请核查科目汇总！）' : ''));   // 阈值 1 元（AMT_SCALE 个单位 = 1 元）
         }
         var v = Object.assign({}, baseV, { entries: entries });
         v.summary = opts.summary || ('结转' + month + '损益');
-        var r = self.addVoucher(v);
+        var r = self._addVoucher(v);
         if (r && r.ok !== false) savedVouchers.push(r);
         return r;
       };
@@ -2739,22 +2973,22 @@
       if (opts.separate !== false) {
         var saved1 = null, saved2 = null;
         // 凭证 1：收入类 → 本年利润（3103 在贷方）
-        if (entriesRev.length || Math.abs(totalRev) >= EPS) {
+        if (entriesRev.length || totalRev !== 0) {
           var e1 = entriesRev.slice();
-          if (Math.abs(totalRev) >= EPS) e1.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: totalRev });
+          if (totalRev !== 0) e1.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: totalRev });
           saved1 = doSave(e1);
         }
         // 凭证 2：成本费用类 → 本年利润（3103 在借方）
-        if (entriesExp.length || Math.abs(totalExp) >= EPS) {
+        if (entriesExp.length || totalExp !== 0) {
           var e2 = entriesExp.slice();
-          if (Math.abs(totalExp) >= EPS) e2.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: totalExp, cr: 0 });
+          if (totalExp !== 0) e2.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: totalExp, cr: 0 });
           saved2 = doSave(e2);
         }
         if (!saved1 && !saved2) return { ok: false, msg: '结转损益失败' };
       } else {
         // 同时结转（一张净额，旧逻辑）
         var entriesAll = entriesRev.concat(entriesExp);
-        if (Math.abs(net) >= EPS) {
+        if (net !== 0) {
           if (net > 0) entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: net });
           else entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: -net, cr: 0 });
         }
@@ -2790,7 +3024,7 @@
       var glRow = (this.generalLedger(month) || []).filter(function (r) { return r.code === PROFIT_CODE; })[0];
       if (!glRow) return { ok: false, msg: '缺失本年利润科目' };
       var bal = glRow.normal === 'dr' ? (num(glRow.endDr) - num(glRow.endCr)) : (num(glRow.endCr) - num(glRow.endDr));
-      if (Math.abs(bal) < EPS) return { ok: false, msg: '本年利润无余额，无需结转' };
+      if (bal === 0) return { ok: false, msg: '本年利润无余额，无需结转' };
       var entries;
       if (bal > 0) {
         // 盈利：借 本年利润 贷 利润分配-未分配利润
@@ -2811,7 +3045,7 @@
         kind: this.VOUCHER_KINDS.CARRY_YE, // 期末业务类型标记（幂等/结账检查按此识别，不依赖摘要）
         entries: entries
       };
-      var saved = this.addVoucher(v);
+      var saved = this._addVoucher(v);
       if (!saved || saved.ok === false) {
         return { ok: false, msg: (saved && saved.msg) || '年末结转失败' };
       }
@@ -2855,7 +3089,7 @@
         });
       });
       net = round2(net);
-      if (!(net > 0.005)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };
+      if (!(net > 0)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };   // net 是 0.0001 元整数
       // 找科目：优先明细（310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
       function findSub(kw, code) {
         var s = code ? self.subject(code) : null; if (s) return s;
@@ -2881,7 +3115,7 @@
         kind: this.VOUCHER_KINDS.PROFIT_DIST,
         entries: entries
       };
-      var saved = this.addVoucher(v);
+      var saved = this._addVoucher(v);
       if (!saved || saved.ok === false) return { ok: false, msg: (saved && saved.msg) || '利润分配失败' };
       this.backupNow(); // 利润分配高风险，强制立即备份
       return { ok: true, voucher: saved, amount: alloc, netProfit: net };
@@ -2995,7 +3229,7 @@
       // 也避免「结转凭证还在、但其对应损益凭证已被删改」时两处提示互相矛盾（2026-09-29 修）。
       // 文案另用利润表发生额口径区分「已结转」与「本期确无损益」，避免误导。
       var cs = self.carryForwardStatus(month);
-      var hasPLActivity = Math.abs(num(est.totalRevenue)) >= EPS || Math.abs(num(est.totalExpense)) >= EPS;
+      var hasPLActivity = num(est.totalRevenue) !== 0 || num(est.totalExpense) !== 0;
       if (!cs.need) {
         add('carry', '结转损益', 'ok', hasPLActivity ? '损益已结转（本期损益净额已清零）' : '本期无损益发生');
       } else if (cs.exists) {
@@ -3023,7 +3257,7 @@
           // 按 v.kind 判定：原摘要正则对导入凭证恒不命中，
           // 会让 12 月永远判「未结转本年利润」而卡死结账。
           var yeDone = kindCount(self.VOUCHER_KINDS.CARRY_YE) > 0;
-          if (Math.abs(pBal) < EPS) {
+          if (pBal === 0) {
             add('yearend', '结转本年利润', 'ok', '本年利润无余额，无需结转');
           } else if (yeDone) {
             add('yearend', '结转本年利润', 'ok', '本年利润已结转至未分配利润');
@@ -3039,7 +3273,7 @@
       // 再显示一条「模板已禁用」既无可操作信息、又占坑，属噪音（此前会加一个 ok 项）。
       if (self.settleTplEnabled('dep')) {
         var faNeed = self.state.fixedAssets.filter(function (fa) {
-          return fa.status !== '清理' && fa.deprMonth !== month && self.assetMonthlyDepr(fa) > 0.004;
+          return fa.status !== '清理' && fa.deprMonth !== month && self.assetMonthlyDepr(fa) > 40;   // 40 个最小单位 = 0.004 元
         });
         var depCnt = kindCount(self.VOUCHER_KINDS.DEPR);
         if (!faNeed.length) add('dep', '计提折旧', 'ok', '本期无待折旧资产');
@@ -3053,7 +3287,7 @@
       // 【模板禁用时不加入清单】同 dep：cost 默认禁用，若仍塞一条 ok 项，
       // 结账检查里会永远挂着一个「结转销售成本 · 模板已禁用」，与「已下线」观感无异。
       if (self.settleTplEnabled('cost')) {
-        var costNeed = num(est.totalRevenue) >= EPS;
+        var costNeed = num(est.totalRevenue) > 0;
         var costCnt = kindCount(self.VOUCHER_KINDS.CARRY_COST);
         if (!costNeed) add('cost', '结转销售成本', 'ok', '本期无收入');
         else add('cost', '结转销售成本', costCnt ? 'ok' : 'warn',
@@ -3075,7 +3309,7 @@
       }
       // 现金/银行/其他货币资金期末出现贷方余额（赤字）—— 判定规则见下，默认只提醒不拦截
       var cashAccts = (self.cashAccounts ? self.cashAccounts() : []).map(function (s) { return s.code; });
-      var negCash = cashAccts.filter(function (c) { var b = endBalOf(c); return b !== null && b < -EPS; });
+      var negCash = cashAccts.filter(function (c) { var b = endBalOf(c); return b !== null && b < 0; });
       // 现金及现金等价物「期末余额是否存在异常」默认【不参与检查】。
       // 真实账套常见「已停用账户历史挂账」「POS 机在途资金」等合理贷方余额，若硬拦会让账永远结不掉。
       // 故降级为提醒：仍显示在清单里提醒核查，但不阻止结账（用户可在「检查项处置」里升级为拦截）。
@@ -3083,10 +3317,10 @@
       else add('cashNeg', '货币资金赤字', 'ok', '货币资金余额正常（无赤字）');
       // 应收(1122)/应付(2202) 出现反向余额 → 仅提醒（可能为重分类事项）
       var ar = endBalOf('1122');
-      if (ar !== null && ar < -EPS) add('arRev', '应收账款反向余额', 'warn', '应收账款为贷方余额，可能为预收款项未重分类');
+      if (ar !== null && ar < 0) add('arRev', '应收账款反向余额', 'warn', '应收账款为贷方余额，可能为预收款项未重分类');
       else add('arRev', '应收账款反向余额', 'ok', '应收账款余额方向正常');
       var ap = endBalOf('2202');
-      if (ap !== null && ap < -EPS) add('apRev', '应付账款反向余额', 'warn', '应付账款为借方余额，可能为预付款项未重分类');
+      if (ap !== null && ap < 0) add('apRev', '应付账款反向余额', 'warn', '应付账款为借方余额，可能为预付款项未重分类');
       else add('apRev', '应付账款反向余额', 'ok', '应付账款余额方向正常');
 
       // 10. 财务初始余额试算平衡（硬性：未处理不允许结账）
@@ -3206,17 +3440,13 @@
     openingOf: function (code, month) {
       var self = this;
       var codes = this.rollCodes(code);
+      var mat = this._vchIndexOf().mat;        // 发生额矩阵（见 _vchIndexOf / _matBefore）
       var dr = 0, cr = 0;
       codes.forEach(function (c) {
         var o = self.opening(c);
         dr += o.dr; cr += o.cr;
-      });
-      var before = this.vouchersBefore(month);
-      before.forEach(function (v) {
-        v.entries.forEach(function (e) {
-          if (codes.indexOf(e.code) < 0) return;
-          dr += num(e.dr); cr += num(e.cr);
-        });
+        var b = _matBefore(mat[c], month);     // 该科目「早于 month」的发生额，O(log N)
+        dr += b.dr; cr += b.cr;
       });
       return { dr: dr, cr: cr };
     },
@@ -3233,9 +3463,10 @@
     financialHealthCheck: function (options) {
       options = options || {};
       var self = this;
-      var largeVoucherThreshold = options.largeVoucher || 50000;       // 大额凭证阈值
-      var keySubjectThreshold = options.keySubject || 100000;          // 关键科目大额阈值
-      var directionThreshold = options.direction || 100;               // 方向异常金额阈值
+      // 以下阈值入参语义是「元」（Settings.js 传 100000 等），内部金额已是定点整数 → 经 amt() 换算
+      var largeVoucherThreshold = amt(options.largeVoucher || 50000);   // 大额凭证阈值
+      var keySubjectThreshold = amt(options.keySubject || 100000);      // 关键科目大额阈值
+      var directionThreshold = amt(options.direction || 100);           // 方向异常金额阈值
       var checks = [];
 
       // 取最新期间 = company.currentPeriod 或所有凭证最大期间
@@ -3269,7 +3500,7 @@
             code: row.code, name: row.name, cls: row.cls,
             normal: row.normal, dir: row.dir, balance: row.balance,
             issue: equityLoss
-              ? '权益类为借方余额 ¥' + row.balance.toFixed(2) + '，通常表示累计亏损或已分配超额，属经营结果；如与实际经营情况不符再核查'
+              ? '权益类为借方余额 ¥' + yuan(row.balance).toFixed(2) + '，通常表示累计亏损或已分配超额，属经营结果；如与实际经营情况不符再核查'
               : (isDrNormal ? '资产/费用类科目出现贷方余额' : '负债/权益/收入类科目出现借方余额')
                 + '（正常方向：' + (isDrNormal ? '借' : '贷') + '，实际：' + row.dir
                 + '），可能源于预收/预付/结算在途，也可能科目用错，请穿透明细确认'
@@ -3309,7 +3540,7 @@
         if (Math.abs(total) >= keySubjectThreshold) {
           keyAnomalies.push({
             codes: ks.codes.join('/'), name: ks.name, balance: total,
-            issue: '余额 ¥' + total.toFixed(2) + '（超 ¥' + keySubjectThreshold + ' 关注线）；' + ks.risk
+            issue: '余额 ¥' + yuan(total).toFixed(2) + '（超 ¥' + yuan(keySubjectThreshold) + ' 关注线）；' + ks.risk
           });
         }
       });
@@ -3382,7 +3613,7 @@
           unclosedPL.push({
             code: row.code, name: row.name, cls: row.cls,
             balance: row.balance, dir: row.dir,
-            issue: '已结账期间 ' + plMonth + ' 期末仍有余额 ¥' + row.balance.toFixed(2) +
+            issue: '已结账期间 ' + plMonth + ' 期末仍有余额 ¥' + yuan(row.balance).toFixed(2) +
               '，损益应结转至本年利润，残留余额会影响利润表准确性'
           });
         }
@@ -3399,14 +3630,14 @@
       try {
         var bs = this.balanceSheet(month);
         var diff = bs.totalAsset - bs.totalAll;
-        // 与 runSelfTest 的同类判据共用全局 EPS（同一事实、同一容差 —— 不允许两处取值不同）
-        if (Math.abs(diff) >= EPS) {
+        // 与 runSelfTest 的同类判据同口径（同一事实、同一判据 —— 不允许两处取值不同）
+        if (diff !== 0) {
           checks.push({
             type: 'bs_unbalanced', severity: 'high', title: '资产负债表恒等式不平衡',
             desc: '资产总计 ≠ 负债及所有者权益总计',
             items: [{
               totalAsset: bs.totalAsset, totalAll: bs.totalAll, diff: diff,
-              issue: '差额 ¥' + Math.abs(diff).toFixed(2) + '（' + (diff > 0 ? '资产多于负债权益' : '负债权益多于资产') + '），常见原因：损益未结转、期初录入不平、科目属性错标'
+              issue: '差额 ¥' + yuan(Math.abs(diff)).toFixed(2) + '（' + (diff > 0 ? '资产多于负债权益' : '负债权益多于资产') + '），常见原因：损益未结转、期初录入不平、科目属性错标'
             }]
           });
         }
@@ -3424,8 +3655,8 @@
                 fromYear: b.fromYear, toYear: b.toYear,
                 code: d.code,
                 prevEnd: d.prevEnd, curOpen: d.curOpen, diff: d.diff,
-                issue: b.fromYear + '→' + b.toYear + ' 跳变 ¥' + Math.abs(d.diff).toFixed(2) +
-                  '（上年期末 ¥' + d.prevEnd.toFixed(2) + ' → 本年期初 ¥' + d.curOpen.toFixed(2) + '），' +
+                issue: b.fromYear + '→' + b.toYear + ' 跳变 ¥' + yuan(Math.abs(d.diff)).toFixed(2) +
+                  '（上年期末 ¥' + yuan(d.prevEnd).toFixed(2) + ' → 本年期初 ¥' + yuan(d.curOpen).toFixed(2) + '），' +
                   (d.prevEnd * d.curOpen < 0 ? '符号反转，' : '') + '可能是手动调期初或年结未达账'
               });
             }
@@ -3434,7 +3665,7 @@
         if (yearJumps.length) {
           checks.push({
             type: 'year_jump', severity: 'high', title: '跨年余额跳变',
-            desc: '多年合并账套的跨年期初与上年期末不一致（超 ¥' + keySubjectThreshold + ' 阈值），可能是手动调期初',
+            desc: '多年合并账套的跨年期初与上年期末不一致（超 ¥' + yuan(keySubjectThreshold) + ' 阈值），可能是手动调期初',
             items: yearJumps
           });
         }
@@ -3530,21 +3761,19 @@
       this._glCache = this._glCache || {};
       var glKey = (this.bookId || '_') + '|' + month;
       if (this._glCache.hasOwnProperty(glKey)) return this._glCache[glKey];
+      // 发生额矩阵：把「每个科目都重扫一遍全表凭证」降为「O(rollCodes·log N) 查前缀和」。
+      // 矩阵挂在 _vchIndexOf 上，随凭证引用/长度变化重建（无新增失效机制）。
+      var mat = this._vchIndexOf().mat;
+      var yStart = month.slice(0, 4) + '-01';   // 本年累计起点（与 ytdVouchers 同口径）
       var result = this.subjects().map(function (s) {
         var codes = self.rollCodes(s.code);
         var op = self.openingOf(s.code, month);
-        var periodDr = 0, periodCr = 0;
-        self.periodVouchers(month).forEach(function (v) {
-          v.entries.forEach(function (e) {
-            if (codes.indexOf(e.code) >= 0) { periodDr += num(e.dr); periodCr += num(e.cr); }
-          });
-        });
-        // 本年累计（年初 ~ 当前月）
-        var ytdDr = 0, ytdCr = 0;
-        self.ytdVouchers(month).forEach(function (v) {
-          v.entries.forEach(function (e) {
-            if (codes.indexOf(e.code) >= 0) { ytdDr += num(e.dr); ytdCr += num(e.cr); }
-          });
+        var periodDr = 0, periodCr = 0, ytdDr = 0, ytdCr = 0;
+        codes.forEach(function (c) {
+          var pr = _matRange(mat[c], month, month);       // 本期发生额（本月闭区间）
+          periodDr += pr.dr; periodCr += pr.cr;
+          var yr = _matRange(mat[c], yStart, month);      // 本年累计（年初 ~ 当前月）
+          ytdDr += yr.dr; ytdCr += yr.cr;
         });
         // 损益类（收入/费用）期初余额恒为 0：按年结转清零，与标准科目余额表口径一致；
         // 否则往月损益发生额会被累加进期初，导致「期初/期末」两列与标准口径对不上（本期/累计不受影响）。
@@ -3743,7 +3972,11 @@
       var rev = this.subjectPeriod(tpl.costRevSubj || '5001', month);
       var revAmt = rev ? num(rev.periodDr) + num(rev.periodCr) : 0;
       var rate = num(tpl.costRate === undefined || tpl.costRate === '' ? 80 : tpl.costRate);
-      return { revAmt: revAmt, rate: rate, amount: revAmt * rate / 100 };
+      // 内部金额是定点整数（0.0001 元）：revAmt 已是整数，×rate/100 会出小数，须对称取整回整数，
+      // 否则 genCostVoucher 会把这个小数直接写进凭证（定点整数契约被破坏）。
+      var q = revAmt * rate / 100;
+      var r = Math.round(Math.abs(q));
+      return { revAmt: revAmt, rate: rate, amount: r === 0 ? 0 : (q < 0 ? -r : r) };
     },
     // 生成结转销售成本凭证（「结转生产成本设置」：借 生产成本科目，贷 库存商品科目）
     genCostVoucher: function (month, tpl, amount) {
@@ -3761,7 +3994,7 @@
         { code: prodCode, name: prod ? prod.name : '生产成本', summary: summary, dr: amt, cr: 0 },
         { code: invCode, name: inv ? inv.name : '库存商品', summary: summary, dr: 0, cr: amt }
       ];
-      var v = this.addVoucher({
+      var v = this._addVoucher({
         word: tpl.word || this.state.param.voucherWord || '记', date: (tpl && tpl.date) || lastDay(month), attach: 0,
         summary: summary, kind: this.VOUCHER_KINDS.CARRY_COST, entries: entries
       });
@@ -4111,7 +4344,7 @@
       // 已结转损益的期间损益科目余额为 0，并入值为 0，历史报表数值不受影响。
       var unEnd = this.unclosedProfit(month);
       var unYear = this.unclosedProfit(prevMonth(ys));
-      if (Math.abs(unEnd) > EPS || Math.abs(unYear) > EPS) {
+      if (unEnd !== 0 || unYear !== 0) {
         var plItem = null;
         (ge.items || []).forEach(function (it) { if (/未分配利润/.test(it.label || '')) plItem = it; });
         if (!plItem) {
@@ -4539,18 +4772,18 @@
       // 档案里没有的部门会按名称补进 depts，否则资产左树/按部门筛选永远对不上。见 normalizeDept。
       fa.dept = this.normalizeDept(fa.dept);
       fa.acqDate = fa.acqDate || '';                  // 开始使用日期
-      fa.original = num(fa.original);                 // 原值
-      fa.accumDeprBegin = num(fa.accumDeprBegin);     // 期初累计折旧
-      fa.accumDepr = num(fa.accumDepr);               // 期末累计折旧
+      fa.original = amt(fa.original);                 // 原值
+      fa.accumDeprBegin = amt(fa.accumDeprBegin);     // 期初累计折旧
+      fa.accumDepr = amt(fa.accumDepr);               // 期末累计折旧
       if (!fa.accumDepr && fa.accumDeprBegin) fa.accumDepr = fa.accumDeprBegin;   // 卡片新增只给期初时，期末以期初为起点
       if (!fa.accumDeprBegin && fa.accumDepr) fa.accumDeprBegin = fa.accumDepr;   // 外部账套清单常有期末累计但无期初，默认期初=期末
       fa.life = num(fa.life);                         // 预计使用期限（年）
-      fa.salvage = num(fa.salvage);                  // 残值
+      fa.salvage = amt(fa.salvage);                  // 残值
       fa.salvageRate = fa.salvageRate !== undefined && fa.salvageRate !== '' ? num(fa.salvageRate)
         : (fa.original > 0 ? (fa.salvage / fa.original * 100) : 0); // 残值率%
-      fa.impairment = num(fa.impairment);             // 减值准备
-      fa.netValueBegin = num(fa.netValueBegin);       // 期初净值
-      fa.netValueEnd = num(fa.netValueEnd);           // 期末净值
+      fa.impairment = amt(fa.impairment);             // 减值准备
+      fa.netValueBegin = amt(fa.netValueBegin);       // 期初净值
+      fa.netValueEnd = amt(fa.netValueEnd);           // 期末净值
       // 净值自动补算：未指定时按恒等式 original - accumDepr - impairment 回填
       if (!fa.netValueBegin && fa.original > 0) fa.netValueBegin = fa.original - fa.accumDeprBegin - fa.impairment;
       if (!fa.netValueEnd && fa.original > 0) fa.netValueEnd = fa.original - fa.accumDepr - fa.impairment;
@@ -4575,7 +4808,7 @@
       fa.cleanAcct = fa.cleanAcct || '';              // 资产清理科目
       fa.purchaseAcct = fa.purchaseAcct || '';        // 资产购入对方科目
       fa.impairAcct = fa.impairAcct || '';            // 减值准备对方科目
-      fa.yearDepr = num(fa.yearDepr);                 // 本年已折旧
+      fa.yearDepr = amt(fa.yearDepr);                 // 本年已折旧
       fa.addVoucherId = fa.addVoucherId || '';        // 新增资产凭证的**凭证 id**（唯一、含月份）
       fa.history = [];
       this._pushAssetHistory(fa, '新增', this._collectAssetHistoryFields(fa));
@@ -4616,12 +4849,12 @@
       // 合并后做净值/累计折旧兜底补算（表单 _collectAsset 不采集 accumDepr/netValue* 字段，
       // 直接 Object.assign 后可能为 undefined 或原值未同步，需要主动补算）
       var r = this.state.fixedAssets[idx];
-      r.original = num(r.original);
-      r.accumDeprBegin = num(r.accumDeprBegin);
-      r.accumDepr = num(r.accumDepr);
-      r.impairment = num(r.impairment);
-      r.netValueBegin = num(r.netValueBegin);
-      r.netValueEnd = num(r.netValueEnd);
+      r.original = amt(r.original);
+      r.accumDeprBegin = amt(r.accumDeprBegin);
+      r.accumDepr = amt(r.accumDepr);
+      r.impairment = amt(r.impairment);
+      r.netValueBegin = amt(r.netValueBegin);
+      r.netValueEnd = amt(r.netValueEnd);
       // 卡片表单只有「期初累计折旧」一个输入框（没有"期末"栏），二者语义恒等 ——
       // 都是【锚点月末】的累计：_accumDeprAt（列表显示）读 accumDeprBegin，
       // assetMonthlyDepr（实提）读 accumDepr。原实现仅在旧值为 0 时才同步，
@@ -4664,7 +4897,7 @@
       var hasDeprRecord = num(fa && fa.accumDepr) > 0 || num(fa && fa.periodUsed) > 0 || !!(fa && fa.deprVoucher);
       if (fa && (hasDeprRecord || fa.cleanVoucher)) {
         return { ok: false, msg: '该资产已有折旧/清理记录' +
-          (fa.cleanVoucher ? '（含清理凭证 ' + fa.cleanVoucher + '）' : '（累计折旧 ' + num(fa.accumDepr).toFixed(2) + '）') +
+          (fa.cleanVoucher ? '（含清理凭证 ' + fa.cleanVoucher + '）' : '（累计折旧 ' + yuan(num(fa.accumDepr)).toFixed(2) + '）') +
           '，直接删除会使卡片辅助账与总账不符；请改用「清理」处理' };
       }
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
@@ -4703,7 +4936,9 @@
         if (!orig) { unmatched.push({ code: fa.code, name: fa.name, reason: '原值为 0，无从匹配' }); return; }
         var cands = vs.filter(function (v) {
           var okDr = (v.entries || []).some(function (e) {
-            return String(e.code) === faCode && Math.abs(num(e.dr) - orig) < 0.005;
+            // 双方都是 0.0001 元整数 → 精确相等（原写 < 0.005 的容差，在整数域本就等价于 ===，
+            // 但留着会让人误以为「允许半分误差」，一旦以后金额改成别的精度就会静默失配）。
+            return String(e.code) === faCode && num(e.dr) === orig;
           });
           if (!okDr) return false;
           if (!opp) return true;
@@ -4711,7 +4946,7 @@
         });
         if (!cands.length) {
           unmatched.push({ code: fa.code, name: fa.name,
-            reason: '凭证表里找不到「借 ' + (faCode || '固定资产') + ' = ' + orig + (opp ? ' 且 贷 ' + opp : '') + '」的凭证' });
+            reason: '凭证表里找不到「借 ' + (faCode || '固定资产') + ' = ' + yuan(orig) + (opp ? ' 且 贷 ' + opp : '') + '」的凭证' });
           return;
         }
         // 择优：优先未被占用；全被占用时允许复用（一张凭证买多张同额资产是合法的）
@@ -4829,7 +5064,7 @@
         summary: '清理' + month + '固定资产',
         entries: entries
       };
-      var saved = this.addVoucher(v);
+      var saved = this._addVoucher(v);
       if (!saved || saved.ok === false) {
         return { ok: false, msg: (saved && saved.msg) || '生成清理凭证失败' };
       }
@@ -4858,7 +5093,11 @@
       if (remainingMonths <= 0) return 0;
       var accumulated = num(fa.accumDepr);
       var remainingBase = Math.max(0, base - accumulated);
-      return remainingBase / remainingMonths;
+      // 定点域唯一除法点：整数 ÷ 整数 → 对称 half-away-from-zero 取整（与 amt 同一舍入口径）。
+      // 除不尽时余数由 assetDeprDue 的「末月补足」承接，保证累计恰好落到（原值-残值）。
+      var q = Math.abs(remainingBase) / remainingMonths;
+      var r = Math.round(q);
+      return r === 0 ? 0 : (remainingBase < 0 ? -r : r);
     },
     /* 某资产在**某期间实际应提**的折旧额（0 = 该月不需计提）。
      *
@@ -5004,7 +5243,7 @@
         kind: this.VOUCHER_KINDS.DEPR, // 期末业务类型标记（结账检查按此识别，不依赖摘要）
         entries: entries
       };
-      var saved = this.addVoucher(v);
+      var saved = this._addVoucher(v);
       if (!saved || saved.ok === false) {
         return { ok: false, msg: (saved && saved.msg) || '生成折旧凭证失败' };
       }
@@ -5050,7 +5289,7 @@
     /* ===================== 工资 ===================== */
     addPayroll: function (p) {
       p.id = 'P' + Date.now();
-      p.should = num(p.should); p.real = num(p.real);
+      p.should = amt(p.should); p.real = amt(p.real);
       this.state.payrolls.push(p);
       this.persist();
     },
@@ -5139,7 +5378,7 @@
         payroll: true,
         entries: entries
       };
-      var saved = this.addVoucher(v);
+      var saved = this._addVoucher(v);
       if (!saved || saved.ok === false) {
         return { ok: false, msg: (saved && saved.msg) || '生成工资凭证失败' };
       }
@@ -5203,7 +5442,7 @@
     },
     setCashFlowOpening: function (itemId, ytd) {
       this.state.cashFlowOpening = this.state.cashFlowOpening || {};
-      this.state.cashFlowOpening[itemId] = { ytd: num(ytd) };
+      this.state.cashFlowOpening[itemId] = { ytd: amt(ytd) };
       this.persist();
       this.addLog('现金流量初始余额', '调整现金流量项目本年累计');
       return { ok: true };
@@ -5523,6 +5762,7 @@
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+    amt: amt, yuan: yuan, AMT_SCALE: AMT_SCALE,
     /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
        此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
        同一口径两份实现（且其中一份漏了那个坑）。现由这里唯一提供，app.js 只做委托。 */
@@ -5536,6 +5776,7 @@
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+      amt: amt, yuan: yuan, AMT_SCALE: AMT_SCALE,
       round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }
   };

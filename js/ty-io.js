@@ -26,7 +26,13 @@
     return num(s.replace(/[^\d.\-]/g, ''));
   }
 
-  function fmt(n) { return n ? Number(n).toFixed(2) : ''; }
+  /* 卡片金额入参是账套内部定点整数（0.0001 元，见 store.js 的 AMT_SCALE），导出到 Excel 必须
+     换回「元」，否则用户拿到的金额被放大 10000 倍。比例只认**单点定义**（util.AMT_SCALE）：
+     不再内联兜底值 —— 兜底就是比例的「第二份实现」，比例一调整就会静默分叉。
+     （导入方向相反：解析出来的是「元」，交给 S.addFixedAsset / updateFixedAsset 时由 amt() 换算。） */
+  function fmt(n) { return n ? (Number(n) / global.util.AMT_SCALE).toFixed(2) : ''; }
+  // 折旧年限保留 4 位小数的比例（期数 14 → 1.1667 年 → ×12 仍精确回到 14）——与金额比例无关。
+  var LIFE_SCALE = 10000;
 
   /* ============== 固定资产卡片 导出/导入 ============== */
   // 卡片表 29 列表头（顺序严格对照屏幕列：「录入期间」列已于 2026-09-20 随卡片页精简移除）
@@ -159,7 +165,7 @@
       var alt = monthBase ? v : v / 12;
       if (alt >= 0.5 && alt <= 50) y = alt;
     }
-    return Math.round(y * 10000) / 10000;   // 保留 4 位：期数 14 → 1.1667 年 → ×12 仍精确回到 14
+    return Math.round(y * LIFE_SCALE) / LIFE_SCALE;   // 保留 4 位：期数 14 → 1.1667 年 → ×12 仍精确回到 14
   }
   function buildAssetColMap(headerArr) {
     var fieldToCol = {}, colTaken = {}, fieldAlias = {};

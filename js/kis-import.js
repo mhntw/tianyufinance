@@ -255,8 +255,8 @@
       var code = (r.FAcctID || '').toString().trim();
       // ⚠ 勿再叫 d / c：本作用域上方已用 d 存**凭证日期**（parseDate 的结果），
       //   同名遮蔽后，此处之后任何"取日期"的代码会静默拿到金额（差一点就踩中）。
-      var drAmt = Math.round((parseFloat(r.FDebit || 0) || 0) * 100) / 100;
-      var crAmt = Math.round((parseFloat(r.FCredit || 0) || 0) * 100) / 100;
+      var drAmt = parseFloat(r.FDebit || 0) || 0;    // 不再砍到 2 位：金蝶源为 4 位定点，截断后精度不可逆
+      var crAmt = parseFloat(r.FCredit || 0) || 0;   // （转内部整数由 store.importExternalBook 统一 ×10000，唯一换算点）
       // 金蝶红字（负数）分录：**原样保留**，不做方向转换。
       // 【为什么不再转换】旧实现把「借 -1,724.85」（红字冲销）改写成「贷 +1,724.85」，
       //   于是它与「真实的贷方业务」在账套里长得完全一样，无法区分 —— 信息一旦丢失就不可逆。
@@ -438,7 +438,7 @@
       // 只保留第一条匹配：标准版账套 GLBal 期间为 1~12 且不含年份，
       // 同月跨年行只取最早出现的，避免被后续年份覆盖
       if (opening[code]) return;
-      var beg = Math.round((parseFloat(r.FBegBal || 0) || 0) * 100) / 100;
+      var beg = parseFloat(r.FBegBal || 0) || 0;   // 同上：期初余额同样保留源数据 4 位精度，不再截断
       if (beg === 0) return;
       var normal = beg >= 0 ? 'dr' : 'cr';
       opening[code] = {
