@@ -34,6 +34,15 @@
  *   TY_ASSET_SRC_DIR=<目录>  TY_ASSET_BOOK_DIR=<目录>      # 覆盖来源目录 / 账套目录（便于自测）
  *   node tools/verify_asset_source.js <来源xlsx目录> <账套目录>
  *   退出码：0 = 全部一致（或无来源可对）；1 = 存在差异
+ *
+ * 【来源位置 —— 已确认并固定记忆，别再满机找】
+ *   目录：`~/Downloads/金蝶账套 ais/`（**不在仓库里**，故 git 里查不到）
+ *     · 账套原文件：`添钰来客_2025年/2026年_金蝶KIS格式.ais`、`绅蓝之星_2024/2025/2026年_金蝶KIS格式.ais`
+ *     · 固定资产卡片：两张金蝶导出 xlsx —— **卡片只在这两张 xlsx 里，`.ais` 不含固定资产**
+ *       （KIS 账套本身没有固定资产表，导入后 `fixedAssets` 为空；卡片是从 xlsx 单独导进来的）
+ *   ⚠ **文件名会变**：2026-10-01 实测从「…_卡片.xlsx」被改名为「… 固定资产卡片.xlsx」。
+ *     故本脚本按「**目录固定 + 文件名含账套名**」匹配，**不写死文件名**；
+ *     若一份都没匹配上，会把该目录里现有的 xlsx **全部列出来**（避免再次"找不到"）。
  * ============================================================ */
 
 const fs = require('fs');
@@ -89,6 +98,8 @@ try { books = fs.readdirSync(BOOK_DIR).filter(f => f.endsWith('.json') && f.inde
 
 if (!xlsx.length) {
   console.log('跳过：' + SRC_DIR + ' 下没有金蝶导出的卡片 xlsx（无来源可比）');
+  console.log('  → 金蝶原始数据（含那两张固定资产卡片 xlsx）应放在 ~/Downloads/金蝶账套 ais/，');
+  console.log('    见本文件头注释「来源位置」；若已挪走，用 TY_ASSET_SRC_DIR=<目录> 或第一个参数指定。');
   process.exit(0);
 }
 if (!books.length) {
@@ -106,9 +117,20 @@ books.forEach(function (bf) {
   const cards = book.fixedAssets || [];
   if (!cards.length) return;                                   // 无卡片的账套跳过（不算未对照）
   const bookName = norm(book.company && book.company.name);
-  const src = xlsx.filter(f => bookName && f.indexOf(bookName) >= 0)[0];
+  // 匹配规则：文件名含账套名；多个命中时优先带「卡片 / 固定资产」的（避免同目录里别的导出被选中）。
+  const hits = xlsx.filter(f => bookName && f.indexOf(bookName) >= 0);
+  const preferred = hits.filter(f => /卡片|固定资产/.test(f));
+  const src = (preferred.length ? preferred : hits)[0];
   console.log('\n──── ' + bf.slice(0, 46) + '（卡片 ' + cards.length + ' 张）');
-  if (!src) { console.log('  · 未找到该账套对应的卡片 xlsx（未对照）'); return; }
+  if (hits.length > 1) {
+    console.log('  · 该账套有 ' + hits.length + ' 个候选 xlsx，本次用：' + src +
+      '（其余：' + hits.filter(f => f !== src).join('、') + '）');
+  }
+  if (!src) {
+    console.log('  · 未找到该账套对应的卡片 xlsx（未对照）。' + SRC_DIR + ' 下现有 xlsx：');
+    xlsx.forEach(f => console.log('      - ' + f));
+    return;
+  }
   comparedBooks++;
 
   const list = TyIo.parseAssetWorkbook(global.XLSX.read(fs.readFileSync(path.join(SRC_DIR, src)), { type: 'buffer' }));
