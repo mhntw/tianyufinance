@@ -1,8 +1,9 @@
 /* 【两个刻意保留的架构选择 —— 曾评估过重构，结论是不做，勿轻改】
  *
- * 1) 本文件不拆分（当前约 4800 行）。
- *    拆分收益有限：真正该拆的大函数（periodVouchers ~390 行）是纯查询逻辑，拆出去也不改行为；
- *    而成本明确：要改 require 路径、处理循环依赖、确保所有引用方同步更新。
+ * 1) 本文件不拆分（2026-09-30 实测 5490 行；行数请以实测为准，勿沿用旧数字）。
+ *    拆分收益有限：真正该拆的大函数（financialHealthCheck ~231 行、settleChecklist ~209 行）都是只读分析逻辑，
+ *    拆出去也不改行为；而成本明确：要改 require 路径、处理循环依赖、确保所有引用方同步更新
+ *    （tools/ 下 41 个脚本 require 本文件）。
  *    单文件反而有「全局可搜索、依赖一目了然」的实际好处。
  *    触发条件：超过 6000 行，或多模块同时修改本文件产生合并冲突时再考虑。
  *
@@ -509,7 +510,7 @@
     // 首屏先用空账套占位，避免 null 引用；随后从磁盘读取「上次关闭的店」并加载其完整 state。
     init: function () {
       // 清空总账记忆化缓存（账套/凭证可能变化）
-      this._glCache = {};
+      this._invalidate();
       this._bookList = []; // 账套列表内存快取（由 refreshBookIndex 从磁盘填充，不作真理源）
       // 全局设置（屏保密码、新手引导）从独立 localStorage 读取
       try {
@@ -1050,7 +1051,7 @@
       // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
       // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
       // （switchBook 因换了 bookId 天然隔绝，故此前未暴露。）
-      this._glCache = {};
+      this._invalidate();
       this.normalizeState();
       this.ensureVoucherIds();
       this.ensureCashFlowFields();
@@ -1096,7 +1097,7 @@
         self.normalizeState();
         // 关键：切换账套必须作废总账记忆化缓存。否则查询「同月份」时会命中上一个账套的
         // 缓存结果，导致新账套的账簿/报表显示旧账套数据（错误数据且难以察觉）。
-        self._glCache = {};
+        self._invalidate();
         window.Storage.loadBook(id).then(function (txt) {
           if (!txt) { self.state = prevState; self.bookId = prevId; setCurBookId(prevId); return; }
           var res;
@@ -1107,7 +1108,7 @@
             self.normalizeState();
             self.ensureVoucherIds();
             self.ensureCashFlowFields();
-            self._glCache = {}; // 新账套数据，作废总账缓存
+            self._invalidate(); // 新账套数据，作废取数缓存
             if (window.__refreshAll) window.__refreshAll();
           } else {
             // 目标账套数据异常：回滚到原账套
@@ -1220,7 +1221,7 @@
       //   而且此后任何依赖 state 的统计都基于一个已不存在的账套。
       //   persist 里有 `if (!bid) return` 兜底，故换成空账套不会把数据写到空 id 上。
       self.bookId = '';
-      self._glCache = {};
+      self._invalidate();
       try { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); } catch (e) { }
       try { setCurBookId(''); } catch (e) { }
       try {
@@ -1408,7 +1409,7 @@
       }
       this.state.subjects.push(s);
       // 科目表变化会改变 rollCodes 上卷口径（新增子目会被父科目汇总），须作废总账缓存
-      this._glCache = {};
+      this._invalidate();
       this.persist();
       return { ok: true };
     },
@@ -1442,7 +1443,7 @@
         if (extra.unit !== undefined) s.unit = String(extra.unit || '').trim();
       }
       // 科目类别(cls)变更会改变报表归类与余额方向，须作废总账缓存
-      this._glCache = {};
+      this._invalidate();
       this.persist();
       return { ok: true };
     },
@@ -1473,7 +1474,7 @@
       // 清理期初余额的残留键（全 0 键正常会被 setOpening 删除，导入账套可能带入）
       Object.keys(delCodes).forEach(function (c) { delete self.state.openingBalances[c]; });
       // 科目表变化会改变 rollCodes 上卷口径，须作废总账缓存
-      this._glCache = {};
+      this._invalidate();
       this.persist();
       return { ok: true, removed: n, code: code, name: s.name || '' };
     },
@@ -1501,7 +1502,7 @@
       // 期初是所有账簿/报表取数的基数，改动后必须作废总账记忆化缓存：
       // 否则同一次会话内「先看过报表、再改期初」会一直命中旧缓存，
       // 页面显示修改前的旧余额（数据已改但界面不变，且退出前不落盘则看似丢失）。
-      this._glCache = {};
+      this._invalidate();
       return { ok: true };
     },
     // 期初借贷平衡校验（按科目正常方向汇总）
@@ -1593,7 +1594,7 @@
       if (!v.maker) v.maker = (this.state.company && this.state.company.bookkeeper) || '财务';
       v.entries.forEach(function (e) { e.dr = num(e.dr); e.cr = num(e.cr); });
       this.state.vouchers.push(v);
-      this._glCache = {}; // 凭证变化，作废总账记忆化缓存（否则后续查询会命中旧值）
+      this._invalidate(); // 凭证变化，作废取数缓存（否则后续查询会命中旧值）
       this.persist();
       this.addLog('新增凭证', v.word + '-' + v.no + ' ' + (v.summary || ''), '凭证',
         null, null, v.word + '-' + v.no + (v.summary ? ' ' + v.summary : ''),
@@ -1758,7 +1759,7 @@
       var newDr = round2(v.entries.reduce(function (s, e) { return s + num(e.dr); }, 0));
       var newCr = round2(v.entries.reduce(function (s, e) { return s + num(e.cr); }, 0));
       this.state.vouchers[idx] = Object.assign(this.state.vouchers[idx], v, { id: id });
-      this._glCache = {}; // 凭证变化，作废总账记忆化缓存
+      this._invalidate(); // 凭证变化，作废取数缓存
       this.persist();
       var after = this.state.vouchers[idx].word + '-' + this.state.vouchers[idx].no + ' ' + (this.state.vouchers[idx].summary || '');
       this.addLog('修改凭证', after, '凭证',
@@ -1972,7 +1973,7 @@
       v.deleteReason = (reason == null ? '' : String(reason)).trim();
       if (deprReverted) v.deprReverted = deprReverted;
       if (cleanReverted) v.cleanReverted = cleanReverted;
-      this._glCache = {}; // 凭证变化，作废总账记忆化缓存
+      this._invalidate(); // 凭证变化，作废取数缓存
       this.persist();
       this.addLog('删除凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
         v.deleteReason || '(未填写)', (v.word || '') + '-' + (v.no != null ? v.no : '') + (v.summary ? ' ' + v.summary : ''), null,
@@ -2000,7 +2001,7 @@
         this._restoreAssetClean(v.cleanReverted);
         delete v.cleanReverted;
       }
-      this._glCache = {};
+      this._invalidate();
       this.persist();
       var curUser = (this.state.company && this.state.company.bookkeeper) || '财务';
       this.addLog('还原凭证', (v.word || '') + '-' + (v.no != null ? v.no : '') + ' ' + (v.summary || ''), '凭证',
@@ -2195,7 +2196,7 @@
       this.state.vouchers = (this.state.vouchers || []).filter(function (v) { return v.deleted !== 'y'; });
       var purged = before - this.state.vouchers.length;
       if (purged > 0) {
-        this._glCache = {};
+        this._invalidate();
         this.persist();
         this.addLog('清除回收站', '物理清除 ' + purged + ' 张已软删凭证', '凭证',
           null, null, null,
@@ -2359,21 +2360,77 @@
      * 直接访问 state.vouchers 的少数派生场景（如 ensureVoucherIds 初始化、_voucherRefs 反查），
      * 通过显式过滤或调用上述入口间接过滤。
      */
+    /* ---------- 取数缓存：唯一失效入口 ----------
+       任何会改变「凭证集合 / 科目表 / 期初余额」的操作都必须调用本函数。
+       它统一作废：总账记忆化缓存（_glCache）＋ 凭证按月索引（_vchIndex）。
+
+       【为什么必须只留这一个入口】此前 15 处各自写 `this._glCache = {}`：
+       本轮新增「凭证按月索引」这一种缓存，就得在 15 处都记得补一遍 ——
+       漏一处就是「数据已改、界面照旧」的静默错误（这类错误在本项目已发生过）。
+       收口后，以后新增任何取数缓存，只改这一处即可。 */
+    _invalidate: function () {
+      this._glCache = {};
+      this._vchIndex = null;
+    },
+
+    /* ---------- 凭证按月索引（取数加速的单点） ----------
+       为什么要有（实测真实账套：2487 张凭证 / 420 个科目）：
+         generalLedger(某月) 要 144ms，其中 55% 是 openingOf 按科目逐个调
+         vouchersBefore()、21% 是 ytdVouchers() —— 每个都是**把全账套凭证
+         全表 filter（+排序）一遍**，420 个科目等于对同一份数组重算 420 遍。
+         成本与「查哪个月」无关：一个**一张凭证都没有**的月份同样要 144ms，
+         所以这不是"某月数据大"，而是"按科目重复扫描全表"的结构问题。
+       索引后：全表只扫一次，每个月只排一次序；上述三个查询都改读索引。
+
+       失效：见下面两道判据（显式 _invalidate() + 自查凭证数组是否被换过）。 */
+    _vchIndexOf: function () {
+      var vs = this.state.vouchers || [];
+      var idx = this._vchIndex;
+      /* 索引失效判据（两道，缺一不可）：
+         ① 显式 _invalidate()：凭证增删改、切账套、恢复备份都走它；
+         ② 这里自查「凭证数组是否被整体换掉 / 长度变了」—— 用于**绕过 store 直接
+            替换 state.vouchers** 的写法（测试与整本替换路径如此），它们不会调 ①。
+         为什么不能只靠其中一道：tools/verify_gl_cache.js 就是「只换数据、不调 store」，
+         只比 state 身份会当场漏判（该脚本上确曾因此变红）；而 updateVoucher 之类
+         「换掉数组元素、长度不变」的原地改写，②看不见、只能靠 ①。 */
+      if (idx && idx.ref === vs && idx.len === vs.length) return idx;
+      var byMonth = {};          // 'YYYY-MM' → 该月凭证（按 月份→凭证字→字号 排序；
+                                 //   字号按数值比，避免「记-19 排在记-2 前」的字典序）
+      var live = [];             // 未删除凭证，保持原始顺序（< month 的语义依赖它）
+      for (var i = 0; i < vs.length; i++) {
+        var v = vs[i];
+        if (v.deleted === 'y') continue;
+        live.push(v);
+        var m = voucherMonth(v);
+        if (!m) continue;
+        (byMonth[m] || (byMonth[m] = [])).push(v);
+      }
+      Object.keys(byMonth).forEach(function (m) { byMonth[m].sort(voucherOrderCmp); });
+      this._vchIndex = { ref: vs, len: vs.length, live: live, byMonth: byMonth, before: {}, ytd: {} };
+      return this._vchIndex;
+    },
     periodVouchers: function (month) {
-      return this.state.vouchers.filter(function (v) { return v.deleted !== 'y' && voucherMonth(v) === month; })
-        // 排序：月份 → 凭证字 → 字号（数值，避免记-19 排在记-2 前的字典序）
-        .sort(voucherOrderCmp);
+      // 返回副本：调用方可能自行排序/裁剪，不得污染索引
+      return (this._vchIndexOf().byMonth[month] || []).slice();
     },
     vouchersBefore: function (month) { // < month（含期初之前）
-      return this.state.vouchers.filter(function (v) { return v.deleted !== 'y' && voucherMonth(v) < month; });
+      var idx = this._vchIndexOf();
+      if (!idx.before[month]) {
+        // 判据与原实现逐字一致（含「月份为空」的边界行为），只是按 month 记忆化
+        idx.before[month] = idx.live.filter(function (v) { return voucherMonth(v) < month; });
+      }
+      return idx.before[month].slice();
     },
     ytdVouchers: function (month) { // 本年累计：当年 1 月 ~ 当前月
-      var y = month.slice(0, 4);
-      return this.state.vouchers.filter(function (v) {
-        if (v.deleted === 'y') return false;
-        var m = voucherMonth(v);
-        return m >= y + '-01' && m <= month;
-      }).sort(voucherOrderCmp);
+      var idx = this._vchIndexOf();
+      if (!idx.ytd[month]) {
+        var y = month.slice(0, 4);
+        idx.ytd[month] = idx.live.filter(function (v) {
+          var m = voucherMonth(v);
+          return m >= y + '-01' && m <= month;
+        }).sort(voucherOrderCmp);
+      }
+      return idx.ytd[month].slice();
     },
 
     // ============ 立即存档（手动按钮与结账/结转等触发点共用） ============
