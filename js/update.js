@@ -97,14 +97,36 @@
     openUrl(assetUrl || releaseUrl || REPO_RELEASE);
   }
 
-  // 在关于卡常驻一个可点击的「下载 vX →」入口，避免只依赖一闪而过的 toast
+  /* 检查结果**就地**显示在「检查更新」右侧（**唯一实现**，2026-09-30）。
+     【为什么要改】原先一律走 showToast —— 它固定在**屏幕正中央**、看着像个弹窗，
+     却没有任何可点处（"正在检查…"、"已是最新"都不接受点击），2.2 秒后消失：
+     用户既没看清结果，也不知道下一步能做什么。现改为常驻文本；
+     有新版本时在文本里直接给一个**可点的**「下载 →」。
+     @param text     文本（可空，仅给链接时用）
+     @param kind     '' | 'ok'（绿，通过）| 'err'（红，失败）—— 全站语义色，不新增色值
+     @param onClick  给了就追加一个可点的「下载 →」（只有"发现新版本"这一种情形需要）
+     ⚠ 别退回 toast，也**别再把 #aboutCheckUpdate 的文案改成"下载 vX →"** ——
+       那样"检查更新"这四个字就永久消失了，用户再也点不到第二次。 */
+  function setStatus(text, kind, onClick) {
+    var el = document.getElementById('aboutUpdateStatus');
+    if (!el) return;
+    el.className = 'about-status' + (kind ? ' ' + kind : '');
+    el.textContent = '';
+    if (text) el.appendChild(document.createTextNode(text));
+    if (!onClick) return;
+    var link = document.createElement('span');
+    link.className = 'about-link';
+    link.setAttribute('role', 'button');
+    link.textContent = '下载 →';
+    link.onclick = onClick;
+    el.appendChild(link);
+  }
+
+  // 发现新版本时的统一出口（手动检查 / 启动静默检查共用同一条文案与同一个点击行为）
   function surfaceDownload(latest, asset) {
-    var chk = document.getElementById('aboutCheckUpdate');
-    if (chk) {
-      chk.textContent = '下载 v' + latest.tag + ' →';
-      chk.style.cursor = 'pointer';
-      chk.onclick = function () { triggerDownload(asset ? asset.url : null, latest.url); };
-    }
+    setStatus('发现新版本 v' + latest.tag + ' ', '', function () {
+      triggerDownload(asset ? asset.url : null, latest.url);
+    });
   }
 
   // 让“发现新版本”提示点击后真正触发下载并收起 toast
@@ -120,36 +142,28 @@
     };
   }
 
+  /* 手动「检查更新」（用户点的这次）：结果**只**写到按钮右侧，不再弹屏幕中央的 toast。
+     启动时的静默检查（silentCheckUpdate）另有 toast —— 那时用户不在"关于"卡里，
+     需要一个看得见的提示；但两处共用同一套"发现新版本"文案（surfaceDownload）。 */
+  var _checking = false;
   function checkUpdateManual() {
-    var toast = window.showToast;
-    if (toast) toast('正在检查更新…', '', 1500);
-
+    if (_checking) return;                       // 连点保护：一次只发一个请求，状态不会被后一次覆盖
+    _checking = true;
+    setStatus('正在检查…');
     Promise.all([getLocalVersion(), getLatestRelease()])
       .then(function (results) {
         var local = parseVersion(results[0]);
         var latest = results[1];
-        if (!latest) {
-          if (toast) toast('检查更新失败：无法访问网络', 'error');
-          return;
-        }
-        if (!local) {
-          if (toast) toast('当前版本未知', 'error');
-          return;
-        }
-        var cmp = compareSemver(latest.tag, local);
-        if (cmp <= 0) {
-          if (toast) toast('已是最新版本 ✓（v' + local + '）', 'success');
-          return;
-        }
-        var asset = pickAsset(latest.assets);
-        surfaceDownload(latest, asset);
-        if (toast) {
-          toast('发现新版本 v' + latest.tag + '，点击下载 →', 'success', 0);
-          bindToastDownload(asset, latest);
-        } else {
-          triggerDownload(asset ? asset.url : null, latest.url);
-        }
-      });
+        if (!latest) { setStatus('检查失败：无法访问网络（请检查网络后重试）', 'err'); return; }
+        if (!local) { setStatus('检查失败：读不到当前版本号', 'err'); return; }
+        if (compareSemver(latest.tag, local) <= 0) { setStatus('已是最新（v' + local + '）', 'ok'); return; }
+        surfaceDownload(latest, pickAsset(latest.assets));
+      })
+      .catch(function (e) {
+        console.warn('[update] 检查更新异常:', (e && e.message) || e);
+        setStatus('检查失败：无法访问网络（请检查网络后重试）', 'err');
+      })
+      .then(function () { _checking = false; });   // 相当于 finally（不用 .finally，兼容更老的 WebView）
   }
 
   function silentCheckUpdate() {

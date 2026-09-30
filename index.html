@@ -1517,6 +1517,9 @@
               <span class="about-label">版本</span>
               <span class="about-val" id="aboutVersion">--</span>
               <span class="about-link" id="aboutCheckUpdate" role="button">检查更新</span>
+              <!-- 检查结果**就地**显示在「检查更新」右侧（2026-09-30）：此前用屏幕中央的 toast，
+                   看着像弹窗却没有可点的东西、2.2 秒就消失；现在常驻，有新版本时这里给可点的「下载」。 -->
+              <span class="about-status" id="aboutUpdateStatus"></span>
             </div>
             <div class="about-line">
               <span class="about-label">邮箱</span>

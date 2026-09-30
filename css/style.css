@@ -6453,6 +6453,15 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .about-val.flex { flex: 1; }
 .about-link { color: var(--ty-blue); cursor: pointer; }
 .about-link:hover { text-decoration: underline; }
+/* 「检查更新」的结果（2026-09-30）：就地显示在那四个字右侧，常驻不消失。
+   此前走 showToast —— 它固定在**屏幕正中央**、看着像弹窗却没有任何可点处
+   （"正在检查…"、"已是最新"都不接受点击），2.2 秒后消失：用户既没看清结果，
+   也不知道下一步能做什么。现为常驻文本，有新版本时文本里直接含可点的「下载」。
+   颜色沿用全站语义色（绿=通过 / 红=失败），不新增色值。 */
+.about-status { font-size: var(--fs-sm); color: var(--ty-text-2); }
+.about-status.ok { color: var(--ty-green); }
+.about-status.err { color: var(--ty-red); }
+.about-status .about-link { margin-left: 6px; }
 .about-copy {
   padding: 12px 0 0;
   font-size: var(--fs-sm);
