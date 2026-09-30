@@ -13,6 +13,7 @@ const esc = H.esc || function (s) { return String(s == null ? '' : s); };
 import { exportTable } from './_shared.js'; // 修复：此前 H.exportTable 未挂全局，期初导出是 undefined 会抛错
 const showToast = H.showToast;
 const S = H.S || (EX && EX.store);
+const U = H.U || (EX && EX.util);
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 
 // 幂等绑定：避免模块延迟执行导致的重复/失败绑定
@@ -31,11 +32,12 @@ function renderOpening() {
     var o = S.opening(s.code);
     var tr = document.createElement('tr');
     tr.innerHTML = '<td>' + esc(s.code) + '</td><td>' + esc(s.name) + '</td><td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
-      '<td><input class="inp open-yb num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.yb + '"></td>' +
-      '<td><input class="inp open-ytddr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.ytdDr + '"></td>' +
-      '<td><input class="inp open-ytdcr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.ytdCr + '"></td>' +
-      '<td><input class="inp open-dr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.dr + '"></td>' +
-      '<td><input class="inp open-cr num" data-code="' + s.code + '" type="number" step="0.01" value="' + o.cr + '"></td>';
+      // 回填「元」输入框：store.opening 返回内部定点整数（0.0001 元），录入/显示口径为元，须经 U.yuan 换算
+      '<td><input class="inp open-yb num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.yb) + '"></td>' +
+      '<td><input class="inp open-ytddr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.ytdDr) + '"></td>' +
+      '<td><input class="inp open-ytdcr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.ytdCr) + '"></td>' +
+      '<td><input class="inp open-dr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.dr) + '"></td>' +
+      '<td><input class="inp open-cr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.cr) + '"></td>';
     tb.appendChild(tr);
   });
   renderOpenCheck();
@@ -88,7 +90,7 @@ function bindOpeningEvents() {
   onBtn('btnOpenExport', function () {
     var rows = S.subjects().map(function (s) {
       var o = S.opening(s.code);
-      return { 科目编码: s.code, 科目名称: s.name, 方向: ACCOUNT_CLASSES[s.cls].side, 年初余额: o.yb, 本年累计借: o.ytdDr, 本年累计贷: o.ytdCr, 期初借方: o.dr, 期初贷方: o.cr };
+      return { 科目编码: s.code, 科目名称: s.name, 方向: ACCOUNT_CLASSES[s.cls].side, 年初余额: U.yuan(o.yb), 本年累计借: U.yuan(o.ytdDr), 本年累计贷: U.yuan(o.ytdCr), 期初借方: U.yuan(o.dr), 期初贷方: U.yuan(o.cr) };   // 导出换回元
     });
     exportTable(rows, '期初余额');
   });

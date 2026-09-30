@@ -687,11 +687,12 @@ function exportGl() {
     // 记录当前科目起始行（0-based，不含表头）
     var startRow = rows.length;
     // Row 1: 期初余额（A/B 列第一行写值，后两行空，靠 merge 合并）
-    rows.push([r.code, nameCol, month, '期初余额', '', '', obDir, obSigned || '']);
+    // 金额列导出必须换回「元」（store 内部为 0.0001 元定点整数），否则用户拿到的金额放大 10000 倍
+    rows.push([r.code, nameCol, month, '期初余额', '', '', obDir, U.yuan(obSigned) || '']);
     // Row 2: 本期合计
-    rows.push(['', '', month, '本期合计', r.periodDr || '', r.periodCr || '', endDir, endSigned || '']);
+    rows.push(['', '', month, '本期合计', U.yuan(r.periodDr) || '', U.yuan(r.periodCr) || '', endDir, U.yuan(endSigned) || '']);
     // Row 3: 本年累计
-    rows.push(['', '', month, '本年累计', r.ytdDr || '', r.ytdCr || '', endDir, endSigned || '']);
+    rows.push(['', '', month, '本年累计', U.yuan(r.ytdDr) || '', U.yuan(r.ytdCr) || '', endDir, U.yuan(endSigned) || '']);
     // 合并 A 列 (科目编码) 和 B 列 (科目名称)
     merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + 2, c: 0 } });
     merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 2, c: 1 } });
@@ -745,16 +746,16 @@ function exportDl() {
     // 余额口径与屏幕 renderDlSegment 完全同源：一律走 store.displayBalance（**唯一实现**）。
     // 导出口径若与屏幕不一致，用户拿导出件核对时照样会对不上（2026-09 已发生过一次）。
     var obView = S.displayBalance(num(d.obDr) - num(d.obCr), s.normal);
-    rows.push([s.code, s.name, '', '', '期初余额', '', '', obView.dir, obView.amount || '']);
+    rows.push([s.code, s.name, '', '', '期初余额', '', '', obView.dir, U.yuan(obView.amount) || '']);
     d.rows.forEach(function (r) {
       var vch = (r.word || '') + '-' + (r.no || '');
       // 明细行：store 给「绝对值 + 实际方向」，先由 store.netFromBalDir 归一为净额，再走同一口径
       var v = S.displayBalance(S.netFromBalDir(r.bal, r.dir), s.normal);
-      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', num(r.dr), num(r.cr), v.dir, v.amount || '']);
+      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', U.yuan(num(r.dr)) || '', U.yuan(num(r.cr)) || '', v.dir, U.yuan(v.amount) || '']);
     });
     var endView = S.displayBalance(num(d.endDr) - num(d.endCr), s.normal);
-    rows.push([s.code, s.name, '', '', '本期合计', num(d.periodDr), num(d.periodCr), endView.dir, endView.amount || '']);
-    rows.push([s.code, s.name, '', '', '本年累计', num(d.ytdDr), num(d.ytdCr), endView.dir, endView.amount || '']);
+    rows.push([s.code, s.name, '', '', '本期合计', U.yuan(num(d.periodDr)) || '', U.yuan(num(d.periodCr)) || '', endView.dir, U.yuan(endView.amount) || '']);
+    rows.push([s.code, s.name, '', '', '本年累计', U.yuan(num(d.ytdDr)) || '', U.yuan(num(d.ytdCr)) || '', endView.dir, U.yuan(endView.amount) || '']);
     shown++;
   });
   if (!shown) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }

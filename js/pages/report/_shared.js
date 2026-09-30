@@ -2,6 +2,12 @@ const H = window.__TY_HELPERS__ || {};
 const $ = id => document.getElementById(id);
 const S = H.S || window.store;
 const money = H.money || (v => v == null ? '0.00' : Number(v).toFixed(2));
+// 金额单位收口：store 内部金额是定点整数（0.0001 元），导出/显示前必须用 yuan 换回元
+const U = H.U || (typeof window !== 'undefined' && window.util) || {};
+// 金额换算一律走单点 util.yuan：比例（AMT_SCALE）只在 store.js 定义一处。
+// 这里不再内联 `(Number(a) || 0) / 10000` —— 那是比例的**第二份实现**，比例一旦调整就会静默分叉，
+// 且分叉方向正好是"差 10000 倍"这类最难查的错。缺 util 时报错，胜过猜一个比例。
+const yuan = a => U.yuan(a);
 const absFmt = H.absFmt || (v => v == null ? '' : String(v));
 const goPage = H.goPage || (p => { if (window.goPage) window.goPage(p); });
 const currentPeriod = H.currentPeriod || (() => (window.store ? window.store.currentPeriod : '2026-01'));
@@ -67,4 +73,4 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { $, S, money, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };
+export { $, S, money, yuan, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };

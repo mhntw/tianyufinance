@@ -1,5 +1,5 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
-import { $, S, money, absFmt, goPage, currentPeriod, esc, num, showToast, nowTimeStr, round2,
+import { $, S, money, yuan, absFmt, goPage, currentPeriod, esc, showToast, nowTimeStr, round2,
   monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter } from './_shared.js';
 const edState = {
   page: 1,
@@ -562,8 +562,8 @@ function exportED() {
     nodes.forEach(function (n) {
       var indent = (S && S.subjectIndentSpaces) ? S.subjectIndentSpaces(n.level || 0) : '';
       var cells = [n.code || '', indent + (n.name || '')];
-      (n.amounts || []).forEach(function (v) { cells.push(num(v)); });
-      if (opts.showYearTotal) cells.push(num(n.total));
+      (n.amounts || []).forEach(function (v) { cells.push(yuan(v)); });   // 导出换回元
+      if (opts.showYearTotal) cells.push(yuan(n.total));
       if (opts.showRatio) {
         var amts = n.amounts || [], last = amts[amts.length - 1] || 0, prev = amts.length > 1 ? amts[amts.length - 2] : 0;
         var ySum = (opts.yearTotalsByCode && opts.yearTotalsByCode[n.code]) || 0;
@@ -576,8 +576,8 @@ function exportED() {
   };
   walk(edExportData.displayRoots);
   var foot = ['', '合计'];
-  (totals.months || []).forEach(function (v) { foot.push(num(v)); });
-  if (opts.showYearTotal) foot.push(num(totals.yearTotal));
+  (totals.months || []).forEach(function (v) { foot.push(yuan(v)); });
+  if (opts.showYearTotal) foot.push(yuan(totals.yearTotal));
   if (opts.showRatio) { foot.push(''); foot.push(''); }
   rows.push(foot);
   var wb = XLSX.utils.book_new();

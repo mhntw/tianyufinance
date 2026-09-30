@@ -213,9 +213,10 @@ export function exportTb() {
       sum.obD += obD; sum.obC += obC; sum.pD += r.periodDr; sum.pC += r.periodCr;
       sum.yD += r.ytdDr; sum.yC += r.ytdCr; sum.eD += eD; sum.eC += eC;
     }
-    rows.push([r.code, r.name, obD, obC, r.periodDr, r.periodCr, r.ytdDr, r.ytdCr, eD, eC]);
+    // 金额列导出必须换回「元」（store 内部为 0.0001 元定点整数）
+    rows.push([r.code, r.name, U.yuan(obD), U.yuan(obC), U.yuan(r.periodDr), U.yuan(r.periodCr), U.yuan(r.ytdDr), U.yuan(r.ytdCr), U.yuan(eD), U.yuan(eC)]);
   });
-  rows.push(['', '合计', sum.obD, sum.obC, sum.pD, sum.pC, sum.yD, sum.yC, sum.eD, sum.eC]);
+  rows.push(['', '合计', U.yuan(sum.obD), U.yuan(sum.obC), U.yuan(sum.pD), U.yuan(sum.pC), U.yuan(sum.yD), U.yuan(sum.yC), U.yuan(sum.eD), U.yuan(sum.eC)]);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];

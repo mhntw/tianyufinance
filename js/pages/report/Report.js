@@ -22,6 +22,8 @@ const moneyRed = H.moneyRed || function (n) {
 const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
 const S = H.S || (EX && EX.store);
+// 金额单位收口：store 取出的金额是内部定点整数（0.0001 元），显示/导出前必须用 U.yuan 换回元
+const U = H.U || (EX && EX.util);
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
 // 复用统一期间取值实现，避免多份拷贝失同步。
 // 口径：回填默认期间 + 同步触发器文本，返回结束期间。
@@ -160,12 +162,12 @@ function renderBs(month) {
     // 余额换算走 store.displayBalance（唯一实现）：此处需 3103 按贷方为正的净值
     if (glRow) carried = S.displayBalance(glRow.endDr - glRow.endCr, glRow.normal).amount;
     var net = pl ? pl.netProfit : 0;
-    var residual = Math.abs((net - carried) - diff) < 1; // 差额≈未结转损益净额？
+    var residual = Math.abs((net - carried) - diff) < U.AMT_SCALE; // 差额≈未结转损益净额？（1 元容差，内部整数）
     var txt = '资产负债表恒等式暂不平衡：资产比负债及所有者权益' +
-              (diff > 0 ? '多 ' : '少 ') + '¥' + absv.toFixed(2) + '。';
+              (diff > 0 ? '多 ' : '少 ') + '¥' + U.yuan(absv).toFixed(2) + '。';
     if (residual) {
-      txt += '经核对，差额与本期利润表净利润（¥' + net.toFixed(2) +
-             '）减去已转入「本年利润(3103)」的净额（¥' + carried.toFixed(2) +
+      txt += '经核对，差额与本期利润表净利润（¥' + U.yuan(net).toFixed(2) +
+             '）减去已转入「本年利润(3103)」的净额（¥' + U.yuan(carried).toFixed(2) +
              '）基本相等，说明源账套「结转本期损益」未完整执行——损益科目仍有余额未结转至本年利润，' +
              '这部分金额同时被计入资产侧与利润表，导致等式表面不平衡。完成结转损益后此处将自动平衡。';
     } else {
@@ -223,11 +225,12 @@ function exportBs() {
   rows.push(['资产', '行次', '期末余额', '年初余额', '负债和所有者权益', '行次', '期末余额', '年初余额']);
   for (let i = 0; i < max; i++) {
     const a = aRows[i], l = lRows[i];
-    const left = a ? [a.grp !== undefined ? a.grp : a.label, ++noA, a.end, a.year] : ['', '', '', ''];
-    const right = l ? [l.grp !== undefined ? l.grp : l.label, ++noL, l.end, l.year] : ['', '', '', ''];
+    // 导出金额必须换回元（store 内部为 0.0001 元定点整数）
+    const left = a ? [a.grp !== undefined ? a.grp : a.label, ++noA, U.yuan(a.end), U.yuan(a.year)] : ['', '', '', ''];
+    const right = l ? [l.grp !== undefined ? l.grp : l.label, ++noL, U.yuan(l.end), U.yuan(l.year)] : ['', '', '', ''];
     rows.push(left.concat(right));
   }
-  rows.push(['资产总计', noA + 1, bs.totalAsset, '', '负债和所有者权益总计', noL + 1, bs.totalAll, '']);
+  rows.push(['资产总计', noA + 1, U.yuan(bs.totalAsset), '', '负债和所有者权益总计', noL + 1, U.yuan(bs.totalAll), '']);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // 列宽优化
@@ -354,7 +357,7 @@ function exportPl() {
   const rows = computeIncomeRows(month);
   const out = [['项目', '行次', '本月金额', '本年累计金额']];
   let no = 0;
-  rows.forEach(function (r) { no += 1; out.push([r.label, no, r.cur, r.ytd]); });
+  rows.forEach(function (r) { no += 1; out.push([r.label, no, U.yuan(r.cur), U.yuan(r.ytd)]); });
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(out);
   ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 16 }, { wch: 16 }];
@@ -466,7 +469,7 @@ function exportCf() {
   const rows = [['项目', '行次', '本月金额', '本年累计金额']];
   let no = 1;
   let totalNet = 0;
-  function push(name, num, amt, y) { rows.push([name, num, amt, y]); }
+  function push(name, num, amt, y) { rows.push([name, num, U.yuan(amt), U.yuan(y)]); }   // 导出换回元
   function subsSum(ids, bucket) { return ids.reduce(function (s, id) { return s + (bucket[id] || 0); }, 0); }
   CF_GROUPS.forEach(function (g) {
     const net = cf[g.cat] || 0;
@@ -530,7 +533,7 @@ function exportTx() {
   const rows = [['项目', '行次', '本月数', '本年累计数']];
   if (tx && tx.rows && tx.rows.length) {
     tx.rows.forEach(function (r) {
-      rows.push([r.name, (r.level === 2 ? r.rowNum : ''), r.cur, r.ytd]);
+      rows.push([r.name, (r.level === 2 ? r.rowNum : ''), U.yuan(r.cur), U.yuan(r.ytd)]);
     });
   }
   const wb = XLSX.utils.book_new();

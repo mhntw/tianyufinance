@@ -1461,6 +1461,9 @@
 
     // 凭证：摘要 / 科目编码或名称 / 字号(word-no) / 金额
     var numKw = parseFloat(kw);
+    // 金额搜索：分录金额是「定点整数」，关键字是用户输入的「元」→ 先换算到整数域再比。
+    // 原判据 |整数 − 元| < 0.005 恒为假 → 按金额搜索永远搜不到任何凭证。
+    var kwInt = isNaN(numKw) ? null : U.amt(numKw);
     S.state.vouchers.forEach(function (v) {
       var hit = false, amt = 0;
       if ((v.word + '-' + v.no).toLowerCase().indexOf(k) >= 0) hit = true;
@@ -1471,7 +1474,7 @@
         if (s && s.name.toLowerCase().indexOf(k) >= 0) hit = true;
         // 上级科目名命中同样算命中（搜「银行存款」能带出挂在「青岛银行」等子科目下的凭证）
         if (!hit && subjMatch(e.code)) hit = true;
-        if (!isNaN(numKw) && (Math.abs(e.dr - numKw) < 0.005 || Math.abs(e.cr - numKw) < 0.005)) { hit = true; amt = e.dr || e.cr; }
+        if (kwInt !== null && (e.dr === kwInt || e.cr === kwInt)) { hit = true; amt = e.dr || e.cr; }
       });
       if (hit) res.voucher.push({ id: v.id, date: v.date, no: v.word + '-' + v.no, summary: v.summary || (v.entries[0] && v.entries[0].summary) || '', amount: amt });
     });

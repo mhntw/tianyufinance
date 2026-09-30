@@ -73,9 +73,10 @@ function numToChinese(n) {
   // 整数部分：四位一组
   function intToChinese(v) {
     if (v === 0) return '零';
+    var GROUP_BASE = 10000;   // 中文大写按「万」进制分组（4 位一组）——与金额定点比例无关，勿混用 AMT_SCALE
     var groups = [];
     var cur = v;
-    while (cur > 0) { groups.push(cur % 10000); cur = Math.floor(cur / 10000); }
+    while (cur > 0) { groups.push(cur % GROUP_BASE); cur = Math.floor(cur / GROUP_BASE); }
     var parts = [];
     for (var gi = groups.length - 1; gi >= 0; gi--) {
       var g = groups[gi];
@@ -274,7 +275,9 @@ function syncAllSubjBals() {
   var deltaMap = {};                                  // code → 本张凭证已录净额（借正贷负）
   vRows.forEach(function (r) {
     if (!r.code) return;
-    deltaMap[r.code] = (deltaMap[r.code] || 0) + (U.num(r.dr) - U.num(r.cr));
+    // 分录行是「元」，账本余额（balMap）是「定点整数」—— 这里先把净额换算到整数域，
+    // 否则下面 balMap + deltaMap 是「整数 + 元」混加，money(disp) 会显示错值。
+    deltaMap[r.code] = (deltaMap[r.code] || 0) + U.amt(U.num(r.dr) - U.num(r.cr));
   });
   vRows.forEach(function (r, i) {
     var el = document.querySelector('#vRows .v-subj-bal[data-i="' + i + '"]');
@@ -468,7 +471,7 @@ function updateAmtTotals() {
   }
   var tip = $('vBalanceTip');
   if (vRows.length && Math.abs(drT - crT) >= 0.005) {
-    tip.textContent = '借贷不平衡！差 ' + money(Math.abs(drT - crT));
+    tip.textContent = '借贷不平衡！差 ' + money(U.amt(Math.abs(drT - crT)));
     tip.className = 'voucher-balance warn';
   } else {
     tip.textContent = '借贷平衡';
@@ -919,8 +922,8 @@ function voucherUnchanged(cur, v) {
   for (var i = 0; i < a.length; i++) {
     if ((a[i].code || '') !== (b[i].code || '')) return false;
     if ((a[i].summary || '') !== (b[i].summary || '')) return false;
-    if (Math.abs(num(a[i].dr) - num(b[i].dr)) > 0.005) return false;
-    if (Math.abs(num(a[i].cr) - num(b[i].cr)) > 0.005) return false;
+    if (num(a[i].dr) !== U.amt(num(b[i].dr))) return false;
+    if (num(a[i].cr) !== U.amt(num(b[i].cr))) return false;
     if ((a[i].cashActivity || '') !== (b[i].cashActivity || '')) return false;
   }
   var fa = cur.attachments || [], fb = v.attachments || [];
@@ -1017,8 +1020,9 @@ function loadVoucherToEdit(id) {
     r.summary = e.summary || '';
     r.code = e.code || '';
     r.name = e.name || '';
-    r.dr = e.dr || 0;
-    r.cr = e.cr || 0;
+    // e.dr/e.cr 是 store 内部定点整数（0.0001 元），表单行必须存「元」，故经 U.yuan 换算
+    r.dr = U.yuan(e.dr) || 0;
+    r.cr = U.yuan(e.cr) || 0;
     r.cashActivity = e.cashActivity || '';
     return r;
   });
@@ -1206,7 +1210,8 @@ function exportQuery() {
   if (!vs.length) { showToast('当前条件下没有可导出的凭证', 'warn'); return; }
   if (typeof XLSX === 'undefined') { showToast('导出组件未加载', 'error'); return; }
 
-  function amt(n) { var x = U.num(n); return x ? x : ''; }
+  // 导出到 Excel：en.dr/cr 是 store 内部定点整数（0.0001 元），必须换回「元」，否则金额放大 10000 倍
+  function amt(n) { var x = U.yuan(n); return x ? x : ''; }
   var rows = [['日期', '凭证字号', '摘要', '科目', '借方金额', '贷方金额', '附件', '原单据编号', '制单人']];
   vs.forEach(function (v) {
     var first = true;
@@ -1436,7 +1441,8 @@ function copyVoucherToNew(src) {
   vRows = (src.entries || []).map(function (e) {
     return {
       summary: e.summary || '', code: e.code || '', name: e.name || '',
-      dr: U.num(e.dr) || 0, cr: U.num(e.cr) || 0, cashActivity: e.cashActivity || ''
+      // store 内部整数 → 元（表单行口径），见 loadVoucherToEdit 处的说明
+      dr: U.yuan(e.dr) || 0, cr: U.yuan(e.cr) || 0, cashActivity: e.cashActivity || ''
     };
   });
   if (vRows.length < 2) vRows.push(defaultVoucherRow());
@@ -1478,7 +1484,7 @@ function refreshRecycleBin() {
     tr.innerHTML =
       '<td>' + escHtml(v.date || '') + '</td>' +
       '<td>' + escHtml((v.word || '记') + '-' + (v.no != null ? v.no : '')) + '</td>' +
-      '<td>' + num(drSum).toFixed(2) + '</td>' +
+      '<td>' + U.yuan(drSum).toFixed(2) + '</td>' +   // drSum 来自 store 凭证分录（定点整数）→ 换回元
       '<td>' + escHtml(v.deletedAt || '') + '</td>' +
       '<td>' + escHtml(v.deletedBy || '') + '</td>' +
       // 删除原因：deleteReason 为新增字段，老账套里已删除的凭证没有此字段，

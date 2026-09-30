@@ -13,6 +13,12 @@ const syncAll = H.syncAll;
 const openModal = H.openModal;
 const closeModal = H.closeModal;
 const round2 = H.round2;
+/* 单位域提醒：账套内部金额是 0.0001 元定点整数（store 的 AMT_SCALE），money() 只接受这种整数。
+   本文件出现的【模板金额】（结账模板分录的 dr/cr、手填统一金额、结转成本手填额）是「界面预置值
+   （元）」—— 它们不参与账务运算，口径与 store 的模板域保持一致（见 store.js 的说明）。
+   故模板侧的金额一律经 tmplMoney 显示、经 U.amt 换算后再送 store，避免「元」被当整数喂给 money()
+   而显示成 1/10000（5000 → 0.50）。 */
+const tmplMoney = function (v) { return money(U.amt(v)); };
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 const esc = H.esc || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -172,7 +178,8 @@ function bindSettleEvents() {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'cost'; })[0] || {};
     var est = S.costVoucherEstimate(month, tpl);
-    var amt = U.num(tpl.costAmount) > 0 ? U.num(tpl.costAmount) : est.amount;
+    // tpl.costAmount 是模板域手填额（元）→ 经 U.amt 换算；est.amount 由 store 直接给出定点整数
+    var amt = U.num(tpl.costAmount) > 0 ? U.amt(tpl.costAmount) : est.amount;
     if (amt < 0.005) return showToast('本期无销售成本可结转', 'error');
     // 查重：连点会重复生成同额凭证虚增成本；按 v.kind 识别（导入凭证无 summary，摘要正则恒不命中）。
     var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
@@ -369,7 +376,7 @@ function bindSettleEvents() {
           if (rD.ok) okCount++; else { errCount++; msgs.push('计提折旧：' + rD.msg); }
         } else if (g.id === 'cost') {
           var estC = S.costVoucherEstimate(month, tpl);
-          var amtC = U.num(tpl.costAmount) > 0 ? U.num(tpl.costAmount) : estC.amount;
+          var amtC = U.num(tpl.costAmount) > 0 ? U.amt(tpl.costAmount) : estC.amount;
           if (amtC < 0.005) { skipCount++; continue; }
           var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
           if (costExisted.length) { skipCount++; continue; }
@@ -513,7 +520,9 @@ function renderCustomCards(procList, profitCard) {
     }
     // 模板分录借方合计 = 应结转总额
     var totalDr = 0;
-    (t.template || []).forEach(function (r) { totalDr += U.num(r.dr); });
+    // 模板分录是「元」（界面预置域），已结转是「定点整数」—— 先把模板侧换算到整数域，
+    // 否则下方 totalDr - carried 是「元 − 整数」，未结转额恒显示 0.00。
+    (t.template || []).forEach(function (r) { totalDr += U.amt(U.num(r.dr)); });
     totalDr = round2(totalDr);
     var todo = round2(Math.max(0, totalDr - carried));
     // 已生成时只显示凭证字号本身（可点击蓝色链接，与系统卡片同一套 .link-voucher 机制 → 点击打开该凭证编辑）
@@ -1321,7 +1330,7 @@ function tplToUiRow(r, ruleType) {
   return base;
 }
 
-function _tmplAmt(v) { var n = U.num(v); return n ? money(round2(n)) : ''; }
+function _tmplAmt(v) { var n = U.num(v); return n ? tmplMoney(round2(n)) : ''; }
 
 function renderNewTplRows() {
   var tb = $('settleTmplNewBody');
@@ -1438,7 +1447,7 @@ function bindNewTplBodyEvents() {
     var tr = el.closest('tr');
     var idx = tr ? parseInt(tr.getAttribute('data-idx'), 10) : -1;
     var v = U.num((newTplRows[idx] || {}).amount);
-    el.value = v ? money(v) : '';
+    el.value = v ? tmplMoney(v) : '';
   }, true);
   /* Enter 流转（与录凭证页同款，见 pages/voucher/Voucher.js 的 vRows keydown）：
    *   摘要 → 科目 → 金额；末行填完金额回车 → 自动追加一行并聚焦新行摘要（"录完本行换行"的录入习惯）。
@@ -1516,10 +1525,10 @@ function updateNewTplTotal() {
   newTplRows.forEach(function (r) { var a = U.num(r.amount); if (r.dc === 'C') cr += a; else dr += a; });
   dr = round2(dr); cr = round2(cr);
   var diff = round2(dr - cr);
-  out.innerHTML = '借方合计 <b>' + money(dr) + '</b>　贷方合计 <b>' + money(cr) + '</b>　';
+  out.innerHTML = '借方合计 <b>' + tmplMoney(dr) + '</b>　贷方合计 <b>' + tmplMoney(cr) + '</b>　';
   out.innerHTML += Math.abs(diff) < 0.005
     ? '<span style="color:#16a34a">借贷平衡 ✓</span>'
-    : '<span style="color:var(--ty-red)">差额 ' + money(Math.abs(diff)) + ' ' + (diff > 0 ? '（贷方少 ' : '（借方少 ') + money(Math.abs(diff)) + '）</span>';
+    : '<span style="color:var(--ty-red)">差额 ' + tmplMoney(Math.abs(diff)) + ' ' + (diff > 0 ? '（贷方少 ' : '（借方少 ') + tmplMoney(Math.abs(diff)) + '）</span>';
 }
 
 // ─── 方向 popover（点击「借/贷」弹出） ───────────────────────────────
@@ -1582,7 +1591,7 @@ function openTplRulePopover(anchor) {
       var ta = U.num(tpl.totalAmount);
       h += '<div class="tmpl-setting-row">'
         + '<span class="tmpl-setting-label">统一金额：</span>'
-        + '<input class="tmpl-setting-inp" id="tmplPopTotal" value="' + (ta ? money(ta) : '') + '" placeholder="如 5000.00" style="width:140px"></div>'
+        + '<input class="tmpl-setting-inp" id="tmplPopTotal" value="' + (ta ? tmplMoney(ta) : '') + '" placeholder="如 5000.00" style="width:140px"></div>'
         + '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>';
     } else if (rule === 'subject') {
       var sc = tpl.sourceSubject || '';
@@ -1678,7 +1687,7 @@ function validateCustomTplRows(rows) {
   dr = round2(dr); cr = round2(cr);
   if (!dr && !cr) return ''; // 纯结构模板（金额留待生成时补录）允许保存
   if (withAmt < 2) return '已填金额时至少需要两行分录（一借一贷）';
-  if (Math.abs(dr - cr) >= 0.005) return '借贷合计不相等（借 ' + money(dr) + ' / 贷 ' + money(cr) + '），请检查金额';
+  if (Math.abs(dr - cr) >= 0.005) return '借贷合计不相等（借 ' + tmplMoney(dr) + ' / 贷 ' + tmplMoney(cr) + '），请检查金额';
   return '';
 }
 
@@ -1706,13 +1715,13 @@ function genVoucherFromTpl(t, silent) {
     totalAmount = round2(computed.reduce(function (s, e) { return s + e.dr; }, 0));
     if (!totalAmount) { if (!silent) showToast('模板「' + t.name + '」尚未填写分录金额，请先在「设置」里填金额', 'error'); return false; }
     var crSum = round2(computed.reduce(function (s, e) { return s + e.cr; }, 0));
-    if (Math.abs(totalAmount - crSum) >= 0.005) { if (!silent) showToast('模板「' + t.name + '」借贷不平（借 ' + money(totalAmount) + ' / 贷 ' + money(crSum) + '），请先修正模板', 'error'); return false; }
+    if (Math.abs(totalAmount - crSum) >= 0.005) { if (!silent) showToast('模板「' + t.name + '」借贷不平（借 ' + tmplMoney(totalAmount) + ' / 贷 ' + tmplMoney(crSum) + '），请先修正模板', 'error'); return false; }
 
   } else if (ruleType === 'manual') {
     // 按统一金额(手填)分摊
     totalAmount = U.num(t.totalAmount);
     if (!totalAmount) { if (!silent) showToast('请先在「设置」里填统一金额', 'error'); return false; }
-    srcLabel = '手填金额 ' + money(totalAmount);
+    srcLabel = '手填金额 ' + tmplMoney(totalAmount);
 
   } else {
     // 按统一金额(科目金额)分摊
@@ -1720,13 +1729,14 @@ function genVoucherFromTpl(t, silent) {
     if (!srcCode || !S.subject(srcCode)) { if (!silent) showToast('请先在「设置」里指定取金额科目', 'error'); return false; }
     var dir = t.sourceDirection || 'end_balance';
     if (dir === 'end_balance') {
-      totalAmount = Math.abs(S.subjectEndBalance(srcCode, month));
+      // store 取数返回的是内部定点整数（0.0001 元），模板域用「元」→ 经 U.yuan 换算
+      totalAmount = Math.abs(U.yuan(S.subjectEndBalance(srcCode, month)));
     } else {
       var pa = S.subjectPeriodAmount(srcCode, month);
-      totalAmount = (dir === 'period_dr') ? U.num(pa.dr) : U.num(pa.cr);
+      totalAmount = (dir === 'period_dr') ? U.yuan(pa.dr) : U.yuan(pa.cr);
     }
     if (!totalAmount) { if (!silent) showToast('科目「' + srcCode + '」当期无可用金额', 'error'); return false; }
-    srcLabel = S.subject(srcCode).name + ' ' + money(totalAmount);
+    srcLabel = S.subject(srcCode).name + ' ' + tmplMoney(totalAmount);
   }
 
   // ── 第二步：分摊规则（manual / subject） → 算每行金额 ──
@@ -1763,7 +1773,7 @@ function genVoucherFromTpl(t, silent) {
   if (!rr.ok) { if (!silent) showToast(rr.msg, 'error'); return false; }
   if (!silent) {
     var baseMsg = srcLabel ? ('来源：' + srcLabel + '　') : '';
-    showToast('已生成凭证 ' + (rr.v.word || '记') + '-' + rr.v.no + '（' + t.name + ' ' + money(totalAmount) + '）　' + baseMsg);
+    showToast('已生成凭证 ' + (rr.v.word || '记') + '-' + rr.v.no + '（' + t.name + ' ' + tmplMoney(totalAmount) + '）　' + baseMsg);
     refreshSettle();
     syncAll();
   }
