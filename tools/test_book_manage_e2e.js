@@ -111,7 +111,12 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   assert(S.state.company.startMonth === new Date().getFullYear() + '-' +
     ('0' + (new Date().getMonth() + 1)).slice(-2), '启用期间默认当月：' + S.state.company.startMonth);
   const subj0 = S.state.subjects[0];
-  const today = new Date().toISOString().slice(0, 10);
+  /* ⚠ 日期必须用**本地**口径。原先写 `new Date().toISOString().slice(0, 10)` —— toISOString 是 **UTC**，
+     而上面的「启用期间默认当月」用的是本地 getMonth()：在 UTC+8 的**每月 1 号 00:00~08:00**，
+     UTC 还停在上月最后一天 → 于是"凭证日期(上月末) 早于 账套启用期间(本月)"，本断言每月头 8 小时必红一次
+     （2026-10-01 实测：日期 2026-09？启用期间 2026-10）。故与 startMonth 保持同一口径。 */
+  const _d = new Date();
+  const today = _d.getFullYear() + '-' + ('0' + (_d.getMonth() + 1)).slice(-2) + '-' + ('0' + _d.getDate()).slice(-2);
   const av = S.addVoucher({
     word: '记', date: today,
     entries: [{ code: subj0.code, name: subj0.name, dr: 100, cr: 0 },
