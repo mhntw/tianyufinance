@@ -23,6 +23,13 @@
  * 归一化规则：金蝶 GLBal 的 begBal/endBal 已是「借方为正」signed 值
  *            （资产+、负债-、累计折旧- 等），不论科目方向。
  *            ty 用 endDr/endCr 双栏，signed = endDr - endCr（不论 normal）。
+ *
+ * 【输入单位契约（2026-09-30 定点化后）】两侧必须同为「元」本工具才成立：
+ *   · 金蝶 baseline（KIS 导出）本就是「元」；
+ *   · ty 侧（tools/_out/*_generalLedger_*.json）由 export_statement.js 产出，
+ *     已统一经 util.yuan() 换回「元」（该工具内部先迁 v6 定点整数再取数）。
+ *   故下方 EPS = 0.01（1 分）在这个元口径下成立 —— 若哪天导出改回内部整数口径，
+ *   这里必须先改成整数严格比较，否则会整体误报「差 10000 倍」。
  */
 'use strict';
 

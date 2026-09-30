@@ -1,5 +1,14 @@
 // 实证：之前发现的问题是否为真（而非无中生有）
 // 用真实账套数据复现"幽灵科目导致总账漏算但凭证平衡"的隐患，证明问题3是真实风险
+//
+// ⚠【2026-09-30 已过期，勿据此下结论】本脚本是定点化**之前**留下的一次性历史实证：
+//   ① 它读磁盘账套后只调 normalizeState()（不会迁 v6），而定点化后 store 的金额口径是
+//      「0.0001 元整数」—— 因此它现在拿到的是未迁移的「元」数据，与整数口径函数混用，
+//      打印出来的数字会整体偏 10000 倍；
+//   ② 它按「元」直接 push 测试凭证（应经 util.amt() 换算），也不符当前内部口径。
+//   → 它的历史结论仍然有效（当时确实如此），但**今天重跑得到的数字不可信**。
+//      要看当前账套的对应结论，请用门禁内的：verify_books_audit.js（结账/结转口径）、
+//      verify_vs_ais.js（与金蝶原账套逐期一致）、verify_amount_shadow.js（定点化逐字段对照）。
 const fs=require('fs'),path=require('path');
 const store={}; global.localStorage={getItem:k=>k in store?store[k]:null,setItem:(k,v)=>{store[k]=String(v);},removeItem:k=>{delete store[k];}};
 global.window=global; global.navigator={sendBeacon:()=>true}; global.document={addEventListener(){}};

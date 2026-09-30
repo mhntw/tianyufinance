@@ -1,4 +1,9 @@
 // 对生成的 25 年测试账套做全量真实函数验证
+//
+// ⚠【2026-09-30 已过期，勿据此下结论】定点化后 store 的金额是「0.0001 元整数」，而本脚本
+//   读磁盘账套后只调 normalizeState()（不会迁 v6）—— 于是「元」数据被当整数算，且各处
+//   .toFixed(2) 打印的是整数（会显示成 10000 倍）。它的历史结论仍有效，但今天重跑的
+//   数字不可信。要看当前账套的对应结论，请用门禁内的 verify_books_audit.js / verify_vs_ais.js。
 const fs=require('fs'),path=require('path');
 const store={}; global.localStorage={getItem:k=>k in store?store[k]:null,setItem:(k,v)=>{store[k]=String(v);},removeItem:k=>{delete store[k];}};
 global.window=global; global.navigator={sendBeacon:()=>true}; global.document={addEventListener(){}};
