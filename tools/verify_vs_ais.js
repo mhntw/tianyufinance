@@ -7,6 +7,11 @@
  *   看不见「导入转换」环节引入的偏差。本脚本直接拿金蝶 .ais 的 GLBal
  *   （金蝶自己的权威科目余额）与 ty 的 generalLedger 逐科目逐期比，容差 0.01 元。
  *
+ * 【金额单位（2026-09-30 补）】金蝶侧是「元」；ty 侧 v6 起是**定点整数**（1 元 = 10000 个最小单位）。
+ *   本脚本直读账套 JSON，故：① 先按真实加载路径把 v5 账套迁移到 v6（见下方装载处）；
+ *   ② 读取时将 ty 侧金额统一换算回「元」再比（`y()`）。
+ *   ⚠ 两处缺一，就会比出「正好差 10000 倍」的假差异 —— 且**只对 v6 账套发作**，极难判断。
+ *
  * 【软删除如何解释】ty 侧的所有「活动凭证」入口都排除软删除凭证，金蝶侧没有这个概念，
  *   故两者的差异应当【恰好等于】软删除凭证的影响。脚本自动算出该影响并归类：
  *     · 差异 ≡ 软删除影响            → 可解释（维护者主动删除，非缺陷）
@@ -80,6 +85,7 @@ function listBooks() {
         out.push({
           p: p, file: f, name: String(c.name || ''), start: String(c.startMonth || ''),
           vouchers: (o.vouchers || []).length, subjects: (o.subjects || []).length,
+          schemaVersion: o.schemaVersion == null ? null : o.schemaVersion,   // v6 = 已定点化；打印出来便于判断口径
           mtime: st ? st.mtimeMs : 0
         });
       });
@@ -88,6 +94,43 @@ function listBooks() {
 }
 // 硬条件：账套可用（有凭证、有科目）。空账套永远只会制造假差异，一律排除。
 function bookUsable(b) { return b.vouchers > 0 && b.subjects > 10; }
+
+/* ---------- 无参数时：对**每一本**可用账套各跑一次（默认行为）----------
+   【为什么必须有】原先不带参数只挑一本（按名称匹配 —— 实际总是同一本），后果是
+   **定点化之后的账套从来没被对照过**：run-all 里本脚本一直是绿的，而把迁移后的账套
+   单独跑却报 17609 条「正好差 10000 倍」的差异（2026-09-30 实测）。
+   现在默认逐本对照：任何一本对不上都让退出码非 0，绿的才真叫绿。
+   指定了账套路径时仍是单本模式（便于人工排查某一本）。
+   ⚠ 子进程调用自身、并传入**显式账套路径**，故不会递归进入本分支。 */
+if (!process.argv[2] && !process.argv[3]) {
+  const cp = require('child_process');
+  const books = listBooks().filter(bookUsable);
+  if (!books.length) {
+    console.log('跳过：找不到可用账套（' + booksDirPath() + '）');
+    process.exit(0);
+  }
+  let bad = 0, okCount = 0, skipped = 0;
+  books.forEach(function (b) {
+    let out = '', code = 0;
+    try {
+      out = cp.execFileSync(process.execPath, [__filename, b.p], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000
+      });
+    } catch (e) { code = 1; out = String(e.stdout || '') + String(e.stderr || ''); }
+    const noAis = /跳过：/.test(out) && !/差异项：/.test(out);
+    if (noAis) { skipped++; console.log('  · ' + b.file + '：无对应金蝶 .ais，未对照'); return; }
+    if (code === 0) { okCount++; console.log('  ✓ ' + b.file + '（v' + (b.schemaVersion == null ? '?' : b.schemaVersion) + '）：逐科目逐期逐字段无差异'); }
+    else {
+      bad++;
+      console.log('  ✗ ' + b.file + '：存在差异 —— 明细如下');
+      out.split('\n').slice(-24).forEach(function (l) { console.log('      ' + l); });
+    }
+  });
+  if (!bad && !okCount) { console.log('跳过：所有账套都没有可对照的金蝶 .ais'); process.exit(0); }
+  console.log('');
+  console.log('各账套对照：一致 ' + okCount + ' 本／有差异 ' + bad + ' 本／未对照 ' + skipped + ' 本');
+  process.exit(bad ? 1 : 0);
+}
 function nameMatch(b, label) {
   if (!b.name || !label || !label.name) return false;
   return b.name.indexOf(label.name) >= 0 || label.name.indexOf(b.name) >= 0;
@@ -298,10 +341,24 @@ try { global.navigator = { userAgent: 'node' }; } catch (e) { }
 global.fetch = function () { return Promise.reject(new Error('no net')); };
 require(path.join(__dirname, '..', 'js', 'store.js'));
 const S = global.S;
+/* 【金额单位：ty 侧是定点整数】2026-09-30 补。v6 起内部金额是整数（1 元 = 10000 个最小单位）。
+   本脚本拿 ty 的 generalLedger 与金蝶（元）逐字段比，故 ty 侧金额必须在**读取处**换算回「元」；
+   下方的 R()（四舍五入到分）与 EPS（0.01 元容差）都工作在元域，换算后语义才成立。
+   ⚠ 漏了这一步的后果：v6 账套比出成千上万条「正好差 10000 倍」的假差异，
+     而 v5 账套又是对的 —— 于是"换一本账套跑"结论相反，极难判断（本脚本 2026-09-30 实测 17609 条）。 */
+const y = global.util && global.util.yuan;
+if (typeof y !== 'function') {
+  console.log('跳过：js/store.js 未暴露 util.yuan，无法换算 ty 侧金额单位');
+  process.exit(0);
+}
 S.persist = function () { }; S.save = function () { return Promise.resolve(); };
 S.addLog = function () { }; S.backupNow = function () { return Promise.resolve(true); };
 if (global.Storage) { global.Storage.saveBook = function () { return Promise.resolve({ ok: true }); }; }
 S.state = JSON.parse(RAW_BOOK); S.bookId = '__VSAIS__'; S._glCache = {};
+/* 磁盘账套可能是 v5（金额 =「元」浮点）。真实加载路径会先迁移到 v6 再交给上层；
+   本脚本直读 JSON，故必须自己走一次**产品内的真实迁移**（与 verify_cross_page.js 同一写法）——
+   否则 v5 的「元」被当成最小单位，与金蝶比出来的是 ×10000 的假差异。 */
+if (S.migrateAmountsToV6 && S.state.schemaVersion !== S.SCHEMA_VERSION) S.migrateAmountsToV6(S.state);
 if (S.normalizeState) S.normalizeState();
 
 /* ---------- 3. 软删除凭证的影响（金蝶含、ty 不含）---------- */
@@ -315,7 +372,7 @@ const delImpact = {};
   (v.entries || []).forEach(function (e) {
     const c = String(e.code);
     delImpact[m][c] = delImpact[m][c] || { dr: 0, cr: 0 };
-    delImpact[m][c].dr += num(e.dr); delImpact[m][c].cr += num(e.cr);
+    delImpact[m][c].dr += y(num(e.dr)); delImpact[m][c].cr += y(num(e.cr));   // 定点整数 → 元
   });
 });
 let delTotalAmt = 0;
@@ -412,7 +469,16 @@ const unexplainedDetail = [];
 cmpMonths.forEach(function (m) {
   const gl = S.generalLedger(m);
   const byCode = {};
-  gl.forEach(function (r) { byCode[String(r.code)] = r; });
+  /* ty 侧金额是定点整数（1 元 = 10000）→ 与金蝶（元）比之前统一换算。
+     注意**复制**而不是原地改：generalLedger 的行可能来自 store 的缓存（_glCache），
+     原地改会把缓存里的整数换成元，污染后续调用。 */
+  const AMT_KEYS = ['obDr', 'obCr', 'periodDr', 'periodCr', 'endDr', 'endCr', 'ytdDr', 'ytdCr'];
+  gl.forEach(function (r) {
+    const c = {};
+    Object.keys(r).forEach(function (k) { c[k] = r[k]; });
+    AMT_KEYS.forEach(function (k) { if (c[k] != null) c[k] = y(c[k]); });
+    byCode[String(r.code)] = c;
+  });
   const kisM = kis[m];
 
   const codeSeen = {};
