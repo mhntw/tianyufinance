@@ -330,6 +330,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (!fa.acqDate) msg.push('缺开始使用日期');
       if (!num(fa.life)) msg.push('缺预计使用期限');
       if (!begin && !end) msg.push('期初/期末累计折旧均为 0');
+      /* 【不是 bug，别"顺手改"】此处两侧都在**导入解析域**（parseAssetWorkbook 产出「元」）：
+         ref 来自导入文件、md 由 assetMonthlyDepr 以同域入参算出 —— 都是元，0.01 即"1 分"元容差。
+         批量替换时不要改成 AMT_SCALE（那是 1 元，会把容差放大 100 倍）。 */
       if (ref > 0 && md > 0 && Math.abs(ref - md) > 0.01) {
         msg.push('月折旧与导入数据不符（本软件 ' + md.toFixed(2) + ' / 导入 ' + ref.toFixed(2) + '）');
       }
@@ -337,6 +340,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var fileEnd = num(fa.accumDeprRef) || end;
       var unit = ref > 0 ? ref : md;      // 校验单位：优先导入文件的「月折旧额」，其次本软件算出的月折旧
       var diff = fileEnd - begin;
+      /* 【不是 bug，尤其别"修"】diff/unit 是**倍数（无量纲）**，不是钱！
+         0.01 是"偏离整数倍"的比率容差；改成 AMT_SCALE 会变成 100 倍，本判据彻底失效。 */
       if (unit > 0 && begin > 0 && fileEnd > 0 && Math.abs(diff / unit - Math.round(diff / unit)) > 0.01) {
         msg.push('期初/期末差额 ' + diff.toFixed(2) + ' 不是月折旧 ' + unit.toFixed(2) + ' 的整数倍');
       }
@@ -424,7 +429,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var ledgerEnd = endBalOf(depSubj.code);
       if (ledgerEnd !== null) {
         var d1 = round2(cardTotal - ledgerEnd);
-        var tol = round2(active.length * 0.01 + 0.01);
+        // 容差 = 每张卡 1 分（整数域）：原式 round2(n*0.01+0.01) 是「元」容差，
+        // 整数域里 ≈0 → 塌成严格相等，账实对账会把合法的分位舍入差误报为「不符」。
+        var tol = (active.length + 1) * (U.AMT_SCALE / 100);
         depr = { subject: depSubj, cardTotal: cardTotal, ledgerTotal: ledgerEnd, diff: d1,
           tolerance: tol, ok: Math.abs(d1) <= tol };
       }
@@ -453,7 +460,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var d = { code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c].sum,
         ledger: led, diff: round2(byAcct[c].sum - led) };
       // 有差额才做「落到具体凭证/卡片」的定位（无谓开销避免掉）
-      if (Math.abs(d.diff) > 0.01) {
+      if (Math.abs(d.diff) > U.AMT_SCALE / 100) {   // 1 分（整数域）；原 0.01 是元容差
         var loc = _faLocateDiff(c, byAcct[c].cards, month);
         d.unbacked = loc.unbacked;            // 账上有、卡片中找不到对应
         d.cardOrphan = loc.cardOrphan;        // 卡片有、账上找不到对应
@@ -463,8 +470,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     });
     detail.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
     var d2 = round2(cardOrig - ledgerOrig);
-    var orig = { cardTotal: cardOrig, ledgerTotal: ledgerOrig, diff: d2, tolerance: 0.01,
-      ok: Math.abs(d2) <= 0.01, detail: detail, orphan: orphan };
+    var orig = { cardTotal: cardOrig, ledgerTotal: ledgerOrig, diff: d2, tolerance: U.AMT_SCALE / 100,
+      ok: Math.abs(d2) <= U.AMT_SCALE / 100, detail: detail, orphan: orphan };   // 容差 1 分（整数域）
 
     return { month: month, depr: depr, orig: orig, ok: (!depr || depr.ok) && orig.ok };
   }
@@ -492,7 +499,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function _faSubsetN(live, pool, target, n) {
     var picked = [];
     function dfs(start, sum) {
-      if (picked.length === n) return Math.abs(sum - target) < 0.005;
+      // live[].amt 与 target 都是 0.0001 元整数（见下方 round2(num(e.dr)-num(e.cr)) 与 cards[].amt=fa.original）
+      // → 原式 `Math.abs(sum-target) < 0.005` 在整数域恒等于「精确相等」（0.005 是浮点时代的元容差，
+      //   定点化后已塌成 0）。这里写成 === 表明它**就是**精确认领，不是"允许半分误差"。
+      if (picked.length === n) return sum === target;
       for (var k = start; k < pool.length; k++) {
         if (picked.length + (pool.length - k) < n) break;          // 剩余元素不够，剪枝
         picked.push(pool[k]);
@@ -525,7 +535,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (killed[i]) continue;
       for (var j = i + 1; j < entries.length; j++) {
         if (killed[j]) continue;
-        if (entries[i].vch !== entries[j].vch && Math.abs(entries[i].amt + entries[j].amt) < 0.005) {
+        // 「等额反向」= 两笔金额精确抵消（同为 0.0001 元整数）。
+        // 原式 `< 0.005` 是元容差，定点化后在整数域塌成「精确为 0」，故直接写 === 0。
+        if (entries[i].vch !== entries[j].vch && entries[i].amt + entries[j].amt === 0) {
           killed[i] = 1; killed[j] = 1; pairs++; break;
         }
       }
@@ -610,7 +622,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         }
         // 两侧相抵应与所报差额吻合；不吻合说明还有期初余额等落不到凭证的部分
         var net = round2(unSum - coSum);
-        if (Math.abs(net + rc.orig.diff) < 0.01) {
+        if (Math.abs(net + rc.orig.diff) < U.AMT_SCALE / 100) {   // 1 分（整数域）
           lines.push('核对：账上多出 ' + money(unSum) + ' － 卡片多出 ' + money(coSum) + ' ＝ ' +
             money(net) + '，与所报差额 ' + money(rc.orig.diff) + ' 金额一致（方向相反）✓');
         } else {
@@ -619,7 +631,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
             '，可能还有一部分差额来自期初余额录入（无凭证可定位）。');
         }
         more.push(lines.join('<br>'));
-      } else if (Math.abs(rc.orig.diff) > 0.01) {
+      } else if (Math.abs(rc.orig.diff) > U.AMT_SCALE / 100) {   // 1 分（整数域）
         // 有差额但一笔都对不上（例如全部来自期初余额录入）—— 也要说清，别让人以为定位失效
         more.push('按金额逐笔配对：账上该科目的凭证分录与卡片金额均能对应，差额可能全部来自期初余额录入（无凭证可定位）。');
       }
@@ -716,6 +728,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           // 文件给的期末只留作体检校验值（accumDeprRef），落库前删除。
           listAdd.forEach(function (fa) {
             var b = num(fa.accumDeprBegin), e = num(fa.accumDepr);
+            // 【不是 bug】导入解析域（元）里的 1 分容差，别改成 AMT_SCALE（见同文件 _assetImportCheck 的说明）
             if (b > 0 && e > 0 && Math.abs(e - b) > 0.01) { fa.accumDeprRef = e; fa.accumDepr = b; }
           });
           // 【导入体检】不阻断导入，把"会静默出错"的项报出来（提示条 + 操作日志）
@@ -961,7 +974,11 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function _updateHints() {
     var o = U.num($('aOriginal').value), sr = U.num($('aSalvageRate').value), m = U.num($('aLife').value);
     var hS = $('aSalvageHint');
-    if (hS) hS.textContent = o > 0 ? ('预计残值 ' + money(o * sr / 100)) : '';
+    // 【单位域】输入框是「元」（回填走 U.yuan），残值 = 原值 × 残值率% 也是「元」，
+    // 必须先换算成内部定点整数再交给 money()（它期望 1 元 = 10000）。
+    // ⚠ 原先直接 money(o * sr / 100)：元值往往正好是整数 → 不触发 money() 的非整数告警，
+    //   于是「预计残值 250.00」静默显示成「0.03」（差 10000 倍）。见 tools/verify_page_domain.js 的 E。
+    if (hS) hS.textContent = o > 0 ? ('预计残值 ' + money(U.amt(o * sr / 100))) : '';
     var hA = $('aAccumHint');
     if (hA) {
       var anchor = _editingDeprMonth || _anchorMonth();
@@ -1014,19 +1031,19 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     _setAcctCombos(fa); // 回填 7 个科目（input 的 .value）
     $('aDept').value = fa ? (fa.dept || '') : '';
     $('aAcq').value = fa ? (fa.acqDate || '') : '';
-    $('aOriginal').value = fa ? fa.original : '';
+    $('aOriginal').value = fa ? U.yuan(fa.original) : '';        // 回填「元」输入框：store 内部为定点整数，须换回元
     $('aMethod').value = fa ? (fa.method || '平均年限法') : '平均年限法';
     $('aSalvageRate').value = fa ? fa.salvageRate : '';
     $('aLife').value = fa ? (fa.life * 12) : 60;    // 存储为年，表单显示月
     $('aPeriodUsed').value = fa ? (fa.periodUsed || 0) : 0;
-    $('aAccumDeprBegin').value = fa ? num(fa.accumDeprBegin) : 0;
-    $('aYearDepr').value = fa ? (fa.yearDepr || 0) : 0;
+    $('aAccumDeprBegin').value = fa ? U.yuan(num(fa.accumDeprBegin)) : 0;   // 元域输入框
+    $('aYearDepr').value = fa ? U.yuan(num(fa.yearDepr)) : 0;               // 元域输入框
     $('aQty').value = fa ? (fa.qty || 1) : 1;
     $('aCategory').value = fa ? (fa.category || '') : '';
     $('aSpec').value = fa ? (fa.spec || '') : '';
     $('aLocation').value = fa ? (fa.location || '') : '';
     $('aUser').value = fa ? (fa.user || '') : '';
-    $('aImpairment').value = fa ? fa.impairment : 0;
+    $('aImpairment').value = fa ? U.yuan(num(fa.impairment)) : 0;           // 元域输入框
     $('aMemo').value = fa ? (fa.memo || '') : '';
     // 「状态」「清理期间」已不在表单里：新增一律「正常」，转清理走卡片行的
     // 「清理」动作（会同时生成凭证）；编辑时 _collectAsset 也不再采集这两个字段，
@@ -1150,7 +1167,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!groups.length) return showToast('当前期间无可导出数据', 'error');
     var headers = ['类别'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = groups.map(function (g) {
-      return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return deprSum(g.rows, c.k).toFixed(2); }));
+      return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return U.yuan(deprSum(g.rows, c.k)).toFixed(2); }));
     });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧汇总表');
@@ -1269,7 +1286,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!rows.length) return showToast('当前期间无可导出数据', 'error');
     var headers = ['类别', '编码', '名称', '部门'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = rows.map(function (r) {
-      return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return deprVal(r, c.k).toFixed(2); }));
+      return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return U.yuan(deprVal(r, c.k)).toFixed(2); }));
     });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧明细表');
