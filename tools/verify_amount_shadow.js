@@ -376,4 +376,48 @@ function run(bookPath) {
 }
 
 const bookArg = process.argv[2];
+
+/* ---------- 无参数时：对**每一本**账套各跑一次（默认行为）----------
+   【为什么必须有】原先只按 mtime 挑**一本**，后果是"换一本账套跑"结论可能不同、
+   而 run-all 看到的永远是那一本的绿：2026-09-30 实测随自动挑中「绅蓝之星」或「添钰来客」，
+   对照字段数在 352330 与 208225 之间跳 —— 另一本从未被对照过（同一类"只查一本所以绿"的盲区，
+   已先在 tools/verify_vs_ais.js 上修过）。现默认逐本对照，任何一本对不上都让退出码非 0。
+   指定了账套路径时仍是单本模式（便于人工排查某一本）。
+   ⚠ 子进程调用自身并传入**显式路径**，故不会递归进入本分支。 */
+if (!bookArg) {
+  const dir = path.join(appRoot(), 'books');
+  let files = [];
+  try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => path.join(dir, f)); } catch (e) { }
+  if (!files.length) {
+    console.log('跳过：未找到账套（' + dir + '）');
+    console.log('本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0，不计为失败。');
+    process.exit(0);
+  }
+  let bad = 0, okCount = 0, noBase = 0;
+  files.forEach(function (p) {
+    let out = '', code = 0;
+    try {
+      out = execFileSync(process.execPath, [__filename, p], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 240000
+      });
+    } catch (e) { code = 1; out = String(e.stdout || '') + String(e.stderr || ''); }
+    const noSnapshot = /跳过：/.test(out) && !/结果：/.test(out);
+    const name = path.basename(p);
+    if (noSnapshot) { noBase++; console.log('  · ' + name + '：无可对照的迁移前 v5 快照（未对照）'); return; }
+    if (code === 0) {
+      okCount++;
+      const m = out.match(/新旧两套实现在 \d+ 组、\d+ 个金额字段上逐 0.0001 元一致/);
+      console.log('  ✓ ' + name + '：' + (m ? m[0] : '与旧实现一致'));
+    } else {
+      bad++;
+      console.log('  ✗ ' + name + '：存在差异 —— 明细如下');
+      out.split('\n').slice(-20).forEach(function (l) { console.log('      ' + l); });
+    }
+  });
+  if (!bad && !okCount) { console.log('跳过：所有账套都没有可对照的迁移前 v5 快照'); process.exit(0); }
+  console.log('');
+  console.log('结果：' + (bad ? FAIL : PASS) + '  逐本影子对照 —— 一致 ' + okCount + ' 本／有差异 ' + bad + ' 本／未对照 ' + noBase + ' 本');
+  process.exit(bad ? 1 : 0);
+}
+
 run(findBook(bookArg));
