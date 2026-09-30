@@ -2570,6 +2570,11 @@
     // 四态：none（无损益发生）/ todo（需要结转）/ ok（已结转且仍有效）/ stale（结转凭证已过时，需重做）。
     // 注：stale 并非只有未结账期才可能出现 —— 结账检查项被降级后强制结账，也能让已结账月停在 stale；
     //     这类月份由 carryForwardProfit 的 isPeriodClosed 守卫兜住，返回「该月已结账，请先反结账」。
+    //     （已结账月停在 stale 本身由 tools/verify_invariants.js 的 I13 单独巡逻。）
+    // 【新增消费方时必做】①只准消费本函数的返回值，不得再自行调 periodProfitNet / carryForwardState
+    //   或按 CARRY_PL 过滤凭证来判状态（静态卡口：tools/check_single_source.js 的 carry-state-fork 规则）；
+    //   ②在 tools/verify_invariants.js 的 I14 与 tools/test_newbook_fuzz.js 的「状态→出口」契约表里补断言 ——
+    //   这类缺陷不在数字层（stale 态下账仍然是平的），数字不变量天然看不见，只有跨消费方断言能兜住。
     carryForwardStatus: function (month) {
       var vs = this.periodVouchersOfKind(month, this.VOUCHER_KINDS.CARRY_PL);
       var net = this.periodProfitNet(month);

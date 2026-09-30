@@ -518,43 +518,110 @@ if (persisted) {
 checkInvariants();
 
 /* ============================================================
- * 确定性回归：「孤立结转凭证」（随机步发现的缺陷，用固定场景锁住，防回归）
- *   顺序：录费用凭证 → 结转损益 → 删除那张原费用凭证。
- *   于是结转凭证成了"孤立结转"——它把 3103 结转了，但它要结转的损益却没了，
- *   本期损益净额反向不为零。修复前产品给出两句互相打架的提示：
- *     · 结账检查：「本期损益未结转，请先结转损益」
- *     · 点结转  ：「本期损益已结转，请勿重复；如需重做请先删除结转凭证（记-N）」
- *   用户按第一句去点结转必然失败。现两处统一走 carryForwardStatus() 四态判定：
- *   stale 态下双方都给同口径提示（点「重新结转」重新生成），且删掉旧结转凭证后
- *   本期已无损益 → 返回 state='zero'（UI 据此按成功提示，而不是报红）。
- *   本用例锁定四点：①stale 能被判定；②两处提示同口径；③删旧凭证后返回 zero；
- *   ④检查恢复 ok（有明确出口，非死锁）。
+ * 跨消费方一致性：「结转状态 → 出口」契约（表驱动）
+ * 【为什么单独一层】既有断言全是数字不变量，而这类缺陷的形态是
+ *   «同一状态，两个消费方各自下结论» —— 数字层天然看不见：stale 态下借贷平衡、
+ *   试算平衡、资产负债表差额恰等于未结转损益（verify_invariants 的 I3 正是放行这一形态）。
+ *   故把契约显式写出来：①四态 ↔ 结账检查 carry 项必须同结论；②提示只能指向该状态
+ *   唯一的出口，且不得出现别的状态的出口词。只锁「出口」不锁整句文案 —— 改标点、
+ *   换措辞不该红，出口被改跑偏才该红。
+ *   同一张表在 tools/verify_invariants.js 的 I14 里还对真实账套跑（两边缺一不可：
+ *   只读的真实账套造不出 stale，只有会写数据的本脚本能造）。
+ * ============================================================ */
+const EXIT_WORDS = {
+  none:  { need: [/无损益|无需/],  forbid: [/请先结转/, /请勿重复/, /重新结转/] },  // 无需动作
+  ok:    { need: [/已结转/],        forbid: [/请先结转/, /重新结转/] },            // 无需动作
+  todo:  { need: [/请先结转损益/],  forbid: [/请勿重复/, /重新结转/] },            // 出口：结转
+  stale: { need: [/重新结转/],      forbid: [/请勿重复/, /未结转，请先结转/] }     // 出口：重做
+};
+function carryContract(label, month) {
+  const st = S.carryForwardStatus(month);
+  const item = (S.settleChecklist(month) || []).filter(x => x.key === 'carry')[0] || {};
+  const tip = String(item.tip || '');
+  const wantOk = (st.state === 'none' || st.state === 'ok');
+  check(label + '：四态(' + st.state + ') 与结账检查同结论', wantOk === (item.status === 'ok'),
+    'status=' + item.status + '　tip=' + tip);
+  const w = EXIT_WORDS[st.state] || { need: [], forbid: [] };
+  check(label + '：' + st.state + ' 的提示只指向该状态唯一出口',
+    w.need.every(r => r.test(tip)) && !w.forbid.some(r => r.test(tip)), 'tip=' + tip);
+  return { st: st, item: item, tip: tip };
+}
+// 对账套内**每个**期间过一遍契约（含已结账期：结账并不豁免"同状态同结论"）。
+// 别用 openMonths()：跑到这里时收尾已把各期结清，未结账期为空 —— 那样这行巡检
+// 会空转（断言数为 0 却显示通过），是最隐蔽的假绿。故显式记数并在下面断言非空转。
+let contractSwept = 0;
+((S.allMonths ? S.allMonths() : []) || []).forEach(m => { carryContract('账套巡检 ' + m, m); contractSwept++; });
+check('契约巡检覆盖到期间（非空转）', contractSwept > 0, '巡检期间数=' + contractSwept);
+
+/* ============================================================
+ * 确定性回归：「孤立结转凭证」四态全表（随机步发现的缺陷，用固定场景锁住）
+ *   缺陷原形：录费用凭证 → 结转损益 → 删掉那张原费用凭证。结转凭证成了"孤立结转"，
+ *   修复前两个消费方给出互相打架的提示：结账检查「本期损益未结转，请先结转损益」、
+ *   点结转「本期损益已结转，请勿重复」—— 用户按第一句去点必然失败。
+ *   现两处统一走 carryForwardStatus() 四态。本用例按 none→todo→ok→stale 把每一态都走一遍，
+ *   每态都过 carryContract（同状态同出口），并验证**出口可达**：提示让用户做的动作
+ *   真的能做成（todo 的「请先结转」→ 结转成功；stale 的「重新结转」→ 删旧凭证后重发生成）。
+ *   「提示指向的动作必然可达」是这一整类缺陷的通式断言。
  * ============================================================ */
 (function orphanCarryCase() {
   S.newBook('孤立结转取证账套', 'small2013', curMonth);
   S._glCache = {};
   const eS = (S.state.subjects || []).filter(s => s.cls === 'expense')[0];
   const aS = (S.state.subjects || []).filter(s => s.cls === 'asset')[0];
-  const v0 = S.addVoucher({ word: '记', date: curMonth + '-10', summary: '孤立结转用例',
-    entries: [{ code: eS.code, name: eS.name, dr: 2190, cr: 0 }, { code: aS.code, name: aS.name, dr: 0, cr: 2190 }] });
-  const c0 = S.carryForwardProfit(curMonth);
-  check('孤立结转用例：首次结转成功（state=done）', c0 && c0.ok === true && c0.state === 'done', JSON.stringify(c0));
-  S.removeVoucher(v0.id, 'fuzz 孤立结转取证');
-  const cItem = (S.settleChecklist(curMonth) || []).filter(x => x.key === 'carry')[0];
-  check('孤立结转：结账检查能识别出「结转凭证已过时」并给出出口（状态可见，不静默）',
-    cItem && cItem.status === 'fail' && /重新结转/.test(cItem.tip || ''), JSON.stringify(cItem));
+  const mkPL = (day, amt, sum) => S.addVoucher({ word: '记', date: curMonth + '-' + day, summary: sum,
+    entries: [{ code: eS.code, name: eS.name, dr: amt, cr: 0 }, { code: aS.code, name: aS.name, dr: 0, cr: amt }] });
+  const delCarry = (why) => (S.state.vouchers || [])
+    .filter(v => v.deleted !== 'y' && v.kind === S.VOUCHER_KINDS.CARRY_PL)
+    .forEach(v => S.removeVoucher(v.id, why));
+
+  // ① none：本期无损益发生
+  carryContract('孤立结转·none', curMonth);
+
+  // ② todo：需要结转，且「请先结转」这个出口真的能做成
+  const v0 = mkPL('10', 2190, '孤立结转用例');
+  carryContract('孤立结转·todo', curMonth);
   const c1 = S.carryForwardProfit(curMonth);
-  check('孤立结转：判定为 stale，提示与结账检查同口径（不再出现"未结转/已结转"两句矛盾）',
-    c1 && c1.ok === false && c1.state === 'stale' && /重新结转/.test(c1.msg || '')
-      && !/已结转，请勿重复/.test(c1.msg || ''), JSON.stringify(c1));
-  (S.state.vouchers || []).filter(v => v.deleted !== 'y' && v.kind === S.VOUCHER_KINDS.CARRY_PL)
-    .forEach(v => S.removeVoucher(v.id, 'fuzz 孤立结转恢复'));
+  check('孤立结转·todo：提示指向的出口「请先结转」真的能做成（不是死路）',
+    c1 && c1.ok === true && c1.state === 'done', JSON.stringify(c1));
+
+  // ③ ok：已结转且仍一致 → 幂等拒绝，不得再给删改指引
+  carryContract('孤立结转·ok', curMonth);
   const c2 = S.carryForwardProfit(curMonth);
-  check('孤立结转：作废过时结转凭证后已无损益可结转（state=zero，UI 据此按成功提示而非报红）',
-    c2 && c2.ok === false && c2.state === 'zero', JSON.stringify(c2));
-  const cItem2 = (S.settleChecklist(curMonth) || []).filter(x => x.key === 'carry')[0];
-  check('孤立结转：作废过时结转凭证后检查恢复 ok（有明确出口，非死锁）',
-    cItem2 && cItem2.status === 'ok', JSON.stringify(cItem2));
+  check('孤立结转·ok：再次结转被幂等拒绝，提示落在 ok 态出口',
+    c2 && c2.ok === false && c2.state === 'ok' && /请勿重复/.test(c2.msg || ''), JSON.stringify(c2));
+
+  // ④ stale：删掉原损益凭证 → 结转凭证过时（净额被它自己带成非零）
+  S.removeVoucher(v0.id, 'fuzz 孤立结转取证');
+  const r4 = carryContract('孤立结转·stale', curMonth);
+  check('孤立结转·stale：两处同口径（结账检查与结转入口都不再说互斥话）',
+    /重新结转/.test(r4.tip) && !/请勿重复/.test(r4.tip), 'tip=' + r4.tip);
+  const c3 = S.carryForwardProfit(curMonth);
+  check('孤立结转·stale：判定为 stale，提示与结账检查同出口',
+    c3 && c3.ok === false && c3.state === 'stale' && /重新结转/.test(c3.msg || '')
+      && !/已结转，请勿重复/.test(c3.msg || ''), JSON.stringify(c3));
+
+  // ⑤ 出口可达（分支 A：净额已清零）：作废过时凭证 → zero（UI 据此按成功提示，不报红）
+  delCarry('fuzz 孤立结转恢复');
+  const c4 = S.carryForwardProfit(curMonth);
+  check('孤立结转·重做A：作废过时结转凭证后已无损益可结转（state=zero，非报错）',
+    c4 && c4.ok === false && c4.state === 'zero', JSON.stringify(c4));
+  carryContract('孤立结转·重做A后', curMonth);
+
+  // ⑥ 出口可达（分支 B：仍有损益）：补录一笔 → todo → 「重新结转」真能做成
+  mkPL('12', 500, '孤立结转重做补充');
+  check('孤立结转·重做B：补录损益凭证后回到 todo', S.carryForwardStatus(curMonth).state === 'todo',
+    S.carryForwardStatus(curMonth).state);
+  const c5 = S.carryForwardProfit(curMonth);
+  check('孤立结转·重做B：提示指向的出口「重新结转」真的能做成（stale 有唯一且可达的出口）',
+    c5 && c5.ok === true && c5.state === 'done', JSON.stringify(c5));
+  carryContract('孤立结转·重做B后', curMonth);
+
+  // ⑦ 收尾：清空本期 → 回到 none，检查项随之放行（有明确出口，非死锁）
+  (S.state.vouchers || []).filter(v => v.deleted !== 'y' && vmonth(v) === curMonth)
+    .forEach(v => S.removeVoucher(v.id, 'fuzz 孤立结转清理'));
+  const r7 = carryContract('孤立结转·清理后', curMonth);
+  check('孤立结转·清理后：回到 none，结账检查放行',
+    r7.st.state === 'none' && r7.item.status === 'ok', JSON.stringify(r7.item));
   checkInvariants();
 })();
 

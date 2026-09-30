@@ -72,6 +72,23 @@ const RULES = [
     // ⚠ 必须允许表达式里带括号（如 `Math.round((a - b) * 100) / 100`）—— 第一版写成 `[^()]*`
     //    只匹配到最简单的 `x * 100`，把绝大多数真实命中都漏掉了（规则形同虚设）。
     re: /Math\.round\s*\(.*\*\s*100\s*\)\s*\/\s*100/
+  },
+  {
+    /* 【2026-09-30 新增类目】结转损益状态的**分叉判定**。
+       背景：「孤立结转凭证」缺陷的根因不是某处算错，而是**同一个状态被两个消费方各自下结论** ——
+         · 结账检查（settleChecklist）只看「本期损益净额是否为零」→ 答「未结转，请先结转」；
+         · 结转入口（carryForwardProfit）只看「有没有结转凭证」→ 答「已结转，请勿重复」。
+       两句提示互斥，用户按第一句去点必然失败（新建账套与导入账套都会出现）。
+       现已收敛为单点四态 store.carryForwardStatus()。本规则锁死"不再长出第二份判定"：
+       页面不得自己调 periodProfitNet / carryForwardState，也不得自己按 CARRY_PL 过滤凭证
+       来判「是否已结转」—— 一律经 carryForwardStatus()。
+       （注意：取数仍只在 store.js 里做；本规则管的是**状态判定**，不是取数。
+         kindVs/periodVouchersOfKind 用于折旧、结转成本等**其它** kind 是允许的，
+         故只在同一行同时出现 CARRY_PL 时才命中。）
+       动因与配套断言：verify_invariants.js 的 I13/I14、test_newbook_fuzz.js 的「状态→出口」契约表。 */
+    id: 'carry-state-fork',
+    desc: '页面自行判定「结转损益状态」（必须用 store.carryForwardStatus 单点四态）',
+    re: /(?:periodProfitNet|carryForwardState)\s*\(|(?:periodVouchersOfKind|kindVs)\s*\([^)]*CARRY_PL/
   }
 ];
 

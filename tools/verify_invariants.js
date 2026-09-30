@@ -421,6 +421,68 @@ function run(bookPath) {
   report('I12', '首页资金余额=总账父行合计', i12bad.length === 0,
     i12bad.length ? 'FAIL ' + i12bad.length + ' 期不一致（疑似父子重复聚合）' : '');
 
+  /* --- I13：已结账期间不得存在「孤立结转凭证」 --- */
+  // 【为什么需要】«存在结转损益凭证» 与 «本期损益已结平» 是同一事实的两种说法，
+  //   二者背离（凭证还在、净额又不为零）即「孤立结转凭证」—— 此时结账检查与结转入口
+  //   会各自给出相反结论（2026-09-29 修复的现象）。
+  //   而 I3 对「差额 = 未结转净利润」一律放行，那一形态与"正常未结转"在数字上完全同形，
+  //   故 I3 天然看不见它，必须在旁边单独巡逻。已结账期间尤其应为零：结账本身要求先结转，
+  //   若结账后仍不为零，说明结账检查项被降级放行（checkOverrides + force）留下了洞。
+  // 【强度】先 WARN 观察一轮：导入账套的结转金额若与本地重算口径有分可能误报
+  //   （I11 实测 29 个已结转月份逐分一致，风险低）；实测无差异后再收紧为 FAIL。
+  console.log('--- I13: 已结账期间无「孤立结转凭证」 ---');
+  const closeList = data.closedPeriods || [];
+  let i13bad = [];
+  closeList.forEach(m => {
+    const cs = S.carryForwardStatus(m);
+    if (!cs.exists) return;
+    const net = cs.net;
+    if (Math.abs(net.rev) >= EPS || Math.abs(net.exp) >= EPS) {
+      i13bad.push(m + '：结转凭证 ' + (cs.nums || '') + ' 仍在，但本期损益未结平（收入=' +
+        round2(net.rev) + ' 费用=' + round2(net.exp) + '）');
+    }
+  });
+  i13bad.slice(0, 3).forEach(x => console.log('    ' + x));
+  if (i13bad.length) console.log('      → 未结账期点「重新结转损益」重做；已结账期需先反结账再重做');
+  if (!i13bad.length && closeList.length) console.log('      ✓ 已核对 ' + closeList.length + ' 个已结账期间，无孤立结转凭证');
+  report('I13', '已结账期间无孤立结转凭证（' + closeList.length + ' 期）', i13bad.length === 0,
+    i13bad.length ? 'WARN ' + i13bad.length + ' 期存在孤立结转凭证' : '');
+
+  /* --- I14：结转四态 ↔ 结账检查口径必须一致（跨消费方契约） --- */
+  // 【为什么需要】「孤立结转凭证」这类缺陷不在数字层，而在**两个消费方对同一状态给出相反结论**。
+  //   本不变量直接断言契约：state ∈ {none, ok} ⟺ 结账检查 carry 项 'ok'；∈ {todo, stale} ⟺ 'fail'；
+  //   且 stale 的出口唯一 —— 提示必须含「重新结转」、不得再说「请勿重复」。
+  //   只锁「出口动作」不锁整句文案：改标点、换措辞不该红，出口被改跑偏才该红。
+  //   注：真实账套上 stale 极少出现（只读测试造不出该态，这正是上次漏检的原因之一），
+  //   故同样的表在 tools/test_newbook_fuzz.js 里用构造数据跑全四态 —— 两边缺一不可。
+  //   新增结转状态的消费方时，必须在此补断言（见 store.js carryForwardStatus 注释）。
+  console.log('--- I14: 结转四态 = 结账检查 carry 项 ---');
+  let i14bad = [], i14checked = 0;
+  (S.allMonths ? S.allMonths() : monthList).forEach(m => {
+    let tip = null, status = null;
+    try {
+      const cl = S.settleChecklist(m) || [];
+      const c = cl.filter(x => x.key === 'carry')[0];
+      if (!c) return;
+      tip = String(c.tip || ''); status = c.status;
+    } catch (e) { return; }
+    const st = S.carryForwardStatus(m).state;
+    i14checked++;
+    const wantOk = (st === 'none' || st === 'ok');
+    if (wantOk !== (status === 'ok')) {
+      i14bad.push(m + '：四态=' + st + ' 但结账检查=' + status + '（' + tip + '）');
+      return;
+    }
+    if (st === 'stale') {
+      if (tip.indexOf('重新结转') < 0) i14bad.push(m + '：stale 的提示未指向唯一出口「重新结转」→ ' + tip);
+      if (tip.indexOf('请勿重复') >= 0) i14bad.push(m + '：stale 与 ok 态文案混用（出现「请勿重复」）→ ' + tip);
+    }
+  });
+  i14bad.slice(0, 3).forEach(x => console.log('    ' + x));
+  if (!i14bad.length) console.log('      ✓ 已核对 ' + i14checked + ' 期，四态与结账检查逐期一致');
+  report('I14', '结转四态=结账检查口径', i14bad.length === 0,
+    i14bad.length ? 'FAIL ' + i14bad.length + ' 期口径不一致（同状态两个消费方给出相反结论）' : '');
+
   /* --- 汇总 --- */
   console.log('');
   console.log('=== 汇总 ===');
