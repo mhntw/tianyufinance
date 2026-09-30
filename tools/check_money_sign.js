@@ -94,8 +94,9 @@ function rel(p) { return path.relative(ROOT, p); }
 
 /* ---------------- 规则 1：抹符号的函数必须「名字看得出来」 ---------------- */
 const fnRe = /function\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\{([^}]*)\}/g;
-let m1;
+let m1, fnScanned = 0;
 while ((m1 = fnRe.exec(appSrc))) {
+  fnScanned++;
   const name = m1[1];
   const arg = m1[2];
   const body = m1[3];
@@ -108,6 +109,13 @@ while ((m1 = fnRe.exec(appSrc))) {
       + '这正是历史上被反复误用的那个坑。请改名（如 ' + name + ' → abs' + name.charAt(0).toUpperCase() + name.slice(1) + '）'
       + '或改用 signed() / moneyRed()。');
   }
+}
+/* 【命中数卡口】规则 1 是纯遍历：app.js 里若一个「单参 function」都匹配不到（正则失效、
+   函数改写成箭头函数等），循环体一次都不进 → 不产生任何 fails，规则形同虚设。
+   规则 2 的"守护对象缺失"能兜住 money 族，但兜不住"整个 app.js 的写法被换掉"这种全局情形。 */
+if (fnScanned === 0) {
+  fails.push('js/app.js  未匹配到任何「function 名(单参) {」定义 —— 规则 1 的扫描已失效，'
+    + '本次"通过"不代表任何函数被检查过（写法定被改动：箭头函数 / 对象方法？）。');
 }
 
 /* ---------------- 规则 2：应保号的函数必须真的保号 ---------------- */

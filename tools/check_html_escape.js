@@ -92,7 +92,9 @@ walk(JS_DIR, []).forEach(file => {
     /* 先挖掉「安全函数调用」再分析 —— 否则 money(c.dr) 里的 c.dr 会被当成裸属性访问
        而误报（实测这类误报占了剩余项的一半）。这些函数产出固定格式的数字/方向文本，
        不含 HTML 标签，无需转义。循环多轮以处理嵌套（money(num(x))）。 */
-    const SAFE_CALL = /\b(money|moneyRed|num|round2|amtCell|signed|fmt|esc|escHtml|escAttr|dirText|balText|walk)\s*\([^()]*\)/g;
+    // tmplMoney(v) = money(U.amt(v))：与 money 同类（结账模板侧的金额格式化出口，
+    //   产出固定格式数字串，不含 HTML），故一并列入白名单，避免其入参 dr/cr/diff 被误报。
+    const SAFE_CALL = /\b(tmplMoney|money|moneyRed|num|round2|amtCell|signed|fmt|esc|escHtml|escAttr|dirText|balText|walk)\s*\([^()]*\)/g;
     let work = stripped;
     for (let pass = 0; pass < 6; pass++) {
       const next = work.replace(SAFE_CALL, '');
@@ -131,6 +133,14 @@ walk(JS_DIR, []).forEach(file => {
     else problems.push(info);
   });
 });
+
+/* 【命中数卡口】本脚本是"扫描 → 发现未转义才报"的结构：若扫描彻底落空（正则失效、
+   页面改用别的渲染方式），problems 恒为空 → 打印"✓ 所有插入的值均已转义"并退出码 0。
+   那是最坏的绿：门禁还在，待检查对象为 0。故显式要求"必须真的扫到 innerHTML 赋值"。 */
+if (checked === 0) {
+  console.log('✗ 未扫描到任何 innerHTML 赋值 —— 判据已失效，本次"通过"无效（一个待检项都没有）。');
+  process.exit(1);
+}
 
 console.log('innerHTML 转义检查（扫描 ' + checked + ' 处赋值）');
 console.log('─'.repeat(60));

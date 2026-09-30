@@ -59,6 +59,8 @@ const skipped = QUICK ? ALL.filter(n => /^sim_/.test(n)) : [];
 let pass = 0, fail = 0, skipCount = 0;
 const failures = [];
 const skips = [];
+const unjudged = [];   // exit 0，但脚本既没给出可识别的通过结论、也不是跳过（门禁盲区，仅告警）
+const suspect = [];    // exit 0，但输出里出现明确的失败标记（疑「报了红却忘了 exit 非 0」，仅告警）
 const t0 = Date.now();
 
 console.log('回归自检（' + scripts.length + ' 个脚本'
@@ -104,6 +106,14 @@ scripts.forEach(name => {
     }
   } else if (ok) {
     pass++;
+    /* 门禁自身的盲区可视化（**只告警、不改判定** —— 门禁始终以退出码为准，
+       故这里不碰 hasPassMark / isSkip，避免把「先打 ✓ 后跳过」的脚本误判成通过）：
+       · unjudged：exit 0 且输出里**没有任何**断言痕迹（无 ✓/✗/PASS/FAIL/通过/失败/断言）
+                   → 这种"通过"其实只等于"它没报错"；
+       · suspect ：exit 0 但输出含**明确失败结论** → 疑脚本漏了 `process.exit(1)`；
+                   这类是真漏网（曾据此抓出 sim_vouchers 报 FAIL 8 却 exit 0）。 */
+    if (!/[✓✗]|PASS\b|FAIL\b|通过|失败|断言/.test(out)) unjudged.push(name);
+    if (/(\s|^)✗\s|FAIL [1-9]\d*\b|不通过|失败 [1-9]\d*/.test(out)) suspect.push(name);
     if (!QUIET) {
       const summary = (out.match(/(结果：[^|\n]*|通过 \d+ \/ 失败 \d+|\d+ 项断言全部通过|全部通过[^\n]*)/g) || []).pop() || '';
       console.log('  ✓ ' + name.padEnd(36) + String(ms + 'ms').padStart(8) + (summary ? '   ' + summary.slice(0, 34) : ''));
@@ -130,6 +140,20 @@ if (skips.length) {
   console.log('跳过（本次未做任何校验，**不等于通过**）：');
   skips.forEach(n => console.log('  ⊘ ' + n));
   console.log('  → 这些脚本需要真实账套 / .ais 样本；要真正跑到它们，请在本机（有账套）跑全量。');
+  console.log('');
+}
+/* 门禁盲区告警（不影响上面的通过/失败计数）：让「静默 exit 0」与「报了红却 exit 0」可见。
+   出现这几条不等于失败，而是提醒：这些脚本的"通过"只来自退出码，不含可识别的结论。 */
+if (unjudged.length) {
+  console.log('⚠ 无断言痕迹（exit 0 但输出里没有任何 ✓/✗/通过/失败 之类的判定，仅凭退出码计入通过）：');
+  unjudged.forEach(n => console.log('  ? ' + n));
+  console.log('  → 这种"通过"只等于"它没报错"。建议给脚本补一行明确结论，便于门禁与 CI 辨识。');
+  console.log('');
+}
+if (suspect.length) {
+  console.log('⚠ 可疑假绿（exit 0 但输出含失败标记 —— 疑脚本漏了 process.exit(1)）：');
+  suspect.forEach(n => console.log('  ? ' + n));
+  console.log('  → 请检查这些脚本：若有失败应 `process.exit(1)`，否则失败会被门禁当成通过。');
   console.log('');
 }
 console.log('通过 ' + pass + ' / 跳过 ' + skipCount + ' / 失败 ' + fail + '   耗时 ' + secs + 's');

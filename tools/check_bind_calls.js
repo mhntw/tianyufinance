@@ -36,10 +36,12 @@ const srcs = files.map(function (f) { return { rel: path.relative(ROOT, f), src:
 const all = srcs.map(function (x) { return x.src; }).join('\n');
 
 const orphans = [];
+let bindDefs = 0;
 srcs.forEach(function (x) {
   const re = /^function\s+(bind[A-Za-z0-9_]+)\s*\(/gm;
   let m;
   while ((m = re.exec(x.src))) {
+    bindDefs++;
     const name = m[1];
     // 全项目出现次数：>1 说明除了定义还有调用点
     const total = (all.match(new RegExp('\\b' + name + '\\b', 'g')) || []).length;
@@ -49,6 +51,16 @@ srcs.forEach(function (x) {
 
 console.log('事件绑定函数调用检查');
 console.log('  扫描 ' + srcs.length + ' 个 js 文件');
+
+/* 【命中数卡口】本脚本的判据是"扫描 → 发现异常才失败"：若命名约定或扫描正则被改动
+   （如把 `function bindXxx(` 改成 `bindXxx: function(`），扫描结果会变成 0 个候选 ——
+   此时 orphans 恒为空、脚本打印"无孤儿函数"并**退出码 0**。那是最坏的一种绿：
+   看起来门禁在守，实际一个函数都没检查。故在此显式要求"必须真的扫到候选"。 */
+if (bindDefs === 0) {
+  console.log('\n✗ 未扫描到任何 bindXxx() 定义 —— 判据已失效（命名约定或正则被改动？），');
+  console.log('  本次"通过"无效：它一个绑定函数都没检查。请修正扫描规则后重跑。');
+  process.exit(1);
+}
 
 if (!orphans.length) {
   console.log('\n✓ 所有 bindXxx 函数都有调用点，无孤儿函数');

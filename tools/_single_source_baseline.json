@@ -7,6 +7,8 @@
     "dir-sign-convert": 0,
     "inline-dir-text": 0,
     "inline-round2": 0,
-    "carry-state-fork": 0
+    "carry-state-fork": 0,
+    "inline-fixed2": 18,
+    "inline-amt-scale": 0
   }
 }

@@ -89,6 +89,32 @@ const RULES = [
     id: 'carry-state-fork',
     desc: '页面自行判定「结转损益状态」（必须用 store.carryForwardStatus 单点四态）',
     re: /(?:periodProfitNet|carryForwardState)\s*\(|(?:periodVouchersOfKind|kindVs)\s*\([^)]*CARRY_PL/
+  },
+  {
+    /* 【2026-09-30 新增类目】金额显示在页面自行格式化到分（金额定点化配套）。
+       定点化后，金额的显示单点是 store.money()：入参是**内部定点整数**，输出 2 位千分位，
+       并且会断言入参是整数（收到「元」时显式告警 —— 把"差 10000 倍"从静默错误变成可见告警）。
+       页面若自行 `U.yuan(x).toFixed(2)`，等于绕过这个单点：少了千分位、少了整数断言，
+       更把「整数 ↔ 元」这个单位边界重新摊回页面 —— 一旦有人写成 `x.toFixed(2)`（漏掉
+       U.yuan），输出就是放大 10000 倍的金额，而且不报错。
+       与 inline-round2 同一思路：存量按基线棘轮收敛，新增即红。 */
+    id: 'inline-fixed2',
+    desc: '页面自行把金额格式化到 2 位（应走单点 money/U.money：千分位 + 整数断言都在那里）',
+    re: /U\.yuan\s*\(.*\)\s*\.toFixed\s*\(\s*2\s*\)/
+  },
+  {
+    /* 【2026-09-30 新增类目】金额定点比例的**内联实现**（10000）。
+       比例（1 元 = 10000 个最小单位）只能有一处定义：store.js 的 AMT_SCALE + 换算函数
+       amt()/yuan()。页面里再出现裸 10000 参与金额换算，就是「第二份比例」—— 比例一旦调整
+       （例如 4 位改 6 位），这些点会静默分叉，症状正是最难查的"金额差 10000 倍"。
+       判据只认**参与运算**的 10000（*、/、比较、|| 兜底）：
+         · `var GROUP_BASE = 10000`（中文大写按万分组）、`LIFE_SCALE = 10000`（年限保留 4 位）
+           这类**命名常量声明**不算 —— 它们与金额比例无关，已各自命名以示区别；
+         · `100000` 等更长数字不算（\b 边界已排除）。
+       store.js 本身在 ALLOW 里 —— 它是比例的合法持有者。 */
+    id: 'inline-amt-scale',
+    desc: '内联金额定点比例 10000（应走单点 AMT_SCALE / amt() / yuan()）',
+    re: /[*/]\s*10000\b|\b10000\s*[*/]|\|\|\s*10000\b|(?:<=?|>=?)\s*10000\b/
   }
 ];
 
@@ -113,7 +139,11 @@ files.forEach(function (p) {
   const rel = path.relative(ROOT, p).split(path.sep).join('/');
   if (ALLOW.indexOf(rel) >= 0) return;               // 取数层为口径的合法持有者
   let lines = [];
-  try { lines = fs.readFileSync(p, 'utf8').split('\n'); } catch (e) { return; }
+  try { lines = fs.readFileSync(p, 'utf8'); } catch (e) { return; }
+  /* 先抹掉块注释（斜杠+星号 到 星号+斜杠，可跨行），把非换行字符换成等量空白以保留行号，
+     否则「注释里讨论口径」会被当成实现 —— 实测误报：Settle.js 的块注释里写了「1/10000」
+     这类说明文字，会被 inline-amt-scale 判成内联比例。行注释仍按下方"整行以双斜杠开头"跳过。 */
+  lines = lines.replace(/\/\*[\s\S]*?\*\//g, function (m) { return m.replace(/[^\n]/g, ' '); }).split('\n');
   lines.forEach(function (line, i) {
     const t = line.trim();
     // 跳过纯注释行：注释里讨论口径是合理的（说明性文字不该被当作实现）
