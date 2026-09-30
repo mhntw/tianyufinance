@@ -190,8 +190,9 @@ function bindSettleEvents() {
   onBtn('btnReCarryForward', async function () {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
-    // 按 v.kind 定位旧结转凭证（结构识别）；此前用摘要正则对导入账套恒找不到，重做被幂等拦截。
-    var old = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_PL);
+    // 旧结转凭证从**单点四态判定**取（carryForwardStatus().vouchers），不再自行按 kind 过滤：
+    // 「哪些凭证是结转凭证」也是一个口径，页面各写一份迟早与 store 分叉（此前用摘要正则，对导入账套恒找不到）。
+    var old = S.carryForwardStatus(month).vouchers;
     // 确认文案按状态区分：未结转=首次结转，已结转=重做（删除旧凭证重新生成）
     var cmsg = old.length
       ? '重新结转将删除本期已有的 ' + old.length + ' 张结转损益凭证并重新生成，确定继续？'
@@ -343,14 +344,17 @@ function bindSettleEvents() {
       // vat / surTax / incTax 已下线（2026-09-18），批量生成不再包含这三项
       var sysMap = { dep: 'btnDepVoucher', cost: 'btnCarryCost', profit: 'btnReCarryForward' };
       if (sysMap[g.id]) {
-        // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑
-        var sysKindMap = { dep: S.VOUCHER_KINDS.DEPR, cost: S.VOUCHER_KINDS.CARRY_COST, profit: S.VOUCHER_KINDS.CARRY_PL };
-        var existed = S.periodVouchersOfKind(month, sysKindMap[g.id]);
-        if (existed.length) {
+        // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑。
+        // 结转损益的「是否已生成」走单点四态（carryForwardStatus().exists），页面不再自行按 kind 过滤 ——
+        // 同一口径多份实现正是「各消费方结论相反」那类缺陷的温床（见 check_single_source.js 的 carry-state-fork 规则）。
+        var carrySt = g.id === 'profit' ? S.carryForwardStatus(month) : null;
+        var sysKind = g.id === 'dep' ? S.VOUCHER_KINDS.DEPR : S.VOUCHER_KINDS.CARRY_COST;
+        var existed = carrySt ? carrySt.exists : (S.periodVouchersOfKind(month, sysKind).length > 0);
+        if (existed) {
           // 结转损益的凭证可能"过时"（其后损益凭证被删改，本期净额不再为零）：此时不能静默跳过，
           // 否则结账检查报 blocking fail、批处理却说"跳过"，用户找不到出口。
           // 批处理**不自动删凭证**（勾选式批处理无声删账的风险过高），只把跳过改成明确提示。
-          if (g.id === 'profit' && S.carryForwardStatus(month).state === 'stale') {
+          if (carrySt && carrySt.state === 'stale') {
             errCount++; msgs.push('结转损益：本期结转凭证与当前损益发生额不一致，请点「重新结转损益」重新生成');
           } else { skipCount++; }
           continue;
@@ -706,7 +710,7 @@ function refreshSettle() {
   var profitDoneEl = $('profitDone'), profitTodoEl = $('profitTodo');
   if (profitDoneEl && profitTodoEl) {
     var netProfit = U.num(curEst.netProfit) || 0; // 正数=盈利
-    var carryVch = kindVs(curVs, K.CARRY_PL);
+    var carryVch = S.carryForwardStatus(curMonth).vouchers;
     var carried = 0;
     carryVch.forEach(function (v) {
       v.entries.forEach(function (e) {
@@ -753,7 +757,7 @@ function refreshSettle() {
   if (rcb) {
     rcb.disabled = closed;
     if (closed) rcb.textContent = '已结转';
-    else rcb.textContent = (kindVs(curVs, K.CARRY_PL).length > 0) ? '重新结转' : '结转损益';
+    else rcb.textContent = S.carryForwardStatus(curMonth).exists ? '重新结转' : '结转损益';
   }
 
   // 「结转本年利润」仅在 12 月显示（年末结转 3103 → 3104，跨年未分配利润才准确）
