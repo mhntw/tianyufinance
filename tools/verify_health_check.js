@@ -9,9 +9,14 @@
  *   ② 修掉一处**同一事实、两处阈值**的缺陷：资产负债表平衡判据
  *        runSelfTest（顶部横幅 / 结账清单）  原为硬编码 `>= 0.01`
  *        financialHealthCheck（风险检测）    原为硬编码 `>= 0.005`
- *      改成两处都用全局 EPS（半分）。这不是"看着不一致" —— 是**可复现的行为差异**：
+ *      改成两处统一口径。这不是"看着不一致" —— 是**可复现的行为差异**：
  *      JS 里 `0.03 - 0.02 === 0.009999999999999998`，于是 `>= 0.01` 会把真实的 1 分不平判成"平"
  *      （本脚本 B 组用例就是这条修复的回归）。
+ *   ③ 【2026-09-30 定点化后】统一口径的**具体形态**又从「全局 EPS（半分）」改为
+ *      「整数严格比较」（金额已是 0.0001 元整数，容差不但多余、还会把语义悄悄改严 100 倍）。
+ *      故 D8a/D8b 断言的是**当前形态**：`bs.totalAsset !== bs.totalAll` / `diff !== 0`。
+ *      ⚠ 这两条是"抠源码文本"式断言（见 run-all 说明的已知局限）：改动判据写法就要同步改这里，
+ *        否则会被误报成回归 —— 本次即是如此。
  *
  * 【为什么这条要测】`financialHealthCheck` 此前**零测试覆盖**，而它产出的是
  *   "期末损益未结转""资产负债表不平衡"这类会直接影响用户判断的结论。
@@ -101,9 +106,12 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
 
 /* ---------- C. 跨年分区（原「查看校验报告」的内容） ---------- */
 (function yearJump() {
+  /* meta.yearBoundaries 的金额字段随账套一起定点化（0.0001 元整数）：迁移时 ×10000，
+     而 financialHealthCheck 的阈值也经 amt() 换算，两侧同口径才比较得起来。
+     故这里的样本必须用内部整数口径 —— 150000 元 → 1500000000。 */
   const yb = [{ fromYear: 2024, toYear: 2025, checked: 2, total: 2, allDiffs: [
-    { code: '1001', name: '库存现金', prevEnd: 100000, curOpen: 250000, diff: 150000 },
-    { code: '3001', name: '实收资本', prevEnd: 1000, curOpen: 1500, diff: 500 }
+    { code: '1001', name: '库存现金', prevEnd: 1000000000, curOpen: 2500000000, diff: 1500000000 },
+    { code: '3001', name: '实收资本', prevEnd: 10000000, curOpen: 15000000, diff: 5000000 }
   ] }];
   mkState([vch(3, 100, 100)], { meta: { yearBoundaries: yb } });
   const h = S.financialHealthCheck(OH);
@@ -161,11 +169,11 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
   check(/ysec\.style\.display\s*=\s*'none'/.test(settings) && /ysec\.style\.display\s*=\s*''/.test(settings),
     'D6 跨年分区在无数据时必须**显式隐藏**、有数据时才显示（防止切账套后残留上一本的跨年表）');
 
-  // 容差单点：两处 BS 判据都不得硬编码小数字
+  // 容差单点：定点化后两处 BS 判据都必须是**整数严格比较**，不得回退成小数字容差
   const hard = store.match(/totalAll\)\s*>=\s*0\.0\d+/g) || [];
   check(hard.length === 0,
-    'D7 资产负债表平衡判据不得硬编码 0.01/0.005（必须用全局 EPS，否则两处会再次分叉）', hard.join(' | '));
-  // 逐函数取体（按下一个方法定义切段），确认两处都走 EPS
+    'D7 资产负债表平衡判据不得硬编码 0.01/0.005 容差（定点化后金额是整数，必须严格比较）', hard.join(' | '));
+  // 逐函数取体（按下一个方法定义切段），确认两处口径一致、都是整数严格比较
   function methodBody(name) {
     const i = store.indexOf('    ' + name + ': function');
     if (i < 0) return '';
@@ -173,9 +181,9 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
     return store.slice(i, j > i ? j : store.length);
   }
   const rsBody = methodBody('runSelfTest'), fhBody = methodBody('financialHealthCheck');
-  check(/totalAsset - bs\.totalAll\)\s*>=\s*EPS/.test(rsBody),
-    'D8a runSelfTest 的 BS 判据应使用 EPS（顶部横幅 / 结账清单那一份）',
-    (rsBody.match(/totalAll\)\s*>=[^)]*/) || ['未找到'])[0]);
+  check(/bs\.totalAsset\s*!==\s*bs\.totalAll/.test(rsBody),
+    'D8a runSelfTest 的 BS 判据应是整数严格比较（bs.totalAsset !== bs.totalAll）',
+    (rsBody.match(/totalAll\)\s*[!=]==?[^)]*/) || ['未找到'])[0]);
   // UI 必须走 store 的设计口径（自适应 TOP-N），不得再传固定 largeVoucher 把它顶掉
   const fhCall = (settings.match(/financialHealthCheck\(\{[^}]*\}\)/) || [''])[0];
   check(fhCall.indexOf('largeVoucher') < 0,
@@ -183,9 +191,9 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
   check(/keySubject/.test(fhCall), 'D11 该按钮应传 keySubject（跨年/关键科目阈值口径）', fhCall);
   check(store.indexOf('total: checks.length') < 0,
     'D9 summary.total 不得再直接取 checks.length（那是"分类数"，会把参考项也算成风险点）');
-  check(/Math\.abs\(diff\)\s*>=\s*EPS/.test(fhBody),
-    'D8b financialHealthCheck 的 BS 判据应使用 EPS（风险检测那一份）',
-    (fhBody.match(/>= ?[0-9.]+|>= EPS/g) || ['未找到']).join(' '));
+  check(/\bdiff\s*!==\s*0\b/.test(fhBody),
+    'D8b financialHealthCheck 的 BS 判据应是整数严格比较（diff !== 0，与 runSelfTest 同口径）',
+    (fhBody.match(/diff\s*[!=]==?[^;\n]*/) || ['未找到'])[0]);
 })();
 
 if (fail) {

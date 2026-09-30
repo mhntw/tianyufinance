@@ -134,6 +134,11 @@ if (S.ensureCashFlowFields) S.ensureCashFlowFields();
 /* ---------- 断言工具 ---------- */
 const r2 = n => Math.round(Number(n) * 100) / 100;
 const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+/* 定点化后：store 取数层返回的是**内部定点整数**（0.0001 元），而本脚本的期望值全部是
+   人工手算的「元」→ 凡与手算值比较的取数结果一律经 yuan() 归一，比较与打印都在元域。
+   （资产负债表合计只做「两边相等」的等式断言，两侧同乘常数不影响结论，故无需换算。） */
+const Y = (global.util && global.util.AMT_SCALE) || 10000;
+const yuan = n => Number(n) / Y;
 let pass = 0, fail = 0;
 const fails = [];
 function ok(name, cond, extra) {
@@ -354,14 +359,14 @@ function gl(month) { S._glCache = {}; return S.generalLedger(month); }
 function netOf(rows, code) {
   const r = rows.find(x => String(x.code) === String(code));
   if (!r) return 0;
-  const b = num(r.balance);
+  const b = yuan(num(r.balance));
   return r.dir === '借' ? b : -b;
 }
 function periodDelta(month, code) {
   const rows = gl(month);
   const r = rows.find(x => String(x.code) === String(code));
   if (!r) return 0;
-  return r2(num(r.periodDr) - num(r.periodCr));
+  return r2(yuan(num(r.periodDr) - num(r.periodCr)));
 }
 
 /* ============================================================
@@ -403,7 +408,7 @@ PLAN.forEach(P => {
     //   的缺陷才成立的：本测试用一级科目(有下级)记账，未结转利润被算成 0，才显得"不平"。
     //   该缺陷修复后此期望不再成立，改为直接核对未结转利润本身（更有针对性）。
     ok('结转前资产负债表平衡（未结转损益已并入权益）', Math.abs(diff) < 0.005, '差 ' + diff.toFixed(2));
-    eqAmt('未结转利润 = 当月利润（被正确识别）', r2(S.unclosedProfit(M)), P.expect.profit);
+    eqAmt('未结转利润 = 当月利润（被正确识别）', r2(yuan(S.unclosedProfit(M))), P.expect.profit);
   }
 
   section('【4】结转损益');
@@ -414,10 +419,10 @@ PLAN.forEach(P => {
   section('【5】利润表 = 人工手算');
   S._glCache = {};
   const PL = S.profitStatement(M);
-  console.log('    软件：收入 ' + r2(PL.totalRevenue).toFixed(2) + '  费用 ' + r2(PL.totalExpense).toFixed(2) + '  净利 ' + r2(PL.netProfit).toFixed(2));
+  console.log('    软件：收入 ' + r2(yuan(PL.totalRevenue)).toFixed(2) + '  费用 ' + r2(yuan(PL.totalExpense)).toFixed(2) + '  净利 ' + r2(yuan(PL.netProfit)).toFixed(2));
   console.log('    手算：收入 ' + P.expect.rev.toFixed(2) + '  费用 ' + r2(P.expect.cost + P.expect.exp).toFixed(2) + '  净利 ' + P.expect.profit.toFixed(2));
-  eqAmt('利润表·收入', PL.totalRevenue, P.expect.rev);
-  eqAmt('利润表·净利润', PL.netProfit, P.expect.profit);
+  eqAmt('利润表·收入', yuan(PL.totalRevenue), P.expect.rev);
+  eqAmt('利润表·净利润', yuan(PL.netProfit), P.expect.profit);
   eqAmt('3103 本年利润 本期变动 = 当月利润', periodDelta(M, '3103'), -P.expect.profit);
 
   section('【6】结转后：资产负债表平衡 + 资产/负债增量 = 手算');
@@ -449,7 +454,7 @@ PLAN.forEach(P => {
     console.log('    结转前 3103 余额 ' + before3103.toFixed(2) + '（应 = 导入账套 1~8 月累计 + 模拟各月利润）');
     let y = null;
     try { y = S.carryYearEnd(M); } catch (e) { y = { err: e.message }; }
-    ok('年末结转执行', y && y.ok !== false, y && y.ok ? ('结转金额 ' + r2(num(y.amount)).toFixed(2)) : JSON.stringify(y || {}).slice(0, 90));
+    ok('年末结转执行', y && y.ok !== false, y && y.ok ? ('结转金额 ' + r2(yuan(y.amount)).toFixed(2)) : JSON.stringify(y || {}).slice(0, 90));
     const after3103 = netOf(gl(M), '3103');
     const allocAfter = netOf(gl(M), '3104');
     console.log('    结转后 3103 余额 ' + after3103.toFixed(2) + '   3104 变动 ' + r2(allocAfter - allocBefore).toFixed(2));

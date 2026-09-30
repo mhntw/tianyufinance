@@ -53,10 +53,20 @@ if (global.Storage) {
 
 const base = JSON.parse(fs.readFileSync(FILE, 'utf8'));
 const st = JSON.parse(JSON.stringify(base)); // 深拷贝，保护原文件
-S.state = st; S.bookId = '__SIM_VOUCHERS_NEVER_SAVE__'; S._glCache = {}; S.normalizeState(); S.ensureCashFlowFields();
+S.state = st; S.bookId = '__SIM_VOUCHERS_NEVER_SAVE__';
+/* 【2026-09-30 定点化】磁盘账套多为 v5（金额=「元」），必须先迁到 v6（0.0001 元整数）
+   再取数 —— 否则 generalLedger 等会拿「元」值当整数算，本脚本的增量断言会整体失效。
+   migrateAmountsToV6 自带幂等门，对已是 v6 的账套无副作用。 */
+if (st.schemaVersion !== S.SCHEMA_VERSION && S.migrateAmountsToV6) S.migrateAmountsToV6(st);
+S._glCache = {}; S.normalizeState(); S.ensureCashFlowFields();
 
 const num = x => { x=Number(x); return isNaN(x)?0:x; };
-const EPS = 0.005; const eq = (a,b)=>Math.abs(a-b)<EPS;
+/* 【2026-09-30 定点化】store 取数是「0.0001 元整数」，故凡与之比较的期望值都要经 amt()
+   从「元」换算，不能再写字面量元值 —— 否则断言恒不成立（本脚本此前 8 条 FAIL 的成因：
+   拿整数增量去比 60000 之类的元值）。整数域下"相等"即严格相等。 */
+const amt = v => global.util.amt(v);
+const yuan = v => global.util.yuan(v);
+const eq = (a, b) => a === b;
 let pass=0, fail=0;
 function ok(name, cond, extra){ if(cond){pass++;console.log('  PASS '+name);} else {fail++;console.log('  FAIL '+name+(extra?'  '+extra:''));} }
 
@@ -115,13 +125,13 @@ ok('脏凭证未入库', st.vouchers.length === base.vouchers.length+3);
 
 console.log('--- 场景5：录入后总账/余额联动 ---');
 const after = S.generalLedger(MON);
-ok('1002 银行存款+60000', eq(balOf(after,'1002')-balOf(before,'1002'), 60000), '增量='+(balOf(after,'1002')-balOf(before,'1002')));
-ok('1122 应收账款+40000', eq(balOf(after,'1122')-balOf(before,'1122'), 40000));
-ok('5001 主营业务收入+100000(贷)', eq(balOf(after,'5001')-balOf(before,'5001'), -100000));
-ok('1405 库存商品+30000', eq(balOf(after,'1405')-balOf(before,'1405'), 30000));
-ok('2202 应付账款+30000(贷)', eq(balOf(after,'2202')-balOf(before,'2202'), -30000));
-ok('5601 销售费用+5800', eq(balOf(after,'5601')-balOf(before,'5601'), 5800));
-ok('1001 库存现金-5800', eq(balOf(after,'1001')-balOf(before,'1001'), -5800));
+ok('1002 银行存款+60000', eq(balOf(after,'1002')-balOf(before,'1002'), amt(60000)), '增量='+yuan(balOf(after,'1002')-balOf(before,'1002')));
+ok('1122 应收账款+40000', eq(balOf(after,'1122')-balOf(before,'1122'), amt(40000)));
+ok('5001 主营业务收入+100000(贷)', eq(balOf(after,'5001')-balOf(before,'5001'), -amt(100000)));
+ok('1405 库存商品+30000', eq(balOf(after,'1405')-balOf(before,'1405'), amt(30000)));
+ok('2202 应付账款+30000(贷)', eq(balOf(after,'2202')-balOf(before,'2202'), -amt(30000)));
+ok('5601 销售费用+5800', eq(balOf(after,'5601')-balOf(before,'5601'), amt(5800)));
+ok('1001 库存现金-5800', eq(balOf(after,'1001')-balOf(before,'1001'), -amt(5800)));
 
 console.log('--- 场景6：资产负债表仍平衡 ---');
 const afterBS = S.balanceSheet(MON);
@@ -131,7 +141,7 @@ const afterBS = S.balanceSheet(MON);
    现改为产品自身结账检查所用的口径：资产合计 vs (负债+权益) 合计。 */
 const bsDiff = num(afterBS.totalAsset) - num(afterBS.totalAll);
 ok('录入后资产负债表平衡', eq(bsDiff, 0),
-  '差=' + bsDiff.toFixed(2) + '  资产=' + num(afterBS.totalAsset) + '  负债及权益=' + num(afterBS.totalAll));
+  '差=' + yuan(bsDiff) + '  资产=' + yuan(num(afterBS.totalAsset)) + '  负债及权益=' + yuan(num(afterBS.totalAll)));
 
 console.log('--- 场景7：利润表联动（用真实 pl.items 字段）---');
 const pl = S.profitStatement(MON);
@@ -140,8 +150,8 @@ ok('利润表正常生成(items有数据)', pl && pl.items && pl.items.length>0,
    `>= 0` 恒真（且 `_baseRev` 在本文件从未定义，恒为 0），等于没断言。
    现改为与**录入前基线**比较：场景 3 录入了 5001 主营业务收入 100000（贷），
    故利润表营业收入必须恰好增加 100000；差一分都说明联动断了。 */
-ok('利润表营业收入较录入前 +100000', eq(num(pl.totalRevenue) - num(plBefore.totalRevenue), 100000),
-  '录入前=' + num(plBefore.totalRevenue) + ' 录入后=' + num(pl.totalRevenue));
+ok('利润表营业收入较录入前 +100000', eq(num(pl.totalRevenue) - num(plBefore.totalRevenue), amt(100000)),
+  '录入前=' + yuan(num(plBefore.totalRevenue)) + ' 录入后=' + yuan(num(pl.totalRevenue)));
 
 console.log('--- 场景8：明细账可见新凭证 ---');
 const pvs = S.periodVouchers(MON).filter(v=>[900,901,902].indexOf(num(v.no))>=0);
@@ -188,3 +198,6 @@ ok('UI校验链：空科目编码被拦截', ui4 && ui4.ok===false, JSON.stringi
 
 console.log('\n=== 结果：PASS '+pass+' / FAIL '+fail+' ===');
 console.log('（测试在深拷贝账套上进行，原文件未改动；已清理临时凭证对象）');
+/* 【2026-09-30 补】此前本脚本打印 FAIL 计数却**从不设置退出码**，于是失败也被
+   run-all（以退出码为准）记成通过 —— 一个能报红却不失败的假绿口子。现补齐。 */
+process.exit(fail ? 1 : 0);

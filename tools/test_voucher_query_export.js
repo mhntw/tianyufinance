@@ -76,6 +76,10 @@ function makeEnv(periodVouchers) {
     $: (id) => els[id] || null,
     U: {
       num: (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; },
+      /* 定点化后：store 内部金额是 0.0001 元定点整数，导出/显示边界必须经 yuan() 换回元。
+         exportQuery 现在调 U.yuan(en.dr)，故 mock 必须提供（与 store 的 util 同口径）。 */
+      yuan: (v) => { const n = Number(v); return isFinite(n) ? n / 10000 : 0; },
+      AMT_SCALE: 10000,
       /* monthList：与 store.js 的同名函数**逐行同源**（展开月份区间，含 01~12 校验）。
          此前只 mock 了 U.num，queryVouchers 内部调 U.monthList 时报「is not a function」。
          直接复制实现而非简化，是为了让被测代码走真实口径 —— 若 store 的 monthList 变了，
@@ -120,13 +124,14 @@ function v(id, word, no, date, entries) {
 (async function () {
   console.log('查凭证导出测试：');
 
+  // 金额是 store 内部口径（0.0001 元定点整数）：100 元 = 1000000，50 元 = 500000。
   const pv = {
-    '2026-01': [v('a', '记', 2, '2026-01-05', [{ code: '1001', name: '库存现金', summary: '提现', dr: 100, cr: 0 }])],
+    '2026-01': [v('a', '记', 2, '2026-01-05', [{ code: '1001', name: '库存现金', summary: '提现', dr: 1000000, cr: 0 }])],
     '2026-02': [v('b', '记', 1, '2026-02-08', [
-      { code: '1002', name: '银行存款', summary: '收款', dr: 0, cr: 200 },
-      { code: '6001', name: '主营业务收入', summary: '收款', dr: 200, cr: 0 }
+      { code: '1002', name: '银行存款', summary: '收款', dr: 0, cr: 2000000 },
+      { code: '6001', name: '主营业务收入', summary: '收款', dr: 2000000, cr: 0 }
     ])],
-    '2026-03': [v('c', '记', 1, '2026-03-08', [{ code: '1001', name: '库存现金', summary: '提现', dr: 50, cr: 0 }])]
+    '2026-03': [v('c', '记', 1, '2026-03-08', [{ code: '1001', name: '库存现金', summary: '提现', dr: 500000, cr: 0 }])]
   };
 
   // vm 沙箱内产生的数组原型与外层不同，deepStrictEqual 会因 realm 差异失败，

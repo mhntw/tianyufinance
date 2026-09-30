@@ -17,6 +17,10 @@ require(path.join(ROOT, 'js/storage.js'));
 require(path.join(ROOT, 'js/store.js'));
 const S = global.S;
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+/* 定点化后：store 内部金额是定点整数（0.0001 元），而【表单/updateFixedAsset 入参】是「元」。
+   故断言两侧分别在各自的口径上取值：内部读 num() 即整数，期望值用 amt() 从元换算。 */
+const yuan = a => (global.util.yuan(a));
+const amt = v => global.util.amt(v);
 
 let pass = 0, fail = 0;
 function ck(cond, label) { if (cond) { pass++; console.log('  \u2713 ' + label); } else { fail++; console.log('  \u2717 ' + label); } }
@@ -43,22 +47,27 @@ const file = files.filter(f => { const b = JSON.parse(fs.readFileSync(f, 'utf8')
 if (!file) { console.log('  （无含卡片的账套，跳过 A 组）'); }
 else {
   S.state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  /* 磁盘账套是 v5（金额=「元」）→ 按真实加载路径先迁移到 v6（定点整数）。
+     不迁移的话 updateFixedAsset 会把「元」当元再 ×10000，而本脚本的期望值却是元 —— 两侧差 10000 倍。 */
+  if (S.migrateAmountsToV6 && S.state.schemaVersion !== S.SCHEMA_VERSION) S.migrateAmountsToV6(S.state);
   if (S.normalizeState) S.normalizeState();
   S._glCache = {};
   const fa = S.state.fixedAssets[0];
-  const b0 = num(fa.accumDeprBegin), a0 = num(fa.accumDepr);
-  ck(Math.abs(b0 - a0) < 0.005, 'A1 起点：卡片 accumDeprBegin == accumDepr（' + b0.toFixed(2) + '）');
+  const b0 = num(fa.accumDeprBegin), a0 = num(fa.accumDepr);   // 内部定点整数
+  ck(b0 === a0, 'A1 起点：卡片 accumDeprBegin == accumDepr（' + yuan(b0).toFixed(2) + '）');
   const name0 = fa.name;
-  S.updateFixedAsset(fa.id, { accumDeprBegin: b0 + 1000 });
+  // 表单口径是「元」：填「原期初 + 1000 元」
+  const want = yuan(b0) + 1000;
+  S.updateFixedAsset(fa.id, { accumDeprBegin: want });
   const r1 = S.state.fixedAssets.filter(x => x.id === fa.id)[0];
-  ck(Math.abs(num(r1.accumDepr) - num(r1.accumDeprBegin)) < 0.005,
+  ck(num(r1.accumDepr) === num(r1.accumDeprBegin),
     'A2 改期初 +1000 后两字段仍相等（修复前会分离成 1698.10 / 698.10）');
-  ck(Math.abs(num(r1.accumDepr) - (b0 + 1000)) < 0.005, 'A3 同步值等于表单填入值，未被旧值覆盖');
+  ck(num(r1.accumDepr) === amt(want), 'A3 同步值等于表单填入值，未被旧值覆盖');
   const bNow = num(r1.accumDeprBegin);
-  S.updateFixedAsset(fa.id, { name: name0 + 'X', accumDeprBegin: bNow });
+  S.updateFixedAsset(fa.id, { name: name0 + 'X', accumDeprBegin: yuan(bNow) });
   const r2 = S.state.fixedAssets.filter(x => x.id === fa.id)[0];
-  ck(Math.abs(num(r2.accumDepr) - bNow) < 0.005, 'A4 仅改其他字段时不会误清累计折旧');
-  ck(num(r2.accumDeprBegin) === 0 || Math.abs(num(r2.accumDepr) - num(r2.accumDeprBegin)) < 0.005,
+  ck(num(r2.accumDepr) === bNow, 'A4 仅改其他字段时不会误清累计折旧');
+  ck(num(r2.accumDeprBegin) === 0 || num(r2.accumDepr) === num(r2.accumDeprBegin),
     'A5 恒等式保持：accumDepr == accumDeprBegin');
 }
 

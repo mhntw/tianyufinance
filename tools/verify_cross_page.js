@@ -183,6 +183,18 @@ global.fetch = function () { return Promise.reject(new Error('no network')); };
 require(path.join(ROOT, 'js', 'storage.js'));
 require(path.join(ROOT, 'js', 'store.js'));
 const S = global.S;
+/* 定点化后（金额=0.0001 元定点整数）：上面手写的 num/money mock 是旧的「元」口径，
+   与本脚本要验证的真实页面行为不符。一律改用 store 暴露的真实 util（与 app.js 同源）。 */
+(function adoptRealUtil() {
+  const RU = global.util;
+  if (!RU) return;
+  ['num', 'money', 'round2', 'amt', 'yuan', 'AMT_SCALE'].forEach(function (k) {
+    if (RU[k] !== undefined) { U[k] = RU[k]; H[k] = RU[k]; }
+  });
+  H.absFmt = function (v) { return RU.money(Math.abs(Number(v) || 0)); };
+  H.signed = function (v) { return RU.money(v); };
+  H.moneyRed = function (v) { return RU.money(v); };
+})();
 S.persist = function () { };
 S.addLog = function () { };
 S.backupNow = function () { return Promise.resolve(true); };
@@ -305,6 +317,9 @@ function rowsOf(containerId) {
 }
 const amt = function (s) { const t = String(s == null ? '' : s).replace(/,/g, '').trim(); return t === '' ? 0 : num(t); };
 const eqAmt = function (a, b) { return Math.abs(a - b) < 0.005; };
+/* 取数层金额（内部定点整数，0.0001 元）→ 与显示值同口径的「元」。
+   显示层反推出的净额是元，取数层给的是整数，比较前必须统一 —— 否则整表相差 10000 倍。 */
+const truthOf = function (a) { return round2(U.yuan(a)); };
 
 /* ---------- 7. 逐账套逐期检查 ---------- */
 let FAIL = 0, CHECKED = 0;
@@ -318,6 +333,11 @@ function checkBook(bk) {
   console.log('');
   console.log('===== 账套：' + (bk.obj.company && bk.obj.company.name || bk.file) + '（' + bk.file + '）=====');
   S.state = JSON.parse(JSON.stringify(bk.obj));
+  /* 磁盘上的账套可能是 v5（金额为「元」浮点）。真实加载路径会先迁移到 v6（定点整数）
+     再交给页面，本脚本若跳过迁移，屏幕侧 money() 靠「非整数兜底换算」侥幸显示正确，
+     导出侧 yuan() 却把元再除 10000 → 报出数千条"屏幕/导出不一致"假警报（正是本脚本
+     一开始全线飘红的原因）。故按真实路径先迁移，再做比较。 */
+  if (S.migrateAmountsToV6 && S.state.schemaVersion !== S.SCHEMA_VERSION) S.migrateAmountsToV6(S.state);
   if (S.normalizeState) S.normalizeState();
   S._glCache = {};
   S.bookId = '__XP__';
@@ -734,9 +754,9 @@ function verifyDlNet(m, code, scr) {
         + ' ≠ 取数层 ' + truth.toFixed(2) + '（行：方向「' + v.dir + '」余额「' + v.bal + '」）');
     }
   };
-  chk('期初余额', round2(r.obDr - r.obCr), '期初余额');
-  chk('本期合计', round2(r.endDr - r.endCr), '期末余额');
-  chk('本年累计', round2(r.endDr - r.endCr), '期末余额');
+  chk('期初余额', truthOf(r.obDr - r.obCr), '期初余额');
+  chk('本期合计', truthOf(r.endDr - r.endCr), '期末余额');
+  chk('本年累计', truthOf(r.endDr - r.endCr), '期末余额');
 }
 // 多栏账余额还原：期初行 → 期初净额；本期合计/本年累计两行 → 期末净额
 // （原实现曾把「本期发生额净额」当期末余额用，此断言正是为盯住这类错误）
@@ -756,9 +776,9 @@ function verifyMlNet(m, code, scr) {
         + ' ≠ 取数层 ' + truth.toFixed(2) + '（行：方向「' + c[5] + '」余额「' + c[6] + '」）');
     }
   };
-  chk('期初余额', round2(r.obDr - r.obCr), '期初余额');
-  chk('本期合计', round2(r.endDr - r.endCr), '期末余额');
-  chk('本年累计', round2(r.endDr - r.endCr), '期末余额');
+  chk('期初余额', truthOf(r.obDr - r.obCr), '期初余额');
+  chk('本期合计', truthOf(r.endDr - r.endCr), '期末余额');
+  chk('本年累计', truthOf(r.endDr - r.endCr), '期末余额');
 }
 
 // 反推净额：总账期望「方向列为借 → +金额，否则 -金额」（方向列承载科目正常方向）
@@ -791,7 +811,7 @@ function crossCheck(m, glScr, tbScr) {
     const r = byCode[code];
     if (!r) return;
     CHECKED++;
-    const truth = round2(r.endDr - r.endCr);          // 取数层（已与金蝶 100% 一致）
+    const truth = truthOf(r.endDr - r.endCr);
     const g = round2(netFromGl(glMap[code]));
     if (!eqAmt(g, truth)) {
       fail('[' + m + '] ' + code + ' ' + r.name + ' 总账显示值反推 ' + g.toFixed(2)

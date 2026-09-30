@@ -38,9 +38,15 @@ function mkState(subjects, vouchers) {
   S.state.bankStatements = [];
   S._glCache = {};
 }
+const U = global.util;
+/* 单位域：【直接写 S.state.vouchers】的金额是 store 内部口径（0.0001 元定点整数），
+   而【S.addVoucher / 备份恢复】的入参是「元」（由 store 的 amt() 换算）。
+   本脚本的期望值一律用「元」表达，读取时经 yuan() 归一 —— 故直写数据处用 int() 显式标注单位。 */
+const int = (yuan) => yuan * 10000;
 function glOf(code, month) {
   const r = (S.generalLedger(month) || []).filter((x) => x.code === code)[0];
-  return r ? num(r.periodDr) : 0;
+  // 取数层给的是内部定点整数（0.0001 元），本脚本的期望值一律是「元」→ 经 yuan() 归一比较
+  return r ? U.yuan(num(r.periodDr)) : 0;
 }
 
 const SUBJ = [
@@ -50,7 +56,7 @@ const SUBJ = [
 
 console.log('=== 1. 缓存键带 bookId：切换账套后同月份不串数据 ===');
 // 账套 A：2026-03 现金借方 1000
-mkState(SUBJ, [{ id: 'V1', word: '记', no: 1, date: '2026-03-05', summary: 'A收款', entries: [{ code: '1001', dr: 1000, cr: 0 }, { code: '6001', dr: 0, cr: 1000 }] }]);
+mkState(SUBJ, [{ id: 'V1', word: '记', no: 1, date: '2026-03-05', summary: 'A收款', entries: [{ code: '1001', dr: int(1000), cr: 0 }, { code: '6001', dr: 0, cr: int(1000) }] }]);
 S.bookId = 'BOOK_A';
 const aVal = glOf('1001', '2026-03');
 ck(aVal === 1000, '账套A 2026-03 现金发生额 = 1000（实际 ' + aVal + '）');
@@ -58,14 +64,14 @@ ck(aVal === 1000, '账套A 2026-03 现金发生额 = 1000（实际 ' + aVal + '�
 // 切到账套 B：2026-03 现金借方 555（同月份！）。
 // 注意：这里【不清缓存、只换 bookId + 换数据】，专门验证「靠 key 隔离」是否生效
 // （真实 switchBook 会显式清缓存，此处故意不清，以验证 key 隔离这一道防线本身就足够）。
-S.state.vouchers = [{ id: 'V2', word: '记', no: 1, date: '2026-03-06', summary: 'B收款', entries: [{ code: '1001', dr: 555, cr: 0 }, { code: '6001', dr: 0, cr: 555 }] }];
+S.state.vouchers = [{ id: 'V2', word: '记', no: 1, date: '2026-03-06', summary: 'B收款', entries: [{ code: '1001', dr: int(555), cr: 0 }, { code: '6001', dr: 0, cr: int(555) }] }];
 S.bookId = 'BOOK_B';
 const bVal = glOf('1001', '2026-03');
 ck(bVal === 555, '账套B 2026-03 现金发生额 = 555（实际 ' + bVal + '，修复前会命中A缓存返回1000）');
 ck(bVal !== aVal, '切换账套后同月份不再返回旧账套数据');
 
 // 切回账套 A（同时恢复 A 的数据，模拟真实 switchBook 从磁盘加载），仍应是 1000
-S.state.vouchers = [{ id: 'V1', word: '记', no: 1, date: '2026-03-05', summary: 'A收款', entries: [{ code: '1001', dr: 1000, cr: 0 }, { code: '6001', dr: 0, cr: 1000 }] }];
+S.state.vouchers = [{ id: 'V1', word: '记', no: 1, date: '2026-03-05', summary: 'A收款', entries: [{ code: '1001', dr: int(1000), cr: 0 }, { code: '6001', dr: 0, cr: int(1000) }] }];
 S.bookId = 'BOOK_A';
 const aVal2 = glOf('1001', '2026-03');
 ck(aVal2 === 1000, '切回账套A 仍为 1000（实际 ' + aVal2 + '）');
@@ -73,7 +79,7 @@ ck(aVal2 === 1000, '切回账套A 仍为 1000（实际 ' + aVal2 + '）');
 ck(Object.keys(S._glCache).length === 2, '两个账套的缓存各自独立（' + Object.keys(S._glCache).join(' , ') + '）');
 
 console.log('\n=== 2. restoreFromData 后缓存失效 ===');
-mkState(SUBJ, [{ id: 'V3', word: '记', no: 1, date: '2026-03-05', summary: '恢复前', entries: [{ code: '1001', dr: 3000, cr: 0 }, { code: '6001', dr: 0, cr: 3000 }] }]);
+mkState(SUBJ, [{ id: 'V3', word: '记', no: 1, date: '2026-03-05', summary: '恢复前', entries: [{ code: '1001', dr: int(3000), cr: 0 }, { code: '6001', dr: 0, cr: int(3000) }] }]);
 S.bookId = 'BOOK_C';
 const beforeRestore = glOf('1001', '2026-03');
 ck(beforeRestore === 3000, '恢复前 2026-03 现金 = 3000');
@@ -100,7 +106,7 @@ console.log('\n=== 2b. restoreBookState 后缓存失效（从备份列表恢复�
 // 与 2 的区别：restoreFromData 换了数据源；restoreBookState 恢复的是**同一账套**（bookId 不变），
 // 缓存键 bookId|month 完全相同 —— 若不清缓存，恢复后查询同月必命中恢复前的旧值。
 // 此前只测了 restoreFromData，restoreBookState 漏清缓存（账套「从备份恢复」后会显示旧数）。
-mkState(SUBJ, [{ id: 'V7', word: '记', no: 1, date: '2026-03-05', summary: '恢复前', entries: [{ code: '1001', dr: 4000, cr: 0 }, { code: '6001', dr: 0, cr: 4000 }] }]);
+mkState(SUBJ, [{ id: 'V7', word: '记', no: 1, date: '2026-03-05', summary: '恢复前', entries: [{ code: '1001', dr: int(4000), cr: 0 }, { code: '6001', dr: 0, cr: int(4000) }] }]);
 S.bookId = 'BOOK_F';
 ck(glOf('1001', '2026-03') === 4000, '恢复前 2026-03 现金 = 4000（已建立缓存）');
 // mock 落盘副作用：本测试只验证「缓存是否失效」
@@ -123,7 +129,7 @@ S.persist = _realPersist; S._writeLocalBookSafe = _realWrite; S.refreshBookIndex
 if (global.Storage && _realSaveBook) global.Storage.saveBook = _realSaveBook;
 
 console.log('\n=== 3. 缓存仍能正常命中（性能未被破坏）===');
-mkState(SUBJ, [{ id: 'V5', word: '记', no: 1, date: '2026-04-05', summary: '缓存测试', entries: [{ code: '1001', dr: 888, cr: 0 }, { code: '6001', dr: 0, cr: 888 }] }]);
+mkState(SUBJ, [{ id: 'V5', word: '记', no: 1, date: '2026-04-05', summary: '缓存测试', entries: [{ code: '1001', dr: int(888), cr: 0 }, { code: '6001', dr: 0, cr: int(888) }] }]);
 S.bookId = 'BOOK_D';
 S._glCache = {};
 const c1 = glOf('1001', '2026-04');
@@ -134,10 +140,11 @@ ck(cacheKeys.length === 1, '缓存条目 1 条（第二次命中缓存，未重�
 ck(/\|/.test(cacheKeys[0] || ''), '缓存键含账套分隔符（' + cacheKeys[0] + '）');
 
 console.log('\n=== 4. 凭证增删改仍使缓存失效（原有行为不变）===');
-mkState(SUBJ, [{ id: 'V6', word: '记', no: 1, date: '2026-05-05', summary: '初', entries: [{ code: '1001', dr: 100, cr: 0 }, { code: '6001', dr: 0, cr: 100 }] }]);
+mkState(SUBJ, [{ id: 'V6', word: '记', no: 1, date: '2026-05-05', summary: '初', entries: [{ code: '1001', dr: int(100), cr: 0 }, { code: '6001', dr: 0, cr: int(100) }] }]);
 S.bookId = 'BOOK_E';
 S._glCache = {};
 ck(glOf('1001', '2026-05') === 100, '新增前 = 100');
+// S.addVoucher 的入参是「元」（store 的 amt() 会换算成内部整数），故这里写 200 而非 int(200)
 S.addVoucher({ word: '记', date: '2026-05-06', summary: '新', entries: [{ code: '1001', dr: 200, cr: 0 }, { code: '6001', dr: 0, cr: 200 }] });
 ck(glOf('1001', '2026-05') === 300, 'addVoucher 后 = 300（缓存已失效）');
 

@@ -309,9 +309,67 @@ function check(cond, label, detail) {
     '实测 ' + aisInputs.length + ' 个');
 })();
 
-if (fail) {
-  console.log('❌ 导入账套入口：' + fail + ' 项不符（通过 ' + pass + '）');
-  fails.forEach(function (f) { console.log('   ✗ ' + f); });
-  process.exit(1);
-}
-console.log('✅ 导入账套入口：' + pass + ' 项通过（导入只新增 + 覆盖只在一处 + 恢复只许一处实现 + .ais 导入已冻结）');
+/* ---------- 五、金额精度：导入**不得**把源数据截断到 2 位 ----------
+   为什么单列：定点化（内部金额 = 0.0001 元整数）只换了内部表示 —— 若入口照旧
+   `Math.round(x*100)/100`，精度是在**解析时**丢的（一落盘就不可逆），定点化等于白做。
+   ⚠ 实测：5 个真实 .ais 样本的金额字段**没有一条带 3~4 位小数**，故旧截断对现有数据是无操作 ——
+     这正是它长期没被发现的原因，也意味着它只能靠**构造数据**来验证，真实样本验不出来。
+   另一条同样重要：转换器输出的是「元」且**不打版本号**，×10000 由 store.importExternalBook
+     统一完成。两边必须各就各位 —— 转换器若自行定点化或自行打版本号，就会少乘/多乘 10000 倍。 */
+global.MDBReader = (function () {
+  // 假 MDB：只提供下面这几张表；其余表名不出现在 getTableNames 里 → getRows 返回 []（与缺表同义）
+  const T = {
+    GLVch: [
+      { FGroup: '记', FNum: 1, FPeriod: 1, FDate: '2026-01-10', FDebit: '2051.6644', FCredit: '0',
+        FAcctID: '1001', FExp: '精度探针', FPosted: 1, FChecked: 1, FPreparer: '', FChecker: '',
+        FPoster: '', FAttachment: 0, FDeleted: 0, FSerialNum: 1 },
+      { FGroup: '记', FNum: 1, FPeriod: 1, FDate: '2026-01-10', FDebit: '0', FCredit: '2051.6644',
+        FAcctID: '1001', FExp: '精度探针', FPosted: 1, FChecked: 1, FPreparer: '', FChecker: '',
+        FPoster: '', FAttachment: 0, FDeleted: 0, FSerialNum: 2 }
+    ],
+    GLAcct: [{ FAcctID: '1001', FAcctName: '库存现金', FGroup: 101, FForCy: 'RMB', FDC: 1, FDeleted: 0 }],
+    GLSetup: [{ FStartPeriod: 1, FStartYear: 2026, FCompany: '精度探针公司' }],
+    GLBal: [{ FAcctID: '1001', FPeriod: 1, FCyID: 'RMB', FObjID: '*', FBegBal: '1234.5678', FDeleted: 0 }]
+  };
+  function FakeReader() {}
+  FakeReader.prototype.getTableNames = function () { return Object.keys(T); };
+  FakeReader.prototype.getTable = function (n) { return { getData: function () { return T[n] || []; } }; };
+  return FakeReader;
+})();
+(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8'));
+
+// 静态卡口：金额解析不得再被 Math.round(… × 100) / 100 砍到 2 位
+const KIS_SRC = fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8');
+check(!/F(Debit|Credit|BegBal)[^\n]*\*\s*100\s*\)\s*\/\s*100/.test(KIS_SRC),
+  '导入金额不得再截断到 2 位（FDebit / FCredit / FBegBal 不应再出现「×100 后取整再 ÷100」）');
+
+global.KisImport.parse(new ArrayBuffer(8), 'probe.ais').then(function (r) {
+  const v = r.ledger.vouchers[0];
+  check(!!v && v.entries[0].dr === 2051.6644 && v.entries[1].cr === 2051.6644,
+    '导入保留源数据 4 位小数：2051.6644 未被截断成 2051.66',
+    v ? ('dr=' + v.entries[0].dr) : '（无凭证）');
+  check(!!(r.ledger.openingBalances['1001']) && r.ledger.openingBalances['1001'].dr === 1234.5678,
+    '期初余额同样保留 4 位：1234.5678 未被截断成 1234.57',
+    JSON.stringify(r.ledger.openingBalances['1001']));
+  check(r.ledger.schemaVersion === undefined,
+    '转换器有意**不**打 schemaVersion（换算只此一处，见 store.importExternalBook）');
+  return S.importExternalBook('T_PROBE', r.ledger);
+}).then(function (ok) {
+  const stored = (S.state.vouchers || [])[0];
+  check(ok === true, '导入产物可落盘（importExternalBook 返回 true）');
+  check(!!stored && stored.entries[0].dr === 20516644,
+    'store 侧换算到内部定点整数：2051.6644 元 → 20516644（0.0001 元）',
+    stored ? ('dr=' + stored.entries[0].dr) : '（无凭证）');
+  check(global.util.money(stored.entries[0].dr) === '2,051.66',
+    '显示层仍为 2 位（4 位精度只落在内部整数域）：' + global.util.money(stored.entries[0].dr));
+  check(S.state.schemaVersion === 6, '导入账套落盘版本号为 6');
+}).catch(function (e) {
+  check(false, '导入精度用例应能跑完（不抛异常）', String((e && e.message) || e));
+}).then(function () {
+  if (fail) {
+    console.log('❌ 导入账套入口：' + fail + ' 项不符（通过 ' + pass + '）');
+    fails.forEach(function (f) { console.log('   ✗ ' + f); });
+    process.exit(1);
+  }
+  console.log('✅ 导入账套入口：' + pass + ' 项通过（导入只新增 + 覆盖只在一处 + 恢复只许一处实现 + .ais 导入已冻结 + 金额不截断）');
+});

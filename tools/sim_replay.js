@@ -100,6 +100,16 @@ if (global.Storage) {
 
 const r2 = n => Math.round(Number(n) * 100) / 100;
 const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+/* 定点化后：【重放】侧走 addVoucher（元入参 → 内部整数），而【原始】侧是从磁盘直读的 v5 数据
+   （金额为元）。若两侧单位不同，逐科目比对会整表相差 10000 倍 —— 故原始账套也要先迁移到
+   同一单位。快照统一经 yuan() 归一到「元」输出，比对与打印都在元域。 */
+const Y = (global.util && global.util.AMT_SCALE) || 10000;
+const yuan = n => Number(n) / Y;
+function loadMigrated(txt) {
+  const o = JSON.parse(txt);
+  if (S.migrateAmountsToV6 && o.schemaVersion !== S.SCHEMA_VERSION) S.migrateAmountsToV6(o);
+  return o;
+}
 let pass = 0, fail = 0;
 const fails = [];
 function ok(name, cond, extra) {
@@ -113,7 +123,7 @@ function eqAmt(name, a, b) {
 function section(t) { console.log('\n' + t); }
 
 /* ---------- 原始账套 ---------- */
-const SRC = JSON.parse(RAW);
+const SRC = loadMigrated(RAW);
 const srcAll = SRC.vouchers || [];
 const srcAct = srcAll.filter(v => v.deleted !== 'y');
 const months = [...new Set(srcAct.map(v => String(v.date || '').slice(0, 7)).filter(Boolean))].sort();
@@ -131,18 +141,18 @@ console.log('  随机种子  ' + SEED);
 function snapshotLedger(month) {   // 逐科目期末净额（借正贷负）
   S._glCache = {};
   const out = {};
-  S.generalLedger(month).forEach(r => { out[String(r.code)] = r2((r.dir === '借' ? 1 : -1) * num(r.balance)); });
+  S.generalLedger(month).forEach(r => { out[String(r.code)] = r2(yuan((r.dir === '借' ? 1 : -1) * num(r.balance))); });
   return out;
 }
 function snapshotBS(month) {
   S._glCache = {};
   const b = S.balanceSheet(month);
-  return { a: r2(num(b.totalAsset)), l: r2(num(b.totalLiability)), e: r2(num(b.totalEquity)) };
+  return { a: r2(yuan(b.totalAsset)), l: r2(yuan(b.totalLiability)), e: r2(yuan(b.totalEquity)) };
 }
 function snapshotPL(month) {
   S._glCache = {};
   const p = S.profitStatement(month);
-  return { rev: r2(num(p.totalRevenue)), exp: r2(num(p.totalExpense)), net: r2(num(p.netProfit)) };
+  return { rev: r2(yuan(p.totalRevenue)), exp: r2(yuan(p.totalExpense)), net: r2(yuan(p.netProfit)) };
 }
 
 /* ============================================================
@@ -162,6 +172,7 @@ const baseAll = snapshotLedger(months[months.length - 1]);
 {
   let dr = 0, cr = 0;
   srcAct.forEach(v => (v.entries || []).forEach(e => { dr += num(e.dr); cr += num(e.cr); }));
+  dr = yuan(dr); cr = yuan(cr);
   console.log('    原始借贷合计：借 ' + r2(dr).toFixed(2) + '  贷 ' + r2(cr).toFixed(2) + '  差 ' + r2(dr - cr).toFixed(2));
   ok('原始账套借贷平衡', Math.abs(dr - cr) < 0.005);
   const bs = baseBS[months[months.length - 1]];
@@ -199,7 +210,7 @@ shuffled.slice(0, 10).forEach((v, i) => {
  * 第 3 步：空壳账套 + 逐张重放
  * ============================================================ */
 section('【3】在空壳账套（保留科目与期初、清空凭证与结账状态）上逐张重放');
-S.state = JSON.parse(RAW);
+S.state = loadMigrated(RAW);
 S.state.vouchers = [];
 S.state.closedPeriods = [];
 S.state.operationLogs = [];
@@ -211,7 +222,12 @@ console.log('    空壳就绪：科目 ' + (S.state.subjects || []).length + ' �
 
 let rejected = [];
 shuffled.forEach((v, i) => {
-  const nv = { word: v.word, no: v.no, date: v.date, attach: v.attach, summary: v.summary, entries: v.entries };
+  // 凭证分录里存的是**内部定点整数**（原始账套已迁移），而 addVoucher 的入参口径是「元」
+  // （内部再经 amt() ×10000）。故重放前必须把分录金额换回元，否则会被二次放大 10000 倍。
+  const nv = {
+    word: v.word, no: v.no, date: v.date, attach: v.attach, summary: v.summary,
+    entries: (v.entries || []).map(e => ({ code: e.code, name: e.name, dr: yuan(num(e.dr)), cr: yuan(num(e.cr)) }))
+  };
   if (v.kind) nv.kind = v.kind;                     // 保留结转/折旧等业务标记
   if (v.maker) nv.maker = v.maker;
   const r = S.addVoucher(nv);

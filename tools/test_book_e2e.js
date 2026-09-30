@@ -48,6 +48,11 @@ require(path.resolve(__dirname, '../js/store.js'));
 const S = global.S;
 const Storage = global.Storage;
 
+// 捕获用户可见提示（toast）：下面要断言「v5 账套迁移成功后有一次升级提示」——
+// 旧版程序打开 v6 账套会把金额放大 10000 倍，这条提示是风险 #5 的用户侧兜底，必须有。
+const toasts = [];
+global.showToast = function (msg, type, ms) { toasts.push({ msg: String(msg), type: type, ms: ms }); };
+
 function assert(cond, msg) {
   if (!cond) { console.error('  ✗ FAIL: ' + msg); process.exitCode = 1; }
   else { console.log('  ✓ ' + msg); }
@@ -74,7 +79,14 @@ function assert(cond, msg) {
   assert(S2.bookId === 'default', '当前账套 id = default');
   assert(Array.isArray(S2.state.subjects) && S2.state.subjects.length === parsed.subjects.length,
     'state.subjects 已加载（' + S2.state.subjects.length + ' 个科目）');
-  assert(S2.state.schemaVersion === 5, 'schemaVersion = 5');
+  // 磁盘上的账套是 v5（金额为「元」），加载时会被迁移到 v6（金额为 0.0001 元定点整数）。
+  // 这里断言迁移**确实发生**且版本号已更新 —— 否则后续 money()/导出会按整数口径读到元值。
+  assert(S2.state.schemaVersion === 6, 'schemaVersion = 6（v5 账套加载时已迁移）');
+  // 定点化是纯内部优化 —— 迁移全程**不得**给用户任何提示（曾有一条「账套已升级…」toast，已按要求移除）：
+  // 用户看到的数字与能做的操作都不变，没有需要他知晓或决定的事。
+  const upToasts = toasts.filter(t => /升级|旧版本|更新到最新版本|备份/.test(t.msg));
+  assert(upToasts.length === 0, '迁移全程不弹任何升级提示（用户无感知）'
+    + (upToasts.length ? '；实弹 ' + upToasts.length + ' 条：' + upToasts.map(t => t.msg).join(' | ') : ''));
 
   console.log('\n=== 4. 核心计算引擎（基于真实科目表） ===');
   const subs = S2.subjects();

@@ -79,10 +79,13 @@ function mulberry32(a) {
 let rnd = mulberry32(SEED);
 const rndInt = n => Math.floor(rnd() * n);
 
-/* ---------- 小工具 ---------- */
+/* ---------- 小工具 ----------
+ * 【金额域】自 v6 起账套里的金额是 0.0001 元的**定点整数**（见 store.migrateAmountsToV6）：
+ *   · 生成器在「最小单位（0.0001 元）」上取整并整除切分 → 每张凭证的借贷**按构造精确相等**；
+ *   · 断言一律用整数严格相等（`!== 0`），不再用 EPS/容差 —— 容差正是定点化要消灭的东西。
+ *     （注意：S.addVoucher 的入参仍是「元」，故生成后除以 UNIT 交出去；存进 state 的又是整数。） */
 const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
-const round2 = n => Math.round(num(n) * 100) / 100;
-const EPS = 0.005;
+const UNIT = 10000;                     // 1 元 = 10000 个最小单位（与 store 的 AMT_SCALE 同值）
 const pad2 = n => String(n).padStart(2, '0');
 const vmonth = v => String((v && v.date) || '').slice(0, 7);           // 与 store.voucherMonth 同口径（date 优先）
 const sumDr = es => (es || []).reduce((s, e) => s + num(e.dr), 0);
@@ -165,22 +168,26 @@ check('随机科目池足够（>=4）', POOL.length >= 4, 'pool=' + POOL.length)
 /* ============================================================
  * 随机凭证生成
  * ============================================================ */
-function randAmt() {
+/* 随机金额（**最小单位** = 0.0001 元）。刻意覆盖四类边界：
+   最小单位 / 大额 / 任意 4 位小数 / 整元。
+   为什么要有「4 位小数」这一类：定点化的收益正在于此；若只用 2 位小数生成，
+   新精度路径永远走不到，fuzz 就退化成"换成整数写法的旧测试"。 */
+function randAmtU() {
   const p = rnd();
-  if (p < 0.05) return 0.01;                      // 最小金额（浮点边界）
-  if (p < 0.10) return 999999.99;                 // 大额
-  if (p < 0.22) return Math.round(rnd() * 5000 * 100) / 100;  // 任意两位小数
-  return Math.round(rnd() * 9000 + 100);          // 整元
+  if (p < 0.05) return 1;                                  // 最小单位（0.0001 元）
+  if (p < 0.10) return 9999999900;                         // 大额（999,999.99 元）
+  if (p < 0.22) return 1 + rndInt(5000 * UNIT);            // 任意 4 位小数
+  return (100 + rndInt(9000)) * UNIT;                      // 整元
 }
-// 把 totalC（单位：分）随机切成 n 份，每份 >= 1 分
-function splitCents(totalC, n) {
-  if (totalC < n) totalC = n;
+// 把 totalU（单位：最小单位）随机切成 n 份，每份 >= 1 个单位 —— 保证按构造精确平衡
+function splitUnits(totalU, n) {
+  if (totalU < n) totalU = n;
   const cuts = new Set();
-  while (cuts.size < n - 1) cuts.add(1 + rndInt(totalC - 1));
+  while (cuts.size < n - 1) cuts.add(1 + rndInt(totalU - 1));
   const arr = [...cuts].sort((a, b) => a - b);
   const parts = []; let prev = 0;
   arr.forEach(c => { parts.push(c - prev); prev = c; });
-  parts.push(totalC - prev);
+  parts.push(totalU - prev);
   return parts;
 }
 function pickSubj(pool) { return pool[rndInt(pool.length)]; }
@@ -190,9 +197,9 @@ const WORDS = ['记', '收', '付', '转'];
 function makeVoucher(month, opts) {
   opts = opts || {};
   const nD = 1 + rndInt(2), nC = 1 + rndInt(2);
-  const totalC = Math.max(Math.round(randAmt() * 100), nD + nC);
-  const drParts = splitCents(totalC, nD).map(c => c / 100);
-  const crParts = splitCents(totalC, nC).map(c => c / 100);
+  const totalU = Math.max(randAmtU(), nD + nC);
+  const drParts = splitUnits(totalU, nD).map(u => u / UNIT);   // → 元（addVoucher 的入参口径）
+  const crParts = splitUnits(totalU, nC).map(u => u / UNIT);
   let entries = [];
   drParts.forEach(a => { const s = pickSubj(POOL); entries.push({ code: s.code, name: s.name, dr: a, cr: 0 }); });
   crParts.forEach(a => { const s = pickSubj(POOL); entries.push({ code: s.code, name: s.name, dr: 0, cr: a }); });
@@ -205,7 +212,7 @@ function makeVoucher(month, opts) {
   }
   // 15% 追加一组「负数分录（红字冲减）」：借 -X / 贷 -X 同额成对，余额不受影响
   if (rnd() < 0.15) {
-    const x = round2(1 + rnd() * 999);
+    const x = (UNIT + rndInt(999 * UNIT)) / UNIT;   // 1~999 元，可达 4 位小数
     const a = pickSubj(POOL), b = pickSubj(POOL);
     entries.push({ code: a.code, name: a.name, dr: -x, cr: 0 });
     entries.push({ code: b.code, name: b.name, dr: 0, cr: -x });
@@ -232,7 +239,7 @@ function dupKeys() {
 function checkInvariants() {
   const vs = S.state.vouchers || [];
   // I1 每张凭证（含已软删）借贷必须平衡
-  const bad = vs.filter(v => Math.abs(sumDr(v.entries) - sumCr(v.entries)) >= EPS);
+  const bad = vs.filter(v => sumDr(v.entries) !== sumCr(v.entries));   // 整数域：严格相等
   check('I1 所有凭证借贷平衡', bad.length === 0, bad.slice(0, 3).map(v => v.word + '-' + v.no).join(','));
   // I2 同月同凭证字下字号唯一（软删凭证仍占号 → 必须一并计入）
   const dup = dupKeys();
@@ -248,12 +255,12 @@ function checkInvariants() {
   // 若把父子行一起求和，下级金额会被重复计入，和恒不为零 —— 那是取数口径，不是账不平。
   const gl = (S.generalLedger(curMonth) || []).filter(r => LEAF_CODES.has(r.code));
   const d = gl.reduce((s, r) => s + num(r.ytdDr), 0), c = gl.reduce((s, r) => s + num(r.ytdCr), 0);
-  check('I4 总账试算平衡（本年累计借合计=贷合计）', Math.abs(d - c) < 0.01, '差=' + round2(d - c));
+  check('I4 总账试算平衡（本年累计借合计=贷合计）', d === c, '差=' + (d - c));
   // I5 资产负债表恒等式
   const bs = S.balanceSheet(curMonth);
-  const diff = round2(num(bs.totalAsset) - num(bs.totalLiability) - num(bs.totalEquity));
-  check('I5 资产 = 负债 + 所有者权益', Math.abs(diff) < 0.01,
-    '差=' + diff + '  A=' + num(bs.totalAsset) + '  L+E=' + round2(num(bs.totalLiability) + num(bs.totalEquity)));
+  const diff = num(bs.totalAsset) - num(bs.totalLiability) - num(bs.totalEquity);
+  check('I5 资产 = 负债 + 所有者权益', diff === 0,
+    '差=' + diff + '  A=' + num(bs.totalAsset) + '  L+E=' + (num(bs.totalLiability) + num(bs.totalEquity)));
 }
 
 /* ============================================================

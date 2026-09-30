@@ -22,6 +22,8 @@ const S = global.S, Storage = global.Storage;
 const books = {};            // 账套内容（id → json 字符串）
 const trash = [];            // 回收站：删除 = 移入，保留期内可还原
 let exportLog = [];
+let snapLog = [];            // 迁移前强制快照记录（v5→v6 升级链路，记录 {id, ver}）
+let ceBanner = null;         // 红条横幅文案（app.js 的 window.__onPersistError 实现，这里只记录）
 let metaStore = { last_book: null, disabled: {} };
 
 Storage.init = () => { global.__refreshAll = () => {}; return Promise.resolve({ ok: true }); };
@@ -48,6 +50,13 @@ Storage.exportBook = (id, json) => {
 Storage.saveBackup = () => Promise.resolve({ ok: true });
 Storage.listBackups = () => Promise.resolve([]);
 Storage.loadBackup = () => Promise.resolve(null);
+// 迁移前强制快照：默认成功并留痕（②③ 两节会按需换成"失败"mock）。
+// 必须在 S.init() 之前装好 —— 首屏加载的 default 是 v5，升级链路会立刻走这条路。
+Storage.saveRestoreSnapshot = (id, json) => {
+  snapLog.push({ id: id, ver: JSON.parse(json).schemaVersion });
+  return Promise.resolve({ ok: true, ts: 1 });
+};
+global.__onPersistError = (m) => { ceBanner = m; };
 
 let fails = 0;
 function assert(c,m){ if(!c){console.error('  ✗ '+m);fails++;} else console.log('  ✓ '+m); }
@@ -68,6 +77,13 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   await wait(400);
   assert(S.currentBookId() === 'default', '初始默认账套为 default');
   assert(S.state && S.state.company, '首屏已异步从磁盘加载 default 完整 state');
+  // 上面这份 fixture 是 v5（「元」浮点）。首屏加载必须走完「快照→迁移→落盘 v6→回读校验」，
+  // 否则定点代码会把「元」当 0.0001 元用，界面与报表整体错 10000 倍。
+  assert(S.state.schemaVersion === 6, '首屏加载的 v5 账套已自动升级为 v6（金额转入定点整数域）');
+  assert(snapLog.length === 1 && snapLog[0].id === 'default' && snapLog[0].ver === 5,
+    '升级前先写迁移前快照，快照内容是 v5 原文（可回滚）');
+  assert(JSON.parse(books['default']).schemaVersion === 6,
+    '升级结果已回写磁盘（盘上也是 v6，下次启动不再重复迁移）');
 
   console.log('\n=== 新建账套（应立即落盘 + 刷新列表） ===');
   const newId = S.newBook('测试新建账套');
@@ -195,6 +211,67 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
 
   console.log('\n=== 旧 kis_books 缓存已废弃（不应再写入） ===');
   assert(mem['kis_books'] === undefined, 'localStorage 不再写入 kis_books 混乱缓存');
+
+  /* ============================================================
+   * 账套升级链路（v5「元」浮点 → v6「0.0001 元」定点整数）
+   * 【为什么单独立一节】这段逻辑写的是**用户的历史数据**，出错就是数据事故；
+   *   而它只在这一个入口（从磁盘载入账套）上跑，页面测试与报表测试都碰不到。
+   * ============================================================ */
+  console.log('\n=== 升级链路②：快照失败必须中止升级、不动盘上数据 ===');
+  // 带真实金额的 v5 账套：只断言 schemaVersion 会漏掉"金额被 ×10000 了但版本没改"这种半吊子状态，
+  // 故必须拿一个**4 位小数**的金额作探针（2 位小数无法区分是否被放大）。
+  books['Bv5fail'] = JSON.stringify({
+    schemaVersion: 5, company: { name: '升级快照失败账套', startMonth: '2026-01' },
+    subjects: [{ code: '1001', name: '库存现金', class: '资产', direction: '借' }],
+    vouchers: [{
+      word: '记', no: 1, date: '2026-01-10',
+      entries: [
+        { code: '1001', name: '库存现金', dr: 2051.6644, cr: 0, summary: '升级链路探针' },
+        { code: '1001', name: '库存现金', dr: 0, cr: 2051.6644, summary: '升级链路探针' }
+      ]
+    }]
+  });
+  Storage.saveRestoreSnapshot = () => Promise.resolve({ ok: false, error: '模拟磁盘满' });
+  ceBanner = null;
+  global.__onPersistError = (m) => { ceBanner = m; };   // 红条横幅（app.js 的实现，这里只记录）
+  S.switchBook('Bv5fail');
+  await wait(250);
+  assert(S.currentBookId() === 'Bv5fail' && S.state.company.name === '升级快照失败账套',
+    '快照失败时仍可进该账套（用 v5 原数据顶屏，money() 兜底按元显示，不会错 10000 倍）');
+  assert(S.state.schemaVersion === 5, '内存里仍是 v5（未迁移）');
+  // 注意：盘上文本会被"补齐现金流量兜底字段"的常规归一化改写（ensureCashFlowFields → persist），
+  // 与迁移无关。故这里断言的是**金额域未被改动**，而不是"文件字节完全没变"。
+  const diskAfterFail = JSON.parse(books['Bv5fail']);
+  assert(diskAfterFail.schemaVersion === 5, '盘上仍是 v5（升级被中止，下次启动可安全重试）');
+  assert(diskAfterFail.vouchers[0].entries[0].dr === 2051.6644,
+    '金额未被 ×10000：仍是 2051.6644 元（无备份就绝不动历史数据）');
+  assert(!!ceBanner && ceBanner.indexOf('账套升级') >= 0, '已弹红条横幅告知用户：' + (ceBanner || '（无）'));
+
+  console.log('\n=== 升级链路③：快照成功 → 迁移 → 落盘 v6 ===');
+  S.switchBook('default');            // 先离开目标账套，否则同名切换会被"目标即当前"短路
+  await wait(200);
+  Storage.saveRestoreSnapshot = (id, json) => {
+    snapLog.push({ id: id, ver: JSON.parse(json).schemaVersion });
+    return Promise.resolve({ ok: true, ts: 1 });
+  };
+  snapLog.length = 0;
+  S.switchBook('Bv5fail');
+  await wait(250);
+  assert(snapLog.length === 1 && snapLog[0].ver === 5 && snapLog[0].id === 'Bv5fail',
+    '迁移前先写快照，且快照是**迁移前原文**（v5）');
+  assert(S.state.schemaVersion === 6, '内存已升级为 v6');
+  const diskAfterOk = JSON.parse(books['Bv5fail']);
+  assert(diskAfterOk.schemaVersion === 6, '盘上已回写 v6（下次启动不再重复迁移）');
+  assert(diskAfterOk.vouchers[0].entries[0].dr === 20516644,
+    '金额已定点化：2051.6644 元 → 20516644（0.0001 元整数，4 位精度未丢）');
+  assert(global.util.money(20516644) === '2,051.66',
+    '显示层仍是 2 位（4 位精度只落在内部整数域）：' + global.util.money(20516644));
+  // 幂等：再切走再切回 —— 若二次载入仍按 v5 迁移一次，金额会被重复 ×10000（放大 1 亿倍且每个数都自洽）
+  const v6Text = books['Bv5fail'];
+  S.switchBook('default'); await wait(200);
+  S.switchBook('Bv5fail'); await wait(250);
+  assert(books['Bv5fail'] === v6Text, '二次载入不改写该账套（迁移幂等，未重复放大）');
+  assert(snapLog.length === 1, '二次载入不再写快照（v6 直通，不走迁移链路）');
 
   console.log('\n' + (fails ? ('有 '+fails+' 项失败') : '全部账套管理功能验证通过 ✅'));
   process.exit(fails ? 1 : 0);

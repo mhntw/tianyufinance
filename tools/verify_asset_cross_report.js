@@ -40,6 +40,10 @@ const S = global.S;
 
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
 const r2 = v => Math.round(v * 100) / 100;
+/* 定点化后：store 内部金额一律是**定点整数**（0.0001 元），而本脚本的容差与诊断输出都在「元」域，
+   故凡参与比较/打印的金额统一经 yuan() 归一。 */
+const yuan = a => (global.util && global.util.yuan ? global.util.yuan(a) : Number(a) / 10000);
+const r2y = v => r2(yuan(v));
 function addMonths(ym, n) { const p = String(ym).split('-'); const t = (+p[0]) * 12 + (+p[1] - 1) + n; return String(Math.floor(t / 12)).padStart(4, '0') + '-' + String(t % 12 + 1).padStart(2, '0'); }
 function mb(a, b) { const pa = a.split('-'), pb = b.split('-'); return (pb[0] - pa[0]) * 12 + (pb[1] - pa[1]); }
 const anchorOf = fa => fa.deprMonth ? String(fa.deprMonth) : (fa.acqDate ? addMonths(String(fa.acqDate).slice(0, 7), num(fa.periodUsed || 0)) : '');
@@ -104,7 +108,13 @@ let bookCount = 0, lateAssets = 0;
 
 fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
   const b = JSON.parse(fs.readFileSync(path.join(BOOKS, name), 'utf8'));
-  S.state = b; if (S.normalizeState) S.normalizeState(); S._glCache = {};
+  S.state = b;
+  /* 磁盘上的账套是 v5（金额=「元」浮点）。真实加载路径会先迁移到 v6（整数）再交给页面，
+     本脚本若跳过迁移，卡片侧的 assetMonthlyDepr 会把这串「元」当成最小单位做整数取整
+     （实测 53.6983 → 54），与总账（元）整表偏离 0.01~4 元/期 —— 正是本脚本一开始全线飘红的原因。
+     故与 verify_cross_page 同源：按真实路径先迁移，再做比较。 */
+  if (S.migrateAmountsToV6 && S.state.schemaVersion !== S.SCHEMA_VERSION) S.migrateAmountsToV6(S.state);
+  if (S.normalizeState) S.normalizeState(); S._glCache = {};
   const fas = (S.state.fixedAssets || []).filter(f => f.status !== '清理');
   if (!fas.length) return;
   const depSubject = S.subjectRole && S.subjectRole('ACC_DEPR');
@@ -162,31 +172,35 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
     const row = rows.filter(x => String(x.code) === String(depSubject.code))[0];
     if (!row) return;
     const sign = row.normal === 'cr' ? 1 : -1;
-    const ledBeg = sign * (num(row.obCr) - num(row.obDr));
-    const ledPer = sign * (num(row.periodCr) - num(row.periodDr));
-    const ledEnd = sign * (num(row.endCr) - num(row.endDr));
-    const ledYtd = sign * (num(row.ytdCr) - num(row.ytdDr));
+    // 取数层与卡片层都是定点整数 → 一律先归一到「元」再比较/打印（容差是元域）
+    const ledBeg = yuan(sign * (num(row.obCr) - num(row.obDr)));
+    const ledPer = yuan(sign * (num(row.periodCr) - num(row.periodDr)));
+    const ledEnd = yuan(sign * (num(row.endCr) - num(row.endDr)));
+    const ledYtd = yuan(sign * (num(row.ytdCr) - num(row.ytdDr)));
+    const vAb = yuan(rAb), vAe = yuan(rAe), vMd = yuan(rMd), vYd = yuan(rYd);
+    const vCAb = yuan(cAb), vCAe = yuan(cAe), vCNe = yuan(cNe), vRNe = yuan(rNe);
     const P = short + ' ' + m;
 
     // 内洽 / 卡片页同源
-    check(Math.abs(r2(rAe - (rAb + rMd))) < 0.02, P + ' 报表自洽 期末=期初+期间折旧',
-      rAb.toFixed(2) + ' + ' + rMd.toFixed(2) + ' vs ' + rAe.toFixed(2));
-    check(Math.abs(r2(cAb - rAb)) < 0.005, P + ' 卡片/报表 期初累计一致', cAb.toFixed(2) + ' vs ' + rAb.toFixed(2));
-    check(Math.abs(r2(cAe - rAe)) < 0.005, P + ' 卡片/报表 期末累计一致', cAe.toFixed(2) + ' vs ' + rAe.toFixed(2));
-    check(Math.abs(r2(cNe - rNe)) < 0.005, P + ' 卡片/报表 期末净值一致', cNe.toFixed(2) + ' vs ' + rNe.toFixed(2));
+    check(Math.abs(r2(vAe - (vAb + vMd))) < 0.02, P + ' 报表自洽 期末=期初+期间折旧',
+      vAb.toFixed(2) + ' + ' + vMd.toFixed(2) + ' vs ' + vAe.toFixed(2));
+    check(Math.abs(r2(vCAb - vAb)) < 0.005, P + ' 卡片/报表 期初累计一致', vCAb.toFixed(2) + ' vs ' + vAb.toFixed(2));
+    check(Math.abs(r2(vCAe - vAe)) < 0.005, P + ' 卡片/报表 期末累计一致', vCAe.toFixed(2) + ' vs ' + vAe.toFixed(2));
+    check(Math.abs(r2(vCNe - vRNe)) < 0.005, P + ' 卡片/报表 期末净值一致', vCNe.toFixed(2) + ' vs ' + vRNe.toFixed(2));
 
     // 与账核对（核心）—— 先扣除「已知有卡片、总账无计提」的卡片（见文件顶部 UNPOSTED_CODES 说明）
     const up = unpostedOf(cur, m);
-    const uTxt = up.accum ? '（另有未入账卡片累计 ' + up.accum.toFixed(2) + ' 已扣除）' : '';
-    check(Math.abs(r2((rAb - up.beg) - ledBeg)) <= tol, P + ' 期初累计 = 总账期初',
-      rAb.toFixed(2) + ' - ' + up.beg.toFixed(2) + ' vs ' + ledBeg.toFixed(2) + uTxt);
-    check(Math.abs(r2((rMd - up.per) - ledPer)) <= tol, P + ' 期间折旧 = 总账本期发生',
-      rMd.toFixed(2) + ' - ' + up.per.toFixed(2) + ' vs ' + ledPer.toFixed(2) + uTxt);
-    check(Math.abs(r2((rAe - up.end) - ledEnd)) <= tol, P + ' 期末累计 = 总账期末',
-      rAe.toFixed(2) + ' - ' + up.end.toFixed(2) + ' vs ' + ledEnd.toFixed(2) + uTxt);
-    check(Math.abs(r2((rYd - up.ytd) - ledYtd)) <= tol, P + ' 本年折旧 = 总账本年累计',
-      rYd.toFixed(2) + ' - ' + up.ytd.toFixed(2) + ' vs ' + ledYtd.toFixed(2) + uTxt);
-    if (up.accum) notes.push(P + ' 有卡片未入账：累计 ' + up.accum.toFixed(2) + '（' + UNPOSTED_CODES.join('/') + '）');
+    const upBeg = yuan(up.beg), upPer = yuan(up.per), upEnd = yuan(up.end), upYtd = yuan(up.ytd), upAccum = yuan(up.accum);
+    const uTxt = up.accum ? '（另有未入账卡片累计 ' + upAccum.toFixed(2) + ' 已扣除）' : '';
+    check(Math.abs(r2((vAb - upBeg) - ledBeg)) <= tol, P + ' 期初累计 = 总账期初',
+      vAb.toFixed(2) + ' - ' + upBeg.toFixed(2) + ' vs ' + ledBeg.toFixed(2) + uTxt);
+    check(Math.abs(r2((vMd - upPer) - ledPer)) <= tol, P + ' 期间折旧 = 总账本期发生',
+      vMd.toFixed(2) + ' - ' + upPer.toFixed(2) + ' vs ' + ledPer.toFixed(2) + uTxt);
+    check(Math.abs(r2((vAe - upEnd) - ledEnd)) <= tol, P + ' 期末累计 = 总账期末',
+      vAe.toFixed(2) + ' - ' + upEnd.toFixed(2) + ' vs ' + ledEnd.toFixed(2) + uTxt);
+    check(Math.abs(r2((vYd - upYtd) - ledYtd)) <= tol, P + ' 本年折旧 = 总账本年累计',
+      vYd.toFixed(2) + ' - ' + upYtd.toFixed(2) + ' vs ' + ledYtd.toFixed(2) + uTxt);
+    if (up.accum) notes.push(P + ' 有卡片未入账：累计 ' + upAccum.toFixed(2) + '（' + UNPOSTED_CODES.join('/') + '）');
 
     // 原值合计 vs 总账 1601 期末。
     // 注意：这里只作「账实不符」提示，**不计入失败**。原因是 1601 上可能有并未建立卡片的资产
@@ -197,10 +211,11 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
       const row1 = rows.filter(x => String(x.code) === String(sub1601.code))[0];
       if (row1) {
         const sign1 = row1.normal === 'dr' ? 1 : -1;
-        const led1 = sign1 * (num(row1.endDr) - num(row1.endCr));
-        const diff = r2(rOrig - led1);
+        const led1 = yuan(sign1 * (num(row1.endDr) - num(row1.endCr)));
+        const vOrig = yuan(rOrig);
+        const diff = r2(vOrig - led1);
         if (Math.abs(diff) > tol) {
-          notes.push(P + ' 原值与总账1601差 ' + diff.toFixed(2) + '（卡片 ' + rOrig.toFixed(2) + ' / 账面 ' + led1.toFixed(2) + '）');
+          notes.push(P + ' 原值与总账1601差 ' + diff.toFixed(2) + '（卡片 ' + vOrig.toFixed(2) + ' / 账面 ' + led1.toFixed(2) + '）');
         }
       }
     }
@@ -212,10 +227,11 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
    * 断言刻意做成「①通过、②必须报警」，将来若有人把②删掉，这里立刻失败。 */
   PERIODS.forEach(m => {
     const rows = S.generalLedger(m) || [];
+    // 取数层是定点整数 → 归一到「元」，与本组的卡片侧/容差同口径
     const endBal = code => {
       const r = rows.filter(x => String(x.code) === String(code))[0];
       if (!r) return null;
-      return r.normal === 'dr' ? (num(r.endDr) - num(r.endCr)) : (num(r.endCr) - num(r.endDr));
+      return yuan(r.normal === 'dr' ? (num(r.endDr) - num(r.endCr)) : (num(r.endCr) - num(r.endDr)));
     };
     const active = fas.filter(fa => {
       if (fa.status === '清理') return false;
@@ -225,7 +241,7 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
     // ① 累计折旧
     const dep = S.subjectRole('ACC_DEPR');
     let cDep = 0;
-    active.forEach(fa => { cDep += accumAt(fa, m, S.assetMonthlyDepr(fa)); });
+    active.forEach(fa => { cDep += yuan(accumAt(fa, m, S.assetMonthlyDepr(fa))); });
     const lDep = endBal(dep.code);
     if (lDep !== null) {
       const d = r2(cDep - lDep), tol = r2(active.length * 0.01 + 0.01);
@@ -240,7 +256,7 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
          ⚠ 若你将来把 0019 的折旧补记入账（那才是正确的修账），差额会变成 0，本断言会**失败** ——
            那是"正确的失败"：把下面 knownCard 改成 null，或把已入账卡换成别的未入账卡即可。
            **不要**退回去用「|差| ≤ 容差」把这条压绿。 */
-      const known = r2(unpostedOf(active, m).accum);   // 见文件顶部 UNPOSTED_CODES
+      const known = r2y(unpostedOf(active, m).accum);   // 见文件顶部 UNPOSTED_CODES
       check(Math.abs(r2(d - known)) <= tol,
         short + ' ' + m + ' 对账①累计折旧：扣除非入账卡片后应相等',
         '差 ' + d.toFixed(2) + ' - 未入账 ' + known.toFixed(2) + ' = ' + r2(d - known).toFixed(2)
@@ -250,7 +266,7 @@ fs.readdirSync(BOOKS).filter(f => f.endsWith('.json')).sort().forEach(name => {
     const byAcct = {}; let cOrig = 0;
     active.forEach(fa => {
       const code = String(fa.faAcctId == null ? '' : fa.faAcctId).split(',')[0].trim();
-      const o = num(fa.original); cOrig += o;
+      const o = yuan(num(fa.original)); cOrig += o;
       if (code && S.subject(code)) byAcct[code] = (byAcct[code] || 0) + o;
     });
     let lOrig = 0; const det = [];

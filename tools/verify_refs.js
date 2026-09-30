@@ -34,12 +34,14 @@ while ((m = idRe.exec(html))) htmlIds.add(m[1]);
 
 // 收集 JS 里所有 $('xxx') / $("xxx") 调用 + 行号
 const domRefs = [];
+let dollarScanned = 0;                       // 扫描量：命中数卡口用（见汇总段）
 const dollarRe = /\$\s*\(\s*["']([^"']+)["']\s*\)/g;
 for (const f of ALL_JS) {
   const txt = fs.readFileSync(f, 'utf8');
   const lines = txt.split('\n');
   dollarRe.lastIndex = 0;
   while ((m = dollarRe.exec(txt))) {
+    dollarScanned++;                         // 原始命中数（含注释、含合法项）
     const id = m[1];
     const before = txt.slice(0, m.index);
     const lineNo = before.split('\n').length;
@@ -190,8 +192,21 @@ if (extraRegistered.length > 0) {
 //   反而掩盖了这个判定错误。现按 hasGuard 区分：只有无保护的才是真断裂。
 const domUnsafe = domRefs.filter(r => !r.hasGuard);
 const domSafe = domRefs.filter(r => r.hasGuard);
+/* 【命中数卡口】本脚本三段判据都是"扫描 → 发现异常才失败"的结构：若某段的正则失效
+   （写法改掉、文件搬走），扫描量会退化成 0 → 该段异常恒为空 → 打印 ✅ 并退出码 0。
+   那是最坏的绿：门禁还在，待检查对象为 0。故显式要求"每段都必须真的扫到东西"。 */
+const deadScans = [];
+if (dollarScanned === 0) deadScans.push('§1 未匹配到任何 $("id") 调用（正则失效？）');
+if (storeMethods.size === 0) deadScans.push('§2 未从 store.js 提取到任何 "名字: function" 方法');
+if (needed.size === 0) deadScans.push("§3 未在 app.js 匹配到任何 renderVia('X') 路由");
+if (deadScans.length) {
+  console.log('\n✗ 判据失效 —— 以下扫描量为 0，对应的"通过"不代表任何对象被检查过：');
+  deadScans.forEach(s => console.log('    · ' + s));
+  process.exit(1);
+}
 const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length;
 console.log('\n=== 汇总 ===');
+console.log(`  扫描量:         $("id") ${dollarScanned} 处 / store 方法 ${storeMethods.size} 个 / renderVia 路由 ${needed.size} 个`);
 console.log(`  DOM 引用断裂:   ${domUnsafe.length}  (无 null guard，会炸 TypeError)`);
 console.log(`    └ 安全项:     ${domSafe.length}  (有 null guard，不计失败)`);
 console.log(`  Store 方法断裂: ${sCalls.length}`);

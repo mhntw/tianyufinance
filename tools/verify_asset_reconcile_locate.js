@@ -57,14 +57,19 @@ global.window = global; global.__TAURI__ = {}; global.isTauri = false;
 require(path.join(ROOT, 'js', 'storage.js'));
 require(path.join(ROOT, 'js', 'store.js'));
 const S = global.S;
-const U = global.U || {};
+// util 单例来自 store.js 的 global.util（不是 global.U —— 那是不存在的名字）。
+// 必须带 AMT_SCALE：Asset.js 的核对容差/定位判据已改用「整数域 + U.AMT_SCALE」，
+// 缺了它会让 `> U.AMT_SCALE/100` 变成 `> NaN`（恒 false）→ 差额定位整条路径被静默关掉。
+const U = global.util || {};
 U.monthsBetween = U.monthsBetween || function (a, b) {
   const pa = String(a).split('-'), pb = String(b).split('-');
   return (pb[0] - pa[0]) * 12 + (pb[1] - pa[1]);
 };
 U.num = U.num || function (v) { const x = parseFloat(v); return isFinite(x) ? x : 0; };
 global.U = U;
-const MONEY = n => (Number(n) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// 显示金额走真实实现（store.util.money，入参为定点整数）—— 页面渲染用的就是它。
+// 若这里退回「按元直显」的 mock，整数入参会显示成 ×10000 的假数字，且与真实渲染口径分叉。
+const MONEY = U.money || (n => (Number(n) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const NUM = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
 global.__TY_EXPORT__ = { store: S, util: U, ACCOUNT_CLASSES: global.ACCOUNT_CLASSES };
 // 期间桩必须可变：renderAssetReconcile 走 _assetPeriod() → periodRangeValue()，返回空会提前 return（页面清空）

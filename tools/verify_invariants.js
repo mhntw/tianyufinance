@@ -22,6 +22,9 @@ global.Storage = { saveBook: () => Promise.resolve({ ok: true }), saveBackup: ()
 const storePath = path.join(__dirname, '..', 'js', 'store.js');
 const storeMod = require(storePath);
 const S = storeMod.store;
+// 定点标度（0.0001 元）：它是磁盘格式契约的一部分（与 SCHEMA_VERSION 绑定），
+// 不是可调参数。这里从 store 的 util 取用（而非再写一遍 10000），I15 会断言它确为 10000。
+const AMT_SCALE = storeMod.util && storeMod.util.AMT_SCALE;
 // mock persist/addLog/backupNow，避免写盘
 S.persist = function () { /* no-op for verification */ };
 S.addLog = function () { /* no-op */ };
@@ -80,12 +83,19 @@ function run(bookPath) {
   const data = JSON.parse(raw);
   S.state = data;
   S.bookId = data.id || 'verify';
+  // 磁盘账套可能是 v5（金额为「元」浮点）。本脚本直读 JSON、不走加载入口，
+  // 故必须自己走一次**产品内的真实迁移**（S.migrateAmountsToV6，不手抄一份），
+  // 否则等于把「元」当定点最小单位用，后面所有断言都在错误的口径上"自洽通过"。
+  const srcVer = data.schemaVersion;
+  const migrated = data.schemaVersion !== S.SCHEMA_VERSION && typeof S.migrateAmountsToV6 === 'function';
+  if (migrated) S.migrateAmountsToV6(data);
 
   console.log('\n=== 不变量回归测试 ===');
   console.log('账套：' + (data.company && data.company.name || path.basename(bookPath)));
   console.log('科目：' + (data.subjects || []).length + '  凭证：' + (data.vouchers || []).length +
     '  期初：' + Object.keys(data.openingBalances || {}).length);
   console.log('已结账期间：' + JSON.stringify(data.closedPeriods || []));
+  console.log('金额域：' + (migrated ? 'v' + srcVer + ' → v' + S.SCHEMA_VERSION + '（本次实跑了一次迁移）' : 'v' + S.SCHEMA_VERSION + '（无需迁移）'));
   console.log('');
 
   // 确定所有有凭证的月份
@@ -482,6 +492,89 @@ function run(bookPath) {
   if (!i14bad.length) console.log('      ✓ 已核对 ' + i14checked + ' 期，四态与结账检查逐期一致');
   report('I14', '结转四态=结账检查口径', i14bad.length === 0,
     i14bad.length ? 'FAIL ' + i14bad.length + ' 期口径不一致（同状态两个消费方给出相反结论）' : '');
+
+  /* --- I15：金额字段整数完整性（定点化的第一手证据） --- */
+  // 【为什么需要】定点化把「金额是元浮点」换成「金额是 0.0001 元整数」，但这一点**没有任何
+  //   既有断言看得见**：I1~I14 比的都是两侧量（借贷差、恒等式），金额整体是整数还是浮点
+  //   对它们毫无影响。于是「某个入口漏改、把「元」直接写进 state」（整体放大 10000 倍）
+  //   会带着全部恒等式一起"自洽通过"——金额放大后借贷仍平、试算仍平、报表仍平。
+  //   本不变量绕开比较、直接在**字段层面**断言：白名单里的每个金额都必须是安全整数。
+  //   ⚠ 白名单必须与 store.migrateAmountsToV6 的白名单一致（同一批字段）——
+  //     两处若分叉，「迁移覆盖了但断言没查」的字段就会成为新的盲区。
+  //   （I16「新旧逐 0.0001 一致」不在此处重复实现：它需要 git 基线里的旧 store，由
+  //     tools/verify_amount_shadow.js 独立承担，已完成且纳入 run-all。）
+  console.log('--- I15: 金额字段整数完整性（0.0001 元定点） ---');
+  let i15bad = [], i15checked = 0;
+  function amtField(v, where) {
+    if (v == null) return;
+    i15checked++;
+    if (!Number.isSafeInteger(v)) i15bad.push(where + ' = ' + v);
+  }
+  (data.vouchers || []).forEach(function (v, vi) {
+    if (!v) return;
+    (v.entries || []).forEach(function (e, ei) {
+      if (!e) return;
+      amtField(e.dr, 'vouchers[' + vi + '].entries[' + ei + '].dr');
+      amtField(e.cr, 'vouchers[' + vi + '].entries[' + ei + '].cr');
+    });
+    (v.deprReverted || []).forEach(function (s, si) {
+      if (s) amtField(s.amt, 'vouchers[' + vi + '].deprReverted[' + si + '].amt');
+    });
+  });
+  Object.keys(data.openingBalances || {}).forEach(function (c) {
+    const o = data.openingBalances[c] || {};
+    ['dr', 'cr', 'yb', 'ytdDr', 'ytdCr'].forEach(function (k) {
+      amtField(o[k], 'openingBalances[' + c + '].' + k);
+    });
+  });
+  ['original', 'accumDeprBegin', 'accumDepr', 'salvage', 'impairment', 'netValueBegin', 'netValueEnd', 'yearDepr']
+    .forEach(function (k) { (data.fixedAssets || []).forEach(function (fa, i) { amtField(fa && fa[k], 'fixedAssets[' + i + '].' + k); }); });
+  (data.payrolls || []).forEach(function (p, i) {
+    ['should', 'real'].forEach(function (k) { amtField(p && p[k], 'payrolls[' + i + '].' + k); });
+  });
+  Object.keys(data.cashFlowOpening || {}).forEach(function (id) {
+    const o = data.cashFlowOpening[id] || {};
+    amtField(o.ytd, 'cashFlowOpening[' + id + '].ytd');
+  });
+  if (i15bad.length) console.log('    非整数金额（前 5 个）：' + i15bad.slice(0, 5).join('；'));
+  if (!i15bad.length && i15checked) console.log('      ✓ 已核对 ' + i15checked + ' 个金额字段，全部为 0.0001 元安全整数');
+  report('I15', '金额字段整数完整性（' + i15checked + ' 个字段）',
+    i15bad.length === 0 && i15checked > 0 && AMT_SCALE === 10000,
+    i15bad.length ? 'FAIL ' + i15bad.length + ' 个字段不是安全整数'
+      : (AMT_SCALE !== 10000 ? 'FAIL AMT_SCALE=' + AMT_SCALE + '（应为 10000）'
+        : (i15checked === 0 ? 'FAIL 未扫描到任何金额字段（白名单与数据结构脱节，本断言空转）' : '')));
+
+  /* --- I17：迁移幂等（v5 → v6 跑两次必须字节相同） --- */
+  // 【为什么需要】迁移是 ×10000 的**乘法**，一旦二次进入没被挡住，金额会放大 1 亿倍 ——
+  //   而放大后的数据「每一个数都自洽」（借贷仍平、试算仍平），所有恒等式全部照常通过，
+  //   只有跟外部账套/历史备份对照才看得出来。I1–I14 全部是自洽性断言，天然看不见它，
+  //   故必须在旁边单独立一条：拿磁盘原文跑两次真实迁移，断言第二次不改变任何字节。
+  //   （同步在 store.js 的 migrateAmountsToV6 里加了自带门 —— 本不变量是它的证据。）
+  console.log('--- I17: 迁移幂等（跑两次字节相同） ---');
+  let i17ok = false, i17detail = '';
+  if (typeof S.migrateAmountsToV6 !== 'function') {
+    i17detail = 'FAIL store 未暴露 migrateAmountsToV6';
+  } else {
+    let a = null, b = null;
+    try { a = JSON.parse(raw); b = JSON.parse(raw); } catch (e) { a = null; }
+    if (!a) {
+      i17detail = 'FAIL 账套原文无法解析';
+    } else {
+      S.migrateAmountsToV6(a); const once = JSON.stringify(a);
+      S.migrateAmountsToV6(a); const twice = JSON.stringify(a);
+      S.migrateAmountsToV6(b); const again = JSON.stringify(b);
+      i17ok = (once === twice) && (once === again);
+      // 顺带确认「迁移确实做了事」：原文若本就不是 v6，迁移后必须变（否则这条断言是空转）
+      const noop = (JSON.stringify(JSON.parse(raw)) === once);
+      if (i17ok && srcVer !== S.SCHEMA_VERSION && noop) {
+        i17ok = false;
+        i17detail = 'FAIL 迁移对 v' + srcVer + ' 账套未产生任何变化（迁移未生效）';
+      }
+      if (!i17ok && !i17detail) i17detail = 'FAIL 二次迁移改变了数据（金额被重复放大）';
+      if (i17ok) console.log('      ✓ 二次迁移字节不变（原文 v' + srcVer + '，' + once.length + ' 字节）');
+    }
+  }
+  report('I17', '迁移幂等', i17ok, i17detail);
 
   /* --- 汇总 --- */
   console.log('');
