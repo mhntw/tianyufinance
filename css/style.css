@@ -780,9 +780,7 @@ img, svg { display: block; max-width: 100%; }
   #subjBody tr.subj-hidden { display: table-row !important; }
 }
 /* 凭证字/币别（表头统一走全局 .grid 居中，仅金额/操作列按列类型对齐） */
-#vwGrid .col-op, #curGrid .col-op { text-align: left; }   /* 宽度走全站列宽标准 */
-/* 币别汇率列：行内可编辑，宽度走全站标准 */
-#curGrid .cur-rate { text-align: right; }
+#vwGrid .col-op { text-align: left; }   /* 宽度走全站列宽标准 */
 /* 币别新增录入行：作为表格 tbody 首行，与下方数据行共用 .grid td 规格（行高34px/网格线） */
 .cur-add-row td { background: var(--ty-cur-add-bg); }
 /* 输入框撑满所在列，套用表格内嵌输入框规格（.grid td .inp：26px 高、白底、聚焦蓝边） */
@@ -1066,18 +1064,7 @@ select:not([class]):focus { border-color: var(--ty-blue); }
   height: 14px;
 }
 
-/* 让底部保存按钮保持按钮观感 */
-#btnSaveParam {
-  height: 28px;
-  margin: 0 0 0 14px;
-  border: 1px solid var(--ty-btn);
-  border-radius: 3px;
-  background: var(--ty-btn);
-  color: var(--ty-white);
-  padding: 0 18px;
-}
 
-#btnSaveParam::after { display: none; }
 
 /* ============================================================
  * 表单控件
@@ -2527,7 +2514,6 @@ label.req::before {
   flex: 1 1 auto; min-width: 0;
   display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 6px; line-height: 1.6;
 }
-#subjectModal .form-row .chk-group#subAux { flex-wrap: nowrap; white-space: nowrap; }
 #subjectModal .form-row .chk-group label {
   width: auto; flex: none; text-align: left; font-weight: normal; margin: 0;
 }
@@ -2712,36 +2698,14 @@ label.req::before {
   border-color: var(--ty-btn-hover);
 }
 
-/* 计提附加税「金额计算逻辑」浮层（DOM 取自参考实现 结账 计提附加税.md，类名严格对齐） */
-.calc-logic-box { width: 560px; max-width: calc(100vw - 32px); }
 .modal-title .modal-x {
   float: right; border: none; background: none; font-size: 20px; line-height: 42px;
   color: var(--ty-text-3); cursor: pointer; padding: 0;
 }
 .modal-title .modal-x:hover { color: var(--ty-blue); }
-#surTaxCalcBody { padding: 14px 18px; max-height: 60vh; overflow: auto; font-size: var(--fs-sm); color: var(--ty-text); }
-/* 计提所得税「金额计算逻辑」浮层（结账页 所得税浮层截图） */
-#incTaxCalcBody { padding: 0; max-height: 65vh; overflow: auto; font-size: var(--fs-sm); }
-.it-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px 10px; border-bottom: 1px solid var(--ty-border); }
-.it-rate-label { color: var(--ty-text); }
-.it-radio { display: inline-flex; align-items: center; gap: 4px; cursor: default; color: var(--ty-text); font-size: var(--fs-sm); }
-.it-radio input[type="radio"] { margin: 0; accent-color: var(--ty-blue); }
-.it-radio.checked { color: var(--ty-text); }
-.it-rate-input { width: 56px; text-align: center; border: 1px solid var(--ty-border); border-radius: 4px; padding: 2px 4px; font-size: var(--fs-sm); background: var(--ty-white); color: var(--ty-text); }
-.it-summary { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--ty-border); }
-.it-summary-label { color: var(--ty-text); white-space: nowrap; }
-.it-summary-val { font-weight: 400; min-width: 100px; text-align: right; }
-.it-summary-hint { color: var(--ty-text-3); font-size: var(--fs-xs); white-space: nowrap; }
-.it-section-title { padding: 10px 18px 6px; font-weight: 400; color: var(--ty-text); border-top: 1px dashed var(--ty-border); margin-top: 2px; }
-.it-body { padding: 4px 0; }
-.it-row { display: flex; align-items: center; gap: 8px; padding: 5px 18px; line-height: 1.7; }
-.it-sub .it-label { color: var(--ty-text-3); }
-.it-label { flex: 0 0 auto; color: var(--ty-text); white-space: nowrap; }
-.it-right { flex: 1 1 auto; display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
-.it-val { min-width: 110px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ty-text); }
-.it-placeholder { color: var(--ty-text-3) !important; font-style: italic; font-size: var(--fs-xs); }
-.it-formula { color: var(--ty-text-3); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.it-help { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; border: 1px solid var(--ty-border); color: var(--ty-text-3); font-style: normal; font-size: var(--fs-2xs); cursor: help; vertical-align: middle; margin-left: 2px; }
+/* 注：.it-* 一族（计提所得税「金额计算逻辑」浮层的样式，20 条）已于 2026-10-04 删除 ——
+   该期末模板 2026-09-18 已下线（与 .calc-logic-box 的计提附加税浮层同批），
+   全库（index.html / js/ / tools/）对 .it-* 0 命中；恢复浮层时从 git 历史取回本段与 .calc-logic-box 即可。 */
 
 /* 结账凭证模板设置弹窗（ty-modal：1134×675，左树右表单） */
 .settle-tmpl-box {
@@ -3867,74 +3831,13 @@ label.req::before {
   font-size: var(--fs-xl);
 }
 
-/* ============================================================
- * 首页隐私模式（"隐私隐藏"按钮 zhengyan：金额打码成 ****）
- * 稳定实现：金额元素 font-size:0 隐藏原文本，::after 注入 ****；
- * 图表区（canvas 无法 CSS 改像素）加半透明蒙层 + 居中 ****。
- * 仅视觉遮盖，DOM 数据不变，刷新/重算不受影响。
- * ============================================================ */
-body.ty-privacy .fv1-v,
-body.ty-privacy .fv2-v,
-body.ty-privacy .fv7-v,
-body.ty-privacy .fv1-f + .fv1-v,
-body.ty-privacy #mFundNet,
-body.ty-privacy #mAvailCash,
-body.ty-privacy #mNetProfit,
-body.ty-privacy #mRevenue,
-body.ty-privacy #mCost,
-body.ty-privacy #mProfitRate,
-body.ty-privacy #mMgmtFee,
-body.ty-privacy #mSaleFee,
-body.ty-privacy #mFinFee,
-body.ty-privacy #mReceivable,
-body.ty-privacy #mPrepay,
-body.ty-privacy #mAdvance,
-body.ty-privacy #mOtherAr,
-body.ty-privacy #mPayable,
-body.ty-privacy #mPrepay2,
-body.ty-privacy #mAdvance2,
-body.ty-privacy #mOtherAp,
-body.ty-privacy #otherCash,
-body.ty-privacy #otherBank,
-body.ty-privacy #otherStock,
-body.ty-privacy #otherAr,
-body.ty-privacy #otherAp,
-body.ty-privacy #otherRevenue,
-body.ty-privacy #otherSaleExp,
-body.ty-privacy #otherAdminExp { font-size: 0 !important; }
-body.ty-privacy .fv1-v::after,
-body.ty-privacy .fv2-v::after,
-body.ty-privacy .fv7-v::after,
-body.ty-privacy #mFundNet::after,
-body.ty-privacy #mAvailCash::after,
-body.ty-privacy #mNetProfit::after,
-body.ty-privacy #mRevenue::after,
-body.ty-privacy #mCost::after,
-body.ty-privacy #mProfitRate::after,
-body.ty-privacy #mMgmtFee::after,
-body.ty-privacy #mSaleFee::after,
-body.ty-privacy #mFinFee::after,
-body.ty-privacy #mReceivable::after,
-body.ty-privacy #mPrepay::after,
-body.ty-privacy #mAdvance::after,
-body.ty-privacy #mOtherAr::after,
-body.ty-privacy #mPayable::after,
-body.ty-privacy #mPrepay2::after,
-body.ty-privacy #mAdvance2::after,
-body.ty-privacy #mOtherAp::after,
-body.ty-privacy #otherCash::after,
-body.ty-privacy #otherBank::after,
-body.ty-privacy #otherStock::after,
-body.ty-privacy #otherAr::after,
-body.ty-privacy #otherAp::after,
-body.ty-privacy #otherRevenue::after,
-body.ty-privacy #otherSaleExp::after,
-body.ty-privacy #otherAdminExp::after { content: '****'; font-size: var(--fs-md); color: var(--ty-text); letter-spacing: 1px; }
-body.ty-privacy .fund-balance-card .fv2,
-body.ty-privacy .estimated-balance-card .padding { position: relative; }
-/* 隐私按钮激活态（选中高亮） */
-#btnMetricPrivacy.on { color: var(--ty-blue); }
-
+/* ⚠ 【待你确认的功能问题，不只是死码】首页「隐私隐藏」打码模式（body.ty-privacy，共 61 条规则）
+   已于 2026-10-04 从这里删除 —— 全库（index.html / js/ / tools/）对 —— `ty-privacy` —— 与
+   `btnMetricPrivacy` 0 命中（也排除了 `'ty-' + x` 这类动态拼接），即：**这个类永远加不到 body 上，
+   打码从未生效**。但首页那些目标元素（#mFundNet / #mAvailCash …）**还在 HTML 里**。
+   两种可能，需你确认属于哪种：
+     ① 刻意下线（那就保持现状，本段从 git 历史可随时取回）；
+     ② 只想去掉按钮、没想删功能（那就是**回归缺陷**，不是冗余 —— 说一声我把它接回去）。 */
 /* ============================================================
  * 指标/科目自定义弹窗（单例浮层 #metricPop / #subjectPop）
  * 结构：.ty-pop (flex 居中遮罩) > .ty-pop-mask(背景) + .ty-pop-box(内容)
@@ -5549,7 +5452,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   .grid-wrap,
   .grid-wrap .grid,
   .pp-grid,
-  #sumGrid, #vwGrid, #curGrid,
+  #sumGrid, #vwGrid,
   #patternGrid, #rbGrid, #acGrid, #cgGrid,
   #openGrid, #auxGrid {
     width: auto !important;
@@ -5928,28 +5831,14 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .btn-sm { height: 26px; min-width: 60px; padding: 0 12px; font-size: var(--fs-xs); line-height: 24px; border-radius: 4px; border: 1px solid transparent; cursor: pointer; }
 .btn-sm.btn-primary { background: var(--ty-btn); color: var(--ty-white); }
 
-/* 增值服务列表 */
-.vas-list { padding: 8px 16px; }
-.vas-item { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--ty-border-2); }
-.vas-item:last-child { border-bottom: none; }
-.vas-item.on { background: linear-gradient(90deg, rgba(47, 149, 255,.04), transparent); }
-.vas-name { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text); margin-bottom: 4px; }
-.vas-item.on .vas-name { color: var(--ty-blue-dark); }
-.vas-desc { font-size: var(--fs-xs); color: var(--ty-text-3); line-height: 1.5; }
+
 
 /* ===================== 原始凭证（电子档案 / 附件管理，） ===================== */
-/* 原始凭证整页：顶部固定、主体占满剩余高度可滚动 */
-#page-original { display: none; flex-direction: column; height: 100%; }
-#page-original.active { display: flex; }
-.orig-filter-fold {
-  padding: 12px; background: var(--ty-blue-2); border-bottom: 1px solid var(--ty-border);
-}
-.orig-fold-grid { display: flex; flex-wrap: wrap; gap: 14px 24px; }
-.orig-fold-grid .ykj-filter-item-box { display: flex; align-items: center; }
-.orig-fold-grid .ykj-filter-item-box-label { color: var(--ty-text); font-size: var(--fs-xs); text-align: right; }
-.orig-fold-grid .ykj-filter-item-box-content { margin-left: 6px; }
-.orig-fold-grid .ykj-filter-item-box-content .inp { min-width: 140px; }
-.orig-fold-bottom { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+/* 注：#page-original / .orig-filter-fold / .orig-fold-* 已于 2026-10-04 删除 ——
+   它们是「原始凭证」独立整页的样式，该页已并入资产页（表 id 为 assetGrid），
+   全库（index.html 与 js/）对这些选择器 0 命中。下方 .orig-* 其余规则仍被资产页复用，勿一并删。 */
+
+
 
 .orig-btns { padding: 10px 12px; border-bottom: 1px solid var(--ty-border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 /* 高度交给 .btn 的统一值（原先此处强制 32px，比同期控件高出一截，是全站最明显的一处不齐） */
@@ -6014,11 +5903,12 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
      （不引入新颜色）。鼠标扫过选中行时再升到 --ty-row-hover，保证悬浮仍有反馈。 */
 .orig-tree li.selected { background: var(--ty-row-alt); color: var(--ty-text); font-weight: 600; }
 .orig-tree li.selected:hover { background: var(--ty-row-hover); }
-.orig-tree li.selected .tree-arrow,
-.orig-tree li.selected .tyicon { color: var(--ty-text); }
+.orig-tree li.selected .tyicon { color: var(--ty-text); }   /* 同条的 .tree-arrow 已删（2026-10-04）：全库无元素带该类 */
 .orig-tree .tree-parent { font-weight: 400; }
-.orig-tree .tree-parent .tree-arrow { display: inline-block; width: 16px; vertical-align: middle;
-  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--ty-deco); }
+/* 提示（保留未删，2026-10-04 审查）：上面这条与下面 .tree-child 那条的选择器**写的是 tree-parent /
+   tree-child**，而本树 li 实际类名是 orig-tree-parent / orig-tree-child（Asset.js:49/60），
+   即这两条从不匹配 —— 是"意图还在、选择器写错"，改它会**改变现在的外观**，故不擅自动，
+   待你定：修选择器（父级不再加粗 / 子级转浅灰）还是删掉。 */
 .orig-tree .tree-child { color: var(--ty-text-2); font-weight: 400; }   /* 缩进走全站统一 .indent-3（32px），原 padding-left:32px 已移除 */
 
 .orig-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
@@ -6027,11 +5917,8 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
  * 边框交 .grid 自身，与凭证查询 / 总账 / 报表等页面完全一致。
  * 演变史（供后查）：最初该表用 display:block 让 table 自己滚动 → 空表宽度收缩到内容宽、右侧大片空白；
  * 中途换成「侧栏 + asset-grid-scroll」并列结构仍未消除；最终按"简化页面、一个表格"的要求去掉侧栏。
- * 以下 op-link / empty 选择器改用 #origGrid 限定，不再依赖已废弃的 .orig-grid 类。 */
-#origGrid tbody td.col-op .op-link { color: var(--ty-blue); margin-right: 8px; cursor: pointer; }
-#origGrid tbody td.col-op .op-link:hover { text-decoration: underline; }
-#origGrid tbody td.col-op .op-more { color: var(--ty-text-3); cursor: pointer; }
-#origGrid .empty { text-align: center; color: var(--ty-text-3); padding: 40px 0; }
+ * 原「#origGrid 限定」的 op-link / empty 四条规则已于 2026-10-04 删除 —— 表 id 是 assetGrid，
+   #origGrid 在 index.html 与 js/ 里 0 命中（该页已并入资产页）。 */
 
 .orig-pagination { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--ty-border); background: var(--ty-white); font-size: var(--fs-xs); color: var(--ty-text-2); }
 .orig-pagination .orig-pages { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
@@ -6415,7 +6302,6 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 #subjBody .subj-arrow, #subjBody .subj-arrow-leaf,
 #tbBody .tb-arrow, #tbBody .subj-arrow-leaf,
 .dl-arrow, .ed-tree-arrow, .ed-subj-toggle,
-.orig-tree .tree-parent .tree-arrow,
 .settle-tmpl-arrow, .ed-tree-spacer {
   display: inline-flex; align-items: center; justify-content: center;
   width: 14px; height: 14px; font-size: var(--fs-2xs); line-height: 1;
@@ -6429,9 +6315,9 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ed-subj-toggle:not(.empty), .settle-tmpl-arrow { cursor: pointer; }
 #subjBody .subj-arrow:hover, #tbBody .tb-arrow:hover, .dl-arrow:hover,
 .ed-tree-arrow:hover, .ed-subj-toggle:not(.empty):hover, .settle-tmpl-arrow:hover { color: var(--ty-blue); }
-/* 原始凭证父级三角：原用 border 画三角，而 JS 又在同元素输出 ▸/▾ 字符 → 两个三角叠加，
-   统一为字符三角（border 画法作废）；不设 color，避免覆盖「选中行白色三角」规则。 */
-.orig-tree .tree-parent .tree-arrow { border: none; margin-right: 2px; }
+/* 原「原始凭证父级三角」规则（.orig-tree .tree-parent .tree-arrow）已于 2026-10-04 删除：
+   该树 li 的类名是 orig-tree-parent（不是 tree-parent），且树是平铺的、**不输出**三角元素
+   （Asset.js:49-53 已注明「无展开/折叠，故不再输出三角占位」）→ 选择器从不匹配，属废弃规格。 */
 
 /* ===== 关于卡（设置页最后一张）===== */
 .about-box { padding: 12px 0 0; }
