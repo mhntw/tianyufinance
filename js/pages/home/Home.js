@@ -63,11 +63,9 @@ var periodProfit = 'currentPeriod';     // 净利润 + 资金净收入 共用
 var periodRevCost = 'currentPeriod';    // 收入 + 成本 + 毛利率
 var periodFee = 'currentPeriod';        // 费用 + 费用占收入比
 
-function prevMonth(ym) {
-  var y = +ym.slice(0, 4), m = +ym.slice(5, 7);
-  m--; if (m < 1) { m = 12; y--; }
-  return y + '-' + (m < 10 ? '0' + m : '' + m);
-}
+// 上一个月（'YYYY-MM'）：走 store 单点 U.prevMonth（与本文件 monthsOf 用 U.monthList 同一收口口径）。
+// 原先此处自带一份实现（算法与 store 逐字相同，纯重复）。
+function prevMonth(ym) { return U.prevMonth(ym); }
 // 期间区间 [from, to] 展开为月份数组（含首尾）。
 // 月份列表统一走 store.monthList（此前内联展开一份，多处重复）。
 function monthsOf(p) {

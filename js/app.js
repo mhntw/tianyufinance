@@ -564,9 +564,9 @@
   // 打印层 stdRptHeadHtml 与页面 setRptHead 的屏幕注入，都从这里取值，
   // 只包一层不同的外壳（div.rpt-print-head）——抬头版式不存在第二份定义。
   function rptHeadPartsHtml(reportName, bookName, periodText) {
-    var name = escapeHtml(reportName || '财务报表');
-    var comp = escapeHtml(bookName || '');
-    var per = escapeHtml(periodText || '');
+    var name = esc(reportName || '财务报表');
+    var comp = esc(bookName || '');
+    var per = esc(periodText || '');
     return '<div class="rph-title">' + name + '</div>'
       + '<div class="rph-line"><span class="rph-left">' + comp + '</span>'
       + '<span class="rph-mid">' + per + '</span>'
@@ -722,7 +722,7 @@
     var leading = fallbackHead
       || '<div class="rpt-print-head">' + rptHeadPartsHtml(title, '', '') + '</div>';
     return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
-      + '<title>' + escapeHtml(title) + '</title><style>'
+      + '<title>' + esc(title) + '</title><style>'
       + 'body{font-family:-apple-system,"Microsoft YaHei",sans-serif;color:#222;padding:24px;}'
       // 统一打印基线：table-layout:auto + 保留 colgroup hint（不覆盖）
       + 'table{border-collapse:collapse;width:100%;table-layout:auto;font-size:11px;}'
@@ -761,11 +761,10 @@
       + '</body></html>';
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  /* 注：此处原有第二份转义 escapeHtml —— 与上面的 esc() 正则和映射表**一字不差**（纯重复），
+     已于 2026-10-04 删除，4 个调用点（rptHeadPartsHtml ×3、buildPrintHtml 的 <title> ×1）改走 esc()。
+     唯一行为差异：入参为 null/undefined 时 esc 给空串（原 escapeHtml 会输出字符串 "undefined"），
+     即只会更好；两处调用点本身都有 `|| ''` 兜底。 */
 
   globalThis.__TY_HELPERS__.tyPrint = tyPrint;
   globalThis.tyPrint = tyPrint;

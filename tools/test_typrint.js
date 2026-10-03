@@ -8,7 +8,8 @@ const path = require('path');
 const appPath = path.join(__dirname, '..', 'js', 'app.js');
 const code = fs.readFileSync(appPath, 'utf8');
 
-// 提取 buildPrintHtml 与 escapeHtml 两个纯函数（它们在 app.js 顶层作用域）
+// 提取 buildPrintHtml 与 esc 两个纯函数（它们在 app.js 顶层作用域）
+// （2026-10-04：原提取 escapeHtml —— 它与 esc 一字不差，已合并；本壳按**函数名**抽取，改名需同步）
 function extract(name) {
   const re = new RegExp('function ' + name + '\\s*\\([^)]*\\)\\s*\\{');
   const m = code.match(re);
@@ -38,18 +39,21 @@ async function step(name, fn) { try { await fn(); passed++; console.log('  ✓ '
      因此不必把它的下游依赖（currentPeriod / pickPrintPeriod 等）也拖进来。 */
   const printScope = eval(
     '(function () {\n' +
-    extract('escapeHtml') + '\n' +
+    /* 2026-10-04：原先提取的是 app.js 里的第二份转义 escapeHtml —— 它与 esc() 一字不差（纯重复），
+       已合并删除，故此处改为提取**单点** esc()（本测试壳按函数名从源码抽取，改名要同步这里）。 */
+    extract('esc') + '\n' +
     extract('rptHeadPartsHtml') + '\n' +
     extract('collectPrintBody') + '\n' +
     extract('buildPrintHtml') + '\n' +
-    'return { buildPrintHtml: buildPrintHtml, escapeHtml: escapeHtml };\n' +
+    'return { buildPrintHtml: buildPrintHtml, escapeHtml: esc };\n' +
     '})'
   )();
   const buildPrintHtml = printScope.buildPrintHtml;
   const escapeHtml = printScope.escapeHtml;
 
-  await step('escapeHtml 转义关键字符', function () {
+  await step('esc 转义关键字符（含单引号）', function () {
     assert.strictEqual(escapeHtml('<a>&"'), '&lt;a&gt;&amp;&quot;');
+    assert.strictEqual(escapeHtml("it's"), 'it&#39;s');   // esc 比原 escapeHtml 多的那点能力（一字不差的等价物之外）
   });
 
   await step('buildPrintHtml 包含标题与 @media print', function () {
