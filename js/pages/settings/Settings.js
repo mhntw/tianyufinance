@@ -448,11 +448,16 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         var bid = safeIdOf(base) + '_' + Date.now();
         // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出），
         // 此时绝不能报"导入成功" —— 那与红色横幅自相矛盾，用户不知道信哪个。
-        S.importExternalBook(bid, data).then(function (saved) {
+        /* `return` **必须带上**（2026-10-04）：这与 kis-import 那次是**同源缺陷** ——
+           内层 promise 链没被 return，它的拒绝就逃出了外层 try/catch
+           （try/catch 抓不到 promise 拒绝），结果既没有错误提示、又留下未处理的 promise 拒绝。 */
+        return S.importExternalBook(bid, data).then(function (saved) {
           if (S && S.persist) S.persist();
           var cnt = (data.subjects ? data.subjects.length : 0), vcnt = (data.vouchers ? data.vouchers.length : 0);
           if (saved) showToast('已作为新账套「' + base + '」导入：' + cnt + ' 科目 / ' + vcnt + ' 凭证');
           refreshBookManage(); refreshAll();
+        }).catch(function (e) {
+          showToast('导入失败：' + importErrText(e), 'error');   // 文案单点，见 importErrText
         });
       } catch (e) { showToast('导入出错：文件不是有效的账套备份(JSON)', 'error'); }
     };
@@ -491,7 +496,10 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             if (!Array.isArray(book.vouchers)) {
               showToast('导入中止：合并后凭证数据异常', 'error'); return;
             }
-            var bid = safeIdOf(bookName.trim()) + '_合并_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '_' + Date.now();
+            /* 日期用**本地**口径（2026-10-04）：toISOString() 是 UTC，东八区凌晨 00:00–08:00
+               合并导入会让账套 id 带上"前一天"的日期，与界面/其它落点不一致。
+               U.fmtDate 是 store 暴露的本地日期单点（与全站 fmtDate 同源）。 */
+            var bid = safeIdOf(bookName.trim()) + '_合并_' + U.fmtDate(new Date()).replace(/-/g,'') + '_' + Date.now();
             var cnt = book.subjects.length, vcnt = book.vouchers.length;
             var years = (stats && stats.years || []).join('、');
             var tip = '多年合并导入成功：' + bookName + '（' + years + '），' + cnt + ' 科目 / ' + vcnt + ' 凭证';
@@ -515,7 +523,8 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             if (warns.length) tip += '；' + warns.join('；');
             // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
             // 此时报"合并导入成功"会与红色横幅自相矛盾；校验报告卡片同理只在成功时弹。
-            S.importExternalBook(bid, book).then(function (saved) {
+            /* `return` 让它归到外层 .catch（同前一条：不 return 时外层 catch 收不到内层拒绝）。 */
+            return S.importExternalBook(bid, book).then(function (saved) {
               if (S && S.persist) S.persist();
               if (saved) {
                 showToast(tip, warns.length ? 'warn' : 'success', 8000);
@@ -783,7 +792,10 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         if (warns.length) tip += '；' + warns.join('；');
         // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
         // 此时报"导入成功"会与红色横幅自相矛盾，用户不知道信哪个。
-        S.importExternalBook(bid, book).then(function (saved) {
+        /* `return` 必须带上（2026-10-04）：这是**第三处**同源写法（单本 .ais 导入）——
+           不 return 时，importExternalBook 的拒绝逃出下面的 .catch（那个 catch 只兜 parse 链），
+           于是既没有错误提示、又留下未处理的 promise 拒绝。 */
+        return S.importExternalBook(bid, book).then(function (saved) {
           if (S && S.persist) S.persist();
           if (saved) showToast(tip);
           refreshBookManage();

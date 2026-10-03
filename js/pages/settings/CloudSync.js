@@ -45,8 +45,11 @@ async function refreshCloudSync() {
   var c = await window.Storage.syncGetConfig();
   lastCfg = c && c.url ? c : null; // 供 openConfig 同步判断，见该函数注释
   var ok = !!(c && c.url);
-  $('csUnset').style.display = ok ? 'none' : '';
-  $('csSet').style.display = ok ? '' : 'none';
+  /* 判空必须（2026-10-04）：本函数是 async，若这两个元素缺失（dist 未重建 / DOM 改版），
+     这里 `null.style` 会抛错 → 返回被拒 → 调用点没接就是未处理拒绝，且云同步卡片整块渲染不出来。 */
+  var unsetEl = $('csUnset'), setEl = $('csSet');
+  if (unsetEl) unsetEl.style.display = ok ? 'none' : '';
+  if (setEl) setEl.style.display = ok ? '' : 'none';
   if (!ok) return;
   var lab = $('csCloud'); if (lab) lab.textContent = cloudLabel(c);
   var last = readLast();
@@ -131,50 +134,60 @@ function busy(on, btn, txt) {
 async function doPush(force) {
   var btn = $('btnCsPush');
   busy(true, btn, '备份中…');
-  var r = await window.Storage.syncPush(force);
-  busy(false, btn);
-  if (r.error) return showToast(r.error, 'error');
-  if ((r.conflicts || []).length && !force) {
-    var n = r.conflicts.length;
-    var ok = await H.confirmAsync(
-      '云端有 ' + n + ' 本账套比本机新：\n\n' +
-      r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
-      '\n\n继续会用本机覆盖它们（建议先点「云同步」取回）。\n确认继续备份？',
-      { title: '云备份' }
-    );
-    if (!ok) return;
-    return doPush(true);
+  /* try/finally 是**必须**的（2026-10-04）：busy(true) 会同时禁用两个同步按钮，原实现只在
+     正常路径 busy(false) —— 任何一处 await 被拒绝、或 syncPush 因网络永不 settle，
+     按钮就**永久停在"备份中…"**，用户只能重启软件（且拒绝冒到全局弹「系统异常」）。
+     调用点另补了 .catch（见 bindCloudSync）。 */
+  try {
+    var r = await window.Storage.syncPush(force);
+    if (r.error) return showToast(r.error, 'error');
+    if ((r.conflicts || []).length && !force) {
+      var n = r.conflicts.length;
+      var ok = await H.confirmAsync(
+        '云端有 ' + n + ' 本账套比本机新：\n\n' +
+        r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
+        '\n\n继续会用本机覆盖它们（建议先点「云同步」取回）。\n确认继续备份？',
+        { title: '云备份' }
+      );
+      if (!ok) return;
+      return doPush(true);
+    }
+    try { S.addLog('云备份', '备份 ' + (r.pushed || 0) + ' 本账套到云端', '云同步'); } catch (e) {}
+    writeLast('push', r.pushed || 0);
+    refreshCloudSync();
+    showToast('已备份 ' + (r.pushed || 0) + ' 本账套到云端', 'success');
+  } finally {
+    busy(false, btn);
   }
-  try { S.addLog('云备份', '备份 ' + (r.pushed || 0) + ' 本账套到云端', '云同步'); } catch (e) {}
-  writeLast('push', r.pushed || 0);
-  refreshCloudSync();
-  showToast('已备份 ' + (r.pushed || 0) + ' 本账套到云端', 'success');
 }
 
 async function doPull(force) {
   var btn = $('btnCsPull');
   busy(true, btn, '同步中…');
-  var r = await window.Storage.syncPull(force);
-  busy(false, btn);
-  if (r.error) return showToast(r.error, 'error');
-  if ((r.conflicts || []).length && !force) {
-    var n = r.conflicts.length;
-    var ok2 = await H.confirmAsync(
-      '本机有 ' + n + ' 本账套比云端新：\n\n' +
-      r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
-      '\n\n取回会用云端覆盖它们（覆盖前会自动留本机备份，可在「查看备份」回滚）。\n确认继续？',
-      { title: '云同步' }
-    );
-    if (!ok2) return;
-    return doPull(true);
+  try {   // try/finally 的理由同 doPush（否则按钮永久停在"同步中…"）
+    var r = await window.Storage.syncPull(force);
+    if (r.error) return showToast(r.error, 'error');
+    if ((r.conflicts || []).length && !force) {
+      var n = r.conflicts.length;
+      var ok2 = await H.confirmAsync(
+        '本机有 ' + n + ' 本账套比云端新：\n\n' +
+        r.conflicts.map(function (x) { return '· ' + x; }).join('\n') +
+        '\n\n取回会用云端覆盖它们（覆盖前会自动留本机备份，可在「查看备份」回滚）。\n确认继续？',
+        { title: '云同步' }
+      );
+      if (!ok2) return;
+      return doPull(true);
+    }
+    if (!r.pulled) return showToast('云端暂无账套可同步', 'warn');
+    try { S.addLog('云同步', '从云端取回 ' + r.pulled + ' 本账套（新增 ' + (r.added || 0) + ' 本）', '云同步'); } catch (e) {}
+    writeLast('pull', r.pulled || 0);
+    refreshCloudSync();
+    refreshAll();
+    if (globalThis.__renderTools) setTimeout(globalThis.__renderTools, 300);
+    showToast('已同步 ' + r.pulled + ' 本账套（新增 ' + (r.added || 0) + ' 本）', 'success');
+  } finally {
+    busy(false, btn);
   }
-  if (!r.pulled) return showToast('云端暂无账套可同步', 'warn');
-  try { S.addLog('云同步', '从云端取回 ' + r.pulled + ' 本账套（新增 ' + (r.added || 0) + ' 本）', '云同步'); } catch (e) {}
-  writeLast('pull', r.pulled || 0);
-  refreshCloudSync();
-  refreshAll();
-  if (globalThis.__renderTools) setTimeout(globalThis.__renderTools, 300);
-  showToast('已同步 ' + r.pulled + ' 本账套（新增 ' + (r.added || 0) + ' 本）', 'success');
 }
 
 /* ---------------- 事件绑定（一次性） ---------------- */
@@ -235,8 +248,14 @@ function bindCloudSync() {
     if (H.closeModal) H.closeModal('cloudSyncModal');
   });
 
-  bPush.addEventListener('click', function () { doPush(false); });
-  bPull.addEventListener('click', function () { doPull(false); });
+  /* .catch 必须挂（2026-10-04）：doPush/doPull 是 async，拒绝若没人接会冒到全局兜底弹
+     「系统异常」—— 既看不懂，也盖住了真正的错误文案。（按钮复位由函数内 try/finally 保证。） */
+  bPush.addEventListener('click', function () {
+    doPush(false).catch(function (e) { showToast('云备份失败：' + (e && e.message || e), 'error'); });
+  });
+  bPull.addEventListener('click', function () {
+    doPull(false).catch(function (e) { showToast('云同步失败：' + (e && e.message || e), 'error'); });
+  });
 
   globalThis.__csBound = true;
 }

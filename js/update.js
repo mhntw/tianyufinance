@@ -193,7 +193,11 @@
           bindToastDownload(asset, latest);
         }
         try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify({ t: Date.now(), version: latest.tag })); } catch (e) {}
-      });
+      })
+      /* 链尾必须接住拒绝（2026-10-04）：静默检查本就不该打扰用户，但 then 回调里抛错
+         （localStorage / surfaceDownload / bindToastDownload 都可能）会冒到全局兜底弹
+         「系统异常」—— 一次后台检查反而吓用户一跳。手动检查有 catch，这里漏了。 */
+      .catch(function (e) { console.warn('[update] 静默检查失败：' + (e && e.message || e)); });
   }
 
   function getCurrentVersion() {

@@ -587,6 +587,17 @@
     }
     return Promise.resolve({ ok: false });
   }
+  /* meta（账套索引 / 上次账套指针 / 停用标记）的写入结果**必须判**：
+     Storage.writeMeta 失败时**不 reject**，而是返回 { ok:false }；旧写法一律
+     `.then(function () {})` 把结果整个丢掉 → 指针没落盘却无人知晓，
+     重开软件会进入错误的账套、或读到过期的"已停用"标记。
+     这里只留日志、不弹红条横幅 —— 那条横幅的文案是"数据保存失败，请导出备份"，用在这里会误导。 */
+  function metaWriteWarn(r, where) {
+    if (r && r.ok === false) {
+      console.warn('[Store] ' + where + '写入失败：重开软件可能进入错误的账套，或读到过期的停用标记');
+    }
+    return r;
+  }
 
   /* ---------- 自动识别准则 ----------
    * 已统一为小企业会计准则（2013），所有账套一律 small2013。
@@ -911,7 +922,11 @@
       if (!bid || !this.state) return;
       // 仅当确有未完成的写入（主账本在途/堆积，或自动备份防抖未收尾/在途）时才兜底，
       // 避免每次关闭页面都重复全量发送。
-      var needBook = this._persistBusy === bid || !!this._persistPending;
+      /* 2026-10-04：原条件读 this._persistBusy / _persistPending，但这两个字段**全库从无赋值点**
+         （只有这一处读取）→ needBook 恒为 false，上面注释承诺的"主账本在途时兜底重发"
+         其实**从未触发过**（备份那半条 _bkInFlight 是好的，主账本这半条是死分支）。
+         改为在唯一落盘入口 persist() 里维护**在途计数** _persistInFlight，赋值与读取同源。 */
+      var needBook = (this._persistInFlight || 0) > 0;
       var needBk = this._bkInFlight || !!this._bkTimer || !!this._bkDirty;
       if (this._bkTimer) { clearTimeout(this._bkTimer); this._bkTimer = null; this._bkWindow = false; this._bkDirty = false; }
       if (!needBook && !needBk) return;
@@ -1043,7 +1058,12 @@
       // load 完成后首次业务动作才需要持久化，此处绝不落空盘。
       if (!bid) return;
       // 真实文件落盘（Storage.js → Rust 写 <应用数据目录>/添钰财务/books/<id>.json）
-      this._saveBookChecked(bid);
+      /* 在途计数：供关窗兜底（_flushOnExit）判断"是否有写入可能还没落地"。
+         用**计数**而非布尔 —— persist() 会被连续调用，布尔会被先完成的那次提前清零，
+         从而漏掉仍需兜底的那次（那正是原设计想防的"关窗丢最后一笔"）。 */
+      this._persistInFlight = (this._persistInFlight || 0) + 1;
+      var persistDone = function () { self._persistInFlight = Math.max(0, (self._persistInFlight || 1) - 1); };
+      this._saveBookChecked(bid).then(persistDone, persistDone);
       // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/添钰财务/backups，环形保留）。
       // 桌面版数据即文件，无需浏览器缓存兜底。
       // 备份失败连续 ≥3 次时，复用主账本保存失败的 UI 横幅告警——磁盘满/权限等问题
@@ -1233,7 +1253,7 @@
       meta.disabled = meta.disabled || {};
       if (enabled) { delete meta.disabled[id]; } else { meta.disabled[id] = true; }
       this._lastMeta = meta;
-      writeBookMeta(meta).then(function () {});
+      writeBookMeta(meta).then(function (r) { metaWriteWarn(r, '账套索引/停用标记'); });
       return true;
     },
     // 记录「当前账套指针」到磁盘 meta（关闭软件后重开默认进入此账套）。
@@ -1242,7 +1262,7 @@
       var meta = this._lastMeta || { last_book: null, disabled: {} };
       meta.last_book = id;
       this._lastMeta = meta;
-      writeBookMeta(meta).then(function () {});
+      writeBookMeta(meta).then(function (r) { metaWriteWarn(r, '账套索引/停用标记'); });
       setCurBookId(id || '');
     },
 
@@ -1293,10 +1313,12 @@
       if (!id) return { ok: false, msg: '账套不存在' };
       // 目标即当前：无需切换
       if (id === this.bookId) return { ok: true };
-      // 先确保当前账套改动已落盘（防快速切换丢数据）
-      if (this.state && typeof window.Storage !== 'undefined') {
-        try { window.Storage.saveBook(this.bookId, JSON.stringify(this.state)).catch(function () {}); } catch (e) {}
-      }
+      /* 先确保当前账套改动已落盘（防快速切换丢数据）。
+         2026-10-04：原写法直接调 Storage.saveBook 并挂**空 catch** —— 与这句注释宣称的
+         "确保已落盘"并不相符：Storage.saveBook **恒 resolve**，写盘失败藏在 r.ok=false 里，
+         空 catch 根本收不到 → 失败时既无告警也无痕迹，快速切换确实可能丢最后一笔改动。
+         改走唯一判定点 _saveBookChecked（失败会走「保存失败」红条横幅，与其它落盘路径一致）。 */
+      if (this.state && typeof window.Storage !== 'undefined') this._saveBookChecked(this.bookId);
       // 以磁盘为准判定账套是否存在：刷新列表后再查，仍不存在则拒绝
       var proceed = function () {
         var ids = (self._bookList || []).map(function (b) { return b.id; });
@@ -1307,21 +1329,28 @@
         setCurBookId(id);
         // 记录「上次关闭的店」到磁盘 meta（关闭软件后重开默认进入此店）
         var meta = self._lastMeta || { last_book: null, disabled: {} };
-        meta.last_book = id; self._lastMeta = meta; writeBookMeta(meta).then(function () {});
+        meta.last_book = id; self._lastMeta = meta;
+        writeBookMeta(meta).then(function (r) { metaWriteWarn(r, '上次账套指针'); });
         // 用临时空账套顶屏，避免旧账套数据显示；随后从磁盘加载权威数据
         self.state = emptyState();
         self.normalizeState();
         // 关键：切换账套必须作废总账记忆化缓存。否则查询「同月份」时会命中上一个账套的
         // 缓存结果，导致新账套的账簿/报表显示旧账套数据（错误数据且难以察觉）。
         self._invalidate();
+        /* 切换失败一律「回滚 + 留痕」（2026-10-04 收口）：原来是 4 处重复的三行回滚语句，
+           其中 3 处**连日志都没有** —— 用户点了没反应，开发者也查不到原因（正是本项目最怕的
+           "静默失败"）。抽成一处，"为什么失败"随行打印。 */
+        var rollbackToPrev = function (why) {
+          console.warn('[Store] 切换账套失败，已回滚到「' + prevId + '」：' + why);
+          self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+        };
         window.Storage.loadBook(id).then(function (txt) {
-          if (!txt) { self.state = prevState; self.bookId = prevId; setCurBookId(prevId); return; }
+          if (!txt) { rollbackToPrev('账套文件为空或不存在'); return; }
           var res;
-          try { res = JSON.parse(txt); } catch (e) { self.state = prevState; self.bookId = prevId; setCurBookId(prevId); return; }
+          try { res = JSON.parse(txt); } catch (e) { rollbackToPrev('账套文件不是合法 JSON：' + (e && e.message || e)); return; }
           // 版本既不是本版本、也不是可迁移的 v5：不静默处理，回滚到原账套（与首次加载同一判据）
           if (res && res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION && res.schemaVersion !== 5) {
-            console.warn('[Store] 目标账套版本(' + res.schemaVersion + ') 无法由本程序读取，已取消切换');
-            self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+            rollbackToPrev('目标账套版本(' + res.schemaVersion + ') 无法由本程序读取');
             return;
           }
           if (res && res.subjects && res.vouchers) {
@@ -1329,12 +1358,10 @@
             // 此前这里只补一个版本号就完事，v5 老账套切过来会整体错 10000 倍。
             self._applyLoadedBookAndPersist(res, txt, id);
           } else {
-            // 目标账套数据异常：回滚到原账套
-            self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+            rollbackToPrev('目标账套数据异常（缺 subjects/vouchers）');
           }
-        }).catch(function () {
-          // 加载失败：回滚
-          self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+        }).catch(function (e) {
+          rollbackToPrev('读取失败：' + (e && e.message || e));
         });
         return { ok: true };
       };

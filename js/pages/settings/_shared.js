@@ -5,7 +5,17 @@ const $ = H.$;
 const money = H.money;
 const esc = H.esc;
 const showToast = H.showToast;
-const fmtDate = H.fmtDate || function (d) { try { return new Date(d).toISOString().slice(0, 10); } catch (e) { return ''; } };
+/* 兜底实现用**本地**日期口径（2026-10-04）：原用 toISOString() 是 UTC —— 东八区 00:00–08:00
+   会返回"前一天"，且与全站单点（store.js 的本地 fmtDate）口径不一致。虽然只在 H.fmtDate 缺失时
+   才生效，但"兜底与单点不同口径"本身就是隐患（正是本项目反复踩的那类缺陷）。 */
+const fmtDate = H.fmtDate || function (d) {
+  try {
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;   // 已是本地日期串，原样返回（避开 UTC 解析）
+    var x = new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
+  } catch (e) { return ''; }
+};
 const currentPeriod = H.currentPeriod;
 const S = H.S || (EX && EX.store);
 const U = H.U || (EX && EX.util);

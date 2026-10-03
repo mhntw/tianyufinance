@@ -675,7 +675,9 @@
     if (tauri && tauri.invoke) {
       // Tauri：生成自包含 HTML，写入 exports，再打开
       var html = buildPrintHtml(docTitle, body, stdHeadHtml);
-      var fname = docTitle + '_' + (new Date()).toISOString().slice(0, 10) + '.html';
+      /* 日期一律用**本地**口径（2026-10-04）：toISOString() 是 UTC，东八区 00:00–08:00 导出
+         会落到"前一天"，文件名与界面/账套里的日期对不上。todayStr() 是全站本地日期单点。 */
+      var fname = docTitle + '_' + todayStr() + '.html';
       // 文件名中的中文/特殊字符需安全化（与 Rust sanitize 互补，避免路径问题）
       fname = fname.replace(/[\\/:*?"<>|]/g, '_');
       var bin = new TextEncoder().encode(html);
@@ -2006,20 +2008,10 @@
   }
   window.__refreshAll = function () {
     _resetPeriodInputsIfBookChanged();
-    var tp = $('topPeriodText'); if (tp) tp.textContent = formatPeriod(currentPeriod());
-    var DEFAULT_COMPANY_NAME = '演示账套';
-    var fallbackName = '';
-    try {
-      var meta = (S.state && S.state.meta) || {};
-      fallbackName = meta.source || meta.importedFrom || '';
-      if (fallbackName) fallbackName = fallbackName.replace(/\.(ais|json)$/i, '');
-    } catch (e) {}
-    var tc = $('topCompany');
-    if (tc) {
-      var name = ((S.state && S.state.company && S.state.company.name) || fallbackName || '').trim();
-      tc.textContent = name || DEFAULT_COMPANY_NAME;
-    }
-    updateTopOperator();
+    /* 顶栏同步**只留一处实现**（2026-10-04）：下面这段（期间文案 + 公司名 + 操作员）此前与
+       syncAll() **逐字重复 13 行**（含 '演示账套' 兜底与 .ais/.json 后缀剥离），改一处必漏另一处。
+       直接复用 syncAll()，行为完全等价（它是同步函数）。 */
+    syncAll();
     var active = document.querySelector('.page.active');
     var page = active ? active.id.replace('page-', '') : 'home';
     if (PAGE_REFRESHERS[page]) PAGE_REFRESHERS[page]();
