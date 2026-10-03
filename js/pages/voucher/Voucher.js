@@ -766,9 +766,16 @@ function buildVoucher() {
  * 数据直接取自当前已填充的编辑表单——未保存的临时凭证也能打。
  */
 function voucherSheetMoney(n) {
-  var v = Math.round((U.num(n) * 100)) / 100;
+  // 归零走单点 round2（本文件第 19 行的桥接别名）——原先内联 `Math.round((x * 100)) / 100`，
+  // 且**双括号写法绕过了 check_single_source 的判据**（已于 2026-10-04 收紧，见该规则注释）；
+  // 顺带修掉它缺 -0 归一的问题（-0.001 元会显示成 "-0.00"）。
+  var v = round2(U.num(n));
   return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+/* 注：本函数**保留自带格式**（带千分位的 toLocaleString），不并入 U.money —— money 收的是
+   **内部定点整数**（0.0001 元），而这里收的是表单里的「元」，并入会改变打印纸上的数字（属负优化）。
+   voucherSheetEsc 同理**刻意保留**：它只用于文本节点（本文件 793-813），漏转 ' 无害；
+   改走 escHtml 会在 H.esc 缺失的场景直接抛错，得不偿失（2026-10-04 审查结论）。 */
 function voucherSheetDate(dateStr) {
   if (!dateStr) return '';
   var p = String(dateStr).split('-');
@@ -1484,7 +1491,7 @@ function refreshRecycleBin() {
     tr.innerHTML =
       '<td>' + escHtml(v.date || '') + '</td>' +
       '<td>' + escHtml((v.word || '记') + '-' + (v.no != null ? v.no : '')) + '</td>' +
-      '<td>' + U.yuan(drSum).toFixed(2) + '</td>' +   // drSum 来自 store 凭证分录（定点整数）→ 换回元
+      '<td>' + U.yuanFmt(drSum) + '</td>' +   // drSum 来自 store 凭证分录（定点整数）→ 换回元
       '<td>' + escHtml(v.deletedAt || '') + '</td>' +
       '<td>' + escHtml(v.deletedBy || '') + '</td>' +
       // 删除原因：deleteReason 为新增字段，老账套里已删除的凭证没有此字段，

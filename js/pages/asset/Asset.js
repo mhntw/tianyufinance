@@ -1167,7 +1167,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!groups.length) return showToast('当前期间无可导出数据', 'error');
     var headers = ['类别'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = groups.map(function (g) {
-      return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return U.yuan(deprSum(g.rows, c.k)).toFixed(2); }));
+      return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprSum(g.rows, c.k)); }));
     });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧汇总表');
@@ -1286,7 +1286,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!rows.length) return showToast('当前期间无可导出数据', 'error');
     var headers = ['类别', '编码', '名称', '部门'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = rows.map(function (r) {
-      return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return U.yuan(deprVal(r, c.k)).toFixed(2); }));
+      return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprVal(r, c.k)); }));
     });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧明细表');

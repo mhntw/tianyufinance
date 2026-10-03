@@ -164,10 +164,10 @@ function renderBs(month) {
     var net = pl ? pl.netProfit : 0;
     var residual = Math.abs((net - carried) - diff) < U.AMT_SCALE; // 差额≈未结转损益净额？（1 元容差，内部整数）
     var txt = '资产负债表恒等式暂不平衡：资产比负债及所有者权益' +
-              (diff > 0 ? '多 ' : '少 ') + '¥' + U.yuan(absv).toFixed(2) + '。';
+              (diff > 0 ? '多 ' : '少 ') + '¥' + U.yuanFmt(absv) + '。';
     if (residual) {
-      txt += '经核对，差额与本期利润表净利润（¥' + U.yuan(net).toFixed(2) +
-             '）减去已转入「本年利润(3103)」的净额（¥' + U.yuan(carried).toFixed(2) +
+      txt += '经核对，差额与本期利润表净利润（¥' + U.yuanFmt(net) +
+             '）减去已转入「本年利润(3103)」的净额（¥' + U.yuanFmt(carried) +
              '）基本相等，说明源账套「结转本期损益」未完整执行——损益科目仍有余额未结转至本年利润，' +
              '这部分金额同时被计入资产侧与利润表，导致等式表面不平衡。完成结转损益后此处将自动平衡。';
     } else {

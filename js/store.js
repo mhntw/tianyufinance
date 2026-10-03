@@ -352,6 +352,17 @@
     var v = cents === 0 ? 0 : (a < 0 ? -cents : cents) / 100;
     return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  /* 「元 → 显示（2 位小数、**不带千分位**）」的唯一入口。与上面的 money() 分工明确，别混用：
+       · money(a)：收**内部定点整数**（0.0001 元）、带千分位 —— 表格单元格 / 提示文案；
+       · yuanFmt(v)：收**元**（number）、不带千分位 —— Excel/CSV 行数组（带千分位会让单元格变
+         文本）、以及表单口径的文案。
+     【为什么需要它】此前 `yuan(x).toFixed(2)` 在全库散落 **31 处**（store.js 12、Settings.js 11、
+     Asset.js 2、Voucher.js 1、Report.js 3、其余零散），口径一致却各自手写 —— 一旦要改精度或
+     加千分位就要改 31 处。2026-10-04 收口到此处（等价于原写法，输出逐字不变）。
+     判据见 tools/check_single_source.js 的 inline-fixed2 类目（收口后该类目基线为 0）。 */
+  function yuanFmt(v) {
+    return yuan(v).toFixed(2);
+  }
 
   /* ============================================================
    * 发生额矩阵查询（取数索引第二步：月份 × 科目）
@@ -873,7 +884,8 @@
     // 未获权限时页面顶部横幅提醒「数据仅存浏览器，清缓存即丢；请在设置中导出备份」，
     // 避免用户误以为已落盘。persist 时也会同步更新横幅。
     _setServerStatus: function (ok) {
-      this._serverOk = !!ok;
+      // 状态**只经由**下面的 __setServerStatus 呈现在页面顶部横幅（那是页面唯一读取者）。
+      // 曾另存 this._serverOk，但全库无读取点（只写不读），已删。
       if (typeof window.__setServerStatus === 'function') window.__setServerStatus(ok);
     },
 
@@ -964,10 +976,10 @@
         });
     },
 
-    // 当前激活账套服务端不可读：标记损坏状态并提示，维持在本地兜底数据，不做任何自动切换/导入。
+    // 当前激活账套服务端不可读：提示，维持在本地兜底数据，不做任何自动切换/导入。
+    // 注：此处**不再**记录 this._bookBroken / _bookBrokenId —— 全库无读取点（只写不读），
+    //     唯一的对外可见路径就是下面的 __showBookBroken（页面顶部横幅）。
     _reportBookBroken: function (id) {
-      this._bookBroken = true;
-      this._bookBrokenId = id;
       // 顶部醒目提示（不静默）
       if (typeof window.__showBookBroken === 'function') {
         window.__showBookBroken(id);
@@ -2482,7 +2494,7 @@
         opDr += num(o.dr); opCr += num(o.cr);
       });
       if (Math.abs(opDr - opCr) >= 100) {   // 100 个最小单位 = 0.01 元（原硬编码 0.01，单位随之换域）
-        push('error', '期初余额借贷不平', '借方合计 ¥' + yuan(opDr).toFixed(2) + '，贷方合计 ¥' + yuan(opCr).toFixed(2) + '，差额 ¥' + yuan(Math.abs(opDr - opCr)).toFixed(2));
+        push('error', '期初余额借贷不平', '借方合计 ¥' + yuanFmt(opDr) + '，贷方合计 ¥' + yuanFmt(opCr) + '，差额 ¥' + yuanFmt(Math.abs(opDr - opCr)));
       }
       // 2、每张凭证借贷平衡（防止脏数据绕过 UI 校验进账）
       var badV = 0;
@@ -2511,7 +2523,7 @@
               for (var i = 0; i < eq.length; i++) { if (eq[i].label && eq[i].label.indexOf('本年利润') >= 0) carried = eq[i].end; }
             } catch (e) {}
             var residual = Math.abs((net - carried) - diff) < AMT_SCALE;   // 容差 1 元（AMT_SCALE 个最小单位 = 1 元）
-            var detail = '资产 ¥' + yuan(bs.totalAsset).toFixed(2) + '，负债及权益 ¥' + yuan(bs.totalAll).toFixed(2) + '，差额 ¥' + yuan(Math.abs(diff)).toFixed(2);
+            var detail = '资产 ¥' + yuanFmt(bs.totalAsset) + '，负债及权益 ¥' + yuanFmt(bs.totalAll) + '，差额 ¥' + yuanFmt(Math.abs(diff));
             if (residual) {
               push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡');
             } else {
@@ -2556,9 +2568,9 @@
             this.generalLedger(mp).forEach(function (r) { if (String(r.code) === '3104') allocate += num(r.ytdDr); });
           } catch (e2) {}
           push('info', '三表勾稽（参考）',
-            '未分配利润本年变动 ¥' + yuan(profitDelta).toFixed(2) +
-            '，本期净利润 ¥' + yuan(pl.netProfit).toFixed(2) +
-            '，本年已分配利润 ¥' + yuan(allocate).toFixed(2) +
+            '未分配利润本年变动 ¥' + yuanFmt(profitDelta) +
+            '，本期净利润 ¥' + yuanFmt(pl.netProfit) +
+            '，本年已分配利润 ¥' + yuanFmt(allocate) +
             '；三者不等属常见（利润分配与结转结构所致），仅供参考，不影响账务正确性');
         }
       } catch (e) {}
@@ -2960,7 +2972,7 @@
           else if (_diff < 0) _last.dr = round2(num(_last.dr) - _diff); // 贷 > 借 → 补借
           // 必须留痕：plug 会**悄悄改变金额**，若汇总环节真有错会被它掩盖。
           // 差几分属正常的逐科目 round2 累积，差到「元」级则说明汇总有问题，需人工核查。
-          var _msg = '[结转] 损益结转借贷差 ' + yuan(_diff).toFixed(2) + ' 元，已调整末笔分录配平';
+          var _msg = '[结转] 损益结转借贷差 ' + yuanFmt(_diff) + ' 元，已调整末笔分录配平';
           console.warn(_msg + (Math.abs(_diff) >= AMT_SCALE ? '（差额较大，请核查科目汇总！）' : ''));   // 阈值 1 元（AMT_SCALE 个单位 = 1 元）
         }
         var v = Object.assign({}, baseV, { entries: entries });
@@ -3500,7 +3512,7 @@
             code: row.code, name: row.name, cls: row.cls,
             normal: row.normal, dir: row.dir, balance: row.balance,
             issue: equityLoss
-              ? '权益类为借方余额 ¥' + yuan(row.balance).toFixed(2) + '，通常表示累计亏损或已分配超额，属经营结果；如与实际经营情况不符再核查'
+              ? '权益类为借方余额 ¥' + yuanFmt(row.balance) + '，通常表示累计亏损或已分配超额，属经营结果；如与实际经营情况不符再核查'
               : (isDrNormal ? '资产/费用类科目出现贷方余额' : '负债/权益/收入类科目出现借方余额')
                 + '（正常方向：' + (isDrNormal ? '借' : '贷') + '，实际：' + row.dir
                 + '），可能源于预收/预付/结算在途，也可能科目用错，请穿透明细确认'
@@ -3540,7 +3552,7 @@
         if (Math.abs(total) >= keySubjectThreshold) {
           keyAnomalies.push({
             codes: ks.codes.join('/'), name: ks.name, balance: total,
-            issue: '余额 ¥' + yuan(total).toFixed(2) + '（超 ¥' + yuan(keySubjectThreshold) + ' 关注线）；' + ks.risk
+            issue: '余额 ¥' + yuanFmt(total) + '（超 ¥' + yuan(keySubjectThreshold) + ' 关注线）；' + ks.risk
           });
         }
       });
@@ -3613,7 +3625,7 @@
           unclosedPL.push({
             code: row.code, name: row.name, cls: row.cls,
             balance: row.balance, dir: row.dir,
-            issue: '已结账期间 ' + plMonth + ' 期末仍有余额 ¥' + yuan(row.balance).toFixed(2) +
+            issue: '已结账期间 ' + plMonth + ' 期末仍有余额 ¥' + yuanFmt(row.balance) +
               '，损益应结转至本年利润，残留余额会影响利润表准确性'
           });
         }
@@ -3637,7 +3649,7 @@
             desc: '资产总计 ≠ 负债及所有者权益总计',
             items: [{
               totalAsset: bs.totalAsset, totalAll: bs.totalAll, diff: diff,
-              issue: '差额 ¥' + yuan(Math.abs(diff)).toFixed(2) + '（' + (diff > 0 ? '资产多于负债权益' : '负债权益多于资产') + '），常见原因：损益未结转、期初录入不平、科目属性错标'
+              issue: '差额 ¥' + yuanFmt(Math.abs(diff)) + '（' + (diff > 0 ? '资产多于负债权益' : '负债权益多于资产') + '），常见原因：损益未结转、期初录入不平、科目属性错标'
             }]
           });
         }
@@ -3655,8 +3667,8 @@
                 fromYear: b.fromYear, toYear: b.toYear,
                 code: d.code,
                 prevEnd: d.prevEnd, curOpen: d.curOpen, diff: d.diff,
-                issue: b.fromYear + '→' + b.toYear + ' 跳变 ¥' + yuan(Math.abs(d.diff)).toFixed(2) +
-                  '（上年期末 ¥' + yuan(d.prevEnd).toFixed(2) + ' → 本年期初 ¥' + yuan(d.curOpen).toFixed(2) + '），' +
+                issue: b.fromYear + '→' + b.toYear + ' 跳变 ¥' + yuanFmt(Math.abs(d.diff)) +
+                  '（上年期末 ¥' + yuanFmt(d.prevEnd) + ' → 本年期初 ¥' + yuanFmt(d.curOpen) + '），' +
                   (d.prevEnd * d.curOpen < 0 ? '符号反转，' : '') + '可能是手动调期初或年结未达账'
               });
             }
@@ -4897,7 +4909,7 @@
       var hasDeprRecord = num(fa && fa.accumDepr) > 0 || num(fa && fa.periodUsed) > 0 || !!(fa && fa.deprVoucher);
       if (fa && (hasDeprRecord || fa.cleanVoucher)) {
         return { ok: false, msg: '该资产已有折旧/清理记录' +
-          (fa.cleanVoucher ? '（含清理凭证 ' + fa.cleanVoucher + '）' : '（累计折旧 ' + yuan(num(fa.accumDepr)).toFixed(2) + '）') +
+          (fa.cleanVoucher ? '（含清理凭证 ' + fa.cleanVoucher + '）' : '（累计折旧 ' + yuanFmt(num(fa.accumDepr)) + '）') +
           '，直接删除会使卡片辅助账与总账不符；请改用「清理」处理' };
       }
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
@@ -5582,27 +5594,22 @@
       // 必须在上面 def 填充【之后】做：normalizeAssetCategory 要用 this.state.assetCats。
       // 只改内存，随下一次正常写盘落库（与 backfillIncomeRowIds 的只读语义一致）。
       (function (self) {
-        var fixed = 0;
         (self.state.fixedAssets || []).forEach(function (fa) {
           var before = String(fa.category == null ? '' : fa.category);
           var after = self.normalizeAssetCategory(before);
-          if (before !== after) { fa.category = after; fixed++; }
+          if (before !== after) fa.category = after;
         });
-        // 供自检/回归脚本读取（瞬态字段，不落盘）
-        self._assetCatBackfilledN = fixed;
       })(this);
       // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— 外部账套导入不带部门档案，
       // 本系统 depts 只有默认种子（前台/客房/餐厅），而卡片里写的是厨房/酒店/酒店洗衣房，
       // 于是资产左树与「按部门筛选」对不上（筛选比的是 d.code，卡片存的是名称）。
       // 归一为**名称**并把档案里缺的部门补进去（值本身不变，只是让档案认得它）。
       (function (self) {
-        var fixed = 0;
         (self.state.fixedAssets || []).forEach(function (fa) {
           var before = String(fa.dept == null ? '' : fa.dept);
           var after = self.normalizeDept(before);
-          if (before !== after) { fa.dept = after; fixed++; }
+          if (before !== after) fa.dept = after;
         });
-        self._assetDeptBackfilledN = fixed;
       })(this);
       // reportRules 必须是独立深拷贝（cloneStandard 已深拷），不可与模板/他账套共享引用。
       if (!this.state.reportRules || typeof this.state.reportRules !== 'object') {
@@ -5762,7 +5769,7 @@
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-    amt: amt, yuan: yuan, AMT_SCALE: AMT_SCALE,
+    amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
     /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
        此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
        同一口径两份实现（且其中一份漏了那个坑）。现由这里唯一提供，app.js 只做委托。 */
@@ -5776,7 +5783,7 @@
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-      amt: amt, yuan: yuan, AMT_SCALE: AMT_SCALE,
+      amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
       round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }
   };

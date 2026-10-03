@@ -154,7 +154,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     });
     // 容差 1 分：total / cashOb 都是定点整数，原式 `> 0.01` 在整数域里 ≈0（塌成严格相等，亚元差异即报错）。
     if (Math.abs(total - cashOb) > U.AMT_SCALE / 100) {
-      showToast('试算不平衡：现金流量初始余额各项目之和(' + U.yuan(total).toFixed(2) + ') 与现金科目期初余额(' + U.yuan(cashOb).toFixed(2) + ') 不符', 'error');
+      showToast('试算不平衡：现金流量初始余额各项目之和(' + U.yuanFmt(total) + ') 与现金科目期初余额(' + U.yuanFmt(cashOb) + ') 不符', 'error');
       return false;
     }
     showToast('试算平衡通过：现金流量初始余额与现金科目期初一致');
@@ -243,7 +243,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     var mk = (S && S.voucherMaker) ? S.voucherMaker(v) : (v.maker || v.preparer || '');
     if (mk) lines.push('制单：' + mk);
     (v.entries || []).forEach(function (e) {
-      var amt = e.dr ? '借 ' + U.yuan(num(e.dr)).toFixed(2) : (e.cr ? '贷 ' + U.yuan(num(e.cr)).toFixed(2) : '0.00');
+      var amt = e.dr ? '借 ' + U.yuanFmt(num(e.dr)) : (e.cr ? '贷 ' + U.yuanFmt(num(e.cr)) : '0.00');
       lines.push('  ' + (e.code || '') + ' ' + ((S.subjectName && S.subjectName(e.code)) || e.name || '') + ' ' + amt);
     });
     return lines.join('\n');
@@ -500,7 +500,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             if (stats && stats.yearBoundaries) {
               stats.yearBoundaries.forEach(function (b) {
                 if (b.checked > 0) {
-                  warns.push(b.fromYear + '→' + b.toYear + '：' + b.checked + ' 个科目期初与上年期末不一致，最大差异 ¥' + U.yuan(Math.abs(b.maxDiff)).toFixed(2));
+                  warns.push(b.fromYear + '→' + b.toYear + '：' + b.checked + ' 个科目期初与上年期末不一致，最大差异 ¥' + U.yuanFmt(Math.abs(b.maxDiff)));
                 } else {
                   tip += '；' + b.fromYear + '→' + b.toYear + ' 年结校验通过';
                 }
@@ -570,9 +570,9 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
             + ' title="差异超 ¥' + jumpThreshold + '，点此查该科目账">' + esc(d.code) + '</a>'
           : esc(d.code);
         html += '<td class="mono">' + codeCell + (d.name ? ' ' + esc(d.name) : '') + '</td>';
-        html += '<td class="mono ta-r">' + U.yuan(num(d.prevEnd)).toFixed(2) + '</td>';
-        html += '<td class="mono ta-r">' + U.yuan(num(d.curOpen)).toFixed(2) + '</td>';
-        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + U.yuan(num(d.diff)).toFixed(2) + '</td>';
+        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.prevEnd)) + '</td>';
+        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.curOpen)) + '</td>';
+        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + U.yuanFmt(num(d.diff)) + '</td>';
         html += '<td class="mono ta-r">' + diffRate + '</td>';
         html += '</tr>';
       });
@@ -692,23 +692,23 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
         var detail = '';
         var jump = '';
         if (c.type === 'direction_anomaly') {
-          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuan(num(it.balance)).toFixed(2) + '（' + esc(it.dir) + '）';
+          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance)) + '（' + esc(it.dir) + '）';
           jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
         } else if (c.type === 'key_subject_large') {
-          detail = '<b>' + esc(it.name) + '</b><br>余额 ¥' + U.yuan(num(it.balance)).toFixed(2);
+          detail = '<b>' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance));
           var firstCode = (it.codes || '').split('/')[0];
           jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(firstCode) + '">查科目账</a>';
         } else if (c.type === 'large_voucher') {
-          detail = '<b>' + esc(it.date) + ' ' + esc(it.word || '记') + '-' + esc(it.no) + '</b><br>¥' + U.yuan(num(it.amount)).toFixed(2) + ' ' + esc(it.summary || '');
+          detail = '<b>' + esc(it.date) + ' ' + esc(it.word || '记') + '-' + esc(it.no) + '</b><br>¥' + U.yuanFmt(num(it.amount)) + ' ' + esc(it.summary || '');
           jump = '<a class="link-jump" data-jump="voucher" data-vid="' + esc(it.id) + '">查凭证</a>';
         } else if (c.type === 'unclosed_pl') {
-          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuan(num(it.balance)).toFixed(2) + '（' + esc(it.dir) + '）';
+          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance)) + '（' + esc(it.dir) + '）';
           jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
         } else if (c.type === 'bs_unbalanced') {
-          detail = '资产 ¥' + U.yuan(num(it.totalAsset)).toFixed(2) + ' / 负债权益 ¥' + U.yuan(num(it.totalAll)).toFixed(2) + '<br>差额 ¥' + U.yuan(num(Math.abs(it.diff))).toFixed(2);
+          detail = '资产 ¥' + U.yuanFmt(num(it.totalAsset)) + ' / 负债权益 ¥' + U.yuanFmt(num(it.totalAll)) + '<br>差额 ¥' + U.yuanFmt(num(Math.abs(it.diff)));
           jump = '<a class="link-jump" data-jump="report">看资产负债表</a>';
         } else if (c.type === 'year_jump') {
-          detail = '<b>' + it.fromYear + '→' + it.toYear + ' 科目 ' + esc(it.code) + '</b><br>上年期末 ¥' + U.yuan(num(it.prevEnd)).toFixed(2) + ' → 本年期初 ¥' + U.yuan(num(it.curOpen)).toFixed(2);
+          detail = '<b>' + it.fromYear + '→' + it.toYear + ' 科目 ' + esc(it.code) + '</b><br>上年期末 ¥' + U.yuanFmt(num(it.prevEnd)) + ' → 本年期初 ¥' + U.yuanFmt(num(it.curOpen));
           jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
         } else {
           detail = esc(JSON.stringify(it).slice(0, 100));
