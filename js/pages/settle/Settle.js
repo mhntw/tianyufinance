@@ -623,53 +623,18 @@ function renderCustomCards(procList, profitCard) {
   bindSettleCards();
 }
 
-function refreshSettle() {
-  // 换账套：结账/反结账的选期属于上一本账套，一律回到新账套的当前期。
-  // （下面的「空期间回退」只兜 selMonth 的一部分情形 —— 若新账套该月有凭证就不回退；
-  //   selReopenMonth 此前完全无回退。）
-  if (bookScopeChanged('settle')) {
-    selMonth = currentPeriod(); selReopenMonth = currentPeriod();
-    /* 正在编辑的**自定义结转模板**同属上一本账套 —— 性质与「编辑中的凭证」相同：
-       不复位则模板行会带着旧账套的科目一路保存进新账套。
-       ⚠ 以下两项**刻意不在此处复位**，别"顺手补齐"：
-         · currentVat —— 增值税面板每次打开都会 `currentVat = S.vatEditGet(month)` 重算，留旧值读不到；
-         · 科目选择器句柄 —— 它 getSubjects 是实时读 S.subjects()，且 bindSubjectPicker 有幂等保护，
-           置 null 会**拿不回句柄**（详见 Ledger 多栏账处的同名说明）。 */
-    newTplRows = []; editingCustomId = null;
-  }
-  // 每次刷新都重新加载模板列表（导入账套/切换账套后 settleTemplates 会变）
-  settleTmplList = loadSettleTemplates();
-  // 模板启用状态以 store 为权威（结账检查清单数据源），进入页面/切换账套时同步
-  syncTplEnabledFromStore();
-  // 绑定结账页交互（幂等，卡片每次重绑）
-  bindSettleEvents();
-  bindSettleCards();
-  // 渲染结账 tab 月份方块导航（让用户可以选期；此前遗漏调用导致无法切换月份）
-  renderSettleMonthNav();
-  // 结账面板支持跨期结账：月份方块导航选期（selMonth）
-  if (!S.isPeriodClosed(selMonth) && !S.periodVouchers(selMonth).length && selMonth !== currentPeriod()) {
-    // 选中的月无任何凭证且非当前期，自动回退到当前期，避免空期间
-    selMonth = currentPeriod();
-  }
-  var month = selMonth;
-  // 期末处理（结转损益/折旧/调汇/税费等）与结账统一跟随「结账 tab 选期 selMonth」，
-  // 避免用户选历史期却对当前期误操作。store 侧各方法均有 isPeriodClosed 拦截，对已结账历史期安全。
-  var curMonth = month;
-  var closed = S.isPeriodClosed(month);
-  // 结账面板数据源（按所选期）
-  var vs = S.periodVouchers(month);
-  var est = S.profitStatement(month);
-  // 期末处理凭证一律按 v.kind（结构识别）而非摘要正则：导入凭证无凭证级 summary，摘要正则恒不命中，页面恒显「未生成」、查重形同虚设。
-  var K = S.VOUCHER_KINDS;
-  function kindVs(list, kind) {
-    return list.filter(function (v) { return S.voucherKind(v) === kind; });
-  }
-  // 期末处理区块数据源（固定当前期）
-  var curVs = S.periodVouchers(curMonth);
-  var curEst = S.profitStatement(curMonth);
-  // 注意保留 curDoneCount（在用的），仅上面两个同期同名的 doneCount/firstVoucherNo 已废弃
-  function curDoneCount(kind) { return kindVs(curVs, kind).length; }
+/* ============================================================
+ * 结账页各区块的渲染函数（由 refreshSettle 拆出）
+ * ============================================================
+ * 【2026-10-04 拆分】原先全在 refreshSettle 里（该函数一度 212 行，取数与渲染混在一起）。
+ * 现按"一个区块一个函数"拆开，refreshSettle 只留编排：
+ *   换账套复位 → 加载模板/绑定交互 → 选期回退 → 取数 → 调用下面的渲染相 → 同步全选。
+ * 属纯搬迁：每段代码逐字来自原函数（连参数名都与原局部变量同名，故块体无需任何改写），
+ * 可用"行多重集比对"证明；调用顺序与原先逐行顺序一致（渲染相之间有隐式顺序依赖，勿调换）。
+ */
 
+/* 期末处理卡片：启用状态 → 显示/隐藏、勾选框复位、凭证卡排首位、自定义卡渲染 */
+function renderSettleCards() {
   // 期末处理卡片：checkbox 绑定模板启用状态（每张卡的启用开关）
   var cardTplMap = {
     cardDepr: 'dep', cardCost: 'cost', cardProfit: 'profit'
@@ -694,8 +659,16 @@ function refreshSettle() {
   }
   // 动态渲染自定义模板卡片（新增后能在期末处理页显示，并支持删除）
   renderCustomCards(procList, profitCard);
+}
+
+/* 反结账页年份标签 */
+function renderReopenYearLabel() {
   var rv = $('reopenYearVal');
   if (rv) rv.textContent = selReopenMonth.slice(0, 4) + '年';
+}
+
+/* 检查项清单：系统三项（已生成打勾/未生成叹号）+ store 硬性检查项 */
+function renderSettleChecklist(month, K, curDoneCount) {
   // 期末处理 tab：检查项列表（结账页 7 项）
   var cl = $('closeChecklist');
   if (cl) {
@@ -738,6 +711,10 @@ function refreshSettle() {
     } catch (e) { /* 检查项渲染失败不阻断页面 */ }
     cl.innerHTML = html;
   }
+}
+
+/* 各期末凭证的凭证字号（可点击打开凭证） */
+function renderSettleVchNos(vs, K, kindVs) {
   // 期末处理区块：凭证字号显示（已生成的首张凭证号）
   // 已生成凭证的字号渲染为可点击的蓝色链接：复用全局 .link-voucher 委托（app.js），
   // 点击即打开该凭证的编辑弹窗，可直接查看/调整。原先只渲染纯文本 —— 看得到字号却点不动。
@@ -759,6 +736,10 @@ function refreshSettle() {
   filler('depVchNo', K.DEPR);
   filler('costVchNo', K.CARRY_COST);
   filler('profitVchNo', K.CARRY_PL);
+}
+
+/* 结转损益：已结转/应结转额 + 利润卡状态类 */
+function renderSettleProfitCard(curEst, curMonth) {
   // 结转损益：已结转 / 未结转 统计（真实值，避免恒显 0.00）
   // 应结转额 = 本期利润表净利润（收入-费用）；已结转额 = 已生成结转损益凭证的净额
   var profitDoneEl = $('profitDone'), profitTodoEl = $('profitTodo');
@@ -785,6 +766,10 @@ function refreshSettle() {
       card.classList.toggle('settle-card-nothing', Math.abs(netProfit) < 0.005);
     }
   }
+}
+
+/* 各按钮态：结账/反结账/结转损益/结转本年利润（仅12月）/利润分配（仅12月） */
+function renderSettleButtons(vs, month, closed, curMonth, curVs, K, kindVs) {
   // ===== 结账面板（所选期 month） =====
   var btnClose = $('btnClosePeriod');
   if (btnClose) {
@@ -832,6 +817,62 @@ function refreshSettle() {
     else pd.textContent = (kindVs(curVs, K.PROFIT_DIST).length > 0) ? '重新分配' : '利润分配';
   }
 
+}
+
+
+function refreshSettle() {
+  // 换账套：结账/反结账的选期属于上一本账套，一律回到新账套的当前期。
+  // （下面的「空期间回退」只兜 selMonth 的一部分情形 —— 若新账套该月有凭证就不回退；
+  //   selReopenMonth 此前完全无回退。）
+  if (bookScopeChanged('settle')) {
+    selMonth = currentPeriod(); selReopenMonth = currentPeriod();
+    /* 正在编辑的**自定义结转模板**同属上一本账套 —— 性质与「编辑中的凭证」相同：
+       不复位则模板行会带着旧账套的科目一路保存进新账套。
+       ⚠ 以下两项**刻意不在此处复位**，别"顺手补齐"：
+         · currentVat —— 增值税面板每次打开都会 `currentVat = S.vatEditGet(month)` 重算，留旧值读不到；
+         · 科目选择器句柄 —— 它 getSubjects 是实时读 S.subjects()，且 bindSubjectPicker 有幂等保护，
+           置 null 会**拿不回句柄**（详见 Ledger 多栏账处的同名说明）。 */
+    newTplRows = []; editingCustomId = null;
+  }
+  // 每次刷新都重新加载模板列表（导入账套/切换账套后 settleTemplates 会变）
+  settleTmplList = loadSettleTemplates();
+  // 模板启用状态以 store 为权威（结账检查清单数据源），进入页面/切换账套时同步
+  syncTplEnabledFromStore();
+  // 绑定结账页交互（幂等，卡片每次重绑）
+  bindSettleEvents();
+  bindSettleCards();
+  // 渲染结账 tab 月份方块导航（让用户可以选期；此前遗漏调用导致无法切换月份）
+  renderSettleMonthNav();
+  // 结账面板支持跨期结账：月份方块导航选期（selMonth）
+  if (!S.isPeriodClosed(selMonth) && !S.periodVouchers(selMonth).length && selMonth !== currentPeriod()) {
+    // 选中的月无任何凭证且非当前期，自动回退到当前期，避免空期间
+    selMonth = currentPeriod();
+  }
+  var month = selMonth;
+  // 期末处理（结转损益/折旧/调汇/税费等）与结账统一跟随「结账 tab 选期 selMonth」，
+  // 避免用户选历史期却对当前期误操作。store 侧各方法均有 isPeriodClosed 拦截，对已结账历史期安全。
+  var curMonth = month;
+  var closed = S.isPeriodClosed(month);
+  // 结账面板数据源（按所选期）
+  var vs = S.periodVouchers(month);
+  var est = S.profitStatement(month);
+  // 期末处理凭证一律按 v.kind（结构识别）而非摘要正则：导入凭证无凭证级 summary，摘要正则恒不命中，页面恒显「未生成」、查重形同虚设。
+  var K = S.VOUCHER_KINDS;
+  function kindVs(list, kind) {
+    return list.filter(function (v) { return S.voucherKind(v) === kind; });
+  }
+  // 期末处理区块数据源（固定当前期）
+  var curVs = S.periodVouchers(curMonth);
+  var curEst = S.profitStatement(curMonth);
+  // 注意保留 curDoneCount（在用的），仅上面两个同期同名的 doneCount/firstVoucherNo 已废弃
+  function curDoneCount(kind) { return kindVs(curVs, kind).length; }
+
+  renderSettleCards();
+  renderReopenYearLabel();
+  renderSettleChecklist(month, K, curDoneCount);
+  renderSettleVchNos(vs, K, kindVs);
+  renderSettleProfitCard(curEst, curMonth);
+  renderSettleButtons(vs, month, closed, curMonth, curVs, K, kindVs);
   // 同步全选 checkbox 状态（刷新后可见卡片集合可能变了）
   syncCheckAllState();
 }
