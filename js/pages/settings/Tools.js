@@ -274,7 +274,7 @@ function renderBackupHealth(st, hasCloud) {
   var html = '<div class="backup-health">';
   var bits = [(st.count + (st.snapshot_count || 0)) + ' 份备份', '占用 ' + fmtSize(st.total_bytes)];
   if (st.last_ts) bits.push('最近 ' + fmtTs(st.last_ts));
-  html += '<div class="muted" style="font-size:var(--fs-xs)">' + bits.join('　·　') + '</div>';
+  html += '<div class="muted">' + bits.join('　·　') + '</div>';
 
   // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本。
   // 已配置云备份时不再催（云端副本已满足"本机外"），本地备份仅作近时救援。
@@ -325,7 +325,7 @@ function renderBackupRows() {
   var show = pickVisibleBackups(disk, box._bAll);
   // 面板工具栏只保留「刷新列表」：曾经短暂存在的「从文件恢复…」（外部 .json 覆盖）已按用户要求删除，
   // 详见本文件下方该处的说明 —— 覆盖当前账本只走本列表里每行的「恢复」。
-  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted" style="font-size:var(--fs-xs)">共 ' +
+  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted">共 ' +
     disk.length + ' 份备份</span></div>';
   html += renderBackupHealth(stats, box._bCloud);
   if (disk.length) {
@@ -380,7 +380,7 @@ function renderTrashRows() {
   var items = box._trashItems || [];
   var show = box._trashAll ? items : items.slice(0, 5);
   var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a>'
-    + '<span class="muted" style="font-size:var(--fs-xs)">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
+    + '<span class="muted">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
     + (items.length ? '<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>' : '')
     + '</div>';
   if (!items.length) {

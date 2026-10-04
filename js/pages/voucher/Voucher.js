@@ -1632,7 +1632,7 @@ function renderVchTplList() {
         + '，已跳过，套用后请补录</div>' : '';
     var use = t.entries.length
       ? '<button type="button" class="btn btn-xs btn-primary vch-tpl-use" data-id="' + escAttr(t.id) + '">使用</button>'
-      : '<span class="muted" style="font-size:var(--fs-xs)">不可用</span>';
+      : '<span class="muted">不可用</span>';
     return '<div class="vch-tpl-row">'
       + '<div class="vch-tpl-main">'
       + '<div class="vch-tpl-name"><span class="vch-tpl-word">' + escHtml(t.word || '记') + '</span><b>' + escHtml(t.name) + '</b>'
