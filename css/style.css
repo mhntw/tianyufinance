@@ -1723,6 +1723,15 @@ label.req::before {
 
 /* 对齐与数字字体 */
 .ta-r, .col-amt, .col-amount { text-align: right; }   /* 约定①：金额/数量列（col-amt/col-amount 为历史同义类名） */
+/* 【2026-10-04 补齐】JS 一直在输出 .ta-c / .text-center（凭证行号列 Voucher.js:203、费用明细表
+   ExpenseDetail.js:537），但 style.css 里**从来没有这两条** —— 即"居中"从未生效。
+   这是 JS↔CSS 类名契约缺失的典型（同 check_class_contract.js 头部所述的那类缺陷）。
+   按约定①同一位置补齐；text-center 为历史同义名（与本行 ta-r 旁的 col-amt 同理）。 */
+.ta-c, .text-center { text-align: center; }
+/* 【2026-10-04 补齐】.cell-ellipsis：凭证/明细账的摘要列由 JS 输出该类、并配 title="…" 悬停看全文，
+   期待"超长省略 + 悬停提示"，但 CSS 里没有对应规则 → 省略从未生效（此前靠 title 兜着）。
+   规则与全站其他省略写法一致（见 .pp-name-col / 2460 行附近）。 */
+.cell-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 金额列：按标准，不用等宽字体，与正文同字体同字号，仅右对齐 */
 .mono { font-variant-numeric: tabular-nums; }

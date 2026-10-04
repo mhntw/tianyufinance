@@ -83,6 +83,9 @@ function showDialog(opts) {
       '<div class="modal-box" style="width:460px">' +
         '<div class="modal-title">' + safeTitle + '</div>' +
         // 正文整体左缩进：层次 =「标题顶格 ↔ 正文缩进」，一次设置覆盖所有内容，不必逐段判断
+        // ⚠ 注：.modal-body 在 style.css 里**没有规则**（那里只有 .settle-check-modal-body），
+        //   本处外观全部由下面这行内联提供 —— 已登记进 check_class_contract 的基线；
+        //   若将来给 .modal-body 补全局样式，注意 index.html 里另有 3 处模态框也用该类。
         '<div class="modal-body" style="max-height:60vh;overflow:auto;line-height:1.75;word-break:break-word;padding-left:1em;">' +
           renderDialogBody(opts.message) +
           (isInput
