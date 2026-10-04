@@ -9,8 +9,14 @@
  * 冗余令牌（同值同用途）、对比度（WCAG）不足的文字色。
  *
  * 判定分级：
- *   ✗ 失败（退出码 1）：被引用但未定义（样式会静默失效）
- *   ⚠ 提示（不影响退出码）：定义未引用、多令牌同值、文字对比度不足
+ *   ✗ 失败（退出码 1）：① 被引用但未定义（样式会静默失效）；
+ *                       ② **定义但从未被引用**（死令牌）——2026-10-04 由提示升级为门禁：
+ *                          死令牌 --st-hl-bd 就是这样在"提示"里躺了很久才被发现的。
+ *   ⚠ 提示（不影响退出码）：多令牌同值（**语义令牌不因同值而合并**，见本文件内说明）、
+ *                          文字对比度不足（品牌主色的既定取舍，本脚本已自述）
+ * 【引用来源】除 css/style.css 外，**也包括 js/** —— 2026-10-04 起内联样式与 cssText 也走令牌
+ *   （例：Settle.js 的 var(--ty-green)、file-save-bridge.js 的 var(--ty-border)），
+ *   只扫 CSS 会把"只被 JS 用到"的令牌误判成死令牌。JS 侧按**字面量**计（保守，宁可漏报不误杀）。
  *
  * 用法：node tools/check_css_tokens.js
  */
@@ -34,6 +40,24 @@ const used = new Map();             // name -> 引用次数
 const useRe = /var\(\s*(--[\w-]+)/g;
 while ((m = useRe.exec(css))) used.set(m[1], (used.get(m[1]) || 0) + 1);
 
+/* 引用来源二：js/ —— **只用于确认"已定义的令牌"是否被 JS 侧引用**
+   （内联样式 style="…var(--ty-x)…"、style.cssText、getPropertyValue('--ty-x') 都算）。
+   ⚠ 刻意**不**对 JS 做"用了就必须已定义"的反向判定：JS 文本里 --x 形状的东西远不止令牌 ——
+     CSS Modules 哈希类名尾段（.active--1OT3M → --n7MvS）、命令行参数（--all-periods）、
+     自减运算符（i--lv）、注释里的通配写法（--ty-* → --ty-）。逐字扫实测 5 个全是误报，
+     故这里改为"拿已定义的名字去 JS 里找"，误报恒为 0。 */
+(function scanJsForKnownTokens(dir) {
+  fs.readdirSync(dir, { withFileTypes: true }).forEach(function (f) {
+    const p = path.join(dir, f.name);
+    if (f.isDirectory()) return scanJsForKnownTokens(p);
+    if (!/\.js$/.test(f.name) || /xlsx|mdb-reader|buffer/i.test(f.name)) return;
+    const src = fs.readFileSync(p, 'utf8');
+    defined.forEach(function (_v, name) {
+      if (src.indexOf(name) >= 0) used.set(name, (used.get(name) || 0) + 1);
+    });
+  });
+})(path.join(ROOT, 'js'));
+
 const missing = [...used.keys()].filter(v => !defined.has(v));
 const unused = [...defined.keys()].filter(v => !used.has(v));
 
@@ -50,11 +74,14 @@ if (missing.length) {
   console.log('✓ 所有 var() 引用都有对应定义');
 }
 
-/* ---------- ② 定义未引用（提示） ---------- */
+/* ---------- ② 定义未引用（硬性：死令牌） ---------- */
 if (unused.length) {
-  console.log('· 定义了但从未被引用（可删）：');
+  console.log('★ 定义了但从未被引用（死令牌，必须删）：');
   unused.forEach(v => console.log('    ' + v + ' = ' + (defined.get(v) || '').slice(0, 40)));
+  console.log('   （若确为"将来预留"：请先删掉，等真要用时再加 —— 死令牌会掩盖「调色必漏」。）');
   console.log('');
+} else {
+  console.log('✓ 无死令牌（每个定义都至少被引用一次）');
 }
 
 /* ---------- ③ 多令牌同值（提示） ---------- */
@@ -163,9 +190,10 @@ const ob = (css.match(/{/g) || []).length, cb = (css.match(/}/g) || []).length;
 console.log('  花括号 ' + ob + ' / ' + cb + ' ' + (ob === cb ? '✓' : '✗ 不平衡'));
 console.log('');
 
-if (missing.length) {
-  console.log('✗ 有 ' + missing.length + ' 个 var() 引用没有定义 —— 样式会静默失效，必须修');
+if (missing.length || unused.length) {
+  if (missing.length) console.log('✗ 有 ' + missing.length + ' 个 var() 引用没有定义 —— 样式会静默失效，必须修');
+  if (unused.length) console.log('✗ 有 ' + unused.length + ' 个死令牌（定义未引用）—— 请删除，或改为真正使用');
   process.exit(1);
 }
-console.log('✓ 令牌引用完整（无失效引用）');
+console.log('✓ 令牌引用完整（无失效引用、无死令牌）');
 process.exit(0);
