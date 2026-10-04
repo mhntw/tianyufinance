@@ -5,10 +5,8 @@
 // 3. 取回（云同步）前后端已自动给本机被覆盖的账套留备份，可在「查看备份」回滚；
 // 4. 对端存在更更新的账套时先给一次确认，不静默覆盖。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const $ = H.$;
-const S = H.S || window.S;
-const showToast = H.showToast;
+// 引导块（H / $ / S / showToast）已收口到 common/helpers.js；refreshAll 是本页专属（仍从桥接取）。
+import { H, $, S, showToast } from '../../common/helpers.js?v=dev';
 const refreshAll = H.refreshAll;
 
 const LAST_KEY = 'cloud_sync_last';

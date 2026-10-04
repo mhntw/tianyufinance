@@ -143,6 +143,20 @@ const RULES = [
     desc: '内联分页总页数（应走单点 util.totalPages：含"0 条也算 1 页"的守卫）',
     re: /Math\.max\s*\(\s*1\s*,\s*Math\.ceil\s*\(/,
     allow: ['js/store.js']
+  },
+  {
+    /* 【2026-10-04 新增类目】页面引导块必须只有一处实现（js/common/helpers.js）。
+       收口前 17 个页面/组件各自在顶部抄一遍「const H = globalThis.__TY_HELPERS__ || {}」+
+       「const S = H.S || …」+「const $ = H.$」…，且**写法互不相同**（$ 四种、S 四种、U 四种；
+       esc 四种、其中 3 种兜底**根本不转义**；num 两种且语义不同）。真机里 H.* 恒存在
+       （app.js 注册，tools/check_helper_deps.js 在守"所有 H.xxx 引用均已注册"），故兜底是休眠态 ——
+       但休眠代码也不该 17 份、更不该"兜底成不转义"。
+       唯一持有者：js/common/helpers.js（页面改为一行 import；测试壳经 tools/harness_boot.js 注入）。
+       判据只咬"读桥接并兜底"这一形态（`__TY_HELPERS__ || {}`），不咬 app.js 的**赋值**。 */
+    id: 'inline-helper-bootstrap',
+    desc: '页面自行写桥接兜底引导块（应 import js/common/helpers.js 单点）',
+    re: /__TY_(?:HELPERS|EXPORT)__\s*\|\|\s*\{\}/,
+    allow: ['js/common/helpers.js']
   }
 ];
 

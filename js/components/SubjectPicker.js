@@ -8,8 +8,9 @@
 
 import { subjectFullName } from '../common/subject-name.js';
 
-const H = globalThis.__TY_HELPERS__ || {};
-const esc = H.esc || function (s) { return String(s == null ? '' : s); };
+// 引导块（H / esc）已收口到 common/helpers.js —— 单点的 esc 兜底是**真转义**
+// （本文件旧兜底 `String(s)` 是空操作：桥缺失时会直接把科目名里的 < & 原样拼进 HTML）。
+import { H, esc } from '../common/helpers.js?v=dev';
 
 /** 判断科目编码是否命中（codes 为 null 即全部命中） */
 function matchSubjectCode(codes, code) {

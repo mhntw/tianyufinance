@@ -34,8 +34,13 @@ const popOf = () => body.children.filter(c => c._cls && c._cls.has('subj-range-p
 const popCount = () => body.children.filter(c => c._cls && c._cls.has('subj-range-pop')).length;
 
 let src = fs.readFileSync(path.join(__dirname, '..', 'js', 'components', 'SubjectPicker.js'), 'utf8');
-src = src.replace(/^import[^\n]*\n/m, '').replace(/export\s+/g, '');
-const { bindSubjectPicker, matchSubjectCode } = new Function('subjectFullName', src + '\n;return { bindSubjectPicker, matchSubjectCode };')((code, name) => code + ' ' + name);
+src = src.replace(/^import[^\n]*\n/gm, '').replace(/export\s+/g, '');
+/* 组件引导块已收口到 common/helpers.js —— 它的 import 行被上面整行删掉，故这里把 H / esc 作为
+   形参注入（与 subjectFullName 同一做法）。取值来自 harness_boot（helpers.js 的求值结果），
+   这样壳不必自己再抄一遍引导块。 */
+const BOOT = require('./harness_boot.js').installBootImports(global, path.join(__dirname, '..'));
+const { bindSubjectPicker, matchSubjectCode } = new Function('subjectFullName', 'H', 'esc',
+  src + '\n;return { bindSubjectPicker, matchSubjectCode };')((code, name) => code + ' ' + name, BOOT.H, BOOT.esc);
 
 const subs = [{ code: '1001', name: '库存现金' }, { code: '1002', name: '银行存款' }, { code: '6601', name: '管理费用' }];
 let bad = 0;

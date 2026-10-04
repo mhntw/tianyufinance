@@ -3,15 +3,15 @@
 // 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-import { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
+// H 由 _shared.js 转发自 js/common/helpers.js（引导块的唯一实现）
+import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
 import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
-const H = globalThis.__TY_HELPERS__ || {};
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
 // （否则裸调用抛 ReferenceError，导致「导入成功但读取账套失败」）
-const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
+const refreshAll = H.refreshAll;
 
   /* ============================================================
    * 设置：凭证字 / 现金流量科目

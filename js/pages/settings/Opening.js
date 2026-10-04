@@ -3,17 +3,11 @@
 // 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
-const money = H.money;
-/* 转义：本页此前从未调用过转义（0 处），而它拼接的科目编码/名称可由用户编辑、
-   也可能来自导入的账套文件 —— 是真实的注入面，故补齐。H.esc 由 app.js 注册。 */
-const esc = H.esc || function (s) { return String(s == null ? '' : s); };
+// 引导块（H / EX / $ / S / U / money / esc / showToast）已收口到 common/helpers.js。
+// 本页拼接的科目编码/名称可由用户编辑、也可能来自导入账套 —— 是真实注入面；
+// 单点的 esc 兜底是**真转义**（本页旧兜底 `String(s)` 是空操作，属补齐而非收紧）。
+import { H, EX, $, S, U, money, esc, showToast } from '../../common/helpers.js?v=dev';
 import { exportTable } from './_shared.js'; // 修复：此前 H.exportTable 未挂全局，期初导出是 undefined 会抛错
-const showToast = H.showToast;
-const S = H.S || (EX && EX.store);
-const U = H.U || (EX && EX.util);
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 
 // 幂等绑定：避免模块延迟执行导致的重复/失败绑定

@@ -1,5 +1,5 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
-import { $, S, money, yuan, absFmt, goPage, currentPeriod, esc, showToast, nowTimeStr, round2,
+import { H, $, S, money, yuan, absFmt, goPage, currentPeriod, esc, showToast, nowTimeStr, round2,
   monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter, U } from './_shared.js';
 const edState = {
   page: 1,
@@ -8,10 +8,11 @@ const edState = {
 };
 // 缓存 refreshExpenseDetail 的全量计算结果，供「导出」复用：避免解析 DOM，格式统一为 xlsx。
 let edExportData = null;
-// 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
-const periodRangeValue = (globalThis.__TY_HELPERS__ || {}).periodRangeValue;
+// 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间。
+// 这里改用 H（由 _shared.js 转发自 common/helpers.js）取桥接，避免各自写 `__TY_HELPERS__ || {}`。
+const periodRangeValue = H.periodRangeValue;
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页状态
-const bookScopeChanged = (globalThis.__TY_HELPERS__ || {}).bookScopeChanged || function () { return false; };
+const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 
 export function renderExpenseDetail() {
   try {

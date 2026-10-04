@@ -14,16 +14,12 @@ function getUtil() {
   return (ex && ex.util) || globalThis.util;
 }
 
-const $ = (id) => document.getElementById(id);
-// 桥接层：app.js 注册的通用 helper（$ / currentPeriod / periodRangeValue / esc 等）
-const H = globalThis.__TY_HELPERS__ || {};
+// 桥接层（H / $ / esc 别名）已收口到 common/helpers.js；periodRangeValue 是本页专属。
+// 注：上面 getStore/getUtil 是"不 import store.js、从 __TY_EXPORT__ 取单例"的既有设计，保留不动。
+import { H, $, escHtml, escAttr } from '../../common/helpers.js?v=dev';
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = H.periodRangeValue;
-
-// 科目名来自用户录入，渲染进 HTML / 属性前需转义，避免破坏结构
-// HTML 转义统一走 H.esc（单点实现）。
-const escHtml = H.esc;
-const escAttr = escHtml;
+// 科目名来自用户录入，渲染进 HTML / 属性前必须转义，避免破坏结构（escHtml/escAttr 由单点提供）。
 
 /* ===== 科目余额表树形折叠（与科目页同款交互） =====
  * tbExpanded: Set() = 已展开的科目编码（祖先级联：祖先不在 Set 中 → 子级隐藏）

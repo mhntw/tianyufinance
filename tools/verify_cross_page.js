@@ -150,7 +150,17 @@ const esc = function (s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 };
 let CUR_MONTH = '';
-const U = { num: num, money: money, round2: round2, esc: esc };
+/* periodText：期间文案单点（store.util.periodText）的等价实现 —— 报表抬头 setRptHead 会调它。
+   本壳的 U 是自建桩（不加载 store），故必须补齐，否则报表渲染抛「U.periodText is not a function」
+   （2026-10-04 期间文案收口后暴露；本壳其余桩同理各有自己的实现）。 */
+const U = {
+  num: num, money: money, round2: round2, esc: esc,
+  periodText: function (m) {
+    if (!m) return '';
+    const s = String(m).replace(/-/g, '');
+    return s.slice(0, 4) + '年第' + (parseInt(s.slice(4, 6), 10) || 0) + '期';
+  }
+};
 const TOASTS = [];
 const H = {
   $: getEl, money: money, esc: esc, escHtml: esc, num: num, round2: round2,
