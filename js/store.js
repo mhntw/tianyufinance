@@ -243,6 +243,19 @@
      与金蝶一致，且它本来就在最显眼的位置）。
      ⚠ 只负责"有期间"的文案；空值仍由各调用方自行兜底（顶栏显示「—」、首页显示「--」），
        它们对空的表达本就不同，硬统一反而制造新差异。 */
+  /* 「子科目」判定单点（2026-10-04）：child 是否 parent 的下级（**不含自身**）。
+     规则 = 纯前缀 + 更长，依据是真实账套的**权威字段**而不是推断：
+       · 两个真实账套里 parent 字段声明的父子关系共 341 / 351 对，纯前缀**零漏判**；
+       · 而"要求长度差 ≥2"的写法（原 Home.js:isChildOf，注释假设编码是 4→6→8 偶数位）
+         在绅蓝之星（金蝶风格**不等长**编码：4 位 69 个 / 6 位 7 个 / **7 位 326 个** / 9 位 17 个）
+         上漏判 1 对 —— `22210102`（销项税额）的 parent 正是 `2221010`，只长 1 位。
+     ⚠ 不要在此加入"长度必须是 2 的倍数""必须多 2 位"这类**对编码风格的假设** ——
+       那会在不等长编码的账套上**悄悄漏掉真实科目**（正是本次踩到的坑）。
+     ⚠ 需要"含自身"的语义时，调用方自己写 `c === p || isChildCode(p, c)`（不要另立一份实现）。 */
+  function isChildCode(parent, child) {
+    var p = String(parent == null ? '' : parent), c = String(child == null ? '' : child);
+    return !!p && c !== p && c.length > p.length && c.indexOf(p) === 0;
+  }
   function periodText(m) {
     if (!m) return '';
     var s = String(m).replace(/-/g, '');
@@ -5819,7 +5832,7 @@
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-    totalPages: totalPages, periodText: periodText,
+    totalPages: totalPages, periodText: periodText, isChildCode: isChildCode,
     amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
     /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
        此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
@@ -5834,7 +5847,7 @@
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-      totalPages: totalPages, periodText: periodText,
+      totalPages: totalPages, periodText: periodText, isChildCode: isChildCode,
       amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
       round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }

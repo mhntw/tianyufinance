@@ -323,15 +323,14 @@ function hintPlMissing(item, elId, name) {
   }
 }
 
-// 判断 sub 是否为 parent 的下级：带点编码(1122.03)或无点编码(1122003，长度差≥2)均兼容
-function isChildOf(parent, sub) {
-  if (sub.length <= parent.length) return false;
-  if (sub.indexOf(parent + '.') === 0) return true;          // 带点层级
-  if (parent.indexOf('.') < 0 && sub.indexOf('.') < 0) {     // 双方均无点（风格）
-    return sub.indexOf(parent) === 0 && (sub.length - parent.length) >= 2;
-  }
-  return false;
-}
+/* 判断 sub 是否为 parent 的下级 —— 走**单点** util.isChildCode（规则与依据见 store.js 的说明）。
+   旧实现要求"长度差 ≥2"，那是在假设编码是 4→6→8 偶数位；绅蓝之星是金蝶风格**不等长**编码
+   （7 位 326 个），会漏掉真实父子（如 `22210102` 属于 `2221010`）。
+   【影响面已量化，故本次改动不改变任何数字】该函数只被下面的应收/应付卡片用，
+   而 1122 / 2202 下"纯前缀"与"差≥2"在**两个真实账套上结果完全一致**（9/9、23/23、11/11、41/41）
+   —— 唯一差异那对（2221010↳22210102）不在本卡片的科目范围内。
+   ⚠ 别再写回"长度差"这类对编码风格的假设。 */
+function isChildOf(parent, sub) { return U.isChildCode(parent, sub); }
 
 // 科目期末余额：一律走 store.subjectEndBalance（唯一实现）。
 // 说明：generalLedger 每行余额已含全部下级，页面若自行「父级 + 子级」聚合会成倍虚增
