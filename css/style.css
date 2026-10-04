@@ -5738,8 +5738,14 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 /* 通用数据表格：外观统一吃全局 .grid（白底灰线、常规字重），此处仅表头左对齐差异 + 字号 + 内容修饰 */
 .std-table { border-collapse: separate; border-spacing: 0; }   /* 宽度走全局 .grid 标准 */
 .std-table .mono { /* 原 font-family: var(--mono) 已删：--mono 从未定义，且全站设计是"数字与正文同字体"，等宽只靠 tabular-nums */ }
-/* 表格空数据提示（全局统一：居中灰字；以 td.empty-hint 书写以覆盖 .grid td 单元格规则） */
-td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   /* 文字色走 token */
+/* 空数据提示（全局统一：居中灰字；选择器带标签是为了在**同特异度**下靠源码顺序压过 .grid td） 
+   【2026-10-04 修正】原先只写了 td.empty-hint —— 于是非表格里的 <div class="empty-hint">
+   **完全拿不到任何样式**（Asset.js 的「暂无变动记录」、Voucher.js 的模板空态），
+   后者只能靠内联样式补齐，与 Voucher.js 里「空状态统一走全局 td.empty-hint（居中灰字），
+   不再写内联对齐/字色」的既定意图正相矛盾。现把同一套声明同时给 div/span/p。 */
+td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
+  text-align: center; color: var(--ty-text-3); padding: 24px;   /* 文字色走 token */
+}
 .std-table .num { text-align: right; }
 
 .std-table .num input.input-sm { text-align: right; }

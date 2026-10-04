@@ -1715,7 +1715,7 @@ function renderVchTplList() {
   if (mineF.length) html += sec('我的模板', mine.length) + mineF.map(function (t) { return tplRow(t, false); }).join('');
   if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
   if (!html) {
-    html = '<div class="empty-hint" style="padding:26px 0;text-align:center;color:var(--ty-text-3)">'
+    html = '<div class="empty-hint">'   /* 【2026-10-04】原先内联补 padding/居中/字色，因为空态规则只覆盖 td；现规则已覆盖 div，去掉内联（与 Asset.js 的空态写法一致） */
       + (q ? '没有找到名称含「' + escHtml(q) + '」的模板' : '暂无可用模板') + '</div>';
   } else if (!mine.length && !q) {
     html += '<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>';
