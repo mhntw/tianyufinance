@@ -18,7 +18,9 @@
       {
         "title": "添钰财务管理系统",
         "width": 1280,
-        "height": 800
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {

@@ -1956,6 +1956,12 @@ label.req::before {
   background: var(--ty-white);
   border-bottom: 1px solid var(--ty-border);
   gap: 20px;
+  /* 【2026-10-04 窄窗口修复】原为强制单行（左右两组都是 white-space:nowrap）——
+     窗口窄于约 800px 时三项最小内容宽（实测 652px）超出可用宽度，而 .content 是 overflow:hidden，
+     于是右侧「附件 / 上传附件」被裁掉**且无法滚动到**（自动化实测：760px 窗口下 .vh-right 右缘 796）。
+     现允许整行换行：宽度不够时附件组落到第二行，而不是被裁掉。
+     ⚠ 宽度充足时不触发换行（三项最小宽之和 < 可用宽），故常规窗口外观不变（1024px 起仍单行）。 */
+  flex-wrap: wrap;
 }
 .vh-left {
   display: flex;
@@ -1969,9 +1975,13 @@ label.req::before {
 /* 凭证号 readonly，紧凑宽度 */
 #vNo { width: 40px; text-align: center; font-size: var(--fs-sm); }
 .vh-no-label, .vh-date-label { color: var(--ty-text-2); }
+/* 【2026-10-04】配合上面 .voucher-head-row 的换行：给中间标题一个可读下限（220px）。
+   否则中间列（flex-basis 0）会被压到极窄，标题"记账凭证"退化成竖排单字才轮到换行。
+   宽度充足时 flex-grow:1 仍会吃掉全部剩余空间，位置与原先一致。 */
 .vh-center {
   text-align: center;
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 220px;
 }
 .vh-title {
   font-size: 18px;
@@ -2487,12 +2497,22 @@ label.req::before {
 
 .modal.show { display: flex; }
 
+/* 【2026-10-04 窄窗口/高缩放守卫】补上基类的尺寸上限 —— 与 .modal-box.modal-wide（见下方 820px 那条）
+   既有写法完全一致：那里早就有 max-width: calc(100vw - 32px) + max-height: calc(100vh - 64px)，
+   而**基类反而漏了**，于是所有继承基类宽度的弹窗在窄窗口/高缩放下会被裁掉：
+     · 通用弹窗（本类 380px）、#cloudSyncModal（440px）、#subjectModal（min-width 420px）、
+       dialog-bridge 内联 width:460px 的确认框（JS 里写死，但 max-width 能压住 width，故一处即全覆盖）。
+   overflow 由 hidden 改为 auto：两者**裁剪范围相同**（不会新增"弹层被裁"的风险，该风险本已存在），
+   区别只在"内容超高时能否滚动" —— 原先超高内容既裁掉又看不到，现在可滚。
+   注：.modal-box.modal-wide 自己写了 overflow: visible 且更具体，不受本行影响 ✓ */
 .modal-box {
   width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
   background: var(--ty-white);
   border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, .22);
-  overflow: hidden;
+  overflow: auto;
   animation: modal-in .16s ease;
 }
 
@@ -2540,7 +2560,9 @@ label.req::before {
 /* 云同步设置弹窗：服务器地址 URL 较长，加宽到 440px */
 #cloudSyncModal .modal-box { width: 440px; }
 /* 新增科目弹窗：宽度贴合内容（fit-content），保证每行一行排完且不过宽 */
-#subjectModal .modal-box { width: fit-content; min-width: 420px; }
+/* 【2026-10-04】min-width 会**压过** max-width（CSS 规则），故基类那条守卫管不住它 ——
+   这里用 min() 让"420px 的舒适宽度"与"视口上限"取小值，窄窗口下才不会撑破。 */
+#subjectModal .modal-box { width: fit-content; min-width: min(420px, calc(100vw - 32px)); }
 #subjectModal .form-row { flex-wrap: nowrap; }
 #subjectModal .form-row .chk-group {
   flex: 1 1 auto; min-width: 0;
@@ -3818,10 +3840,15 @@ label.req::before {
   flex: 1 1 auto;        /* 吸收挤压空间，优先收缩 */
   min-width: 0;          /* 关键：允许 flex 子项收缩到内容以下（否则 ellipsis 不生效，期间会被挤） */
 }
-/* 存量卡片右上角期间（如"2026年08期"）：固定显示最新期末，稳定占位不漂移 */
+/* 存量卡片右上角期间（如"2026年08期"）：固定显示最新期末，稳定占位不漂移
+   【2026-10-04】色由 --ty-text-3 提到 --ty-text-2 —— 与流量卡那个期间下拉统一：
+   两处都是「卡片右上角的期间」，却一个浅灰一个深灰，同排卡片并排时能看出轻重不一。
+   取 --ty-text-2 而不是把下拉压到 --ty-text-3：后者是"禁用/占位"的观感，会让可点的
+   下拉看起来像不可点；而 --ty-text-2 正是下拉箭头描边的颜色（data-URI 里的 #4b5763），
+   文字与箭头天然同色。 */
 .metric-card-head .card-period {
   font-size: var(--fs-xs);
-  color: var(--ty-text-3);
+  color: var(--ty-text-2);
   padding-right: var(--card-pad-x);
   white-space: nowrap;
   flex-shrink: 0;         /* 不收缩 */
@@ -3846,8 +3873,11 @@ label.req::before {
   appearance: none;
   font-size: var(--fs-xs);
   font-family: inherit;
-  color: var(--ty-text, var(--ty-text-2));
-  font-weight: 500;
+  /* 【2026-10-04】color 由 var(--ty-text) 改为 var(--ty-text-2)、font-weight 由 500 改 400：
+     与存量卡的 .card-period 完全同色同字重，两处右上角期间看起来是同一个元素族。
+     控件感仍由箭头（唯一"可下拉"线索）和 hover 变蓝提供，不靠"更粗更深"来体现可点。 */
+  color: var(--ty-text-2);
+  font-weight: 400;
   /* 默认无底色：只留文字 + 箭头（箭头是唯一提示「可下拉」的线索，必须保留） */
   background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%234b5763" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right 8px center;
   background-size: 10px 6px;
@@ -4030,7 +4060,9 @@ label.req::before {
 /* ---- 字段层级 fv1~fv8（财务指标统一字段样式，逐字复刻）---- */
 /* fv1：主数区（资金余额）；=标签在上、16px 值在下（row，text-align:right） */
 .fv1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.fv1 .fv1-f { font-size: var(--fs-md); display: inline-block; margin-right: 2px; color: var(--ty-text); letter-spacing: 0; font-weight: 400; }
+/* 【2026-10-04】补 line-height:20px —— fv1-f 是唯一漏写行高的字段标签（fv3-f/fv5-f/
+   fv7-f/fv8-f 都写了 20px），靠 baseline 对齐时看不出差别，但补齐后与其余标签同源同规格。 */
+.fv1 .fv1-f { font-size: var(--fs-md); display: inline-block; margin-right: 2px; color: var(--ty-text); letter-spacing: 0; line-height: 20px; font-weight: 400; }
 .fv1 .fv1-v { font-size: var(--fs-md); text-align: right; line-height: 20px; word-break: normal; white-space: nowrap; color: var(--ty-text); font-weight: 600; }
 
 /* fv2：次要行（浅灰标签+黑色值）；左字右值 */
@@ -4038,12 +4070,22 @@ label.req::before {
 .fv2 .fv2-f { color: var(--ty-text-2); margin-right: 8px; word-break: break-all; font-size: var(--fs-xs); letter-spacing: 0; }
 .fv2 .fv2-v { color: var(--ty-text); font-size: var(--fs-xs); letter-spacing: 0; }   /* 原版 fv2-v 为黑色 var(--ty-text) */
 
-/* 应收应付卡片：合计标题下的各往来单位明细项（风格：名称 + 金额） */
-.arap-items { margin-top: 8px; max-height: 200px; overflow-y: auto; }
+/* 应收应付卡片：合计标题下的各往来单位明细项（风格：名称 + 金额）
+   【2026-10-04】margin-top 8px→12px：首行明细的文字距合计行 = 12px(margin) + 4px(.arap-item
+   的 padding-top) = 16px，与 .fv2 明细行（margin-top:16px、无 padding）在四张卡上完全等距。
+   行与行之间仍保留 8px（4+4）的紧凑密度：这是不定长、可滚动的科目明细列表，不是 .fv2 那种
+   固定 3 行的构成项。 */
+.arap-items { margin-top: 12px; max-height: 200px; overflow-y: auto; }
 /* （滚动条原先在此单独写 4px 灰，且 Firefox 侧刻意为透明（几乎看不见）——
     已收口到文末「全站滚动条」唯一规范，与其余页面同款。） */
-.arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--ty-border); }
-.arap-item:last-child { border-bottom: none; }
+/* 【2026-10-04】原带 `border-bottom: 1px dashed var(--ty-border)` —— 整页只有这一处
+   用虚线分隔明细行，而另三张同类卡（资金余额 / 预计可用资金 / 费用）的明细行走 .fv2
+   （纯间距、无线），于是「同样是合计在上、明细在下」的卡片出现了两套观感。
+   已去掉虚线，改为与 .fv2 一致的「无线 + 间距」；虚线本身在本产品里只保留给
+   登录弹窗底部分隔、结账页"未结账置灰"边框这两处"提示/禁用"语义。
+   行距刻意保留 .arap-item 的紧凑 padding（这是不定长、可滚动的科目明细列表，
+   密度高于 .fv2 那种固定 3 行的构成项）。 */
+.arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; }
 .arap-item .ai-name { color: var(--ty-text-2); font-size: var(--fs-xs); letter-spacing: 0; word-break: break-all; margin-right: 8px; flex: 1 1 auto; min-width: 0; }
 .arap-item .ai-val { color: var(--ty-text); font-size: var(--fs-xs); letter-spacing: 0; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 
@@ -4061,7 +4103,11 @@ label.req::before {
    【2026-10-04】与 fv7/fv8 一并由竖排改横排，口径统一。 */
 .fv5 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .fv5 .fv5-f { font-size: var(--fs-md); color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; letter-spacing: 0; line-height: 20px; }
-.fv5 .fv5-v { font-size: var(--fs-md); color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; text-align: right; letter-spacing: 0; line-height: 20px; }
+/* 【2026-10-04】.fv5-v 的 color 由 --ty-text 改为 --ty-text-2。
+   上方「比率类值统一降级」的注释（净利润率 / 毛利率 / 费用占比）已经写明三者都该降级，
+   但 .fv5-v 漏了颜色——净利润率走 .fv7-v.is-rate、毛利率走 .fv8-v 都是灰，只有
+   「费用占收入比」是深色，同一角色的比率出现两个颜色。补上即三处一致。 */
+.fv5 .fv5-v { font-size: var(--fs-md); color: var(--ty-text-2); font-weight: 400; word-break: normal; white-space: nowrap; text-align: right; letter-spacing: 0; line-height: 20px; }
 
 /* fv6：较上期/较同期 行（左字右值 + 三角） */
 .fv6 { display: flex; align-items: center; }
@@ -4069,7 +4115,8 @@ label.req::before {
 .fv6 .ic-dec { color: var(--ty-green); font-size: var(--fs-xl); }   /* 减=绿 */
 .fv6 .ic-inc { color: var(--ty-red); font-size: var(--fs-xl); }   /* 增=红 */
 
-/* fv7：左标签 / 右金额 同行（净利润、收入、成本、费用）
+/* fv7：左标签 / 右金额 同行。现仅剩「净利润率」一行在用（走 .is-rate 降级），
+   原来的净利润 / 收入 / 成本 / 费用四行合计行已改 .fv1（见下方 .detail .fv1 的说明）。
    【2026-10-04 由竖排改横排】原先竖排的依据是「1/6 窄卡内容宽仅约 161px，
    而『收入』+『3,544,599.15』≈166px，横排必挤」。改 3 列后单卡内容宽约 348px，
    横排有充分余量；且竖排会让宽卡右半区整体空置，与同区其他卡片（fv1/fv2/fv3
@@ -4120,9 +4167,17 @@ label.req::before {
 /* ---- 净利润 / 收入成本 详情区（detail 两栏，口径）---- */
 .detail { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px; }
 .detail .fv7 { width: 100%; }
-/* 费用卡内的 .detail：纵向堆叠（费用主值在上，较上期/同期在下），费用卡口径 */
+/* 【2026-10-04】净利润 / 收入 / 成本 / 费用 四行的"合计行"由 .fv7 改为 .fv1：
+   这四行是卡片的主张量，标签却用 .fv7 的浅灰（--ty-text-2），而同排另三张卡
+   （资金余额 / 应收应付 / 预计可用资金）的主数行用 .fv1 的深色（--ty-text）——
+   同一角色两个颜色。改用 .fv1 后 6 张卡主数行统一深色，且合计行能压住下方的明细行。
+   .detail 是 align-items:flex-start 的横排容器，子项必须自己撑满宽度才能让
+   space-between 把金额推到右缘（.fv7 自带 width:100%，.fv1 没有，这里补上）。 */
+.detail .fv1 { width: 100%; }
+/* 费用卡内的 .detail：纵向堆叠（费用主值在上，较上期/同期在下），费用卡口径
+   （原此处还有 `.cost-card .detail .fv7{width:100%}`，费用合计行改用 .fv1 后卡内已无 .fv7，
+    该条成为死代码，已删；宽度由上方通用规则 `.detail .fv1{width:100%}` 负责。） */
 .cost-card .detail { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }
-.cost-card .detail .fv7 { width: 100%; }
 /* 收入成本卡内的 .detail：纵向堆叠（收入 / 成本+毛利率 分两行）。
    align-items:stretch 让子项撑满卡宽 —— 原先靠 HTML 上的 width:57% 限制宽度，
    那是图表时代（右侧有柱状图）的遗留，图表移除后应占满整宽、金额右缘才能与其他卡对齐。 */
