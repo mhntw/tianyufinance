@@ -68,6 +68,28 @@ try {
   errors.push('无法读取 tools/layout_probe.js：' + e.message);
 }
 
+/* ⑤ 界面缩放的「安全上限」常量必须与实测边界一致
+ * 这是**跨语言常量**（浏览器模块不能 require tools/ 下的文件），无法共享同一个定义，
+ * 只能靠卡口比对 —— 与 tauri.conf.json 那处同一性质。 */
+try {
+  const uiScale = fs.readFileSync(path.join(ROOT, 'js', 'common', 'ui-scale.js'), 'utf8');
+  const m = /LAYOUT_MIN_W\s*=\s*(\d+)/.exec(uiScale);
+  if (!m) errors.push('[界面缩放] js/common/ui-scale.js 里找不到 LAYOUT_MIN_W —— 放大上限失去依据。');
+  else if (safeMin && Number(m[1]) !== safeMin.w) {
+    errors.push(`[界面缩放] ui-scale.js 的 LAYOUT_MIN_W=${m[1]} 与实测安全宽度 ${safeMin.w} 不一致 —— ` +
+      '放大后的有效布局宽度会低于安全边界（放大即把用户带进布局塌陷区间）。');
+  }
+  const rng = /const MIN = ([\d.]+), MAX = ([\d.]+), STEP = ([\d.]+)/.exec(uiScale);
+  if (!rng) errors.push('[界面缩放] ui-scale.js 里找不到 MIN / MAX / STEP 定义。');
+  else {
+    if (!(Number(rng[1]) > 0 && Number(rng[1]) < 1)) errors.push(`[界面缩放] MIN=${rng[1]} 应在 (0,1) —— 下限是"缩小"。`);
+    if (!(Number(rng[2]) > 1)) errors.push(`[界面缩放] MAX=${rng[2]} 应 >1 —— 否则"放大"这个功能不存在。`);
+    if (!(Number(rng[3]) > 0 && Number(rng[3]) < 1)) errors.push(`[界面缩放] STEP=${rng[3]} 应在 (0,1)，否则步进会跳过中间档。`);
+  }
+} catch (e) {
+  errors.push('无法读取 js/common/ui-scale.js：' + e.message);
+}
+
 console.log('============================================');
 console.log('窗口最小尺寸卡口（安全边界 ' + (safeMin ? safeMin.w + 'x' + safeMin.h : '?') + '）');
 if (errors.length) {

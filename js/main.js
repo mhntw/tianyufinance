@@ -26,6 +26,9 @@ import { refreshHome, setupHome } from './pages/home/Home.js?v=dev';
 import { refreshTools } from './pages/settings/Tools.js?v=dev';
 import { refreshCloudSync } from './pages/settings/CloudSync.js?v=dev';
 import { initPeriodRangePicker, updatePeriodRangeTrigger } from './components/PeriodRangePicker.js?v=dev';
+/* 界面缩放（Ctrl/Cmd + `+` / `-` / `0`）：自装单点 —— import 即恢复上次比例并挂上快捷键，
+   不需要额外的初始化调用。安全上限的由来见该文件头部注释（有效布局宽度不得低于 900px）。 */
+import './common/ui-scale.js?v=dev';
 
 // —— 通用起止期间选择器（总账/明细账/项目利润表/费用明细表等） ——
 initPeriodRangePicker();

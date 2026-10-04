@@ -150,6 +150,22 @@ const PROBE = `
       done(res);
     }, 400);
   }
+  /* 界面放大后的复核：放大 = 有效布局宽度变窄，正是最可能塌陷的场景。
+     用**产品自身的上限规则**（__TY_UI_SCALE__.capFor）算本窗口宽允许的最大比例 ——
+     这样测的就是真实代码路径，而不是探针自己另写一套规则。 */
+  function zoomPass(pg) {
+    var api = globalThis.__TY_UI_SCALE__;
+    if (!api || typeof api.capFor !== 'function') return { skipped: '未加载 __TY_UI_SCALE__' };
+    var cap = api.capFor(window.innerWidth);
+    if (!(cap > 1.0001)) return { cap: cap, skipped: '本窗口宽度下不允许放大（上限即 100%）' };
+    var root = document.documentElement;
+    root.style.zoom = String(cap);
+    var a = audit();                 /* audit 内部所有比较都在同一坐标系（zoom 后的 CSS px）✓ */
+    try { globalThis.goPage(pg); } catch (e) {}
+    root.style.removeProperty('zoom');
+    a.zoom = cap;
+    return a;
+  }
   function run() {
     var chunks = [];
     PAGES.forEach(function (pg) {
@@ -157,9 +173,12 @@ const PROBE = `
       try { chunks.push(pg + '##' + JSON.stringify(audit())); }
       catch (e) { chunks.push(pg + '##{"error":"' + e.message + '"}'); }
     });
+    var zoom = zoomPass(PAGES[0]);
     modalProbe(function (modal) {
       document.documentElement.setAttribute('data-probe',
-        window.innerWidth + 'x' + window.innerHeight + '||' + chunks.join('##PAGE##') + '##PAGE##__modal__##' + JSON.stringify(modal));
+        window.innerWidth + 'x' + window.innerHeight + '||' + chunks.join('##PAGE##') +
+        '##PAGE##__zoom__##' + JSON.stringify(zoom) +
+        '##PAGE##__modal__##' + JSON.stringify(modal));
     });
   }
   if (document.readyState === 'complete') setTimeout(run, 1200);
@@ -231,7 +250,7 @@ function serve(dir) {
       const txt = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
       const parts = txt.split('##PAGE##');
       const head = parts[0].split('||')[0];
-      let bad = 0;
+      let bad = 0, zoomUsed = null;
       parts.slice(1).forEach(function (chunk) {
         const i = chunk.indexOf('##');
         if (i < 0) return;
@@ -241,10 +260,19 @@ function serve(dir) {
           if (o.cut) { failures.push('窗口 ' + head + '：【模态超视口】.modal-box 宽 ' + o.w + ' > 视口 ' + o.vw + '（max-width=' + o.maxW + '）'); bad++; }
           return;
         }
+        if (name === '__zoom__') {
+          if (o.skipped) return;
+          zoomUsed = o.zoom;
+          const tag = '【放大 ' + o.zoom + '× 后】';
+          if (o.docOverflowX > 1) { failures.push('窗口 ' + head + '：' + tag + '文档级横向溢出 ' + o.docOverflowX + 'px'); bad++; }
+          (o.unreachable || []).forEach(function (u) { failures.push('窗口 ' + head + '：' + tag + u); bad++; });
+          return;
+        }
         if (o.docOverflowX > 1) { failures.push('窗口 ' + head + '：[' + name + '] 文档级横向溢出 ' + o.docOverflowX + 'px'); bad++; }
         (o.unreachable || []).forEach(function (u) { failures.push('窗口 ' + head + '：[' + name + '] ' + u); bad++; });
       });
-      console.log('  窗口 ' + head.padEnd(10) + (bad ? '✗ ' + bad + ' 项' : '✓ 通过'));
+      console.log('  窗口 ' + head.padEnd(10) + (bad ? '✗ ' + bad + ' 项' : '✓ 通过') +
+        (zoomUsed ? '（放大到 ' + zoomUsed + '× 后仍通过）' : ''));
     }
   } finally {
     srv.close();
