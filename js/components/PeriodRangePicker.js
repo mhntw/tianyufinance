@@ -49,7 +49,7 @@ import { H, U, $ } from '../common/helpers.js?v=dev';
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
 /* 期间文案单点（见 store.js 的 periodText）：本函数原为「2026年08期」（补零、无"第"），
-   与已统一为「2026年第8期」的顶栏/首页/报表头**仍不一致** —— 同一屏里触发器与顶栏两种写法。
+   与顶栏/首页/报表头统一后的口径（现为「2026年09期」）此前**不一致** —— 同一屏里两种写法。
    2026-10-04 一并收口。安全性已审：该文本只喂 textContent（触发器等三处），全库无人反解析。 */
 function fmtPeriod(ym) { return U.periodText(ym); }
 

@@ -158,7 +158,9 @@ const U = {
   periodText: function (m) {
     if (!m) return '';
     const s = String(m).replace(/-/g, '');
-    return s.slice(0, 4) + '年第' + (parseInt(s.slice(4, 6), 10) || 0) + '期';
+    /* 与 store.js 的 periodText 同形（2026-10-04 口径修正：补零、无「第」→ 2026年09期） */
+    const mo = parseInt(s.slice(4, 6), 10) || 0;
+    return s.slice(0, 4) + '年' + (mo < 10 ? '0' : '') + mo + '期';
   }
 };
 const TOASTS = [];
