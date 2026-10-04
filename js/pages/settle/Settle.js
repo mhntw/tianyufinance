@@ -129,48 +129,29 @@ function onBtn(id, fn) {
   var el = $(id);
   if (el && !el._bound) { el._bound = true; el.addEventListener('click', fn); }
 }
-// 按钮绑定（结账/期末处理/反结账 主按钮，静态元素）
-function bindSettleEvents() {
-  // 设置弹窗：启用 / 凭证模板 / 禁用 三个分组均可折叠
-  [['settleTmplGroupEnabled', 'settleTmplEnabled'], ['settleTmplGroupVch', 'settleTmplVch'], ['settleTmplGroupDisabled', 'settleTmplDisabled']].forEach(function (pair) {
-    var grp = $(pair[0]), ul = $(pair[1]);
-    if (grp && ul && !grp._bound) {
-      grp._bound = true;
-      grp.addEventListener('click', function () {
-        var hidden = ul.classList.toggle('settle-tmpl-list-hidden');
-        var arr = grp.querySelector('.settle-tmpl-arrow');
-        if (arr) arr.style.transform = hidden ? 'rotate(0deg)' : 'rotate(90deg)';
-      });
-      var arr0 = grp.querySelector('.settle-tmpl-arrow');
-      if (arr0) arr0.style.transform = ul.classList.contains('settle-tmpl-list-hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
-    }
-  });
-  // 期末结账三 Tab 切换：期末处理 / 结账 / 反结账（此前未绑定，导致 tab 点不动）
-  document.querySelectorAll('#settleTabs .settle-tab').forEach(function (tab) {
-    if (tab._bound) return;
-    tab._bound = true;
-    tab.addEventListener('click', function () {
-      var which = tab.getAttribute('data-tab'); // process / close / reopen
-      document.querySelectorAll('#settleTabs .settle-tab').forEach(function (t) { t.classList.remove('active'); });
-      tab.classList.add('active');
-      var map = { process: 'settlePaneProcess', close: 'settlePaneClose', reopen: 'settlePaneReopen' };
-      ['settlePaneProcess', 'settlePaneClose', 'settlePaneReopen'].forEach(function (id) {
-        var p = document.getElementById(id); if (p) p.style.display = 'none';
-      });
-      var target = document.getElementById(map[which]);
-      if (target) target.style.display = '';
-      refreshSettle();
-    });
-  });
-  onBtn('btnDepVoucher', function () {
+/* ============================================================
+ * 期末处理 / 结账 / 反结账 的按钮处理函数
+ * ============================================================
+ * 【2026-10-04 拆分】原先 10 个 handler 全部内联在 bindSettleEvents 里（该函数一度 265 行）。
+ * 现按"一个按钮一个函数"拆出，bindSettleEvents 只负责**顺序绑定**（含幂等 _bound 标记）。
+ * 属纯搬迁：每个函数体逐字来自原内联代码，未改任何判断/文案/调用；
+ * 可用"行多重集比对"证明（搬迁前后该文件的行集合只差包装行）。
+ */
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnDepVoucher 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+function onDepVoucher() {
     var month = selMonth;
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'dep'; })[0] || {};
     var r = S.depreciateMonth(month, { word: tpl.word, summary: tplSummary(tpl, month), date: tmplVoucherDate(month, tpl) });
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已生成折旧凭证：' + money(r.total) + '（' + r.count + ' 项资产）');
     refreshSettle(); syncAll();
-  });
-  onBtn('btnCarryCost', function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnCarryCost 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+function onCarryCost() {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'cost'; })[0] || {};
     var est = S.costVoucherEstimate(month, tpl);
@@ -186,11 +167,11 @@ function bindSettleEvents() {
     if (!r || !r.ok) return showToast(r ? r.msg : '结转失败', 'error');
     showToast('已结转销售成本：' + money(amt));
     refreshSettle(); syncAll();
-  });
-  // 「转出未交增值税 / 计提附加税 / 计提所得税」三个按钮已随模板下线（2026-09-18）。
-  // 真实账套从未使用增值税转出；附加税与所得税按「利润×税率」测算的金额与申报口径不符，
-  // 自动生成不可信，税款一律由会计按实际申报数手工录入。
-  onBtn('btnReCarryForward', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnReCarryForward 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onReCarryForward() {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
     // 旧结转凭证从**单点四态判定**取（carryForwardStatus().vouchers），不再自行按 kind 过滤：
@@ -221,9 +202,11 @@ function bindSettleEvents() {
       'success');
     refreshSettle(); syncAll();
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
-  });
-  // 年末结转本年利润（3103 → 3104 未分配利润），仅 12 月可用。此前 carryYearEnd 已实现却零调用（死代码），跨年 3103 未清零、未分配利润失真，此处接入入口。
-  onBtn('btnCarryYearEnd', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnCarryYearEnd 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onCarryYearEnd() {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (String(month).substring(5, 7) !== '12') return showToast('仅 12 月需结转本年利润', 'error');
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
@@ -232,8 +215,11 @@ function bindSettleEvents() {
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已结转本年利润：' + money(Math.abs(r.bal || 0)), 'success');
     refreshSettle(); syncAll();
-  });
-  onBtn('btnProfitDist', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnProfitDist 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onProfitDist() {
     var month = selMonth; // 期末处理跟随结账 tab 选期
     if (String(month).substring(5, 7) !== '12') return showToast('仅 12 月可进行利润分配', 'error');
     if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
@@ -251,8 +237,11 @@ function bindSettleEvents() {
     if (!r2.ok) return showToast(r2.msg, 'error');
     showToast('已分配利润：' + money(r2.amount), 'success');
     refreshSettle(); syncAll();
-  });
-  onBtn('btnClosePeriod', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnClosePeriod 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onClosePeriod() {
     var month = selMonth;
     if (S.isPeriodClosed(month)) return showToast('该期已结账', 'error');
     var vs = S.periodVouchers(month);
@@ -274,8 +263,11 @@ function bindSettleEvents() {
     showToast('结账成功：' + month);
     refreshSettle(); syncAll();
     if (window.__runSelfTestBanner) window.__runSelfTestBanner();
-  });
-  onBtn('btnReopenPeriod', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnReopenPeriod 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onReopenPeriod() {
     // 反结账 tab 用自身月份导航 selReopenMonth；原代码误用 selMonth（结账 tab 选期），会在反结账页选 3 月却反结账结账 tab 选的月份。
     var month = selReopenMonth;
     if (!S.isPeriodClosed(month)) return showToast('该期未结账', 'error');
@@ -304,10 +296,11 @@ function bindSettleEvents() {
     if (!r.ok) return showToast(r.msg, 'error');
     showToast('已反结账：' + month + '（原因已记录）');
     refreshSettle(); syncAll();
-  });
+}
 
-  // ===== 顶部批量操作按钮 =====
-  onBtn('settleCheckAll', function () {
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 settleCheckAll 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+function onSettleCheckAll() {
     var cb = $('settleCheckAll');
     var checked = cb.checked;
     document.querySelectorAll('#settleProcessCards .settle-card').forEach(function (card) {
@@ -318,13 +311,19 @@ function bindSettleEvents() {
         card.classList.toggle('settle-card-checked', checked);
       }
     });
-  });
-  onBtn('btnSettleRecalc', function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnSettleRecalc 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+function onSettleRecalc() {
     // 重新测算 = 强制刷新卡片状态（已结转/未结转金额来自 store，无额外测算逻辑）
     showToast('已刷新测算');
     refreshSettle();
-  });
-  onBtn('btnSettleBatchGen', async function () {
+}
+
+/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
+   按钮 btnSettleBatchGen 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
+async function onSettleBatchGen() {
     // 批量生成：遍历所有勾选的卡片，逐个生成凭证
     var cards = document.querySelectorAll('#settleProcessCards .settle-card input[type=checkbox]:checked');
     if (!cards.length) return showToast('请先勾选要生成凭证的卡片', 'warn');
@@ -394,7 +393,57 @@ function bindSettleEvents() {
     var summary = '批量完成：成功 ' + okCount + ' 张，跳过 ' + skipCount + ' 张，失败 ' + errCount + ' 张';
     showToast(summary, errCount > 0 ? 'warn' : 'success');
     if (msgs.length) showToast(msgs.slice(0, 3).join('；'), 'error');
+}
+
+// 按钮绑定（结账/期末处理/反结账 主按钮，静态元素）
+function bindSettleEvents() {
+  // 设置弹窗：启用 / 凭证模板 / 禁用 三个分组均可折叠
+  [['settleTmplGroupEnabled', 'settleTmplEnabled'], ['settleTmplGroupVch', 'settleTmplVch'], ['settleTmplGroupDisabled', 'settleTmplDisabled']].forEach(function (pair) {
+    var grp = $(pair[0]), ul = $(pair[1]);
+    if (grp && ul && !grp._bound) {
+      grp._bound = true;
+      grp.addEventListener('click', function () {
+        var hidden = ul.classList.toggle('settle-tmpl-list-hidden');
+        var arr = grp.querySelector('.settle-tmpl-arrow');
+        if (arr) arr.style.transform = hidden ? 'rotate(0deg)' : 'rotate(90deg)';
+      });
+      var arr0 = grp.querySelector('.settle-tmpl-arrow');
+      if (arr0) arr0.style.transform = ul.classList.contains('settle-tmpl-list-hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
+    }
   });
+  // 期末结账三 Tab 切换：期末处理 / 结账 / 反结账（此前未绑定，导致 tab 点不动）
+  document.querySelectorAll('#settleTabs .settle-tab').forEach(function (tab) {
+    if (tab._bound) return;
+    tab._bound = true;
+    tab.addEventListener('click', function () {
+      var which = tab.getAttribute('data-tab'); // process / close / reopen
+      document.querySelectorAll('#settleTabs .settle-tab').forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var map = { process: 'settlePaneProcess', close: 'settlePaneClose', reopen: 'settlePaneReopen' };
+      ['settlePaneProcess', 'settlePaneClose', 'settlePaneReopen'].forEach(function (id) {
+        var p = document.getElementById(id); if (p) p.style.display = 'none';
+      });
+      var target = document.getElementById(map[which]);
+      if (target) target.style.display = '';
+      refreshSettle();
+    });
+  });
+  onBtn('btnDepVoucher', onDepVoucher);
+  onBtn('btnCarryCost', onCarryCost);
+  // 「转出未交增值税 / 计提附加税 / 计提所得税」三个按钮已随模板下线（2026-09-18）。
+  // 真实账套从未使用增值税转出；附加税与所得税按「利润×税率」测算的金额与申报口径不符，
+  // 自动生成不可信，税款一律由会计按实际申报数手工录入。
+  onBtn('btnReCarryForward', onReCarryForward);
+  // 年末结转本年利润（3103 → 3104 未分配利润），仅 12 月可用。此前 carryYearEnd 已实现却零调用（死代码），跨年 3103 未清零、未分配利润失真，此处接入入口。
+  onBtn('btnCarryYearEnd', onCarryYearEnd);
+  onBtn('btnProfitDist', onProfitDist);
+  onBtn('btnClosePeriod', onClosePeriod);
+  onBtn('btnReopenPeriod', onReopenPeriod);
+
+  // ===== 顶部批量操作按钮 =====
+  onBtn('settleCheckAll', onSettleCheckAll);
+  onBtn('btnSettleRecalc', onSettleRecalc);
+  onBtn('btnSettleBatchGen', onSettleBatchGen);
 }
 // 同步全选 checkbox 状态：所有可见卡片都勾选 = 全选勾选；部分勾选 = 半选(indeterminate)；都不勾 = 不勾
 function syncCheckAllState() {
