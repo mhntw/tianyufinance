@@ -202,25 +202,52 @@ for (const [file, src] of [[INDEX_HTML, html], [PICKER_JS, read(PICKER_JS)]]) {
 /* ---------- 6) 期间文案格式统一（2026-10-04 新增）：唯一持有者 store.js 的 util.periodText ----------
  * 收口前同一个 2026-07 在界面上有三种写法：顶栏「2026年第7期」、首页卡片「2026年07期」、
  * 报表头与导出「2026年7期」—— 同一个月三副面孔，改一处必漏两处。现全站取顶栏口径。
- * 三条检查：① 页面里不得再内联拼「年…期」；② 三处历史实现必须委托单点；③ 单点输出正确。 */
+ * 三条检查：① 页面/组件里不得再内联拼「年…期」；② 四处历史实现必须委托单点；③ 单点输出正确。
+ * ⚠ 2026-10-04 补：本条第①项起初只扫 Home.js 与 report/_shared.js 两个文件，于是**漏掉第 4 处**
+ *   —— js/components/PeriodRangePicker.js 的 fmtPeriod（期间触发器上写「2026年08期」，
+ *   与同一屏的顶栏「2026年第8期」不一致）。教训：扫描清单要按**目录**给，不要手写文件名单。 */
 const PERIOD_TEXT_RE = /['"]年第['"]|['"]年['"]\s*\+\s*[^+;]{1,40}\+\s*['"]期['"]|年\$\{[^}]{1,20}\}期/;
 function stripCommentsForPeriodText(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+  /* ⚠ 块注释必须**保换行**地剥（把非换行字符换成空格）—— 首版直接换成单个空格，
+     于是多行注释后面的代码整体上移，**报出的行号全错**（实测 Voucher.js 报的 331 行其实是别的代码）。
+     这是本项目第三次踩同一个坑（前两次见 check_single_source / verify_import_failure 的注释）。 */
+  return src.replace(/\/\*[\s\S]*?\*\//g, function (m) { return m.replace(/[^\n]/g, ' '); })
+    .replace(/^[ \t]*\/\/.*$/gm, ' ');
 }
-['js/pages/home/Home.js', 'js/pages/report/_shared.js'].forEach(function (rel) {
-  const src = stripCommentsForPeriodText(read(path.join(ROOT, rel)));
-  src.split('\n').forEach(function (line, i) {
-    const t = line.trim();
-    if (t.indexOf('//') === 0 || t.indexOf('*') === 0) return;
-    if (PERIOD_TEXT_RE.test(line)) {
-      errors.push(`[期间文案内联] ${rel}:${i + 1} 又出现「年…期」拼法 —— 应调用单点 util.periodText。`);
-    }
+/* 单点的持有者（store.js 定义、common/helpers.js 转发）不参与内联检查 */
+const PERIOD_TEXT_OWNERS = [
+  path.join(ROOT, 'js', 'store.js'),
+  path.join(ROOT, 'js', 'common', 'helpers.js'),
+];
+function collectForPeriodText(dir, out) {
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch (e) { return out; }
+  names.forEach(function (n) {
+    const p = path.join(dir, n);
+    let st;
+    try { st = fs.statSync(p); } catch (e) { return; }
+    if (st.isDirectory()) collectForPeriodText(p, out);
+    else if (/\.js$/.test(n) && PERIOD_TEXT_OWNERS.indexOf(p) < 0) out.push(p);
   });
-});
-[['js/app.js', 'formatPeriod'], ['js/pages/home/Home.js', 'ymText'], ['js/pages/report/_shared.js', 'monthLabel']]
+  return out;
+}
+collectForPeriodText(PAGES_DIR, []).concat(collectForPeriodText(path.join(JS_DIR, 'components'), []))
+  .forEach(function (p) {
+    const rel = path.relative(ROOT, p).split(path.sep).join('/');
+    const src = stripCommentsForPeriodText(read(p));
+    src.split('\n').forEach(function (line, i) {
+      const t = line.trim();
+      if (t.indexOf('//') === 0 || t.indexOf('*') === 0) return;
+      if (PERIOD_TEXT_RE.test(line)) {
+        errors.push(`[期间文案内联] ${rel}:${i + 1} 又出现「年…期」拼法 —— 应调用单点 util.periodText。`);
+      }
+    });
+  });
+[['js/app.js', 'formatPeriod'], ['js/pages/home/Home.js', 'ymText'],
+  ['js/pages/report/_shared.js', 'monthLabel'], ['js/components/PeriodRangePicker.js', 'fmtPeriod']]
   .forEach(function (pair) {
-    if (read(path.join(ROOT, pair[0])).indexOf('U.periodText') < 0) {
-      errors.push(`[期间文案未收口] ${pair[1]}（${pair[0]}）未委托 util.periodText —— 三处历史实现必须统一到单点。`);
+    if (read(path.join(ROOT, pair[0])).indexOf('periodText') < 0) {
+      errors.push(`[期间文案未收口] ${pair[1]}（${pair[0]}）未委托单点 periodText —— 历史实现必须统一。`);
     }
   });
 (function () {

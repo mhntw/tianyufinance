@@ -345,8 +345,10 @@ function resetVoucherEdit() {
   var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, workMonth);
 
   // 同步凭证头期间文本，和顶部「当前账期」完全一致
+  // 期间文案走单点（见 store.js 的 periodText）：原内联写法输出与本单点**逐字相同**，
+  // 故本次替换零行为变化（由 2026-10-04 扩面后的契约卡口发现）。
   var vpt = $('vPeriodText');
-  if (vpt) vpt.textContent = workMonth.slice(0, 4) + '年第' + (+workMonth.slice(5, 7)) + '期';
+  if (vpt) vpt.textContent = U.periodText(workMonth);
 
   var at = $('vAttach'); if (at) at.value = 0;
   vAttachFiles = [];

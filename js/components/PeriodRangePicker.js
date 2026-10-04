@@ -42,17 +42,16 @@ function generatePeriodRanges() {
 
 /* ---------------- 工具 ---------------- */
 
-var $ = globalThis.$ || function (id) { return document.getElementById(id); };
+/* 引导块（H / U / $）已收口到 common/helpers.js（见其头部差异表）。
+   本文件原自带 `var $ = globalThis.$ || …` 与函数内的 `var H = …`，属又一份重复引导。 */
+import { H, U, $ } from '../common/helpers.js?v=dev';
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-function fmtPeriod(ym) {
-  if (!ym) return '';
-  var parts = ym.split('-');
-  // 期数补零（2026年08期）：与报表抬头 setRptHead 的 "YYYY年MM期" 保持一致，
-  // 否则同一屏里触发器写「2026年8期」、报表标题写「2026年08期」两种写法。
-  return parts[0] + '年' + pad2(parseInt(parts[1], 10)) + '期';
-}
+/* 期间文案单点（见 store.js 的 periodText）：本函数原为「2026年08期」（补零、无"第"），
+   与已统一为「2026年第8期」的顶栏/首页/报表头**仍不一致** —— 同一屏里触发器与顶栏两种写法。
+   2026-10-04 一并收口。安全性已审：该文本只喂 textContent（触发器等三处），全库无人反解析。 */
+function fmtPeriod(ym) { return U.periodText(ym); }
 
 function currentPeriod() {
   var S = globalThis.S;
@@ -75,7 +74,6 @@ function wrapOfPrefix(prefix) {
 function periodDefaultOf(prefix) {
   var wrap = wrapOfPrefix(prefix);
   var kind = (wrap && wrap.dataset.default) || 'currentPeriod';
-  var H = globalThis.__TY_HELPERS__ || {};
   if (kind === 'lastClosedPeriod' && typeof H.lastClosedPeriod === 'function') {
     var lc = H.lastClosedPeriod();
     if (lc) return lc;

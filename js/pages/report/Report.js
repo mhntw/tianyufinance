@@ -28,7 +28,10 @@ globalThis.setRptHead = function (rowId, title, cols, month, periodText) {
   if (!el) return;
   var period = periodText != null && periodText !== ''
     ? periodText
-    : (month ? (month.slice(0, 4) + '年' + month.slice(5) + '期') : '');
+    /* 期间文案单点（见 store.js 的 periodText）：原为 `month.slice(0,4) + '年' + month.slice(5) + '期'`
+       → 输出「2026年07期」（补零、无"第"），与全站统一后的「2026年第7期」不一致 ——
+       这是 2026-10-04 把契约卡口的扫描面从"手写 3 个文件"扩到"整个 pages/components"后才发现的第 5 处。 */
+    : (month ? U.periodText(month) : '');
   el.innerHTML = '<th colspan="' + (cols > 1 ? cols : 1) + '">'
     + '<div class="rpt-title">' + title + '</div>'
     + (period ? '<div class="rpt-period">' + period + '</div>' : '')
