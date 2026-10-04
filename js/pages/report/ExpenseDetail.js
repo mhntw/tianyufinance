@@ -107,124 +107,125 @@ function edSubjectTree() {
 // 科目弹层名称统一显示全路径名（与录凭证/科目下拉同口径）
 const edFullName = n => (globalThis.subjectFullName ? globalThis.subjectFullName(n.code, n.name) : (n.name || ''));
 
+/* 由 buildEDSubjectPop 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，函数体逐字未改。 */
+function edPopRenderTree(pop, roots, expanded) {
+  const walk = nodes => nodes.map(n => {
+    const hasChildren = n.children && n.children.length;
+    const isExpanded = expanded.has(n.code) || !hasChildren;
+    const toggleCls = hasChildren ? (isExpanded ? 'expanded' : '') : 'empty';
+    const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
+    return `<div class="ed-subj-node" data-code="${n.code}">
+      <div class="ed-subj-row">
+        <span class="ed-subj-toggle ${toggleCls}"></span>
+        <input type="checkbox" value="${n.code}" id="ed-subj-${n.code}" data-subj="1">
+        <label for="ed-subj-${n.code}">${n.code} ${esc(edFullName(n))}</label>
+      </div>
+      ${childrenHtml}
+    </div>`;
+  }).join('');
+  const allCbs = () => Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
+  const allChecked = () => allCbs().every(i => i.checked);
+  pop.innerHTML = '<div class="ed-subj-tree">' + walk(roots) + '</div>' +
+    '<div class="ed-subj-foot">' +
+    '<label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label>' +
+    '<span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span>' +
+    '</div>';
+  // 全选 checkbox 默认按当前状态同步（render 可能由展开/折叠触发，此时无 checked 变化）
+  const allBox = $('edSubjSelectAll');
+  if (allBox) allBox.checked = allChecked();
+}
+
+/* 由 buildEDSubjectPop 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，函数体逐字未改。 */
+function edPopSync(pop, roots, getTree, renderTags) {
+  const checked = Array.from(pop.querySelectorAll('input[type=checkbox]:checked')).map(i => i.value);
+  const { map } = getTree();
+  // 重新计算父子勾选状态：子级全选则父级自动勾选；勾选父级则子级自动勾选
+  Object.values(map).forEach(n => n._checked = false);
+  checked.forEach(code => { if (map[code]) map[code]._checked = true; });
+  // 自下而上：子级全选则父级勾选
+  const up = nodes => {
+    nodes.forEach(n => {
+      if (n.children.length) { up(n.children); if (n.children.every(c => c._checked)) n._checked = true; }
+    });
+  };
+  up(roots);
+  // 自上而下：父级勾选则子级全勾选
+  const down = nodes => {
+    nodes.forEach(n => {
+      if (n._checked && n.children.length) n.children.forEach(c => c._checked = true);
+      down(n.children);
+    });
+  };
+  down(roots);
+  // 同步 checkbox DOM
+  Object.values(map).forEach(n => {
+    const cb = pop.querySelector(`input[value="${n.code}"]`);
+    if (cb) cb.checked = n._checked;
+  });
+  renderTags();
+}
+
+/* 由 buildEDSubjectPop 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，函数体逐字未改。 */
+function edPopRenderTags(pop, tagsBox, getTree) {
+  const { map } = getTree();
+  const checked = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]:checked')).map(i => i.value)
+    .filter(code => map[code]);
+  // 仅显示顶层勾选（若父级已勾选，不显示子级）
+  const top = checked.filter(code => {
+    const p = map[code].parent;
+    return !p || !checked.includes(p.code);
+  });
+  if (tagsBox) {
+    // 规格：触发框高度固定，只显示最上面选择的一个科目（其余折叠），由右侧「共 N 项」告知总数
+    if (!top.length) {
+      tagsBox.innerHTML = `<span class="ed-subj-placeholder" id="edSubjectPlaceholder">全部损益科目</span>`;
+    } else {
+      const n = map[top[0]];
+      const more = top.length > 1 ? `<span class="ed-subj-more">+${top.length - 1}</span>` : '';
+      tagsBox.innerHTML =
+        `<span class="ed-subj-tag" data-code="${n.code}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${n.code}">×</span></span>${more}`;
+    }
+  }
+  const cnt = $('edSubjectCount');
+  if (cnt) cnt.textContent = String(checked.length);
+  const footCnt = $('edSubjCount');
+  if (footCnt) footCnt.innerHTML = `已选 <strong>${checked.length}</strong> 项`;
+  const allBox = $('edSubjSelectAll');
+  if (allBox) {
+    const allCbs = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
+    allBox.checked = allCbs.length > 0 && allCbs.every(i => i.checked);
+  }
+  // 触发报表刷新（避免每次点 checkbox 都刷新，只在关闭浮层或删除 tag 时刷新）
+}
+
+
 function buildEDSubjectPop() {
   const pop = $('edSubjectPop');
   const trigger = $('edSubjectTrigger');
   const tagsBox = $('edSubjectTags');
-  const placeholder = $('edSubjectPlaceholder');
   if (!pop || !trigger) return;
 
   const { roots } = edSubjectTree();
   const expanded = new Set(); // 已展开节点 code
 
-  const render = () => {
-    const walk = nodes => nodes.map(n => {
-      const hasChildren = n.children && n.children.length;
-      const isExpanded = expanded.has(n.code) || !hasChildren;
-      const toggleCls = hasChildren ? (isExpanded ? 'expanded' : '') : 'empty';
-      const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
-      return `<div class="ed-subj-node" data-code="${n.code}">
-        <div class="ed-subj-row">
-          <span class="ed-subj-toggle ${toggleCls}"></span>
-          <input type="checkbox" value="${n.code}" id="ed-subj-${n.code}" data-subj="1">
-          <label for="ed-subj-${n.code}">${n.code} ${esc(edFullName(n))}</label>
-        </div>
-        ${childrenHtml}
-      </div>`;
-    }).join('');
-    const allCbs = () => Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
-    const allChecked = () => allCbs().every(i => i.checked);
-    pop.innerHTML = '<div class="ed-subj-tree">' + walk(roots) + '</div>' +
-      '<div class="ed-subj-foot">' +
-      '<label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label>' +
-      '<span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span>' +
-      '</div>';
-    // 全选 checkbox 默认按当前状态同步（render 可能由展开/折叠触发，此时无 checked 变化）
-    const allBox = $('edSubjSelectAll');
-    if (allBox) allBox.checked = allChecked();
-  };
 
-  const descendants = node => {
-    const res = [node];
-    (node.children || []).forEach(c => res.push(...descendants(c)));
-    return res;
-  };
 
   const getTree = () => edSubjectTree();
 
-  const sync = () => {
-    const checked = Array.from(pop.querySelectorAll('input[type=checkbox]:checked')).map(i => i.value);
-    const { map } = getTree();
-    // 重新计算父子勾选状态：子级全选则父级自动勾选；勾选父级则子级自动勾选
-    Object.values(map).forEach(n => n._checked = false);
-    checked.forEach(code => { if (map[code]) map[code]._checked = true; });
-    // 自下而上：子级全选则父级勾选
-    const up = nodes => {
-      nodes.forEach(n => {
-        if (n.children.length) { up(n.children); if (n.children.every(c => c._checked)) n._checked = true; }
-      });
-    };
-    up(roots);
-    // 自上而下：父级勾选则子级全勾选
-    const down = nodes => {
-      nodes.forEach(n => {
-        if (n._checked && n.children.length) n.children.forEach(c => c._checked = true);
-        down(n.children);
-      });
-    };
-    down(roots);
-    // 同步 checkbox DOM
-    Object.values(map).forEach(n => {
-      const cb = pop.querySelector(`input[value="${n.code}"]`);
-      if (cb) cb.checked = n._checked;
-    });
-    renderTags();
-  };
 
-  const renderTags = () => {
-    const { map } = getTree();
-    const checked = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]:checked')).map(i => i.value)
-      .filter(code => map[code]);
-    // 仅显示顶层勾选（若父级已勾选，不显示子级）
-    const top = checked.filter(code => {
-      const p = map[code].parent;
-      return !p || !checked.includes(p.code);
-    });
-    if (tagsBox) {
-      // 规格：触发框高度固定，只显示最上面选择的一个科目（其余折叠），由右侧「共 N 项」告知总数
-      if (!top.length) {
-        tagsBox.innerHTML = `<span class="ed-subj-placeholder" id="edSubjectPlaceholder">全部损益科目</span>`;
-      } else {
-        const n = map[top[0]];
-        const more = top.length > 1 ? `<span class="ed-subj-more">+${top.length - 1}</span>` : '';
-        tagsBox.innerHTML =
-          `<span class="ed-subj-tag" data-code="${n.code}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${n.code}">×</span></span>${more}`;
-      }
-    }
-    const cnt = $('edSubjectCount');
-    if (cnt) cnt.textContent = String(checked.length);
-    const footCnt = $('edSubjCount');
-    if (footCnt) footCnt.innerHTML = `已选 <strong>${checked.length}</strong> 项`;
-    const allBox = $('edSubjSelectAll');
-    if (allBox) {
-      const allCbs = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
-      allBox.checked = allCbs.length > 0 && allCbs.every(i => i.checked);
-    }
-    // 触发报表刷新（避免每次点 checkbox 都刷新，只在关闭浮层或删除 tag 时刷新）
-  };
 
   const removeTag = code => {
     const cb = pop.querySelector(`input[value="${code}"]`);
-    if (cb) { cb.checked = false; sync(); }
+    if (cb) { cb.checked = false; edPopSync(pop, roots, getTree, edPopRenderTags); }
   };
 
   const toggleExpand = code => {
     if (expanded.has(code)) expanded.delete(code);
     else expanded.add(code);
-    render(); sync();
+    edPopRenderTree(pop, roots, expanded); edPopSync(pop, roots, getTree, edPopRenderTags);
   };
 
-  render();
+  edPopRenderTree(pop, roots, expanded);
   // 费用明细表默认预填费用类一级科目（5601/5602/5603），打开即按费用口径出表
   const _edMap = edSubjectTree().map;
   ['5601', '5602', '5603'].forEach(code => {
@@ -233,7 +234,7 @@ function buildEDSubjectPop() {
       if (cb) cb.checked = true;
     }
   });
-  sync();
+  edPopSync(pop, roots, getTree, edPopRenderTags);
 
   // 事件委托：展开箭头、checkbox、底部全选、tag 删除
   pop.addEventListener('click', e => {
@@ -242,11 +243,11 @@ function buildEDSubjectPop() {
     const allBox = e.target.closest('#edSubjSelectAll');
     if (allBox) {
       pop.querySelectorAll('input[type=checkbox][data-subj]').forEach(i => i.checked = allBox.checked);
-      sync();
+      edPopSync(pop, roots, getTree, edPopRenderTags);
       return;
     }
     const cb = e.target.closest('input[type="checkbox"][data-subj]');
-    if (cb) { sync(); return; }
+    if (cb) { edPopSync(pop, roots, getTree, edPopRenderTags); return; }
   });
 
   // tag 删除
