@@ -1,41 +1,27 @@
-const H = window.__TY_HELPERS__ || {};
-const $ = id => document.getElementById(id);
-const S = H.S || window.store;
-const money = H.money || (v => v == null ? '0.00' : Number(v).toFixed(2));
-// 金额单位收口：store 内部金额是定点整数（0.0001 元），导出/显示前必须用 yuan 换回元
-const U = H.U || (typeof window !== 'undefined' && window.util) || {};
-// 金额换算一律走单点 util.yuan：比例（AMT_SCALE）只在 store.js 定义一处。
-// 这里不再内联 `(Number(a) || 0) / 10000` —— 那是比例的**第二份实现**，比例一旦调整就会静默分叉，
-// 且分叉方向正好是"差 10000 倍"这类最难查的错。缺 util 时报错，胜过猜一个比例。
-const yuan = a => U.yuan(a);
+/* 报表 / 账簿族的共享基座。
+   引导块（H / EX / S / U / $ / money / esc / num / showToast / currentPeriod / round2 / yuan）
+   已收口到 ../../common/helpers.js —— 本文件只保留**本族专属**的名字
+   （goPage / absFmt / lastClosedPeriod / nowTimeStr / 月历 / 科目工具）。
+   收口前这 20 行引导在本族两个文件 + 15 个页面里各写一遍，且写法互不相同
+   （详见 common/helpers.js 头部那张差异表；其中 3 处 esc 兜底甚至是"不转义"的）。 */
+import { H, $, S, U, money, esc, num, showToast, currentPeriod, round2, yuan } from '../../common/helpers.js?v=dev';
+
 const absFmt = H.absFmt || (v => v == null ? '' : String(v));
 const goPage = H.goPage || (p => { if (window.goPage) window.goPage(p); });
-const currentPeriod = H.currentPeriod || (() => (window.store ? window.store.currentPeriod : '2026-01'));
 // 本期 = 最近一个已结账期间（桥接层 lastClosedPeriod）；无已结账回退 currentPeriod()
 const lastClosedPeriod = H.lastClosedPeriod || currentPeriod;
-const esc = H.esc || (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
-const num = H.num || (v => Number(v) || 0);
-const showToast = H.showToast || (msg => console.log('[toast]', msg));
 const nowTimeStr = H.nowTimeStr || (() => {
   const d = new Date();
   const p = n => ('0' + n).slice(-2);
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 });
 
-/* 【2026-09-26 收口】此处原先自带**第三份**「金额归零」实现（`Math.round((Number(n)||0)*100)/100`）——
-   与 store.js 的规范版相比**同样少了 `-0` 归一**（(-0).toLocaleString() 会显示 "-0.00"、写进 Excel 可能带负号）。
-   同一口径当时共三份（store.js / app.js / 本文件），改一处必漏两处。
-   现统一委托 store 的唯一实现（经 util.round2 暴露；store.js 必然先于页面加载，故此处不会取空）。 */
-function round2(n) { return window.util.round2(n); }
-
 // 月份区间展开为月份列表（含首尾）。实现已下沉到 store（见 store.js 的 monthList），此处仅转发。
 // 改名理由：本函数原本叫 monthsBetween 且返回「列表」，而 store.monthsBetween 返回「相差整月数」——
 // 同名却语义相反，是最容易踩错的坑；现统一为「差月数=monthsBetween、列表=monthList」。
-// 同时删掉三个从未被调用的旧实现：periodRangeOptions / periodRangeOptionsOri / allBookedMonthsOri
-// （它们只在 Original.js 的 import 里出现过，全库零调用点；其中 allBookedMonthsOri 还是 store.allMonths 的重复实现）。
 function monthList(start, end) {
-  const U = (typeof window !== 'undefined' && window.util) || {};
-  if (typeof U.monthList === 'function') return U.monthList(start, end);
+  const U2 = (typeof window !== 'undefined' && window.util) || {};
+  if (typeof U2.monthList === 'function') return U2.monthList(start, end);
   // 兜底：store 尚未注册时本地展开，口径与 store 保持一致（含 01~12 的月份校验）
   const res = [];
   const ok = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m == null ? '' : m));
@@ -72,7 +58,5 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { $, S, money, yuan, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter,
-  // 2026-10-04：把本文件的 util 句柄（H.U || window.util）一并导出，供费用明细页调分页算术单点
-  // （该页不 import store.js，故没有自己的 U —— 之前它只能手写 Math.max(1, Math.ceil(...))）。
-  U };
+export { H, $, S, U, money, esc, num, showToast, currentPeriod, round2, yuan,
+  absFmt, goPage, lastClosedPeriod, nowTimeStr, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };
