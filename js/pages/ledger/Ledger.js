@@ -501,6 +501,110 @@ function childSubjectsOf(code) {
   if (!direct.length) direct = under; // 兜底：无直属时沿用全部下级（保持旧行为不空列）
   return direct;
 }
+
+/* 由 renderMl 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改（含 appendChild）。 */
+function mlRenderHead(thead, cols) {
+  // 表头两行：基础 7 列 rowspan 占满两行；第 1 行末是跨全部分栏列的父表头
+  // 「借方」，第 2 行才是各分栏列头（编码 + 名称）。分栏列头长短不一，加 title 保证
+  // 列宽不足时悬停仍能看到全名（CSS .ml-col-head 会截断）。
+  // 对齐按全局约定：金额列（借方/贷方/余额）带 ta-r，其余列默认左
+  var ML_BASE_HEADS = ['日期', '凭证字号', '摘要', '借方', '贷方', '方向', '余额'];
+  var ML_AMT_HEADS = { '借方': 1, '贷方': 1, '余额': 1 };
+  // 摘要列吸收剩余宽度（列宽约定里的 col-fill）：多栏账列数动态，只有摘要适合吸收
+  var ML_FILL_HEADS = { '摘要': 1 };
+  thead.innerHTML = '<tr>'
+    + ML_BASE_HEADS.map(function (h) {
+        var cls = ML_AMT_HEADS[h] ? 'ta-r' : (ML_FILL_HEADS[h] ? 'col-fill' : '');
+        return '<th rowspan="2"' + (cls ? ' class="' + cls + '"' : '') + '>' + h + '</th>';
+      }).join('')
+    + '<th class="ml-col-parent" colspan="' + cols.length + '">借方</th></tr>'
+    + '<tr>' + cols.map(function (c) {
+        var label = c.code + (c.name ? ' ' + c.name : '');
+        return '<th class="ml-col-head" title="' + escAttr(label) + '">'
+          + escHtml(c.code) + (c.name ? ' ' + escHtml(c.name) : '') + '</th>';
+      }).join('') + '</tr>';
+}
+
+/* 由 renderMl 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改（含 appendChild）。 */
+function mlDrawInitRow(tb, month, cols, subj, d) {
+  var obView = S.displayBalance(d.obDr - d.obCr, subj.normal);
+  var obSigned = obView.amount, obDir = obView.dir;
+  var tro = document.createElement('tr');
+  tro.className = 'ml-seg';
+  // 各分栏列期初余额（此前整行留空）。
+  // 取总账口径：generalLedger 的行已按 rollCodes 上卷（父行 = 自身 + 子目合计），
+  // 与分栏列「命中本列及其下级」的取数范围一致；符号同样「借方为正、贷方为负」。
+  var obByCode = {};
+  S.generalLedger(month).forEach(function (gr) { obByCode[gr.code] = num(gr.obDr) - num(gr.obCr); });
+  // 期初行：借贷方列强制空（期初是"状态"不是"本期发生额"），
+  // 只在方向+余额列显示净额，分栏列显示各下级科目的期初余额。
+  // 日期列取区间首月 1 号（此前留空）——
+  // 期初是"区间首月月初"这个时点，标出日期才看得出锚在哪一天；单期口径下即 month-01。
+  var obDate = /^\d{4}-\d{2}$/.test(String(month)) ? month + '-01' : '';
+  var initCells = '<td>' + obDate + '</td><td></td><td>期初余额</td>' +
+    '<td class="ta-r mono"></td><td class="ta-r mono"></td>' +
+    '<td>' + obDir + '</td><td class="ta-r mono">' + (obSigned ? money(obSigned) : '') + '</td>';
+  cols.forEach(function (c) {
+    initCells += '<td class="ta-r mono">' + money(obByCode[c.code] || 0) + '</td>';
+  });
+  tro.innerHTML = initCells;
+  tb.appendChild(tro);
+}
+
+/* 由 renderMl 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改（含 appendChild）。 */
+function mlDrawRows(tb, d, cols, subj) {
+  // 逐笔滚动余额：内部一律维护「借正贷负」净额，方向与符号交给 store.displayBalance（唯一口径）
+  var runNet = d.obDr - d.obCr;
+  var colDr = {}, colCr = {};
+  cols.forEach(function (c) { colDr[c.code] = 0; colCr[c.code] = 0; });
+  var vm = voucherVmap();
+  d.rows.forEach(function (r) {
+    var tr = document.createElement('tr');
+    var rowCells = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
+      '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
+      '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td>';
+    runNet += num(r.dr) - num(r.cr);
+    var runView = S.displayBalance(runNet, subj.normal);
+    rowCells += '<td>' + runView.dir + '</td><td class="ta-r mono">' + (runView.amount ? money(runView.amount) : '') + '</td>';
+    var entryCode = r.entryCode || '';
+    cols.forEach(function (c) {
+      var amt = '';
+      if (entryCode && (entryCode === c.code || entryCode.indexOf(c.code) === 0)) {
+        // 有符号金额：借方为正、贷方为负（标准口径）。原实现 money(r.dr || r.cr)
+        // 一律取正数，贷方发生额也显示为正，看表时分不出方向。
+        amt = money(num(r.dr) - num(r.cr));
+      }
+      rowCells += '<td class="ta-r mono">' + amt + '</td>';
+    });
+    tr.innerHTML = rowCells;
+    tb.appendChild(tr);
+  });
+}
+
+/* 由 renderMl 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改（含 appendChild）。 */
+function mlDrawSummary(tb, d, cols, subj) {
+  // 本期合计：借贷列给本期发生额；余额列给期末余额
+  // （原实现误用「本期发生额净额」当期余额，与明细账、金蝶均不符，已改正）
+  var endView = S.displayBalance(d.endDr - d.endCr, subj.normal);
+  var endDir = endView.dir, endSigned = endView.amount;
+  var sumCells = '<td></td><td></td><td>本期合计</td>' +
+    '<td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td>' +
+    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
+  cols.forEach(function (c) { sumCells += '<td class="ta-r mono"></td>'; });
+  var trc = document.createElement('tr'); trc.className = 'ml-seg';
+  trc.innerHTML = sumCells;
+  tb.appendChild(trc);
+  // 本年累计：借贷列给本年累计发生额；余额列同样给期末余额
+  // （与明细账 renderDlSegment、金蝶总账「本年累计」行同口径）
+  var ytdCells = '<td></td><td></td><td>本年累计</td>' +
+    '<td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td>' +
+    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
+  cols.forEach(function (c) { ytdCells += '<td class="ta-r mono"></td>'; });
+  var try_ = document.createElement('tr'); try_.className = 'ml-seg ml-last';
+  try_.innerHTML = ytdCells;
+  tb.appendChild(try_);
+}
+
 function renderMl(code, month, err) {
   var tb = $('mlBody'); tb.innerHTML = '';
   var thead = $('mlHead'); thead.innerHTML = '';
@@ -530,25 +634,7 @@ function renderMl(code, month, err) {
   }
   tip.className = 'open-check';
   tip.textContent = '多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。';
-  // 表头两行：基础 7 列 rowspan 占满两行；第 1 行末是跨全部分栏列的父表头
-  // 「借方」，第 2 行才是各分栏列头（编码 + 名称）。分栏列头长短不一，加 title 保证
-  // 列宽不足时悬停仍能看到全名（CSS .ml-col-head 会截断）。
-  // 对齐按全局约定：金额列（借方/贷方/余额）带 ta-r，其余列默认左
-  var ML_BASE_HEADS = ['日期', '凭证字号', '摘要', '借方', '贷方', '方向', '余额'];
-  var ML_AMT_HEADS = { '借方': 1, '贷方': 1, '余额': 1 };
-  // 摘要列吸收剩余宽度（列宽约定里的 col-fill）：多栏账列数动态，只有摘要适合吸收
-  var ML_FILL_HEADS = { '摘要': 1 };
-  thead.innerHTML = '<tr>'
-    + ML_BASE_HEADS.map(function (h) {
-        var cls = ML_AMT_HEADS[h] ? 'ta-r' : (ML_FILL_HEADS[h] ? 'col-fill' : '');
-        return '<th rowspan="2"' + (cls ? ' class="' + cls + '"' : '') + '>' + h + '</th>';
-      }).join('')
-    + '<th class="ml-col-parent" colspan="' + cols.length + '">借方</th></tr>'
-    + '<tr>' + cols.map(function (c) {
-        var label = c.code + (c.name ? ' ' + c.name : '');
-        return '<th class="ml-col-head" title="' + escAttr(label) + '">'
-          + escHtml(c.code) + (c.name ? ' ' + escHtml(c.name) : '') + '</th>';
-      }).join('') + '</tr>';
+  mlRenderHead(thead, cols);
   // 不再手工计算 minWidth：全局 `.grid { width: max-content }` 会按内容自动得出表格宽度，
   // 多栏账列数动态（7 + 下级科目数）也能正确覆盖，无需 JS 参与。
   var d = S.detailLedger(code, month);
@@ -564,74 +650,9 @@ function renderMl(code, month, err) {
   // 【历史缺陷】本表原用「实际方向 + 绝对值」，与同构的明细账、与金蝶均不符，现统一。
   // 余额显示口径：统一走 store.displayBalance（**唯一实现**，见 store.js 说明）。
   // 本表与總账/明细账同构（方向列 + 带符号余额），历史上却各写一份 → 三页符号不一。
-  var obView = S.displayBalance(d.obDr - d.obCr, subj.normal);
-  var obSigned = obView.amount, obDir = obView.dir;
-  var tro = document.createElement('tr');
-  tro.className = 'ml-seg';
-  // 各分栏列期初余额（此前整行留空）。
-  // 取总账口径：generalLedger 的行已按 rollCodes 上卷（父行 = 自身 + 子目合计），
-  // 与分栏列「命中本列及其下级」的取数范围一致；符号同样「借方为正、贷方为负」。
-  var obByCode = {};
-  S.generalLedger(month).forEach(function (gr) { obByCode[gr.code] = num(gr.obDr) - num(gr.obCr); });
-  // 期初行：借贷方列强制空（期初是"状态"不是"本期发生额"），
-  // 只在方向+余额列显示净额，分栏列显示各下级科目的期初余额。
-  // 日期列取区间首月 1 号（此前留空）——
-  // 期初是"区间首月月初"这个时点，标出日期才看得出锚在哪一天；单期口径下即 month-01。
-  var obDate = /^\d{4}-\d{2}$/.test(String(month)) ? month + '-01' : '';
-  var initCells = '<td>' + obDate + '</td><td></td><td>期初余额</td>' +
-    '<td class="ta-r mono"></td><td class="ta-r mono"></td>' +
-    '<td>' + obDir + '</td><td class="ta-r mono">' + (obSigned ? money(obSigned) : '') + '</td>';
-  cols.forEach(function (c) {
-    initCells += '<td class="ta-r mono">' + money(obByCode[c.code] || 0) + '</td>';
-  });
-  tro.innerHTML = initCells;
-  tb.appendChild(tro);
-  // 逐笔滚动余额：内部一律维护「借正贷负」净额，方向与符号交给 store.displayBalance（唯一口径）
-  var runNet = d.obDr - d.obCr;
-  var colDr = {}, colCr = {};
-  cols.forEach(function (c) { colDr[c.code] = 0; colCr[c.code] = 0; });
-  var vm = voucherVmap();
-  d.rows.forEach(function (r) {
-    var tr = document.createElement('tr');
-    var rowCells = '<td>' + r.date + '</td><td>' + voucherLinkCell(r, vm) + '</td>' +
-      '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
-      '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td>';
-    runNet += num(r.dr) - num(r.cr);
-    var runView = S.displayBalance(runNet, subj.normal);
-    rowCells += '<td>' + runView.dir + '</td><td class="ta-r mono">' + (runView.amount ? money(runView.amount) : '') + '</td>';
-    var entryCode = r.entryCode || '';
-    cols.forEach(function (c) {
-      var amt = '';
-      if (entryCode && (entryCode === c.code || entryCode.indexOf(c.code) === 0)) {
-        // 有符号金额：借方为正、贷方为负（标准口径）。原实现 money(r.dr || r.cr)
-        // 一律取正数，贷方发生额也显示为正，看表时分不出方向。
-        amt = money(num(r.dr) - num(r.cr));
-      }
-      rowCells += '<td class="ta-r mono">' + amt + '</td>';
-    });
-    tr.innerHTML = rowCells;
-    tb.appendChild(tr);
-  });
-  // 本期合计：借贷列给本期发生额；余额列给期末余额
-  // （原实现误用「本期发生额净额」当期余额，与明细账、金蝶均不符，已改正）
-  var endView = S.displayBalance(d.endDr - d.endCr, subj.normal);
-  var endDir = endView.dir, endSigned = endView.amount;
-  var sumCells = '<td></td><td></td><td>本期合计</td>' +
-    '<td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td>' +
-    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
-  cols.forEach(function (c) { sumCells += '<td class="ta-r mono"></td>'; });
-  var trc = document.createElement('tr'); trc.className = 'ml-seg';
-  trc.innerHTML = sumCells;
-  tb.appendChild(trc);
-  // 本年累计：借贷列给本年累计发生额；余额列同样给期末余额
-  // （与明细账 renderDlSegment、金蝶总账「本年累计」行同口径）
-  var ytdCells = '<td></td><td></td><td>本年累计</td>' +
-    '<td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td>' +
-    '<td>' + endDir + '</td><td class="ta-r mono">' + (endSigned ? money(endSigned) : '') + '</td>';
-  cols.forEach(function (c) { ytdCells += '<td class="ta-r mono"></td>'; });
-  var try_ = document.createElement('tr'); try_.className = 'ml-seg ml-last';
-  try_.innerHTML = ytdCells;
-  tb.appendChild(try_);
+  mlDrawInitRow(tb, month, cols, subj, d);
+  mlDrawRows(tb, d, cols, subj);
+  mlDrawSummary(tb, d, cols, subj);
 }
 
 function emptyRow(tbody, colspan, text) {
