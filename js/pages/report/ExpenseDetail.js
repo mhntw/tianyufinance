@@ -1,6 +1,6 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
 import { $, S, money, yuan, absFmt, goPage, currentPeriod, esc, showToast, nowTimeStr, round2,
-  monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter } from './_shared.js';
+  monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter, U } from './_shared.js';
 const edState = {
   page: 1,
   pageSize: 500,
@@ -524,7 +524,8 @@ function renderEDPagination(totalRoots) {
   if (!totalEl || !pagesEl) return;
   totalEl.textContent = `共 ${totalRoots} 条`;
 
-  const totalPages = Math.max(1, Math.ceil(totalRoots / edState.pageSize));
+  // 分页算术单点（见 store.js 的 totalPages）：`U.` 是属性访问，与下面的 const 同名不冲突。
+  const totalPages = U.totalPages(totalRoots, edState.pageSize);
   if (edState.page > totalPages) edState.page = totalPages;
 
   let html = '';
@@ -580,15 +581,11 @@ function exportED() {
   if (opts.showYearTotal) foot.push(yuan(totals.yearTotal));
   if (opts.showRatio) { foot.push(''); foot.push(''); }
   rows.push(foot);
-  var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
   var cols = [{ wch: 10 }, { wch: 22 }];
   for (var i = 0; i < months.length; i++) cols.push({ wch: 12 });
   if (opts.showYearTotal) cols.push({ wch: 12 });
   if (opts.showRatio) { cols.push({ wch: 10 }); cols.push({ wch: 10 }); }
-  ws['!cols'] = cols;
-  XLSX.utils.book_append_sheet(wb, ws, '费用明细表');
-  safeExport(wb, '费用明细表_' + currentPeriod());
+  safeExport(TyIo.buildSheetWorkbook({ sheet: '费用明细表', rows: rows, cols: cols }), '费用明细表_' + currentPeriod());
   showToast('已导出费用明细表', 'success');
 }
 

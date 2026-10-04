@@ -217,11 +217,10 @@ export function exportTb() {
     rows.push([r.code, r.name, U.yuan(obD), U.yuan(obC), U.yuan(r.periodDr), U.yuan(r.periodCr), U.yuan(r.ytdDr), U.yuan(r.ytdCr), U.yuan(eD), U.yuan(eC)]);
   });
   rows.push(['', '合计', U.yuan(sum.obD), U.yuan(sum.obC), U.yuan(sum.pD), U.yuan(sum.pC), U.yuan(sum.yD), U.yuan(sum.yC), U.yuan(sum.eD), U.yuan(sum.eC)]);
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws, '科目余额表');
-  __safeExportExcel(wb, '科目余额表_' + month);
+  __safeExportExcel(TyIo.buildSheetWorkbook({
+    sheet: '科目余额表', rows: rows,
+    cols: [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
+  }), '科目余额表_' + month);
 }
 // 挂到全局，供 app.js 按钮绑定
 globalThis.__exportTb = exportTb;

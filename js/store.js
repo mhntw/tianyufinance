@@ -227,6 +227,13 @@
     if (m === 1) { y--; m = 12; } else { m--; }
     return y + '-' + pad2(m);
   }
+  /* 分页总页数的**唯一算法**（2026-10-04 收口）：此前 5 处逐字手写
+     `Math.max(1, Math.ceil(total / size))`。守卫 `Math.max(1, …)` 不能省：
+     0 条数据时 Math.ceil(0/size) === 0，会渲染出"第 0 页 / 共 0 页"。
+     ⚠ 此处**只收口算术**，不统一分页控件 —— 三处分页 UI 的标记各不相同
+       （费用明细 <li>+tyicon 箭头 / 资产页 aPrev·aNext·aPageSize / 设置页 logPageSize），
+       合并 UI 属改外观（负优化），故不做。 */
+  function totalPages(total, size) { return Math.max(1, Math.ceil(total / size)); }
   // 金额分位精度归一（会计金额精确到分）。消除二进制浮点累加误差（如 0.1+0.2），
   // 金额统一按 decimal 分位精度处理。用于新生成金额（调汇/结转）及对外输出金额。
   // 金额归零到「分」。
@@ -5796,6 +5803,7 @@
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+    totalPages: totalPages,
     amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
     /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
        此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
@@ -5810,6 +5818,7 @@
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
+      totalPages: totalPages,
       amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
       round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }

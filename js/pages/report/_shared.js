@@ -73,4 +73,7 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { $, S, money, yuan, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };
+export { $, S, money, yuan, absFmt, goPage, currentPeriod, lastClosedPeriod, esc, num, showToast, nowTimeStr, round2, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter,
+  // 2026-10-04：把本文件的 util 句柄（H.U || window.util）一并导出，供费用明细页调分页算术单点
+  // （该页不 import store.js，故没有自己的 U —— 之前它只能手写 Math.max(1, Math.ceil(...))）。
+  U };

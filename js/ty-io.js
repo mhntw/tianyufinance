@@ -88,8 +88,23 @@
     return wb;
   }
   // 导入：解析 xlsx 回卡片数组
-  // 采用「表头别名映射」——既兼容本软件导出的 31 列表头，
-  // 也兼容外部账套固定资产清单常见叫法（资产编码/资产名称/原值…）。
+  /* ---------- 单表格工作簿的**唯一构造入口**（2026-10-04 收口） ----------
+     此前 12 处导出各自抄一遍 `book_new → aoa_to_sheet → !cols → book_append_sheet`，
+     改列宽 / 加合并 / 换表名要满项目找（且极易漏改一处）。
+     分工与既有的 buildAssetWorkbook 一致：本函数**只造工作簿，不落盘** ——
+     落盘仍由调用方走 __safeExportExcel（那是唯一出口，见 js/file-save-bridge.js）。
+       @param opts { sheet 表名, rows 二维数组(aoa) 或 json 对象数组, cols? 列宽, merges? 合并 }
+       @returns workbook → 交给 __safeExportExcel(wb, 文件名)
+     ⚠ 别再在页面里直接写 XLSX.utils.book_new()：卡口 check_single_source 的 inline-book-new 会红。
+     ⚠ `rows` 与 `json` 二选一（前者是二维数组，后者是对象数组，对应 SheetJS 的两个入口）。 */
+  function buildSheetWorkbook(opts) {
+    var ws = opts.json ? XLSX.utils.json_to_sheet(opts.json) : XLSX.utils.aoa_to_sheet(opts.rows);
+    if (opts.cols) ws['!cols'] = opts.cols;
+    if (opts.merges) ws['!merges'] = opts.merges;
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, opts.sheet);
+    return wb;
+  }
   /* 使用期限的两套口径（外部账套混用，必须分清）：
    *   年限组：使用年限 / 折旧年限 / 预计使用年限 … → 数值就是「年」
    *   期数组：预计使用期数 / 预计使用期限 / 使用期数 … → 数值是「月」，要 ÷12
@@ -289,6 +304,7 @@
 
   global.TyIo = {
     buildAssetWorkbook: buildAssetWorkbook,
+    buildSheetWorkbook: buildSheetWorkbook,
     parseAssetWorkbook: parseAssetWorkbook
   };
 })(window);

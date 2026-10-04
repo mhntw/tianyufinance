@@ -698,15 +698,10 @@ function exportGl() {
     merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 2, c: 1 } });
   });
   if (rows.length <= 1) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }
-  var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!merges'] = merges;
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 22 }, { wch: 8 }, { wch: 10 },
-    { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, '总账');
-  safeExport(wb, '总账_' + month);
+  safeExport(TyIo.buildSheetWorkbook({
+    sheet: '总账', rows: rows, merges: merges,
+    cols: [{ wch: 12 }, { wch: 22 }, { wch: 8 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }]
+  }), '总账_' + month);
   H.showToast('已导出总账_' + month, 'success');
 }
 // 挂到全局 + 绑定按钮
@@ -759,13 +754,10 @@ function exportDl() {
     shown++;
   });
   if (!shown) { H.showToast('当前条件下没有可导出的数据', 'warn'); return; }
-  var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 22 }, { wch: 11 }, { wch: 10 }, { wch: 30 },
-    { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, '明细账');
+  var wb = TyIo.buildSheetWorkbook({
+    sheet: '明细账', rows: rows,
+    cols: [{ wch: 12 }, { wch: 22 }, { wch: 11 }, { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }]
+  });
   var fname = isRange
     ? '明细账_' + range.start + '_' + range.end
     : '明细账_' + range.end;

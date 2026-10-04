@@ -1239,10 +1239,10 @@ function exportQuery() {
     });
   });
 
-  var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, ws, '凭证列表');
+  var wb = TyIo.buildSheetWorkbook({
+    sheet: '凭证列表', rows: rows,
+    cols: [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 10 }]
+  });
   var fname = '凭证列表_' + (start === end ? start : start + '至' + end);
   __safeExportExcel(wb, fname);
 }

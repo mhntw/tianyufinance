@@ -231,12 +231,11 @@ function exportBs() {
     rows.push(left.concat(right));
   }
   rows.push(['资产总计', noA + 1, U.yuan(bs.totalAsset), '', '负债和所有者权益总计', noL + 1, U.yuan(bs.totalAll), '']);
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  // 列宽优化
-  ws['!cols'] = [{ wch: 24 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 26 }, { wch: 6 }, { wch: 14 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws, '资产负债表');
-  __safeExportExcel(wb, '资产负债表_' + month);
+  // 列宽优化（造工作簿走单点 TyIo.buildSheetWorkbook，见 js/ty-io.js 的说明）
+  __safeExportExcel(TyIo.buildSheetWorkbook({
+    sheet: '资产负债表', rows: rows,
+    cols: [{ wch: 24 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 26 }, { wch: 6 }, { wch: 14 }, { wch: 14 }]
+  }), '资产负债表_' + month);
 }
 
 /* ===================== 利润表 ===================== */
@@ -358,11 +357,10 @@ function exportPl() {
   const out = [['项目', '行次', '本月金额', '本年累计金额']];
   let no = 0;
   rows.forEach(function (r) { no += 1; out.push([r.label, no, U.yuan(r.cur), U.yuan(r.ytd)]); });
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(out);
-  ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 16 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, ws, '利润表');
-  __safeExportExcel(wb, '利润表_' + month);
+  __safeExportExcel(TyIo.buildSheetWorkbook({
+    sheet: '利润表', rows: out,
+    cols: [{ wch: 28 }, { wch: 6 }, { wch: 16 }, { wch: 16 }]
+  }), '利润表_' + month);
 }
 
 /* ===================== 现金流量表 ===================== */
@@ -490,11 +488,10 @@ function exportCf() {
   push('现金及现金等价物净增加额', no++, netInc, netInc);
   push('加：期初现金及现金等价物余额', no++, cf.opening, cf.opening);
   push('期末现金及现金等价物余额', no++, cf.ending, cf.ending);
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 30 }, { wch: 6 }, { wch: 16 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, ws, '现金流量表');
-  __safeExportExcel(wb, '现金流量表_' + month);
+  __safeExportExcel(TyIo.buildSheetWorkbook({
+    sheet: '现金流量表', rows: rows,
+    cols: [{ wch: 30 }, { wch: 6 }, { wch: 16 }, { wch: 16 }]
+  }), '现金流量表_' + month);
 }
 
 /* ===================== 应交税费明细表 ===================== */
@@ -536,11 +533,10 @@ function exportTx() {
       rows.push([r.name, (r.level === 2 ? r.rowNum : ''), U.yuan(r.cur), U.yuan(r.ytd)]);
     });
   }
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 30 }, { wch: 6 }, { wch: 16 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, ws, '应交税金明细表');
-  __safeExportExcel(wb, '应交税金明细表_' + month);
+  __safeExportExcel(TyIo.buildSheetWorkbook({
+    sheet: '应交税金明细表', rows: rows,
+    cols: [{ wch: 30 }, { wch: 6 }, { wch: 16 }, { wch: 16 }]
+  }), '应交税金明细表_' + month);
 }
 
 // 四大报表导出统一挂到全局，供 app.js 按钮绑定

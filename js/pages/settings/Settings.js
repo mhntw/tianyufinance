@@ -279,7 +279,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
     var size = parseInt($('logPageSize').value, 10) || 50;
     logPageState.size = size;
     var total = filtered.length;
-    var pages = Math.max(1, Math.ceil(total / size));
+    var pages = U.totalPages(total, size);   // 分页算术单点（见 store.js 的 totalPages）
     if (logPageState.page > pages) logPageState.page = pages;
     var startIdx = (logPageState.page - 1) * size;
     var slice = filtered.slice(startIdx, startIdx + size);
@@ -338,7 +338,7 @@ const refreshAll = (globalThis.__TY_HELPERS__ || {}).refreshAll;
   });
   $('logPrev').addEventListener('click', function () { if (logPageState.page > 1) { logPageState.page--; refreshLogs(); } });
   $('logNext').addEventListener('click', function () {
-    var pages = Math.max(1, Math.ceil(logPageState.filtered.length / logPageState.size));
+    var pages = U.totalPages(logPageState.filtered.length, logPageState.size);   // 分页算术单点
     if (logPageState.page < pages) { logPageState.page++; refreshLogs(); }
   });
   $('logPageSize').addEventListener('change', function () { logPageState.page = 1; refreshLogs(); });

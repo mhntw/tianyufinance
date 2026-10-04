@@ -28,9 +28,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 浏览器回退原生下载；任何异常都会显式提示，杜绝「无反应」。
   function exportTable(rows, name) {
     if (!rows || !rows.length) return showToast('无数据可导出', 'error');
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name || '导出');
-    __safeExportExcel(wb, (name || '导出') + '_' + currentPeriod());
+    // 走单点（json 形态：对象数组 → 表头自动生成），见 js/ty-io.js 的 buildSheetWorkbook
+    __safeExportExcel(TyIo.buildSheetWorkbook({ sheet: name || '导出', json: rows }), (name || '导出') + '_' + currentPeriod());
   }
 
 export { $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,

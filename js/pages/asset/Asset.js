@@ -236,7 +236,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     _assetFiltered = _assetFilterList();
     var tb = $('assetBody'); tb.innerHTML = '';
     var total = _assetFiltered.length;
-    var pages = Math.max(1, Math.ceil(total / _assetPageSize));
+    var pages = U.totalPages(total, _assetPageSize);
     if (_assetPage > pages) _assetPage = pages;
     var start = (_assetPage - 1) * _assetPageSize;
     var slice = _assetFiltered.slice(start, start + _assetPageSize);
@@ -292,7 +292,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     }
     $('assetCount').textContent = '共 ' + total + ' 条';
     $('aPageNo').textContent = _assetPage;
-    var pages = Math.max(1, Math.ceil(total / _assetPageSize));
+    var pages = U.totalPages(total, _assetPageSize);
     $('aPrev').parentNode.classList.toggle('disabled', _assetPage <= 1);
     $('aNext').parentNode.classList.toggle('disabled', _assetPage >= pages);
     renderAssetReconcile();   // 卡片 ↔ 总账对账状态（一致则隐藏）
@@ -879,7 +879,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   $('aPrev').addEventListener('click', function () { if (_assetPage > 1) { _assetPage--; renderAssets(); } });
   $('aNext').addEventListener('click', function () {
-    var pages = Math.max(1, Math.ceil(_assetFiltered.length / _assetPageSize));
+    var pages = U.totalPages(_assetFiltered.length, _assetPageSize);   // 分页算术单点
     if (_assetPage < pages) { _assetPage++; renderAssets(); }
   });
   $('aPageSize').addEventListener('change', function () { _assetPageSize = num($('aPageSize').value); _assetPage = 1; renderAssets(); });
@@ -1169,9 +1169,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var data = groups.map(function (g) {
       return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprSum(g.rows, c.k)); }));
     });
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧汇总表');
-    __safeExportExcel(wb, '折旧汇总表_' + month);
+    __safeExportExcel(TyIo.buildSheetWorkbook({ sheet: '折旧汇总表', rows: [headers].concat(data) }), '折旧汇总表_' + month);
   });
   function _assetDeprRows(month, opts) {
     opts = opts || {};
@@ -1288,9 +1286,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var data = rows.map(function (r) {
       return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprVal(r, c.k)); }));
     });
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers].concat(data)), '折旧明细表');
-    __safeExportExcel(wb, '折旧明细表_' + month);
+    __safeExportExcel(TyIo.buildSheetWorkbook({ sheet: '折旧明细表', rows: [headers].concat(data) }), '折旧明细表_' + month);
   });
   function renderDad(month) {
     var showCleaned = $('dadShowCleaned').checked;
