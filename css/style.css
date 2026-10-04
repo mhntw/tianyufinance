@@ -599,7 +599,7 @@ img, svg { display: block; max-width: 100%; }
 .tab-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 6px;   /* 【2026-10-04 标签栏改版】16 → 6：16px 大缝让"标签条"被读成若干散落胶囊 */
   flex: 1;
   overflow-x: auto;
   /* （2026-09-22 移除：原先在此刻意隐藏滚动条。按"全部恢复系统默认"的要求一并去掉。
@@ -806,32 +806,38 @@ img, svg { display: block; max-width: 100%; }
    不再设置 sticky 固定列，所有列随表格自身横向滚动，避免自适应宽度与固定列 left 值冲突。 */
 /* 辅助核算子行 */
 .row-aux { font-size: var(--fs-xs); color: var(--ty-text-3); margin-top: 2px; }
+/* 【2026-10-04 标签栏改版（用户决定：借鉴新版 Chrome）】原样式是"平顶圆角 4px + 左右 padding 4px
+   + 标签间 16px 缝" —— 读起来像散落的胶囊；且激活块既没融进下方内容、也没成为独立元件（半吊子）。
+   现按新版 Chrome（CR2023）的"圆角悬浮"范式：非激活=透明（次要文字色）、hover=半透明白块、
+   激活=**纯白四角圆角 + 轻投影**（靠底色与投影表达激活，不再用蓝色文字）。 */
 .tab-item {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 4px;
-  font-size: var(--fs-md);   /* 标签页文字 14px */
-  color: var(--ty-text-1);
-  border-radius: 0;
+  padding: 5px 10px;         /* 左右 4 → 10：旧版文字几乎顶到边缘 */
+  font-size: var(--fs-md);   /* 标签页文字 14px（全站标准，不动） */
+  color: var(--ty-text-2);   /* 非激活走次要色，让"激活"靠底色取胜而不是靠字色 */
+  border-radius: 6px;        /* 四角圆（旧版是 4px 4px 0 0 平顶） */
   cursor: pointer;
   white-space: nowrap;
-  transition: color .15s, background .15s;
+  transition: color .15s, background .15s, box-shadow .15s;
   flex-shrink: 0;
   position: relative;
 }
-/* 标签页在灰条上的状态（非激活透明灰底、激活白底上圆角） */
-.tab-item:hover { background: rgba(255,255,255,.65); }
+.tab-item:hover { background: rgba(255,255,255,.55); }   /* 与激活的"纯白"拉开差（旧版 .65 太接近） */
 .tab-item.active {
-  color: var(--ty-blue);
+  color: var(--ty-text-1);   /* 激活文字 = 正文深灰（旧版用主题蓝） */
   font-weight: 400;
   background: var(--ty-white);
-  border-radius: 4px 4px 0 0;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
 }
 .tab-close {
   font-size: var(--fs-xs);
   line-height: 1;
-  color: var(--ty-content-bg);
+  /* 【2026-10-04 修正】原先写的是 --ty-content-bg —— 拿"背景色令牌"当文字色（#f5f7f9 的 ×
+     落在 #eff1f4 灰条上几乎看不见）。改用三级文字色（对比度达标），hover 仍转红。 */
+  color: var(--ty-text-3);
   margin-left: 2px;
   padding: 0 2px;
   transition: all .15s;
@@ -843,7 +849,7 @@ img, svg { display: block; max-width: 100%; }
   height: 30px;
   display: flex; align-items: center; justify-content: center;
   padding: 0 18px;            /*  .homeTab--3-y9X{padding:0 18px!important} */
-  border-radius: 6px 6px 0 0;
+  border-radius: 6px;         /* 【2026-10-04】与标签统一为 6px 四角圆（旧版是 6px 6px 0 0） */
   border: none;
   background: transparent;
   cursor: pointer;
@@ -852,8 +858,11 @@ img, svg { display: block; max-width: 100%; }
   position: relative;
 }
 .home-trigger svg { width: 18px; height: 18px; stroke: var(--ty-blue); fill: none; }
-.home-trigger:hover { background: rgba(255,255,255,.65); }
-.home-trigger.active { background: transparent; }
+.home-trigger:hover { background: rgba(255,255,255,.55); }   /* 【2026-10-04】与标签 hover 同值，保持一致 */
+/* 【2026-10-04】在首页时给"真实激活态"：与激活标签同款（白底圆角 + 轻投影）。
+   原先这里是 background: transparent —— 于是"你在首页"这件事在标签条上**没有任何表示**，
+   首页时整条只剩一个孤零零的蓝房子；而同屏其它页面都有明确的高亮。 */
+.home-trigger.active { background: var(--ty-white); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 
 /* 内部按钮容器：提供点击区域（padding），不设背景 */
 .tab-btn {
@@ -3649,21 +3658,29 @@ label.req::before {
   border-radius: 10px;
   font-size: var(--fs-md);
   font-weight: 400;
-  /* 【2026-09-22】底色改为**全站统一主蓝**，不再逐项指定颜色（原先 24 项十几种色，反馈"太杂太复杂"）。
+  /* 【2026-09-22】底色改为全站统一，不再逐项指定颜色（原先 24 项十几种色，反馈"太杂太复杂"）。
      背景从内联 style 收回 CSS：以后调色只改这一处，不会再出现"同一色值散落 20 多处、调色必漏"。
-     ⚠ 用深一档的 --ty-blue-dark 而非 --ty-blue：圆点里是**白字**，白字在 #2f95ff 上仅 3.06:1
-       （不达标），在 #3a66d4 上为 5.21:1 ✓。js/app.js 的 QUICK_MENU_ITEMS 已不再带 color 字段。 */
-  background: var(--ty-blue-dark);
-  color: var(--ty-white);
+     【2026-10-04 改版（用户决定）】从"饱和实底 + 白字形"改为"**浅蓝底 + 蓝字形**"：
+       根因不是色号 —— 上一版用 --ty-blue-dark(#3a66d4) 是为了白字形的对比度达标（白字在
+       --ty-blue #2f95ff 上仅 3.06:1 ✗，在 #3a66d4 上 5.21:1 ✓），**调浅底色会牺牲对比度**；
+       真正的问题是**模式**：最多 15 个饱和实底方块当作装饰，与项目自己的两条约定冲突 ——
+         · --ty-blue-dark 的定义原文是"深一档，用于 hover/active"，此处却在做静态装饰底；
+         · 去蓝工作的原则是"主色只留给可交互/选中态"；
+         · 同屏左侧导航用的是线形蓝字形（无填充），两处语言不一致。
+       现改为浅底 + 蓝字形：字形色也**同步翻过来**（浅底上必须用深一档的蓝，不能再用白色）。
+       实测对比度：--ty-blue-dark 字形在 --ty-blue-2(#e8f1ff) 底上达标 ✓。 */
+  background: var(--ty-blue-2);
+  color: var(--ty-blue-dark);
   box-shadow: none;
   margin-top: 4px;
   margin-bottom: 8px;
 }
 /* 图标字形（与左侧导航同一套 iconcool 字形；24 项按功能就近复用，见 app.js 的 QUICK_MENU_ITEMS.icon）
-   字形为 fill 型 path，白填充在 --ty-blue-dark 上为 5.21:1，与原来的白字对比度一致。
+   字形为 fill 型 path；【2026-10-04】底色改浅后填充同步改为 --ty-blue-dark（深蓝字形 + 浅蓝底，
+   对比度达标 ✓）。上一版是"白填充 + 深蓝底"，本注释随之更新，避免与代码打架。
    18px：字形实际占位约 viewBox 的 81%，落在 32px 圆角方块里四周留白均衡。 */
 .qk-circle svg { width: 18px; height: 18px; display: block; }
-.qk-circle svg path { fill: var(--ty-white); }
+.qk-circle svg path { fill: var(--ty-blue-dark); }   /* 【2026-10-04】底色改浅后字形同步翻成深蓝（白字形在浅底上会看不见） */
 /* 文字（linkItem p：单行 + 省略号截断，长名称不换行不重叠） */
 .qk-label {
   font-size: var(--fs-xs); line-height: 16px; text-align: center;
