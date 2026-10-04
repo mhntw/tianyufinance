@@ -7,26 +7,17 @@
 // - globalThis.__TY_EXPORT__ 由 store.js 注册（store, util ...）
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
-/* 转义：本页此前从未调用过转义（0 处），但报表行名/标签可能来自用户编辑的科目表，
-   或来自导入的账套文件 —— 是真实的注入面，故补齐。H.esc 由 app.js 注册。 */
-const esc = H.esc || function (s) { return String(s == null ? '' : s); };
-const money = H.money;
+// 引导块（H / EX / $ / S / U / money / esc / currentPeriod）已收口到 common/helpers.js。
+// 转义提醒：报表行名/标签可能来自用户编辑的科目表或导入账套 —— 是真实注入面（本页曾 0 处转义，已补齐）。
+import { H, EX, $, S, U, money, esc, currentPeriod } from '../../common/helpers.js?v=dev';
+
 const moneyRed = H.moneyRed || function (n) {
   // 负数必须带负号：只染红而丢掉负号会把负值误显示为正数。
   var s = money(Math.abs(n));
   return n < 0 ? '<span class="ty-red">-' + s + '</span>' : s;
 };
-const currentPeriod = H.currentPeriod;
 const lastClosedPeriod = H.lastClosedPeriod;
-const S = H.S || (EX && EX.store);
-// 金额单位收口：store 取出的金额是内部定点整数（0.0001 元），显示/导出前必须用 U.yuan 换回元
-const U = H.U || (EX && EX.util);
-// 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
-// 复用统一期间取值实现，避免多份拷贝失同步。
-// 口径：回填默认期间 + 同步触发器文本，返回结束期间。
+// 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue），避免多份拷贝失同步。
 const periodRangeValue = H.periodRangeValue;
 
 // 统一收口报表表头表名行：单格（名称居中 + 账期小号居名称下方），挂全局多模块共用。

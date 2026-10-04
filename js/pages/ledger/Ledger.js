@@ -32,21 +32,11 @@
 //   口径的取舍；业务事实（余额在哪一方、多少钱）不受影响。
 // ============================================================
 
-const H = globalThis.__TY_HELPERS__ || {};
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
+// 引导块（H / EX / $ / S / U / money / num / currentPeriod / esc 别名）已收口到 common/helpers.js。
+import { H, EX, $, S, U, money, num, currentPeriod, escHtml, escAttr } from '../../common/helpers.js?v=dev';
 
-const money = H.money;
-const currentPeriod = H.currentPeriod;
-const S = H.S || (EX && EX.store);
-const U = H.U || (EX && EX.util);
-const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-
-// 科目名来自用户录入，渲染前需转义；title 用于列宽不足、名称被省略号截断时展示全名
-// HTML 转义：统一走 app.js 的单点实现（H.esc）。
-// 复用统一期间取值实现。
-const escHtml = H.esc;
-const escAttr = escHtml;
+// 科目名来自用户录入，渲染前需转义；title 用于列宽不足、名称被省略号截断时展示全名。
+// escHtml / escAttr 也由单点提供（此前是本文件里 H.esc 的本地别名；esc 已含引号，两个上下文等价）。
 
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { createSubjectTree } from '../../components/SubjectTree.js?v=dev';

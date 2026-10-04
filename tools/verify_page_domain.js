@@ -88,6 +88,9 @@ globalThis.__XP_IMPORTS__ = Object.assign({}, globalThis.__TY_HELPERS__, {
   subjectFullName: c => String(c == null ? '' : c),
   goPage() { }, subjectLevel: () => 1, subjectFilter: fn => (S.subjects() || []).filter(fn)
 });
+/* 页面引导块已收口到 js/common/helpers.js：把它喂进 __XP_IMPORTS__（页面里的 import 会被
+   stripEsm 改写成 `var H = __XP_IMPORTS__['H']`）—— 否则 H 为 undefined，页面顶层即抛错。 */
+require('./harness_boot.js').installBootImports(globalThis, path.join(__dirname, '..'));
 
 function stripEsm(src) {
   return src

@@ -3,16 +3,11 @@
 // 依赖桥接层 globalThis.__TY_HELPERS__（由 js/app.js 在启动时挂载）。
 // 设计原则：不依赖账套 cls 字段，避免导出标错导致数据失真。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const $ = H.$;
-const S = H.S || window.S;
+// 引导块已收口到 common/helpers.js（原先 17 处写法互不相同，其中 esc 的兜底甚至有 3 处"不转义"✗）。
+// 科目名称来自导入账套，可能含 < & " 等字符，拼进 innerHTML 前必须转义 —— esc 现在一律真转义。
+import { H, $, S, U, esc, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
 const absFmt = H.absFmt;
 const signed = H.signed;
-const round2 = H.round2;
-// 科目名称来自导入账套，可能含 < & " 等字符，拼进 innerHTML 前必须转义
-const esc = H.esc || function (s) { return String(s == null ? '' : s); };
-const currentPeriod = H.currentPeriod;
-const U = H.U || (typeof EX !== 'undefined' && EX.util) || { num: function (x) { return Number(x) || 0; } };
 
 function setEl(id, val) { const el = $(id); if (el) el.textContent = val; }
 

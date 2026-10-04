@@ -135,6 +135,10 @@ function stripEsm(src) {
 }
 global.__XP_IMPORTS__ = {};   // 具体内容在 __TY_HELPERS__ 之后就位（见下）
 function loadPage(rel, hookSrc) {
+  /* 页面引导块已收口到 js/common/helpers.js：装载页面源码前先把它喂进 __XP_IMPORTS__
+     （页面里的 import 会被 stripEsm 改写成 `var H = __XP_IMPORTS__['H']`）；
+     幂等，重复调用无害。见 tools/harness_boot.js 的说明。 */
+  require('./harness_boot.js').installBootImports(global, path.join(__dirname, '..'));
   let src = stripEsm(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
   src += '\n;' + hookSrc;
   (0, eval)(src);

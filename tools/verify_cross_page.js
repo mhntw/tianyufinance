@@ -222,6 +222,9 @@ globalThis.__XP_IMPORTS__ = {
   createSubjectTree: function () { return { render: function () { }, refresh: function () { }, setCurrent: function () { } }; },
   updatePeriodRangeTrigger: function () { }
 };
+/* 页面引导块已收口到 js/common/helpers.js：把它喂进 __XP_IMPORTS__（页面里的 import 会被
+   stripEsm 改写成 `var H = __XP_IMPORTS__['H']`）—— 否则 H 为 undefined，页面顶层即抛错。 */
+require('./harness_boot.js').installBootImports(globalThis, path.join(__dirname, '..'));
 
 // 【自检注入】--selftest 模式下，故意把两类**真实发生过的**显示层缺陷种回源码，
 // 要求本脚本必须把它们报出来（见文件末尾 runSelftest）。

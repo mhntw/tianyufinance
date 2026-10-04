@@ -2,24 +2,14 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
+// 引导块（H / EX / $ / S / U / money / esc / num / showToast / currentPeriod / round2）
+// 已收口到 common/helpers.js —— 含 -0 归一的 round2 也在那里委托 store 单点。
+import { H, EX, $, S, U, money, esc, num, showToast, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
+import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 
-const H = globalThis.__TY_HELPERS__ || {};
 // 起止期间取值统一走 app.js 单点实现（含默认值兜底）。
 const periodRangeValue = H.periodRangeValue;
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
-const money = H.money;
-const esc = H.esc;
-import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
-const showToast = H.showToast;
-const currentPeriod = H.currentPeriod;
 const syncAll = H.syncAll;
-const S = H.S || (EX && EX.store);
-const U = H.U || (EX && EX.util);
-const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
-// 金额归零到分：走**单点实现**（store.js 的 round2 → util → app.js 暴露；含 -0 → 0 归一）。
-// 原先本文件两处各写一遍 round2(x) —— 已收口（见 check_single_source 的 inline-round2 类目）。
-const round2 = H.round2 || (U && U.round2) || (window.util && window.util.round2);
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 

@@ -80,6 +80,9 @@ global.__TY_HELPERS__ = {
   S: S, U: U, num: NUM
 };
 global.__XP_IMPORTS__ = { bindSubjectPicker: () => ({ refresh() {} }) };
+/* 页面引导块已收口到 js/common/helpers.js：把它喂进 __XP_IMPORTS__（页面源码里的 import 会被
+   stripEsm 改写成 `var H = __XP_IMPORTS__['H']`）—— 否则 H 是 undefined，页面在顶层就抛错。 */
+require('./harness_boot.js').installBootImports(global, path.join(__dirname, '..'));
 function stripEsm(src) {
   return src
     .replace(/^\s*import\s*\{([^}]*)\}\s*from\s*['"][^'"]*['"];?[ \t]*$/gm, function (_m, names) {
