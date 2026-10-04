@@ -954,7 +954,8 @@ function refreshParam() {
     bindEditPeriodBtn();
     bindAboutCard();
     bindOpPasswordBtn();
-    globalThis.__paramBound = true;
+    // 【2026-10-04 删除】此处原有第二处 `globalThis.__paramBound = true;` —— 与 if 开头那处重复
+    //   （此时必然已为 true），属死存储，删掉不留"同一标记写两遍"的疑点。
   }
 }
 

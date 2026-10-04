@@ -555,8 +555,8 @@ function mlDrawInitRow(tb, month, cols, subj, d) {
 function mlDrawRows(tb, d, cols, subj) {
   // 逐笔滚动余额：内部一律维护「借正贷负」净额，方向与符号交给 store.displayBalance（唯一口径）
   var runNet = d.obDr - d.obCr;
-  var colDr = {}, colCr = {};
-  cols.forEach(function (c) { colDr[c.code] = 0; colCr[c.code] = 0; });
+  // 【2026-10-04 删除】原有 `var colDr = {}, colCr = {};` + 一行把每个分栏列初始化为 0 ——
+  //   全文件只有这两行提到 colDr/colCr，从未被读取（逐笔分栏金额是当场算当场拼进 rowCells 的），属死代码。
   var vm = voucherVmap();
   d.rows.forEach(function (r) {
     var tr = document.createElement('tr');

@@ -776,8 +776,8 @@ function renderSettleButtons(vs, month, closed, curMonth, curVs, K, kindVs) {
     btnClose.disabled = !(vs.length > 0) || closed;
     btnClose.textContent = closed ? ('已结账 · ' + month) : '检查并结账';
   }
-  // 期末处理 / 反结账 区域（固定当前期 curMonth）
-  var curClosed = S.isPeriodClosed(curMonth);
+  // 【2026-10-04 删除】原有 `var curClosed = S.isPeriodClosed(curMonth);` —— 只赋值不读，
+  //   且紧随其后的按钮态渲染各自重新查询，故连调用一起删（isPeriodClosed 为纯读）。
 
   // 反结账页：已结账月列表
   renderReopenMonthNav();
@@ -855,7 +855,8 @@ function refreshSettle() {
   var closed = S.isPeriodClosed(month);
   // 结账面板数据源（按所选期）
   var vs = S.periodVouchers(month);
-  var est = S.profitStatement(month);
+  // 【2026-10-04 删除】原有 `var est = S.profitStatement(month);` —— 只赋值不读（本轮 A2 拆分时
+  //   就发现并备案，现确认 profitStatement 是纯读函数，故连调用一起删，不留悬浮的死调用）。
   // 期末处理凭证一律按 v.kind（结构识别）而非摘要正则：导入凭证无凭证级 summary，摘要正则恒不命中，页面恒显「未生成」、查重形同虚设。
   var K = S.VOUCHER_KINDS;
   function kindVs(list, kind) {
