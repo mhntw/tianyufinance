@@ -208,11 +208,7 @@ function buildEDSubjectPop() {
   const { roots } = edSubjectTree();
   const expanded = new Set(); // 已展开节点 code
 
-
-
   const getTree = () => edSubjectTree();
-
-
 
   const removeTag = code => {
     const cb = pop.querySelector(`input[value="${code}"]`);
@@ -290,44 +286,8 @@ function initEDFilters() {
   buildEDSubjectPop();
 }
 
-function refreshExpenseDetail() {
-  // 换账套：手动展开的科目 code、分页、以及导出缓存全部属于上一本账套 —— 必须复位。
-  // （展开集里是**旧账套的科目编码**，新账套多半没有这些 code；导出缓存残留会把旧账套的数导出。）
-  if (bookScopeChanged('ed')) { edState.expanded.clear(); edState.page = 1; edExportData = null; }
-  const dataMax = currentPeriod(); // 数据实际最后月份（最近有凭证的期间）
-  // 查询上限 = 本月（当下自然月，与账套进度无关）：仅截断未来月份；
-  // 账套未做到本月时该月显示空表属正常，不再被拉回账套数据最后月份
-  const now = new Date();
-  const cap = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-  const startRaw = $('edPeriodStart') ? $('edPeriodStart').value : dataMax;
-  let endRaw = $('edPeriodEnd') ? $('edPeriodEnd').value : dataMax;
-  if (endRaw > cap) endRaw = cap;
-  const start = startRaw < cap ? startRaw : cap;
-  const end = endRaw;
-  const months = monthList(start, end);
-  const showZero = $('edOptZero') && $('edOptZero').checked;
-  const showRatio = $('edOptRatio') && $('edOptRatio').checked;
-  const expandAll = $('edOptExpand') && $('edOptExpand').checked;
-  const showYearTotal = !($('edOptYearTotal')) || $('edOptYearTotal').checked;
-
-  // 费用明细表可选科目范围：损益类（5/6 开头），含收入/成本/费用等
-  let subs = subjectFilter(s => ED_SUBJECT_RE.test(s.code));
-
-  // 按科目 code 去重：科目 code 本应唯一，但部分源账套（.ais）存在脏数据（如 5603 财务费用重复两条），
-  // 若不去重，费用明细表会渲染重复行、且合计把同一科目算多次（合计虚高）。此处按 code 唯一化，
-  // 不影响科目展示页（subject 页如实呈现重复），仅纠正「按 code 聚合」类报表的计算。
-  const _seenCode = {};
-  subs = subs.filter(s => { if (_seenCode[s.code]) return false; _seenCode[s.code] = true; return true; });
-
-  // 科目多选过滤（科目 下拉勾选；不选=全部）
-  let selCodes = edSelectedSubjectCodes();
-  if (selCodes.length) {
-    subs = subs.filter(s => selCodes.some(c => s.code === c || s.code.startsWith(c) || s.name.includes(c)));
-  }
-
-  // 计算每个科目在每个月的发生额
-  // 费用明细表口径：费用类科目（正常余额在借方）的「发生额」= 借方发生额（periodDr），
-  // 不能用 net(periodDr-periodCr)——月末结转损益会把费用贷方清零，net 会恒为 0。
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edGlByMonth(months) {
   const glByMonth = {};
   months.forEach(m => {
     const gl = S.generalLedger(m) || [];
@@ -335,7 +295,11 @@ function refreshExpenseDetail() {
     // 按科目正常方向取发生额：走 store.normalSideAmount（唯一实现）
     gl.forEach(r => { glByMonth[m][r.code] = S.normalSideAmount(r); });
   });
+  return glByMonth;
+}
 
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edYearTotalsByCode(start, end) {
   // 去年同期（用于「较同期」），与本期口径一致：去年同月逐月对应
   const yStart = prevYearMonth(start), yEnd = prevYearMonth(end);
   const yearMonths = monthList(yStart, yEnd);
@@ -349,7 +313,11 @@ function refreshExpenseDetail() {
   yearMonths.forEach(m => {
     Object.keys(yearGlByMonth[m]).forEach(c => { yearTotalsByCode[c] = round2((yearTotalsByCode[c] || 0) + yearGlByMonth[m][c]); });
   });
+  return yearTotalsByCode;
+}
 
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edBuildTree(subs, months, glByMonth) {
   // 构建树：父子关系按 code 前缀最短匹配
   const allCodes = subs.map(s => s.code).sort();
   const parentMap = {};
@@ -388,7 +356,11 @@ function refreshExpenseDetail() {
     nodes.forEach(n => sortTree(n.children));
   };
   sortTree(roots);
+  return roots;
+}
 
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edFillAmounts(roots, months) {
   // 若某级科目在 GL 中没有汇总行，用子级汇总补齐；并标记是否有非零发生
   const fillAmounts = node => {
     node.children.forEach(fillAmounts);
@@ -399,11 +371,10 @@ function refreshExpenseDetail() {
     node.hasAmount = node.total !== 0 || node.children.some(c => c.hasAmount);
   };
   roots.forEach(fillAmounts);
+}
 
-  // 显示科目级次下拉已删除（2026-08-16 简化）：始终显示至最末级，
-  // 显示深度由「展开所有级次」勾选 + 手动展开箭头控制
-  let displayRoots = roots;
-
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edFilterZeroRoots(displayRoots, showZero) {
   // 零值过滤：展示发生额为0的科目 未勾选时，隐藏 total 为 0 且没有子级显示的叶子；父级保留
   if (!showZero) {
     const filterZero = nodes => {
@@ -415,7 +386,11 @@ function refreshExpenseDetail() {
     };
     displayRoots = filterZero(displayRoots);
   }
+  return displayRoots;
+}
 
+/* 由 refreshExpenseDetail 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，块体逐字未改。 */
+function edTotalsOf(displayRoots, months) {
   // 计算各列合计（只含当前显示行，且只加“非由子级汇总出的父级”避免重复）
   // 合计行 = 所有一级科目行相加，与展开状态无关
   const totals = { months: months.map(() => 0), yearTotal: 0 };
@@ -429,6 +404,63 @@ function refreshExpenseDetail() {
     });
   };
   sumToTotals(displayRoots, true);
+  return totals;
+}
+
+
+function refreshExpenseDetail() {
+  // 换账套：手动展开的科目 code、分页、以及导出缓存全部属于上一本账套 —— 必须复位。
+  // （展开集里是**旧账套的科目编码**，新账套多半没有这些 code；导出缓存残留会把旧账套的数导出。）
+  if (bookScopeChanged('ed')) { edState.expanded.clear(); edState.page = 1; edExportData = null; }
+  const dataMax = currentPeriod(); // 数据实际最后月份（最近有凭证的期间）
+  // 查询上限 = 本月（当下自然月，与账套进度无关）：仅截断未来月份；
+  // 账套未做到本月时该月显示空表属正常，不再被拉回账套数据最后月份
+  const now = new Date();
+  const cap = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const startRaw = $('edPeriodStart') ? $('edPeriodStart').value : dataMax;
+  let endRaw = $('edPeriodEnd') ? $('edPeriodEnd').value : dataMax;
+  if (endRaw > cap) endRaw = cap;
+  const start = startRaw < cap ? startRaw : cap;
+  const end = endRaw;
+  const months = monthList(start, end);
+  const showZero = $('edOptZero') && $('edOptZero').checked;
+  const showRatio = $('edOptRatio') && $('edOptRatio').checked;
+  const expandAll = $('edOptExpand') && $('edOptExpand').checked;
+  const showYearTotal = !($('edOptYearTotal')) || $('edOptYearTotal').checked;
+
+  // 费用明细表可选科目范围：损益类（5/6 开头），含收入/成本/费用等
+  let subs = subjectFilter(s => ED_SUBJECT_RE.test(s.code));
+
+  // 按科目 code 去重：科目 code 本应唯一，但部分源账套（.ais）存在脏数据（如 5603 财务费用重复两条），
+  // 若不去重，费用明细表会渲染重复行、且合计把同一科目算多次（合计虚高）。此处按 code 唯一化，
+  // 不影响科目展示页（subject 页如实呈现重复），仅纠正「按 code 聚合」类报表的计算。
+  const _seenCode = {};
+  subs = subs.filter(s => { if (_seenCode[s.code]) return false; _seenCode[s.code] = true; return true; });
+
+  // 科目多选过滤（科目 下拉勾选；不选=全部）
+  let selCodes = edSelectedSubjectCodes();
+  if (selCodes.length) {
+    subs = subs.filter(s => selCodes.some(c => s.code === c || s.code.startsWith(c) || s.name.includes(c)));
+  }
+
+  // 计算每个科目在每个月的发生额
+  // 费用明细表口径：费用类科目（正常余额在借方）的「发生额」= 借方发生额（periodDr），
+  // 不能用 net(periodDr-periodCr)——月末结转损益会把费用贷方清零，net 会恒为 0。
+  const glByMonth = edGlByMonth(months);
+
+  const yearTotalsByCode = edYearTotalsByCode(start, end);
+
+  const roots = edBuildTree(subs, months, glByMonth);
+
+  edFillAmounts(roots, months);
+
+  // 显示科目级次下拉已删除（2026-08-16 简化）：始终显示至最末级，
+  // 显示深度由「展开所有级次」勾选 + 手动展开箭头控制
+  let displayRoots = roots;
+
+  displayRoots = edFilterZeroRoots(displayRoots, showZero);
+
+  const totals = edTotalsOf(displayRoots, months);
 
   renderEDGrid(months, displayRoots, totals, { showYearTotal, showRatio, expandAll, yearTotalsByCode, start, end });
   renderEDPagination(displayRoots.length);
