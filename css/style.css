@@ -116,6 +116,13 @@
      原 #f0f0f0 是中性灰(0°)、#E3E8EE 是偏蓝灰(213°)，同屏并存会让界面显得脏、层次不清）：
        #f5f7f9 页面底 ／ #eef1f4 浅底·竖线 ／ #e2e7ec 横线·边框 ／ #ccd4db 强边框 */
   --ty-content-bg:  #f5f7f9;   /* 内容区外底色（工作区浅灰白） */
+  /* 【2026-10-04】中性「二级面」：比页面底(#f5f7f9)重一档、比边框(#e2e7ec)轻一档，
+     专供「卡片头 / 页签条 / 帮助圆钮 / 区块缝」这类结构性面。
+     原先这些位置一律引用 --ty-blue-2(#e8f1ff) —— 那是**主色浅蓝**，且还同时承担
+     hover 底 / 选中底，一个令牌多种语义 → 首页整页发蓝。本令牌是「保级去色」：
+     对白卡 1.132，与旧浅蓝 1.138 基本同级（层级不变），饱和度由 100% 降到 18%。
+     注：与 --grid-line-v(#eef1f4) 数值仅差 1 个 RGB 单位，但角色不同（面 vs 线），故意分开定义。 */
+  --ty-surface-2:   #eff1f4;
   /* 网格线分两档强度：**横线（行分隔）要清楚，竖线（列对齐）只要隐约可见**。
      原因：密排表格里竖线与横线同色时，格子被四边全框，数百条灰线形成主要视觉噪音源。
      2026-09-22 用户定：竖线保留但更浅 —— 兼顾"列可追踪"与"减少噪音"。 */
@@ -246,7 +253,9 @@ img, svg { display: block; max-width: 100%; }
   /* 顶栏已上移到 .layout 顶层、横贯全宽：不再与侧栏左缘相接，故取消左上圆角（原 20px 0 0 0）
      改为全宽通栏；底部加一条浅分隔线，与下方侧栏/内容区自然分界。 */
   border-radius: 0;
-  border-bottom: 1px solid var(--ty-blue-2);
+  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-border（中性灰）：
+     顶栏底线属「页面级 chrome」，不该带品牌色，主色只留给可交互/选中态。 */
+  border-bottom: 1px solid var(--ty-border);
   overflow: hidden;
 }
 
@@ -568,7 +577,7 @@ img, svg { display: block; max-width: 100%; }
   z-index: 100;
 }
 /* 内容区顶部标签页栏（wrapper--3kKIA：36px 通栏灰条、灰底 #eff3f6 贯穿左右边缘、
-   height:36px; background:var(--ty-blue-2); border-top:1px solid var(--ty-blue-2); padding:4px 120px 1px 4px）。
+   height:36px; background:#eff3f6; border-top:1px solid #eff3f6; padding:4px 120px 1px 4px）。
    该灰条是贴边通栏（左仅 4px、右 120px 给"管理"按钮），不随下方卡片缩进。
    本项目：.content 无 padding（padding 已下放至 .page.active），故标签栏灰底天然通栏贴边；
    内部文字 padding 左 4px 贴边、右 24px 与卡片右缘对齐（因无"管理"按钮，右侧留白用 24px）。 */
@@ -579,8 +588,11 @@ img, svg { display: block; max-width: 100%; }
   padding: 4px 24px 1px 4px;   /*  wrapper--3kKIA: padding:4px 120px 1px 4px —— 灰底通栏贴左右边缘，左4px贴边、右24px与卡片右缘对齐（右120px为"管理"按钮留白，本项目无该按钮用24px） */
   height: 36px;
   box-sizing: border-box;
-  background: var(--ty-blue-2);   /* 统一浅蓝：页签条与卡片头/新增凭证同色（表头同款浅蓝） */
-  border-top: 1px solid var(--ty-blue-2);
+  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-surface-2（中性灰）。
+     上方来源注释原文已写明参考实现是「灰底 #eff3f6」，本项目复刻时写成主色浅蓝，
+     是「整页发蓝」的源头之一。底线同样改中性，让 36px 通栏条与下方白卡自然分层。 */
+  background: var(--ty-surface-2);
+  border-top: 1px solid var(--ty-border);
   position: relative;
   flex-shrink: 0;
 }
@@ -3366,18 +3378,42 @@ label.req::before {
 /* ============================================================
  * 首页工作台（对标参考产品首页）
  * ============================================================ */
-/* 首页工作区（源码实证：.wrapper--nEFLj 与 .contentItemWrapper--1cQtp 均无 background 声明，
+/* 【2026-10-04 类名语义化】本节原来的类名是复刻参考产品时留下的 CSS Modules 哈希名
+   （wrapper--nEFLj 这类），既不可读，也难判断"这段到底是不是本项目在用"；另一批 drag-*
+   名暗示有拖拽排序，实测全仓没有任何拖拽 JS（纯模板遗留）。本次统一改为语义名：
+   HTML / CSS / JS 三处同步，**选择器与样式值一律未变**（纯改名，不改观感）。
+   旧名 → 新名（留此对照表，便于与参考产品源码逐条对账）：
+     wrapper--nEFLj          → home-work            （首页工作区根容器）
+     contentL--1JUu7         → home-main            （左主区，现已单栏全宽）
+     contentItemWrapper--1cQtp → home-section       （区块容器，区块间 8px 缝挂在它上面）
+     wrapper--2ZSon          → home-section-quick   （常用功能块外层）
+     content--2vKQI          → home-section-content （常用功能块内容行）
+     wrapper--ifBdg          → home-section-metrics （财务指标块外层）
+     titleWrapper--2ThdD     → home-section-title   （区块标题行）
+     editBtn--2VJ9T          → home-edit-btn        （自定义常用功能按钮）
+     drag-container          → metric-grid          （指标网格）
+     drag-wrapper-container  → metric-grid-row      （指标网格行，负责 flex 排布）
+     grid-square-wrapper     → metric-slot          （指标卡片槽位，JS 靠它读 data-metric）
+     drag-rect + grid-square → metric-card          （指标卡片本体，两个类合并为一个）
+     drag-header             → metric-card-head     （卡片头部条）
+   另删除 6 个每卡独占的死类名（fundBalance-drag-rect / ARAP-drag-rect /
+   estimatedBalance-drag-rect / netProfit-drag-rect / revenueCost-drag-rect / fee-drag-rect）：
+   全仓无任何 CSS/JS 引用，卡片定位一律靠槽位上的 data-metric。
+   ⚠ 注释中形如 contentRItemWrapper--WHucT / wrapper--3XqEc / content--34Eg6 / contentR--1fk4s /
+   wrapper--3kKIA / contentR---qyET 的名字是【参考产品】的类名，用于记录来源，请勿一并改名。 */
+/* 首页工作区（源码实证：原 .wrapper--nEFLj 与 .contentItemWrapper--1cQtp 均无 background 声明，
    透出页面根 .wrapper--3XqEc{background:var(--ty-white)}，故首页工作区是【白底】，
-   卡片亦白底，仅卡片之间用 border-top:8px var(--ty-blue-2) 灰缝分隔——并非"灰底白卡"） */
+   卡片亦白底，仅卡片之间用 border-top:8px 中性灰缝(--ty-surface-2) 分隔——并非"灰底白卡"
+   【2026-10-04】该缝原写 --ty-blue-2 主色浅蓝，已去色为中性） */
 /* 首页工作区（content--34Eg6 等价容器）
    在 .content{display:flex; flex-direction:column; overflow:hidden} 框架下，
    #page-home 必须 flex:1 + overflow-y:auto 才能正确撑满并滚动内容 */
-/* 首页工作区： .content--34Eg6 下直接是 .wrapper--nEFLj，
+/* 首页工作区： .content--34Eg6 下直接是 .wrapper--nEFLj（现 .home-work），
    无任何 flex 约束，纯粹流式 + float 两栏。本项目去掉此前自作主张的
    flex:1/min-height:0/overflow 等"创新"，还原为原生 float 布局。 */
 #page-home {
   margin: 0;
-  padding: 0;   /*  wrapper--nEFLj 无 padding/margin，紧贴标签栏；首个卡片自带 border-top:8px var(--ty-blue-2) 间隔 */
+  padding: 0;   /*  home-work 无 padding/margin，紧贴标签栏；首个卡片自带 border-top:8px 中性灰缝 间隔 */
   background: var(--ty-white);
   /* 首页作为工作区滚动容器：沿用框架 .page.active 的 flex:1/min-height:0/overflow:auto，
      使内容超高时可在本页内上下滚动。
@@ -3386,14 +3422,15 @@ label.req::before {
      正常并列，恢复滚动容器不再影响右栏归位。 */
 }
 /* 两栏布局（源码 100% 实证复刻）：
-   .wrapper--nEFLj 下 contentL--1JUu7 与 contentR--1fk4s 为【平级两兄弟】，
+   .wrapper--nEFLj 下 contentL--1JUu7（现 .home-main）与 contentR--1fk4s 为【平级两兄弟】，
    左栏 float:left，右栏 float:right；父级用 overflow:hidden 清浮动（经典写法，
    只清自身浮动、不裁自身浮动子项，故右栏不会丢失）。
-   中右区域灰色竖条 = contentL 的 border-right:8px solid var(--ty-blue-2)（实证）。 */
-.wrapper--nEFLj {
+   中右区域灰色竖条 = contentL 的 border-right:8px solid 中性灰（实证；本项目已移除右栏，
+   该竖条随之不存在）。 */
+.home-work {
   overflow: hidden;   /* 原 .wrapper--nEFLj{height:100%}，本项目改 overflow:hidden 清浮动并适配流式滚动 */
 }
-.wrapper--nEFLj .contentL--1JUu7 {
+.home-work .home-main {
   float: left;
   width: 100%;                        /* 本地版：已移除右侧资讯栏，左主区单栏全宽 */
   min-height: 100%;
@@ -3443,7 +3480,9 @@ label.req::before {
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%;
-  background: var(--ty-blue-2);
+  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-surface-2（中性灰）：
+     帮助圆钮是常驻静态控件，不该抢主色。 */
+  background: var(--ty-surface-2);
   color: var(--ty-text-3);
   font-size: var(--fs-md);
   cursor: pointer;
@@ -3451,19 +3490,21 @@ label.req::before {
 
 /* ---- 章节容器 & 标题 ---- */
 /*  contentRItemWrapper--WHucT：每个区块是白底卡片，
-   区块之间用 8px solid var(--ty-blue-2) 灰色粗线分隔 */
-/*  .contentItemWrapper--1cQtp：区块之间仅 border-top:8px #eff3f6 单侧分隔（
+   区块之间用 8px solid var(--ty-surface-2) 灰色粗线分隔
+   （【2026-10-04】原写 var(--ty-blue-2) 主色浅蓝，与参考实现的灰缝 #eff3f6 不符 → 复刻走样，
+     已去色为中性 --ty-surface-2；8px 厚度按用户决定保留） */
+/*  .home-section：区块之间仅 border-top:8px #eff3f6 单侧分隔（
    相邻卡靠下一卡的 border-top 承担缝隙，故每张卡只设 border-top，不上下各 8px，
    否则卡间会变成 16px 双缝，与 8px 单缝不符）
    padding 与 .contentRItemWrapper--WHucT{padding:20px 24px} 一致 */
-/* 实证：.contentItemWrapper--1cQtp 本身【无 padding、无 background】，
+/* 实证：.home-section 本身【无 padding、无 background】，
    仅由相邻兄弟 border-top:8px 分隔。
    两块各自的外层留白容器不同，但【水平内缩都=24px】，故标题左缘对齐：
-   · 常用功能块：外层挂 wrapper--2ZSon（padding:20px 24px 0）→ 左 24px
-   · 财务指标块：内层挂 wrapper--ifBdg（padding:20px 24px 24px）→ 左 24px
-   故本项目常用功能块只挂 wrapper--2ZSon（不挂 ifBdg），与字节级一致；
-   下方 .wrapper--2ZSon 规则即原值，保证两块水平缩进同为 24px。 */
-.contentItemWrapper--1cQtp {
+   · 常用功能块：外层挂 home-section-quick（padding:20px 24px 0）→ 左 24px
+   · 财务指标块：内层挂 home-section-metrics（padding:20px 24px 24px）→ 左 24px
+   故本项目常用功能块只挂 home-section-quick（不挂 ifBdg），与字节级一致；
+   下方 .home-section-quick 规则即原值，保证两块水平缩进同为 24px。 */
+.home-section {
   background: var(--ty-white);
   padding: 0;
   overflow: hidden;   /* 原规则实证：清内部浮动（常用功能块内 contentL/contentR 子浮动），并提供自身高度撑开父级 */
@@ -3473,23 +3514,23 @@ label.req::before {
                          首个"常用功能"块与标签栏之间不应再叠 8px 灰缝(否则左侧灰区 36+8=44px 比右栏 36px 多一层) */
 }
 /* 相邻块之间用单条 8px 灰缝（contentItemWrapper + contentItemWrapper） */
-.contentItemWrapper--1cQtp + .contentItemWrapper--1cQtp {
-  border-top: 8px solid var(--ty-blue-2);
+.home-section + .home-section {
+  border-top: 8px solid var(--ty-surface-2);
 }
 /* 左主区内容容器 */
-.contentItemWrapper--1cQtp .content--2vKQI {
+.home-section .home-section-content {
   font-size: var(--fs-md);
 }
 /* 常用功能块外层容器（来源 main chunk.css 原值）：水平 padding 与
-   wrapper--ifBdg 同为 24px，确保"常用功能"标题左缘与"财务指标"对齐。
+   home-section-metrics 同为 24px，确保"常用功能"标题左缘与"财务指标"对齐。
    注意：本项目常用功能块只挂此类（不挂 ifBdg），与结构一致。 */
-.wrapper--2ZSon {
+.home-section-quick {
   padding: 20px 24px 0;
   min-height: 130px;
   overflow: hidden;   /* 原值：清内部 contentL/contentR 子浮动 */
 }
-/* 标题右侧自定义按钮（editBtn--2VJ9T：font-size:22px 深色，hover 变蓝） */
-.home-section-edit.editBtn--2VJ9T {
+/* 标题右侧自定义按钮（home-edit-btn：font-size:22px 深色，hover 变蓝） */
+.home-section-edit.home-edit-btn {
   margin-left: auto;
   color: var(--ty-text);
   font-size: 22px;
@@ -3499,7 +3540,7 @@ label.req::before {
   align-items: center;
   transition: color .15s;
 }
-.home-section-edit.editBtn--2VJ9T:hover { color: var(--ty-blue); }
+.home-section-edit.home-edit-btn:hover { color: var(--ty-blue); }
 
 /* 财务指标 Tab（财务指标 / 行业对标） */
 .metric-tabs {
@@ -3520,8 +3561,8 @@ label.req::before {
   color: var(--ty-blue);
   border-bottom-color: var(--ty-blue);
 }
-/* ---- 常用功能（外层 contentItemWrapper--1cQtp 已是白底卡片，此处仅 flex 行布局）---- */
-/* 内容行（content--2vKQI：display:flex;flex-direction:row）
+/* ---- 常用功能（外层 home-section 已是白底卡片，此处仅 flex 行布局）---- */
+/* 内容行（home-section-content：display:flex;flex-direction:row）
    position:relative 作为右上角设置图标的定位参考 */
 .home-quick {
   display: flex;
@@ -3546,7 +3587,11 @@ label.req::before {
   height: 64px;
   padding: 0 16px;
   box-sizing: border-box;
-  background: var(--ty-blue-2);                 /* 统一浅蓝：新增凭证卡与页签条/卡片头同色（表头同款浅蓝） */
+  /* 【2026-10-04】原为整块 --ty-blue-2 浅蓝底（理由写的是"与页签条/卡片头同色"）。
+     改「白底 + 中性边框」：这是首页唯一的主 CTA，靠**结构**（边框 + 38px 蓝色圆图标 +
+     悬停阴影）表达，而不是靠大色块；页面也因此不再整片发蓝 —— 主色只留在那个圆图标上。 */
+  background: var(--ty-white);
+  border: 1px solid var(--ty-border);
   border-radius: 12px;
   cursor: pointer;
   color: var(--ty-text);
@@ -3564,9 +3609,12 @@ label.req::before {
 .qk-new-ico svg { width: 20px; height: 20px; stroke: var(--ty-white) !important; }
 .qk-new-title { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text); }
 /* 【来源备案：jdy 原值，**不是当前值**】voucherBtn span 原 font-size:12px / color:#8e9ca1。
-   当前值见下方 .qk-new-sub（走令牌 --fs-xs / --ty-blue）。
+   当前值见下方 .qk-new-sub（走令牌 --fs-xs / --ty-blue-dark）。
    提示：备案值与现值不一致时极易被误读成"已实现"，改口径时请同步更新或删除本注释。 */
-.qk-new-sub { font-size: var(--fs-xs); color: var(--ty-blue); margin-top: 2px; }
+/* 【2026-10-04 对比度修正】原 color: var(--ty-blue)（#2f95ff）：12px 小字在白底仅 3.06:1，
+   **不达 WCAG AA 正文 4.5:1**（该色只适合 ≥19px 大字号或纯图标）。改 --ty-blue-dark
+   （#3a66d4，白底 ≈5.2:1 ✓）—— 色相不变，只是压深一档，观感仍是"蓝的小字"。 */
+.qk-new-sub { font-size: var(--fs-xs); color: var(--ty-blue-dark); margin-top: 2px; }
 
 /* 右侧：图标网格（contentR---qyET，最多 10 个图标，超出自动换行） */
 .home-quick-grid {
@@ -3611,6 +3659,11 @@ label.req::before {
   margin-top: 4px;
   margin-bottom: 8px;
 }
+/* 图标字形（与左侧导航同一套 iconcool 字形；24 项按功能就近复用，见 app.js 的 QUICK_MENU_ITEMS.icon）
+   字形为 fill 型 path，白填充在 --ty-blue-dark 上为 5.21:1，与原来的白字对比度一致。
+   18px：字形实际占位约 viewBox 的 81%，落在 32px 圆角方块里四周留白均衡。 */
+.qk-circle svg { width: 18px; height: 18px; display: block; }
+.qk-circle svg path { fill: var(--ty-white); }
 /* 文字（linkItem p：单行 + 省略号截断，长名称不换行不重叠） */
 .qk-label {
   font-size: var(--fs-xs); line-height: 16px; text-align: center;
@@ -3629,21 +3682,21 @@ label.req::before {
  * ============================================================ */
 
 /* 网格容器（首页财务指标卡片）
- * 机制：drag-wrapper-container 宽 = 100% + 16px（向右溢出 16px，抵掉外层白框的右内边距），
+ * 机制：metric-grid-row 宽 = 100% + 16px（向右溢出 16px，抵掉外层白框的右内边距），
  *       每个格子 padding-right:16px 形成列间距，于是最右一列与白框右缘齐平。
  * 说明：这里只保留实际生效的设定 ——
- *   · .drag-container 的父级是普通 block（非 flex 容器），故自身不需要 flex-basis/flex-grow；
- *   · 格子由 .drag-wrapper-container 的 flex 布局负责，flex 子项会被 blockify，
- *     故 .grid-square-wrapper 不需要 display:inline-block；外层白框本就是白底，
+ *   · .metric-grid 的父级是普通 block（非 flex 容器），故自身不需要 flex-basis/flex-grow；
+ *   · 格子由 .metric-grid-row 的 flex 布局负责，flex 子项会被 blockify，
+ *     故 .metric-slot 不需要 display:inline-block；外层白框本就是白底，
  *     白底对白底也不可见，故不需要 background-color。 */
-.drag-container { width: 100%; }
-.drag-container .drag-wrapper-container {
+.metric-grid { width: 100%; }
+.metric-grid .metric-grid-row {
   display: flex;
   flex-wrap: wrap;
   position: relative;
   width: calc(100% + 16px);
 }
-.drag-container .grid-square-wrapper {
+.metric-grid .metric-slot {
   padding-right: 16px;      /* 列间距 */
   margin-bottom: 20px;      /* 行间距 */
   box-sizing: border-box;   /* 必要：否则 1/3 宽 + 16px 内边距会撑破一行 */
@@ -3660,40 +3713,39 @@ label.req::before {
    【2026-10-04 由 6 列改为 3 列】6 列时每卡仅约 161px（见下方 .fv7 注释的历史依据），
    标签与金额被迫竖排、右侧大片留白；3 列约 380px，与「工作台」定位相符。
    6 张卡 → 2 行 × 3 张。 */
-.drag-container .width-1 { width: calc(100% / 3); }
+.metric-grid .width-1 { width: calc(100% / 3); }
 /* 窄屏回退：宽度不够时自动降档，避免挤压错乱。
    【注意】降档阈值必须低于主宽度，否则会出现"窗口变窄反而更宽"的倒挂
    （原 1400/1200 两档在 6 列基准下是降档，改成 3 列基准后会变成升档，故已重排）。 */
 @media (max-width: 1200px) {
-  .drag-container .width-1 { width: 50%; }
+  .metric-grid .width-1 { width: 50%; }
 }
 @media (max-width: 760px) {
-  .drag-container .width-1 { width: 100%; padding-right: 0; }
+  .metric-grid .width-1 { width: 100%; padding-right: 0; }
 }
-/*  wrapper--ifBdg 白框内边距 + 标题 tab 样式（来源同 main chunk.css） */
-.wrapper--ifBdg { padding: 24px 24px 28px; }   /* 财务指标区块上下边距调大 */
+/*  home-section-metrics 白框内边距 + 标题 tab 样式（来源同 main chunk.css） */
+.home-section-metrics { padding: 24px 24px 28px; }   /* 财务指标区块上下边距调大 */
 /*  chunk.css 全局 reset：,ul{margin:0;padding:0}。
    浏览器默认 ul 有 padding-left:40px，导致"财务指标/行业对标"tab 文字比
    "常用功能"标题右移 40px 不对齐。此处显式清零与参考实现一致。 */
-.wrapper--ifBdg .titleWrapper--2ThdD ul { display: inline-block; margin: 0; padding: 0; list-style: none; }
-.wrapper--ifBdg .titleWrapper--2ThdD ul li {
+.home-section-metrics .home-section-title ul { display: inline-block; margin: 0; padding: 0; list-style: none; }
+.home-section-metrics .home-section-title ul li {
   position: relative; margin-right: 24px; display: inline-block;
   font-size: var(--fs-xl); font-weight: 400; padding-bottom: 4px; cursor: default;
 }
-.wrapper--ifBdg .titleWrapper--2ThdD ul li.active--1OT3M { color: var(--ty-blue); }
-.wrapper--ifBdg .titleWrapper--2ThdD ul li.active--1OT3M:after {
-  content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 2px;
-  background: var(--ty-blue);
-}
-.wrapper--ifBdg .titleWrapper--2ThdD .btnWrapper--1z5QY {
-  display: inline-block; margin-left: 9px; cursor: pointer; font-size: 22px;
-  vertical-align: middle; line-height: 30px;
-}
-.wrapper--ifBdg .titleWrapper--2ThdD .btnWrapper--1z5QY:hover { color: var(--ty-blue); }
+/* 【2026-10-04 删除】此处原有两条死规则（已 grep 确认 HTML/JS 全仓零引用）：
+     li.active--1OT3M{color} / li.active--1OT3M:after{下划线 2px} —— 复刻时"财务指标/行业对标"
+       tab 的选中态；本项目标题行只有一个 li（<li>财务指标</li>），既无 active--1OT3M 也无第二个 tab。
+     .btnWrapper--1z5QY{...} + :hover{color}                        —— 复刻时标题行右侧的"自定义"按钮；
+       本项目该按钮已下移到常用功能网格右上角（.home-edit-btn）。
+   两处留在此处只会让人误以为"有这些功能"。 */
 
-.drag-rect.grid-square {
+.metric-card {
   background: var(--ty-white);
-  border: 1px solid var(--ty-blue-2);
+  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝，对白卡 1.138 —— 几乎看不见）→ --ty-border
+     （中性灰 #e2e7ec，对白卡 1.244）。整页去掉蓝洗后，卡片层级全靠这条边框 + 浅阴影承担，
+     故必须换成看得见的边框色。 */
+  border: 1px solid var(--ty-border);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0,0,0,.04);
   /* 填满格子：格子被 flex 拉伸到本行最高，卡片填满它，同行卡片底部才齐平。
@@ -3701,18 +3753,23 @@ label.req::before {
   height: 100%;
 }
 
-/* 卡片头部（drag-header：浅蓝底、44px 高、圆角上 8px、两端对齐，
+/* 卡片头部（metric-card-head：44px 高、圆角上 8px、两端对齐，
    header 自身无 padding，左右内距由 .title / 右侧控件各自的 10px 20px 承担）
    注：44px 而非参考产品的 30px——头部需容纳 14px 的期间下拉（jinbooks 用 el-select 可压到 30px，
-   原生 select 加上下 padding 后 30px 放不下）；底色沿用浅蓝，与页签条/新增凭证/表头同色。 */
+   原生 select 加上下 padding 后 30px 放不下）。
+   【2026-10-04】底色由浅蓝改中性灰 --ty-surface-2（去"整页发蓝"，见该令牌定义处）。 */
 /* 卡片头部：左 title 自动吸收剩余空间，右期间控件稳定占位不漂移 */
-.drag-header {
+.metric-card-head {
   display: flex;
   align-items: center;
   /* justify-content 默认 flex-start 即可：左侧 title 自然占据左位，
      右侧元素靠 margin-left: auto 推到右边，比 space-between 更稳
      （space-between 在只有两个子元素时其实和 flex-start + margin-left:auto 等价） */
-  background: var(--ty-blue-2);   /* 卡片头浅蓝：与表头/页签条/新增凭证同色 */
+  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-surface-2（中性灰）：
+     卡片头是结构性的"面"，不该用主色。另加 1px 中性底线，让灰头与白卡体在任何
+     缩放下都有清晰分界（去蓝洗后必须补这条，单靠 1.132 的面阶不够狠）。 */
+  background: var(--ty-surface-2);
+  border-bottom: 1px solid var(--ty-border);
   height: 44px;
   line-height: 44px;
   padding: 0;
@@ -3722,7 +3779,7 @@ label.req::before {
   font-size: var(--fs-md);
   color: var(--ty-text);
 }
-.drag-header .title {
+.metric-card-head .title {
   font-size: var(--fs-md);
   font-weight: 400;
   color: var(--ty-text);
@@ -3734,7 +3791,7 @@ label.req::before {
   min-width: 0;          /* 关键：允许 flex 子项收缩到内容以下（否则 ellipsis 不生效，期间会被挤） */
 }
 /* 存量卡片右上角期间（如"2026年08期"）：固定显示最新期末，稳定占位不漂移 */
-.drag-header .card-period {
+.metric-card-head .card-period {
   font-size: var(--fs-xs);
   color: var(--ty-text-3);
   padding-right: var(--card-pad-x);
@@ -3748,14 +3805,14 @@ label.req::before {
  * 2026-09-19：原为常驻 1px 灰边框（--ty-text-3）+ 浅蓝底，视觉上是一块突兀的灰色方框，
  * 与卡片整体（存量卡片是纯静态文字）不协调。现改为默认无框，仅保留文字与下拉箭头；
  * 交互时给出反馈，既去掉灰框又保留「这里可点」的可发现性。 */
-.drag-header .card-period-select {
+.metric-card-head .card-period-select {
   flex-shrink: 0;
   white-space: nowrap;
   padding-right: var(--card-pad-x);
   margin-left: auto;      /* 推到 flex 右端 */
   min-width: 80px;        /* 稳定占位：避免 option 切换导致 select 宽度跳变 */
 }
-.drag-header .card-period-select select {
+.metric-card-head .card-period-select select {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -3781,7 +3838,7 @@ label.req::before {
 /* hover：只让文字变品牌蓝作为反馈 —— 不给底色也不给边框。
  * 带底色的 hover 虽然本意是"提示可点"，但在白卡片上仍会呈现为一个方块，
  * 与"去掉框"的诉求相悖（容易被看成框）。文字变色是最轻的反馈。 */
-.drag-header .card-period-select select:hover {
+.metric-card-head .card-period-select select:hover {
   color: var(--ty-blue);
 }
 /* focus / focus-visible：彻底无框、无光晕、无轮廓。
@@ -3791,8 +3848,8 @@ label.req::before {
  * 需要键盘交互的控件在鼠标点击时也会命中，起不到"仅键盘才显示"的隔离作用。
  * 代价：键盘 Tab 聚焦时无视觉指示。取舍是「3 个期间选择器 + 用户明确要求去掉框」，
  * 且 select 聚焦后按 Enter 会弹出原生下拉，仍有可感知的反馈。 */
-.drag-header .card-period-select select:focus,
-.drag-header .card-period-select select:focus-visible {
+.metric-card-head .card-period-select select:focus,
+.metric-card-head .card-period-select select:focus-visible {
   border-color: transparent;
   box-shadow: none;
   outline: none;
@@ -3819,13 +3876,13 @@ label.req::before {
 }
 /* 财务指标标题栏：左「财务指标」+ 右期间选择（flex 两端对齐）。
    期间下拉从卡片头移到此处后，卡片头只剩标题 —— 6 列窄卡下标题不会再被右侧控件挤掉。 */
-.wrapper--ifBdg .titleWrapper--2ThdD {
+.home-section-metrics .home-section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 /* 标题栏内的期间下拉：字号与标题(16px)一致，且不带卡片头专用的右侧内距 */
-.wrapper--ifBdg .titleWrapper--2ThdD .ty-select.select-period {
+.home-section-metrics .home-section-title .ty-select.select-period {
   flex-shrink: 0;
   white-space: nowrap;
   padding: 0;
@@ -3891,7 +3948,7 @@ label.req::before {
   appearance: none;
   border: none;
   /* 原生 select 不继承字号/字体/颜色（浏览器默认约 13.3px，比标题小一档），
-     显式继承以与 .drag-header .title（14px）保持一致 */
+     显式继承以与 .metric-card-head .title（14px）保持一致 */
   font-size: inherit;
   font-family: inherit;
   color: inherit;
@@ -3957,7 +4014,7 @@ label.req::before {
 .arap-items { margin-top: 8px; max-height: 200px; overflow-y: auto; }
 /* （滚动条原先在此单独写 4px 灰，且 Firefox 侧刻意为透明（几乎看不见）——
     已收口到文末「全站滚动条」唯一规范，与其余页面同款。） */
-.arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--ty-blue-2); }
+.arap-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--ty-border); }
 .arap-item:last-child { border-bottom: none; }
 .arap-item .ai-name { color: var(--ty-text-2); font-size: var(--fs-xs); letter-spacing: 0; word-break: break-all; margin-right: 8px; flex: 1 1 auto; min-width: 0; }
 .arap-item .ai-val { color: var(--ty-text); font-size: var(--fs-xs); letter-spacing: 0; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
@@ -3972,10 +4029,11 @@ label.req::before {
 .fv4 .fv4-f { color: var(--ty-text-2); display: inline-block; margin-right: 2px; font-size: var(--fs-xs); letter-spacing: 0; font-weight: 400; }
 .fv4 .fv4-v { color: var(--ty-text); font-size: var(--fs-xs); letter-spacing: 0; font-weight: 400; word-break: normal; white-space: nowrap; text-align: left; }
 
-/* fv5：竖排居中（带标题） */
-.fv5 { display: flex; flex-direction: column; align-items: flex-start; }
-.fv5 .fv5-f { font-size: var(--fs-md); color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; margin-bottom: 4px; letter-spacing: 0; line-height: 20px; }
-.fv5 .fv5-v { font-size: var(--fs-md); color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; text-align: left; letter-spacing: 0; line-height: 20px; }
+/* fv5：左标签右值（费用占收入比）
+   【2026-10-04】与 fv7/fv8 一并由竖排改横排，口径统一。 */
+.fv5 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.fv5 .fv5-f { font-size: var(--fs-md); color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; letter-spacing: 0; line-height: 20px; }
+.fv5 .fv5-v { font-size: var(--fs-md); color: var(--ty-text); font-weight: 400; word-break: normal; white-space: nowrap; text-align: right; letter-spacing: 0; line-height: 20px; }
 
 /* fv6：较上期/较同期 行（左字右值 + 三角） */
 .fv6 { display: flex; align-items: center; }
@@ -3983,17 +4041,19 @@ label.req::before {
 .fv6 .ic-dec { color: var(--ty-green); font-size: var(--fs-xl); }   /* 减=绿 */
 .fv6 .ic-inc { color: var(--ty-red); font-size: var(--fs-xl); }   /* 增=红 */
 
-/* fv7：两行（标签在上、金额在下）——净利润/收入/成本/费用的金额长
-   （如「收入」+「3,544,599.15」≈166px），而 1/6 窄卡内容宽仅约 161px，横排必挤。
-   标签与金额均左对齐：竖排下右对齐会让标签与金额形成两处错位的左缘，观感散乱。 */
-.fv7 { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; }
+/* fv7：左标签 / 右金额 同行（净利润、收入、成本、费用）
+   【2026-10-04 由竖排改横排】原先竖排的依据是「1/6 窄卡内容宽仅约 161px，
+   而『收入』+『3,544,599.15』≈166px，横排必挤」。改 3 列后单卡内容宽约 348px，
+   横排有充分余量；且竖排会让宽卡右半区整体空置，与同区其他卡片（fv1/fv2/fv3
+   均为左标签右金额）口径不一致。现全部统一为左标签右金额。 */
+.fv7 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: 100%; }
 .fv7 .fv7-f { font-size: var(--fs-md); color: var(--ty-text-2); font-weight: 400; display: inline-block; margin-right: 2px; letter-spacing: 0; line-height: 20px; text-align: left; }
-.fv7 .fv7-v { font-size: var(--fs-md); color: var(--ty-text); font-weight: 600; word-break: normal; white-space: nowrap; letter-spacing: 0; line-height: 20px; text-align: left; }
+.fv7 .fv7-v { font-size: var(--fs-md); color: var(--ty-text); font-weight: 600; word-break: normal; white-space: nowrap; letter-spacing: 0; line-height: 20px; text-align: right; }
 
-/* fv8：同 fv7 两行（毛利率），左对齐 */
-.fv8 { display: flex; flex-direction: column; align-items: stretch; padding-top: 2px; }
+/* fv8：同 fv7 左标签右金额（毛利率） */
+.fv8 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-top: 2px; }
 .fv8 .fv8-f { display: inline-block; margin-right: 2px; word-break: keep-all; font-size: var(--fs-md); color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; text-align: left; }
-.fv8 .fv8-v { font-size: var(--fs-md); color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; white-space: nowrap; text-align: left; }
+.fv8 .fv8-v { font-size: var(--fs-md); color: var(--ty-text-2); letter-spacing: 0; line-height: 20px; white-space: nowrap; text-align: right; }
 /* 比率类值（净利润率/毛利率/费用占比）统一降级为次要字号：
    主数值已放大到 20px，比率若同尺寸会喧宾夺主（参考产品 jinbooks 用 .small 0.9em 同理） */
 .fv7 .fv7-v.is-rate { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text-2); line-height: 20px; }
@@ -4021,9 +4081,10 @@ label.req::before {
 
 .detail-split-wrapper { display: flex; align-items: flex-start; padding: 8px var(--card-pad-x) 16px; margin-top: 2px; }   /*  .detail-split-wrapper padding:8px 0 16px;margin-top:2px；横向补齐 --card-pad-x 与 .padding 对齐 */
 .detail-split { flex: 1; text-align: left; }
-.cost-card .detail-split-wrapper .fv5 { align-items: flex-start; }
-.cost-card .detail-split-wrapper .fv5-f,
-.cost-card .detail-split-wrapper .fv5-v { text-align: left; }
+/* 【2026-10-04 删除】原此处有 .cost-card .detail-split-wrapper .fv5{align-items:flex-start}
+   与 .fv5-f/.fv5-v{text-align:left} 两条覆盖规则，是配合旧「竖排」口径写的。
+   .fv5 已改左标签右值横排（见上方 .fv5 规则），这两条会把值拉回左对齐、破坏与
+   其他卡片右缘对齐的口径，故移除，统一交给 .fv5 基础规则。 */
 .detail-split-wrapper .split-line {
   width: 1px; align-self: stretch; background: var(--ty-deco); margin: 0 8px;   /*  split-line background:var(--ty-text-3) */
 }
@@ -5762,13 +5823,35 @@ td.empty-hint { text-align: center; color: var(--ty-text-3); padding: 24px; }   
 /* 复选/单选行：起点与 form-row 控件列一致（label 96px + gap 10px = 106px），checkbox 与输入框同列成线 */
 .card .chk-row,
 .card .radio-row { padding-left: 106px; }
-/* 首页「云备份」提醒条：7 天节流、可忽略；平时不显示 */
-.home-backup-tip { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; background: var(--st-warn-bg); border: 1px solid var(--st-warn-bg); border-radius: 6px; font-size: var(--fs-sm); color: var(--st-hl-fg); line-height: 1.5; }
+/* 首页「云备份」状态徽标：7 天节流、可忽略；平时不显示
+   【2026-10-04 由「满宽黄条」改为「状态徽标」】原为通栏浅黄条（--st-warn-bg 铺满整行、
+   内边距 10px/14px、出现时把整页内容整体下压 54px），观感接近报错横幅。
+   改为紧凑徽标：琥珀状态点 + 12px 文字 + 蓝色可点文字动作；宽度随内容、左侧随内容缩进 24px、
+   垂直占用降到约 26px。信息一项不减（三种状态的文案、去配置/去备份、× 静默 7 天都在），
+   只是不再抢视觉。JS 契约不变（仍靠 #homeBackupTip 的 display:none/'' 切换显隐）。 */
+.home-backup-tip {
+  display: flex; align-items: center; gap: 8px;
+  width: fit-content;
+  margin: 10px 24px 0 24px;
+  padding: 3px 12px 3px 10px;
+  background: var(--st-warn-bg);
+  border: 1px solid var(--st-warn-bg);
+  border-radius: 999px;
+  font-size: var(--fs-2xs);
+  color: var(--ty-text-2);
+  line-height: 18px;
+}
+/* 琥珀状态点：表达"这是提醒"而非报错。橙色按全站惯例只用于图标/底色，不作文字。 */
+.home-backup-tip::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ty-orange); flex: 0 0 auto;
+}
 .home-backup-tip a { cursor: pointer; white-space: nowrap; }
-.home-backup-tip #btnBackupTipGo { color: var(--ty-text-2); font-weight: 600; text-decoration: underline; }
-.home-backup-tip #btnBackupTipGo:hover { color: var(--st-hl-fg); }
-.home-backup-tip #btnBackupTipClose { margin-left: auto; font-size: var(--fs-xl); color: var(--st-hl-fg); line-height: 1; }   /* 关闭按钮原橙 2.09 太弱，改深黄棕 5.54 */
-.home-backup-tip #btnBackupTipClose:hover { color: var(--st-hl-fg); }
+/* 动作走蓝色可点文字（与"设为默认/停用"同款），悬停才加下划线 */
+.home-backup-tip #btnBackupTipGo { color: var(--ty-blue-dark); }
+.home-backup-tip #btnBackupTipGo:hover { text-decoration: underline; }
+.home-backup-tip #btnBackupTipClose { font-size: var(--fs-md); color: var(--ty-text-3); line-height: 1; }
+.home-backup-tip #btnBackupTipClose:hover { color: var(--ty-text); }
 /* 从首页提醒跳转而来时，「云备份」按钮短暂高亮 */
 .btn-hl { outline: 2px solid var(--ty-orange); outline-offset: 1px; }
 /* 卡片标题栏（含右侧操作按钮）：字号统一 14px（整数，与 sys-tab 同级） */

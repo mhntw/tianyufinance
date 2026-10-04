@@ -873,46 +873,50 @@
    * 常用功能设置（弹窗分类 checkbox，可增减图标）
    * ============================================================ */
 
-  /** 所有可选菜单项（按功能分类） */
+  /** 所有可选菜单项（按功能分类）
+   *  icon：iconcool 字形名（键见 js/ty-menu-icons.js 的 TY_MENU_ICON_PATHS）。
+   *        该库只有 26 个【分组级】字形，做不到「一功能一图标」，同组内按语义就近复用
+   *        （如报表组的资产负债表/应交税金明细表共用文档字形）；取不到字形时
+   *        renderQuickIcons 自动回退为「名称首字」，故 icon 缺失不会渲染空白。 */
   var QUICK_MENU_ITEMS = [
     { group: '凭证', items: [
-      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher' },
-      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query' },
-      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum' },
+      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',       icon: 'icon-jizhangpingzheng' },
+      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query', icon: 'pingzheng3' },
+      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum',   icon: 'pingzheng6' },
     ]},
     { group: '账簿', items: [
-      { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger' },
-      { key: 'general-ledger',  name: '总账',         page: 'general-ledger' },
-      { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance' },
-      { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger' },
+      { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger', icon: 'zhangbu' },
+      { key: 'general-ledger',  name: '总账',         page: 'general-ledger',icon: 'icon-zhuzhangbu' },
+      { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance', icon: 'zhangben2' },
+      { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger',  icon: 'icon-fuzhuzhangbu' },
     ]},
     { group: '报表', items: [
-      { key: 'report-balance',  name: '资产负债表',   page: 'report-balance' },
-      { key: 'report-profit',   name: '利润表',       page: 'report-profit' },
-      { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow' },
-      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax' },
-      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail' },
+      { key: 'report-balance',  name: '资产负债表',   page: 'report-balance',icon: 'baobiao3' },
+      { key: 'report-profit',   name: '利润表',       page: 'report-profit', icon: 'baobiao5' },
+      { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow',icon: 'zidingyibaobiao' },
+      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',icon: 'baobiao3' },
+      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',icon: 'baobiao5' },
     ]},
     /* 标准：结账（独立页面，无子菜单，含期末处理/反结账 Tab） */
     { group: '结账', direct: true, page: 'settle', items: [
-      { key: 'settle-close', name: '期末处理', page: 'settle' },
+      { key: 'settle-close', name: '期末处理', page: 'settle', icon: 'jiezhang2' },
     ]},
     { group: '资产', items: [
-      { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card' },
-      { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum' },
-      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail' },
+      { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card',      icon: 'zichan3' },
+      { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',  icon: 'zichan4' },
+      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',icon: 'zichan4' },
     ]},
     { group: '工资', items: [
-      { key: 'salary-table', name: '工资',   page: 'salary' },
-      { key: 'salary-statistics', name: '工资统计', page: 'salary-statistics' },
+      { key: 'salary-table', name: '工资',   page: 'salary', icon: 'gongzi3' },
+      { key: 'salary-statistics', name: '工资统计', page: 'salary-statistics', icon: 'gongzi4' },
     ]},
     { group: '设置', items: [
-      { key: 'account-setup',       name: '科目',             page: 'subject' },
-      { key: 'init-balance',        name: '期初余额',     page: 'opening' },
-      { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init' },
-      { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project' },
-      { key: 'system-settings',     name: '系统设置',         page: 'system-settings' },
-      { key: 'operation-logs',      name: '操作日志',         page: 'operation-logs' },
+      { key: 'account-setup',       name: '科目',             page: 'subject',          icon: 'jichuziliao2' },
+      { key: 'init-balance',        name: '期初余额',     page: 'opening',          icon: 'shezhi2' },
+      { key: 'cashflow-init',       name: '现金流量初始余额', page: 'cashflow-init',    icon: 'chuna3' },
+      { key: 'cashflow-project',    name: '科目现金流量项目', page: 'cashflow-project', icon: 'chuna4' },
+      { key: 'system-settings',     name: '系统设置',         page: 'system-settings',  icon: 'xitongshezhi2' },
+      { key: 'operation-logs',      name: '操作日志',         page: 'operation-logs',   icon: 'shezhi6' },
     ]},
   ];
 
@@ -1010,6 +1014,8 @@
     var grid = document.querySelector('.home-quick-grid');
     if (!grid) return;
     grid.innerHTML = '';
+    // 图标字形库（ty-menu-icons.js，load 早于本文件）；取不到时回退「名称首字」
+    var paths = (typeof TY_MENU_ICON_PATHS !== 'undefined') ? TY_MENU_ICON_PATHS : null;
     var iconKeys = keys.filter(function(k){ return k !== FIXED_QUICK_KEY; });
     iconKeys.forEach(function (key) {
       var item = findQuickItem(key);
@@ -1017,11 +1023,18 @@
       var a = document.createElement('a');
       a.className = 'qk';
       a.setAttribute('data-page', item.page);
-      // 用名称首字作为图标文字
-      var ch = item.name.charAt(0);
+      // 图标：优先用 QUICK_MENU_ITEMS 上声明的 iconcool 字形（与左侧导航同一套字形，观感一致）；
+      // 缺字形时回退「名称首字」，保证任何情况下圆点里都不是空白。
+      var d = (paths && item.icon && paths[item.icon]) || '';
+      var circle = d
+        ? '<svg viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + d + '"/></svg>'
+        : item.name.charAt(0);
       // 圆点底色**不再内联**（原为 item.color，24 项十几种色，反馈"太杂太复杂"）——
       // 统一交给 CSS 的 .qk-circle（--ty-blue-dark），改色只改样式表一处。
-      a.innerHTML = '<span class="qk-circle">' + ch + '</span><span class="qk-label">' + item.name + '</span>';
+      // circle（字形 path）来自 ty-menu-icons.js 的硬编码字形表，item.name 来自本文件
+      // QUICK_MENU_ITEMS 的硬编码字面量 —— 两者都不是用户输入或导入数据，无注入面。
+      /* escape-ok: circle 与 item.name 均为硬编码常量，不含用户输入 */
+      a.innerHTML = '<span class="qk-circle">' + circle + '</span><span class="qk-label">' + item.name + '</span>';
       grid.appendChild(a);
     });
   }

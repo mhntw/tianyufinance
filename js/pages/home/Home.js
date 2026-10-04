@@ -148,16 +148,16 @@ function checkBackupTip() {
     var go = $('btnBackupTipGo');
     if (r.unconfigured) {
       tip.dataset.go = 'config';
-      if (txt) txt.textContent = '尚未配置云备份，建议配置云备份。';
+      if (txt) txt.textContent = '尚未配置云备份';
       if (go) go.textContent = '去配置';
     } else if (r.neverPushed) {
       // 已配置但一次都没备份：自动备份要以「上次备份时间」为基准，不备份一次永远不会启动
       tip.dataset.go = 'push';
-      if (txt) txt.textContent = '云备份已配置，但尚未备份过，建议立即备份一次。';
+      if (txt) txt.textContent = '云备份尚未备份过';
       if (go) go.textContent = '去备份';
     } else if (r.pending) {
       tip.dataset.go = 'push';
-      if (txt) txt.textContent = '距离上次云备份已经超过 7 天，建议做一次云备份。';
+      if (txt) txt.textContent = '已超过 7 天未备份';
       if (go) go.textContent = '去备份';
     } else {
       tip.style.display = 'none';
@@ -440,9 +440,9 @@ function bindAmtJump() {
     var a = e.target.closest && e.target.closest('#page-home .amt-link');
     if (!a) return;
     e.preventDefault();
-    // 从被点击元素往上找最近的卡片容器（.grid-square-wrapper[data-metric]），
+    // 从被点击元素往上找最近的卡片容器（.metric-slot[data-metric]），
     // 反推出该卡片当前使用的期间——三张流量卡期间独立，存量卡固定最新期末。
-    var wrapper = a.closest('.grid-square-wrapper');
+    var wrapper = a.closest('.metric-slot');
     var metric = wrapper ? wrapper.getAttribute('data-metric') : '';
     var p;
     switch (metric) {

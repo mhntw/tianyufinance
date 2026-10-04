@@ -92,9 +92,9 @@
       <!-- 首页工作台 -->
       <section class="page" id="page-home">
         <!-- 首页容器（本地版已移除右侧资讯栏，左主区单栏全宽） -->
-        <div class="wrapper--nEFLj">
+        <div class="home-work">
 
-        <div class="contentL--1JUu7">
+        <div class="home-main">
 
         <!-- 云备份提醒：距上次备份≥7天且期间有改动才显示；可忽略（×当天静默） -->
         <div id="homeBackupTip" class="home-backup-tip" style="display:none">
@@ -103,11 +103,11 @@
           <a id="btnBackupTipClose">×</a>
         </div>
 
-        <div class="contentItemWrapper--1cQtp wrapper--2ZSon">
+        <div class="home-section home-section-quick">
           <!-- 常用功能：整行标题栏已删除，设置图标下移到网格右上角（.home-quick-edit 绝对定位） -->
-          <div class="content--2vKQI home-content">
+          <div class="home-section-content home-content">
           <div class="home-quick">
-            <span class="editBtn--2VJ9T is-link home-section-edit home-quick-edit" title="自定义常用功能">
+            <span class="home-edit-btn is-link home-section-edit home-quick-edit" title="自定义常用功能">
               <i class="iconcool zidingyi"></i>
             </span>
 
@@ -127,23 +127,23 @@
           </div>
         </div>
 
-        <div class="contentItemWrapper--1cQtp">
-          <div class="wrapper--ifBdg">
-            <div class="titleWrapper--2ThdD" style="margin-bottom: 16px;">
+        <div class="home-section">
+          <div class="home-section-metrics">
+            <div class="home-section-title" style="margin-bottom: 16px;">
               <ul class="">
                 <li>财务指标</li>
               </ul>
             </div>
             <div>
               <div style="display: block;">
-                <div class="drag-container">
+                <div class="metric-grid">
                   <div>
-                    <div class="drag-wrapper-container">
+                    <div class="metric-grid-row">
 
-          <div class="grid-square-wrapper width-1" data-metric="fundBalance">
-            <div class="drag-rect grid-square fundBalance-drag-rect">
+          <div class="metric-slot width-1" data-metric="fundBalance">
+            <div class="metric-card">
               <div class="fund-balance-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="title">资金余额</div>
                   <span class="card-period" id="periodFund">--</span>
                 </div>
@@ -164,10 +164,10 @@
             </div>
           </div>
 
-          <div class="grid-square-wrapper width-1" data-metric="arap">
-            <div class="drag-rect grid-square ARAP-drag-rect">
+          <div class="metric-slot width-1" data-metric="arap">
+            <div class="metric-card">
               <div class="arap-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="tab-wrapper"><ul><li class="active" data-arap="ar">应收</li><li data-arap="ap">应付</li></ul></div>
                   <span class="card-period" id="periodArap">--</span>
                 </div>
@@ -187,10 +187,10 @@
             </div>
           </div>
 
-          <div class="grid-square-wrapper width-1" data-metric="estimatedBalance">
-            <div class="drag-rect grid-square estimatedBalance-drag-rect">
+          <div class="metric-slot width-1" data-metric="estimatedBalance">
+            <div class="metric-card">
               <div class="estimated-balance-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="title">预计可用资金</div>
                   <span class="card-period" id="periodAvail">--</span>
                 </div>
@@ -206,10 +206,10 @@
             </div>
           </div>
 
-          <div class="grid-square-wrapper width-1" data-metric="netProfit">
-            <div class="drag-rect grid-square netProfit-drag-rect">
+          <div class="metric-slot width-1" data-metric="netProfit">
+            <div class="metric-card">
               <div class="net-profit-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="title">净利润</div>
                   <span class="card-period-select"><select id="selPeriodProfit"></select></span>
                 </div>
@@ -225,10 +225,10 @@
             </div>
           </div>
 
-          <div class="grid-square-wrapper width-1" data-metric="revenueCost">
-            <div class="drag-rect grid-square revenueCost-drag-rect">
+          <div class="metric-slot width-1" data-metric="revenueCost">
+            <div class="metric-card">
               <div class="revenue-cost-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="title">收入成本</div>
                   <span class="card-period-select"><select id="selPeriodRevCost"></select></span>
                 </div>
@@ -247,10 +247,10 @@
             </div>
           </div>
 
-          <div class="grid-square-wrapper width-1" data-metric="fee">
-            <div class="drag-rect grid-square fee-drag-rect">
+          <div class="metric-slot width-1" data-metric="fee">
+            <div class="metric-card">
               <div class="cost-card">
-                <div class="drag-header">
+                <div class="metric-card-head">
                   <div class="title">费用</div>
                   <span class="card-period-select"><select id="selPeriodFee"></select></span>
                 </div>
