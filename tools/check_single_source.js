@@ -119,6 +119,30 @@ const RULES = [
     id: 'inline-amt-scale',
     desc: '内联金额定点比例 10000（应走单点 AMT_SCALE / amt() / yuan()）',
     re: /[*/]\s*10000\b|\b10000\s*[*/]|\|\|\s*10000\b|(?:<=?|>=?)\s*10000\b/
+  },
+  {
+    /* 【2026-10-04 新增类目】导出：**造工作簿**的样板必须只有一处。
+       此前 12 处导出各自抄一遍「建簿 → 转表 → 列宽 → 追加工作表」（只有列宽/表名/合并不同），
+       改列宽或加合并要满项目找、且极易漏改一处。
+       唯一持有者：js/ty-io.js 的 buildSheetWorkbook（它只造工作簿，落盘仍走 __safeExportExcel）。
+       ⚠ 本条第白名单是**规则级**的（ty-io.js 只持有这一项口径，不该因此豁免其它规则），
+         故规则自带 allow 字段，见下方扫描循环。 */
+    id: 'inline-book-new',
+    desc: '页面自行造 Excel 工作簿（建簿/转表）—— 应走单点 TyIo.buildSheetWorkbook',
+    re: /XLSX\.utils\.(?:book_new|aoa_to_sheet|json_to_sheet)\s*\(/,
+    allow: ['js/ty-io.js']
+  },
+  {
+    /* 【2026-10-04 新增类目】分页总页数的算法必须只有一处。
+       此前 6 处逐字手写「取大(1, 向上取整(总数/每页))」。其中"取大 1"的守卫**不能省** ——
+       0 条数据时 向上取整(0/每页) === 0，会渲染出"第 0 页 / 共 0 页"；指望每处都记得写守卫不现实。
+       唯一持有者：store.js 的 util.totalPages。
+       ⚠ 只锁**算术**，不锁分页控件的标记 —— 三处分页 UI 外观本就不同（费用明细 <li>+tyicon /
+         资产页 aPrev·aNext·aPageSize / 设置页 logPageSize），合并 UI 属改外观（负优化），故不做。 */
+    id: 'inline-total-pages',
+    desc: '内联分页总页数（应走单点 util.totalPages：含"0 条也算 1 页"的守卫）',
+    re: /Math\.max\s*\(\s*1\s*,\s*Math\.ceil\s*\(/,
+    allow: ['js/store.js']
   }
 ];
 
@@ -153,6 +177,10 @@ files.forEach(function (p) {
     // 跳过纯注释行：注释里讨论口径是合理的（说明性文字不该被当作实现）
     if (t.indexOf('//') === 0 || t.indexOf('*') === 0 || t.indexOf('/*') === 0) return;
     RULES.forEach(function (r) {
+      /* 规则级白名单（2026-10-04 新增）：某些规则的"合法持有者"只是**某个**文件
+         （如只允许 js/ty-io.js 建工作簿、只允许 js/store.js 算分页），
+         而全局 ALLOW（取数层）是另一回事 —— 不能为了这两条就把 store.js 从所有规则里豁免。 */
+      if (r.allow && r.allow.indexOf(rel) >= 0) return;
       if (r.re.test(line)) {
         counts[r.id][rel] = counts[r.id][rel] || [];
         counts[r.id][rel].push(i + 1);

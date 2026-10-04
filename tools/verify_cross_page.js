@@ -294,6 +294,14 @@ globalThis.__safeExportExcel = function (wb, fname) {
   CAP = { rows: (wb.__last && wb.__last.ws && wb.__last.ws.__rows) || [], name: fname };
 };
 
+/* ty-io.js 也要装进全局：页面导出经 `TyIo.buildSheetWorkbook`（"造工作簿"的唯一单点，见 js/ty-io.js）。
+   本壳是在**全局作用域** eval 页面源码的，故 ty-io 同样装上即可 —— 它只在**调用时**用 XLSX，
+   所以放在 mock XLSX 之后没问题；真机里 index.html 也是把它当全局脚本先加载（与 Asset.js 早先
+   用 TyIo.buildAssetWorkbook 是同一模式）。
+   【为什么必须补】2026-10-04 收口导出后漏装它，exportGl 就会抛「TyIo is not defined」——
+   产品侧没问题，是"测试壳没跟着上"（壳与产品代码耦合的典型，宁可在这里补，也不为此扭曲产品设计）。 */
+(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'ty-io.js'), 'utf8'));
+
 /* ---------- 6. 解析渲染结果 ---------- */
 function decode(s) {
   return String(s == null ? '' : s)

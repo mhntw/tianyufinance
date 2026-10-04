@@ -104,7 +104,13 @@ function makeEnv(periodVouchers) {
     qSortDir: 0
   };
   sandbox.globalThis = sandbox;
+  /* 沙箱里补 window 自引用（2026-10-04）：下面要装载 js/ty-io.js，它的 IIFE 形参是
+     `(function (global) { … })(window)` —— 没有 window 会直接抛错。 */
+  sandbox.window = sandbox;
   vm.createContext(sandbox);
+  /* 装载 ty-io.js：被测的 exportQuery 现在走 `TyIo.buildSheetWorkbook`（造工作簿的唯一单点）。
+     沙箱里已 mock 了 XLSX（ty-io 只在调用时用它），故在这里 run 即可。 */
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'ty-io.js'), 'utf8'), sandbox);
   vm.runInContext(
     // qSubjectCodes 与 queryVouchers/exportQuery 同处 Voucher.js 顶层，被它们调用；
     // 只提取后两者时，调用 qSubjectCodes 会解析到沙箱全局而报「is not defined」。
