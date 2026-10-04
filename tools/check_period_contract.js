@@ -14,6 +14,7 @@
  *   3) js/pages/ 下不得直接给期间输入赋值（默认值与填充只允许走单点实现）
  *   4) 期间控件两端（Start/End）必须用同一个表达式赋值 —— 「只产出一个报告期」的核心契约
  *   5) 不得重新引入 data-single 双模开关（要跨期请加「粒度」，不要把起止端点加回来）
+ *   6) 期间文案格式统一：唯一持有者 store.js 的 util.periodText（全站「2026年第7期」）
  *
  * 退出码：0 = 通过；1 = 存在违规（发布应中止）
  * ============================================================ */
@@ -198,6 +199,48 @@ for (const [file, src] of [[INDEX_HTML, html], [PICKER_JS, read(PICKER_JS)]]) {
   }
 }
 
+/* ---------- 6) 期间文案格式统一（2026-10-04 新增）：唯一持有者 store.js 的 util.periodText ----------
+ * 收口前同一个 2026-07 在界面上有三种写法：顶栏「2026年第7期」、首页卡片「2026年07期」、
+ * 报表头与导出「2026年7期」—— 同一个月三副面孔，改一处必漏两处。现全站取顶栏口径。
+ * 三条检查：① 页面里不得再内联拼「年…期」；② 三处历史实现必须委托单点；③ 单点输出正确。 */
+const PERIOD_TEXT_RE = /['"]年第['"]|['"]年['"]\s*\+\s*[^+;]{1,40}\+\s*['"]期['"]|年\$\{[^}]{1,20}\}期/;
+function stripCommentsForPeriodText(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+}
+['js/pages/home/Home.js', 'js/pages/report/_shared.js'].forEach(function (rel) {
+  const src = stripCommentsForPeriodText(read(path.join(ROOT, rel)));
+  src.split('\n').forEach(function (line, i) {
+    const t = line.trim();
+    if (t.indexOf('//') === 0 || t.indexOf('*') === 0) return;
+    if (PERIOD_TEXT_RE.test(line)) {
+      errors.push(`[期间文案内联] ${rel}:${i + 1} 又出现「年…期」拼法 —— 应调用单点 util.periodText。`);
+    }
+  });
+});
+[['js/app.js', 'formatPeriod'], ['js/pages/home/Home.js', 'ymText'], ['js/pages/report/_shared.js', 'monthLabel']]
+  .forEach(function (pair) {
+    if (read(path.join(ROOT, pair[0])).indexOf('U.periodText') < 0) {
+      errors.push(`[期间文案未收口] ${pair[1]}（${pair[0]}）未委托 util.periodText —— 三处历史实现必须统一到单点。`);
+    }
+  });
+(function () {
+  /* 单点输出：按源码提取函数求值（整文件 eval store.js 需要一整套浏览器环境，过重） */
+  const src = read(path.join(JS_DIR, 'store.js'));
+  const m = /function\s+periodText\s*\([^)]*\)\s*\{/.exec(src);
+  if (!m) { errors.push('[期间文案单点缺失] store.js 里找不到 periodText。'); return; }
+  let depth = 0, end = -1;
+  for (let j = src.indexOf('{', m.index); j < src.length; j++) {
+    if (src[j] === '{') depth++;
+    else if (src[j] === '}') { depth--; if (!depth) { end = j; break; } }
+  }
+  const fn = (0, eval)('(' + src.slice(m.index, end + 1) + ')');
+  [['2026-07', '2026年第7期'], ['2026-12', '2026年第12期'], ['2025-01', '2025年第1期'], ['', '']]
+    .forEach(function (c) {
+      const got = fn(c[0]);
+      if (got !== c[1]) errors.push(`[期间文案单点] periodText('${c[0]}') 得「${got}」，应为「${c[1]}」。`);
+    });
+})();
+
 /* ---------- 输出 ---------- */
 console.log('============================================');
 console.log('  期间控件契约自检');
@@ -222,5 +265,5 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('  ✓ 全部通过：默认值均已声明、回调均已注册、页面无直接赋值、两端恒等、无双模开关');
+console.log('  ✓ 全部通过：默认值均已声明、回调均已注册、页面无直接赋值、两端恒等、无双模开关、期间文案已统一');
 process.exit(0);

@@ -56,10 +56,9 @@ function prevYearMonth(m) {                 // YYYY-MM -> 去年同月 YYYY-1-MM
   return `${y - 1}-${String(mm).padStart(2, '0')}`;
 }
 
-function monthLabel(m) {
-  const [y, mm] = m.split('-');
-  return `${y}年${parseInt(mm, 10)}期`;
-}
+// 期间文案单点（见 store.js 的 periodText）：原为「2026年7期」（无"第"、不补零），
+// 与顶栏/首页写法不一致；现三处统一（本函数的输出还进 Excel 表头，改动后表头字样随之统一）。
+function monthLabel(m) { return U.periodText(m); }
 
 function subjectLevel(code) {
   // 优先用科目自带 level（真实级次）：本项目支持非标准段式（如绅蓝之星一级4位+二级7位+三级9位），

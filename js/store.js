@@ -234,6 +234,22 @@
        （费用明细 <li>+tyicon 箭头 / 资产页 aPrev·aNext·aPageSize / 设置页 logPageSize），
        合并 UI 属改外观（负优化），故不做。 */
   function totalPages(total, size) { return Math.max(1, Math.ceil(total / size)); }
+  /* 期间文案的**唯一格式**（2026-10-04 收口，用户确认）：`2026年第7期`。
+     收口前同一个月在界面上一共有三种写法：
+       顶栏        js/app.js                    formatPeriod → 2026年第7期
+       首页卡片    js/pages/home/Home.js        ymText       → 2026年07期（补零）
+       报表头/导出 js/pages/report/_shared.js   monthLabel   → 2026年7期（无"第"、不补零）
+     同一个月在三个地方长得不一样，改一处必漏两处 —— 现统一到此（取顶栏口径：最像会计说法、
+     与金蝶一致，且它本来就在最显眼的位置）。
+     ⚠ 只负责"有期间"的文案；空值仍由各调用方自行兜底（顶栏显示「—」、首页显示「--」），
+       它们对空的表达本就不同，硬统一反而制造新差异。 */
+  function periodText(m) {
+    if (!m) return '';
+    var s = String(m).replace(/-/g, '');
+    var y = s.substring(0, 4);
+    var mo = parseInt(s.substring(4, 6), 10);
+    return y + '年第' + (mo || 0) + '期';   // 与收口前 app.js 的 formatPeriod 逐字等价（非法月份 → 年第0期）
+  }
   // 金额分位精度归一（会计金额精确到分）。消除二进制浮点累加误差（如 0.1+0.2），
   // 金额统一按 decimal 分位精度处理。用于新生成金额（调汇/结转）及对外输出金额。
   // 金额归零到「分」。
@@ -5803,7 +5819,7 @@
   global.util = {
     pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
     prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-    totalPages: totalPages,
+    totalPages: totalPages, periodText: periodText,
     amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
     /* 【2026-09-26 收口】「金额归零到分（含 -0 → 0 归一）」也纳入 util：
        此前 app.js 自带一份 `Math.round(U.num(n)*100)/100` —— **少了 -0 归一**，
@@ -5818,7 +5834,7 @@
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
       prevMonth: prevMonth, monthsBetween: monthsBetween, monthList: monthList, num: num, money: money,
-      totalPages: totalPages,
+      totalPages: totalPages, periodText: periodText,
       amt: amt, yuan: yuan, yuanFmt: yuanFmt, AMT_SCALE: AMT_SCALE,
       round2: round2   // 与 global.util 同源（口径单点：金额归零只有这一处实现）
     }

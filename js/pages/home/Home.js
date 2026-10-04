@@ -72,7 +72,8 @@ function monthsOf(p) {
   return U.monthList(p.from, p.to);
 }
 // 期间文案：月粒度显示「2026年08期」，年粒度显示「2026年」
-function ymText(ym) { return ym.slice(0, 4) + '年' + ym.slice(5, 7) + '期'; }
+// 期间文案单点（见 store.js 的 periodText）：原为「2026年07期」（补零），与顶栏写法不一致。
+function ymText(ym) { return U.periodText(ym); }
 function yearText(ym) { return ym.slice(0, 4) + '年'; }
 function resolvePeriod(mode) {
   var cur = currentPeriod();

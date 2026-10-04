@@ -405,11 +405,9 @@
   // 旧实现按 "YYYYMM" 取 substring(4,6) 会把 "2026-07" 误解析为 "2026年第0期"，故先去连字符归一。
   function formatPeriod(m) {
     if (!m) return '—';
-    var s = String(m).replace(/-/g, '');
-    var y = s.substring(0, 4);
-    var mo = parseInt(s.substring(4, 6), 10);
-    if (!mo) mo = 0;
-    return y + '年第' + mo + '期';
+    // 期间文案单点（见 store.js 的 periodText）：收口前顶栏/首页卡片/报表头各写一份，
+    // 同一个月出现「2026年第7期」「2026年07期」「2026年7期」三种写法。
+    return U.periodText(m);
   }
   function todayStr() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function nowTimeStr() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
