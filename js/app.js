@@ -9,7 +9,10 @@
   var U = window.util;
   var S = window.S;
   if (!S || !S.init) {
-    document.body.insertAdjacentHTML('afterbegin', '<div style="padding:20px;color:#cf1322">致命错误：核心模块未加载（store.js 加载失败），请检查 js/store.js 是否可访问。</div>');
+    /* 【2026-10-04 去硬编码色】原 #cf1322 是调色板外的红（--ty-red 是 #cf2e2e）；
+       本横幅虽出现在"样式可能已失效"的最坏场景，但 style.css 与 store.js 是两条独立加载路径，
+       正常情况下令牌可用；即便样式完全失效，也只是退回继承色，不会更差。 */
+    document.body.insertAdjacentHTML('afterbegin', '<div style="padding:20px;color:var(--ty-red)">致命错误：核心模块未加载（store.js 加载失败），请检查 js/store.js 是否可访问。</div>');
     return;
   }
   S.init();

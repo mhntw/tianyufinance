@@ -1613,7 +1613,9 @@ function updateNewTplTotal() {
   var diff = round2(dr - cr);
   out.innerHTML = '借方合计 <b>' + tmplMoney(dr) + '</b>　贷方合计 <b>' + tmplMoney(cr) + '</b>　';
   out.innerHTML += Math.abs(diff) < 0.005
-    ? '<span style="color:#16a34a">借贷平衡 ✓</span>'
+    /* 【2026-10-04 去硬编码色】原 #16a34a 是调色板外的绿（--ty-green 是 #0d7a3e），
+       同屏另一处却用 var(--ty-green) —— 同一语义两种绿，统一走令牌。 */
+    ? '<span style="color:var(--ty-green)">借贷平衡 ✓</span>'
     : '<span style="color:var(--ty-red)">差额 ' + tmplMoney(Math.abs(diff)) + ' ' + (diff > 0 ? '（贷方少 ' : '（借方少 ') + tmplMoney(Math.abs(diff)) + '）</span>';
 }
 
