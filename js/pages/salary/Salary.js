@@ -3,22 +3,13 @@
 // 设计：globalThis.__TY_HELPERS__（app.js 注册）、globalThis.__TY_EXPORT__（store.js 注册）。
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
-const money = H.money;
-const esc = H.esc;
-const showToast = H.showToast;
-const currentPeriod = H.currentPeriod;
+// 引导块（H / EX / $ / S / U / money / esc / num / showToast / currentPeriod）已收口到 common/helpers.js。
+import { H, EX, $, S, U, money, esc, num, showToast, currentPeriod } from '../../common/helpers.js?v=dev';
+
 const syncAll = H.syncAll;
-const S = H.S || (EX && EX.store);
-const U = H.U || (EX && EX.util);
-const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
-// 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue）。
-// 复用统一期间取值实现，避免多份拷贝失同步。
-// 口径：回填默认期间 + 同步触发器文本，返回结束期间。
+// 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue），避免多份拷贝失同步。
 const periodRangeValue = H.periodRangeValue;
 
   /* ============================================================

@@ -10,16 +10,15 @@
  * 依赖桥接：app.js 顶层已把通用 helper 挂到 globalThis.__TY_HELPERS__，
  * 这里优先取桥接，缺失项做轻量 fallback（不影响既有逻辑）。
  * ============================================================ */
-const H = globalThis.__TY_HELPERS__ || {};
+// 引导块（H / S / U / round2 / $）已收口到 common/helpers.js；本页专属的 periodRangeValue /
+// bookScopeChanged 仍从桥接取。注：本文件的 `money(n)`（第 ~159 行）**保留** —— 它先试
+// H.money、再试 U.money（真实单点）、最后 String(n)，与 helpers 的 money 在真机等价，
+// 但保留可避免与导入名重名，改动面最小。
+import { H, S, U, round2, $ } from '../../common/helpers.js?v=dev';
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = H.periodRangeValue;
-const U = H.U || window.util;
-const S = H.S || window.S;
-// 金额归零到分：走**单点实现**（含 -0 → 0 归一）。原先 numToChinese 里内联了一份 Math.round(x*100)/100。
-const round2 = H.round2 || (U && U.round2) || (window.util && window.util.round2);
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态。
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
-const $ = function (id) { return document.getElementById(id); };
 import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { subjectFullName } from '../../common/subject-name.js';
 

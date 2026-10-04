@@ -1,18 +1,14 @@
 /* 期末结账业务模块
  * 依赖桥接层 globalThis.__TY_HELPERS__
  */
-const H = globalThis.__TY_HELPERS__ || {};
-const $ = H.$ || function () { return null; };
-const S = H.S;
-const U = H.U;
-const money = H.money;
+// 引导块（H / $ / S / U / money / showToast / currentPeriod / round2 / esc）已收口到 common/helpers.js
+// （esc 的兜底在那里是**真转义**，与本文件旧兜底等价）。
+import { H, $, S, U, money, showToast, currentPeriod, round2, esc } from '../../common/helpers.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
-const showToast = H.showToast;
-const currentPeriod = H.currentPeriod;
+
 const syncAll = H.syncAll;
 const openModal = H.openModal;
 const closeModal = H.closeModal;
-const round2 = H.round2;
 /* 单位域提醒：账套内部金额是 0.0001 元定点整数（store 的 AMT_SCALE），money() 只接受这种整数。
    本文件出现的【模板金额】（结账模板分录的 dr/cr、手填统一金额、结转成本手填额）是「界面预置值
    （元）」—— 它们不参与账务运算，口径与 store 的模板域保持一致（见 store.js 的说明）。
@@ -21,7 +17,7 @@ const round2 = H.round2;
 const tmplMoney = function (v) { return money(U.amt(v)); };
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
-const esc = H.esc || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+// （原先这里还有一份 `const esc = H.esc || 内联映射表` —— 已随引导块收口删除，esc 由单点提供。）
 
 // 取卡片对应的模板 id：系统卡用固定 id 映射，预置摊销/自定义卡用 data-id 属性
 function cardTplId(card) {

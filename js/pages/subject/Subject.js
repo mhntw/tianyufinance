@@ -9,15 +9,8 @@
 // - 无相似度/拼音/编辑距离/评分排序，无正则，无递归（父链上溯带层数上限），
 // 因此同一关键词必得同一结果，不存在"忽多忽少"或回溯卡顿风险。
 
-const H = globalThis.__TY_HELPERS__ || {};
-const EX = globalThis.__TY_EXPORT__ || {};
-const $ = H.$;
-const money = H.money;
-const showToast = H.showToast;
-const currentPeriod = H.currentPeriod;
-const S = H.S || (EX && EX.store);
-const U = H.U || (EX && EX.util);
-const num = H.num || (U && U.num) || function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
+// 引导块（H / EX / $ / S / U / money / num / showToast / currentPeriod）已收口到 common/helpers.js。
+import { H, EX, $, S, U, money, num, showToast, currentPeriod } from '../../common/helpers.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { exportTable } from '../settings/_shared.js';
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
