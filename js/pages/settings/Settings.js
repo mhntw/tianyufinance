@@ -813,6 +813,111 @@ const refreshAll = H.refreshAll;
   // 三合一入口：一个按钮 → 一个文件选择器（#bookImportFile，可多选 .ais）
   $('btnBookImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
 
+/* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
+function bindEditPeriodBtn() {
+  var bEditStart = $('btnEditStart');
+  if (bEditStart) bEditStart.addEventListener('click', function () {
+    var inp = $('epStart');
+    if (inp) inp.value = (S.state.company && S.state.company.startMonth) || '';
+    if (H.openModal) H.openModal('editPeriodModal');
+  });
+  var bSaveEditStart = $('btnSaveEditStart');
+  if (bSaveEditStart) bSaveEditStart.addEventListener('click', async function () {
+    var inp = $('epStart'); if (!inp) return;
+    var v = (inp.value || '').trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) return showToast('请选择有效的月份', 'warn');
+    var c = S.state.company || {};
+    var old = c.startMonth || '';
+    if (v === old) { if (H.closeModal) H.closeModal('editPeriodModal'); return; }
+    // 有业务数据时：启用期间仅作「期间起点/标签」，凭证与报表均按实际日期计算，不受影响
+    var hasData = (S.state.vouchers && S.state.vouchers.length) ||
+                  (S.state.openingBalances && Object.keys(S.state.openingBalances).length) ||
+                  (S.state.closedPeriods && S.state.closedPeriods.length);
+    if (hasData) {
+      var ok = await H.confirmAsync('账套已有凭证、期初、结账数据。\n\n修改启用期间只影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。\n\n确认将启用期间由「' + (old || '') + '」改为「' + v + '」？', { title: '修改启用期间' });
+      if (!ok) return;
+    }
+    c.startMonth = v;
+    try { S.addLog('修改启用期间', '账套启用期间由「' + (old || '') + '」改为「' + v + '」', '账套'); } catch (e) {}
+    if (H.closeModal) H.closeModal('editPeriodModal');
+    refreshParam();
+    refreshAll();
+    // 落盘是异步的：以磁盘为准重建索引后刷新下方账套列表的「启用期间」列；系统事件稍候刷新
+    setTimeout(function () {
+      if (globalThis.__renderTools) {
+        if (typeof S.refreshBookIndex === 'function') {
+          S.refreshBookIndex().then(globalThis.__renderTools).catch(globalThis.__renderTools);
+        } else globalThis.__renderTools();
+      }
+    }, 250);
+    if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
+    showToast('启用期间已改为 ' + v, 'success');
+  });
+  var bCancelEditStart = $('btnCancelEditStart');
+  if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
+}
+
+/* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
+function bindAboutCard() {
+  // 关于卡：检查更新 + GitHub 链接 + 邮箱复制
+  var bChkUpd = $('aboutCheckUpdate');
+  if (bChkUpd) bChkUpd.addEventListener('click', function () {
+    var upd = window.__TY_UPDATE__;
+    if (!upd || !upd.check) { showToast('更新模块未加载'); return; }
+    upd.check();
+  });
+  var ghLink = $('aboutGitHub');
+  if (ghLink && window.__TY_UPDATE__ && window.__TY_UPDATE__.REPO_RELEASE) {
+    ghLink.href = window.__TY_UPDATE__.REPO_RELEASE;
+  }
+  var mailEl = $('aboutMail');
+  if (mailEl) mailEl.addEventListener('click', function () {
+    var txt = mailEl.textContent || '';
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () { showToast('邮箱已复制'); });
+      } else {
+        // macOS 兼容兜底
+        var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        showToast('邮箱已复制');
+      }
+    } catch (e) { showToast('复制失败，请手动选中'); }
+  });
+}
+
+/* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
+function bindOpPasswordBtn() {
+  // 操作密码修改：必须先验证「当前操作密码」（未自定义时为默认 admin），验证通过才允许改/恢复默认
+  var bOpPw = $('btnSaveOpPw');
+  if (bOpPw) bOpPw.addEventListener('click', function () {
+    // 1) 验证当前生效密码（H.checkOpPassword 单点实现：默认 admin 或用户自定义值）
+    var cur = ($('opPwCur') && $('opPwCur').value || '');
+    if (!cur) { showToast('请输入当前操作密码', 'error'); return; }
+    if (!(H.checkOpPassword ? H.checkOpPassword(cur) : cur === 'admin')) {
+      showToast('当前操作密码不正确', 'error');
+      if ($('opPwCur')) $('opPwCur').value = '';
+      return;
+    }
+    // 2) 新密码：留空 = 恢复默认 admin
+    var v = ($('opPwInput') && $('opPwInput').value || '').trim();
+    if (v && v.length < 4) return showToast('新密码至少 4 位', 'error');
+    var stg = S.settings || {};
+    if (v) { stg.opPassword = v; stg.opOverridden = true; }
+    else { stg.opPassword = ''; stg.opOverridden = false; }
+    if (typeof S.saveSettings === 'function') S.saveSettings();
+    else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
+    if ($('opPwCur')) $('opPwCur').value = '';
+    if ($('opPwInput')) $('opPwInput').value = '';
+    refreshParam();
+    // 存过密码后更新 hint 显隐
+    var opHint = $('opPwHint');
+    if (opHint) opHint.style.display = (stg.opOverridden) ? 'none' : '';
+    showToast('操作密码已保存' + (v ? '' : '（已恢复默认密码）'), 'success');
+  });
+}
+
+
 // —— 系统设置聚合页（系统参数 + 凭证模板 + 操作日志 三 Tab 合一）——
 function refreshParam() {
   var p = S.state.param;
@@ -846,98 +951,9 @@ function refreshParam() {
     // 系统参数相关开关已迁移至各功能页面，此处不再有独立参数需绑定
     globalThis.__paramBound = true;
     // 启用期间：只读展示 + 受控「修改」弹窗。空账套直接改；已有凭证/期初/结账时保存前确认提示
-    var bEditStart = $('btnEditStart');
-    if (bEditStart) bEditStart.addEventListener('click', function () {
-      var inp = $('epStart');
-      if (inp) inp.value = (S.state.company && S.state.company.startMonth) || '';
-      if (H.openModal) H.openModal('editPeriodModal');
-    });
-    var bSaveEditStart = $('btnSaveEditStart');
-    if (bSaveEditStart) bSaveEditStart.addEventListener('click', async function () {
-      var inp = $('epStart'); if (!inp) return;
-      var v = (inp.value || '').trim();
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) return showToast('请选择有效的月份', 'warn');
-      var c = S.state.company || {};
-      var old = c.startMonth || '';
-      if (v === old) { if (H.closeModal) H.closeModal('editPeriodModal'); return; }
-      // 有业务数据时：启用期间仅作「期间起点/标签」，凭证与报表均按实际日期计算，不受影响
-      var hasData = (S.state.vouchers && S.state.vouchers.length) ||
-                    (S.state.openingBalances && Object.keys(S.state.openingBalances).length) ||
-                    (S.state.closedPeriods && S.state.closedPeriods.length);
-      if (hasData) {
-        var ok = await H.confirmAsync('账套已有凭证、期初、结账数据。\n\n修改启用期间只影响期间下拉的起点与「启用期间」显示，不影响任何凭证与报表数据。\n\n确认将启用期间由「' + (old || '') + '」改为「' + v + '」？', { title: '修改启用期间' });
-        if (!ok) return;
-      }
-      c.startMonth = v;
-      try { S.addLog('修改启用期间', '账套启用期间由「' + (old || '') + '」改为「' + v + '」', '账套'); } catch (e) {}
-      if (H.closeModal) H.closeModal('editPeriodModal');
-      refreshParam();
-      refreshAll();
-      // 落盘是异步的：以磁盘为准重建索引后刷新下方账套列表的「启用期间」列；系统事件稍候刷新
-      setTimeout(function () {
-        if (globalThis.__renderTools) {
-          if (typeof S.refreshBookIndex === 'function') {
-            S.refreshBookIndex().then(globalThis.__renderTools).catch(globalThis.__renderTools);
-          } else globalThis.__renderTools();
-        }
-      }, 250);
-      if (globalThis.__renderSysEvents) setTimeout(globalThis.__renderSysEvents, 400);
-      showToast('启用期间已改为 ' + v, 'success');
-    });
-    var bCancelEditStart = $('btnCancelEditStart');
-    if (bCancelEditStart) bCancelEditStart.addEventListener('click', function () { if (H.closeModal) H.closeModal('editPeriodModal'); });
-    // 关于卡：检查更新 + GitHub 链接 + 邮箱复制
-    var bChkUpd = $('aboutCheckUpdate');
-    if (bChkUpd) bChkUpd.addEventListener('click', function () {
-      var upd = window.__TY_UPDATE__;
-      if (!upd || !upd.check) { showToast('更新模块未加载'); return; }
-      upd.check();
-    });
-    var ghLink = $('aboutGitHub');
-    if (ghLink && window.__TY_UPDATE__ && window.__TY_UPDATE__.REPO_RELEASE) {
-      ghLink.href = window.__TY_UPDATE__.REPO_RELEASE;
-    }
-    var mailEl = $('aboutMail');
-    if (mailEl) mailEl.addEventListener('click', function () {
-      var txt = mailEl.textContent || '';
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(txt).then(function () { showToast('邮箱已复制'); });
-        } else {
-          // macOS 兼容兜底
-          var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
-          ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-          showToast('邮箱已复制');
-        }
-      } catch (e) { showToast('复制失败，请手动选中'); }
-    });
-    // 操作密码修改：必须先验证「当前操作密码」（未自定义时为默认 admin），验证通过才允许改/恢复默认
-    var bOpPw = $('btnSaveOpPw');
-    if (bOpPw) bOpPw.addEventListener('click', function () {
-      // 1) 验证当前生效密码（H.checkOpPassword 单点实现：默认 admin 或用户自定义值）
-      var cur = ($('opPwCur') && $('opPwCur').value || '');
-      if (!cur) { showToast('请输入当前操作密码', 'error'); return; }
-      if (!(H.checkOpPassword ? H.checkOpPassword(cur) : cur === 'admin')) {
-        showToast('当前操作密码不正确', 'error');
-        if ($('opPwCur')) $('opPwCur').value = '';
-        return;
-      }
-      // 2) 新密码：留空 = 恢复默认 admin
-      var v = ($('opPwInput') && $('opPwInput').value || '').trim();
-      if (v && v.length < 4) return showToast('新密码至少 4 位', 'error');
-      var stg = S.settings || {};
-      if (v) { stg.opPassword = v; stg.opOverridden = true; }
-      else { stg.opPassword = ''; stg.opOverridden = false; }
-      if (typeof S.saveSettings === 'function') S.saveSettings();
-      else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
-      if ($('opPwCur')) $('opPwCur').value = '';
-      if ($('opPwInput')) $('opPwInput').value = '';
-      refreshParam();
-      // 存过密码后更新 hint 显隐
-      var opHint = $('opPwHint');
-      if (opHint) opHint.style.display = (stg.opOverridden) ? 'none' : '';
-      showToast('操作密码已保存' + (v ? '' : '（已恢复默认密码）'), 'success');
-    });
+    bindEditPeriodBtn();
+    bindAboutCard();
+    bindOpPasswordBtn();
     globalThis.__paramBound = true;
   }
 }
