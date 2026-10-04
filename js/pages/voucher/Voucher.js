@@ -482,16 +482,20 @@ function updateAmtTotals() {
   syncAllSubjBals();
 }
 
-/* —— 一次性事件绑定（惰性守卫） —— */
-function setupVoucher() {
-  var root = document.getElementById('vRows');
-  if (root && root.dataset.ready) return;
-  if (root) root.dataset.ready = '1';
 
-  bindAttachUpload();   // 附件上传绑定
+/* ============================================================
+ * 分录区的交互绑定（由 setupVoucher 拆出）
+ * ============================================================
+ * 【2026-10-04 拆分】原先 255 行全在 setupVoucher 里（10 段事件绑定 + 两个共用内层函数）。
+ * 现按"一段绑定一个函数"拆开，setupVoucher 只留：幂等守卫 → 附件上传 → 按序调用下面各 binder。
+ * 属纯搬迁：每个 binder **连内联 handler 一起搬**（只加了 function 包装行），原代码一字未改；
+ * 可用"行多重集比对"证明。
+ * ⚠ 顺序敏感：同一元素上同类监听（尤其两个 click）的**注册顺序**影响行为，勿调换调用次序。
+ * ⚠ 捕获型：blur / focus 用 addEventListener(…, true)，随原文保留。
+ */
 
-  // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
-  // 同时：跨月时凭证号自动取下一月的编号（不跨月不变）
+/* 凭证日期变化 → 余额换期重算 + 跨月时凭证号自动取下一月 */
+function bindVoucherDate() {
   var dvEl = $('vDate');
   if (dvEl) dvEl.addEventListener('change', function () {
     syncAllSubjBals();
@@ -501,6 +505,10 @@ function setupVoucher() {
     }
   });
 
+}
+
+/* 分录区 input 委托：摘要 / 科目编码 / 借贷金额（含千分位剥离、数字位灯） */
+function bindVoucherRowsInput() {
   $('vRows').addEventListener('input', function (e) {
     var t = e.target, i = +t.getAttribute('data-i');
     if (t.classList.contains('v-summary')) {
@@ -537,6 +545,10 @@ function setupVoucher() {
     }
     renderVoucherRows();
   });
+}
+
+/* 分录区 Enter 键盘流导航（摘要→科目→借方→贷方→下一行；末行追加） */
+function bindVoucherRowsKeydown() {
   // Enter 导航：录凭证键盘流 摘要→科目→借方→贷方→下一行摘要；末行金额格(借或贷)回车则追加新行。
   // 金额格先触发 blur（完成金额格式化与位格显示，等价于鼠标点击其他区域），再跳到下一录入位。
   // 科目格：点输入框/整格弹出科目选择（bindSubjectPicker，扁平列表）。弹层内支持键盘
@@ -583,6 +595,10 @@ function setupVoucher() {
       return;
     }
   });
+}
+
+/* 分录区 change 委托：手输科目编码的失焦兜底反查、现金流量项目 */
+function bindVoucherRowsChange() {
   $('vRows').addEventListener('change', function (e) {
     var t = e.target, i = +t.getAttribute('data-i');
     if (t.classList.contains('v-code')) {
@@ -599,6 +615,10 @@ function setupVoucher() {
       vRows[i].cashActivity = t.value;
     }
   });
+}
+
+/* 行操作按钮（删行 / 插入行 / 复制行）——先于「金额格 click」注册，顺序不可调换 */
+function bindVoucherRowOps() {
   $('vRows').addEventListener('click', function (e) {
     var btn = e.target.closest('.btn-row-op');
     if (!btn) return;
@@ -626,6 +646,10 @@ function setupVoucher() {
       renderVoucherRows();
     }
   });
+}
+
+/* 金额格失焦：格式化两位小数、位格显示、清表头高亮（捕获阶段） */
+function bindVoucherRowsBlur() {
   $('vRows').addEventListener('blur', function (e) {
     var t = e.target;
     if (!t.classList.contains('amt-edit-input')) return;
@@ -648,6 +672,10 @@ function setupVoucher() {
     if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', -1);
     if (td) td.classList.add('amt-blur');
   }, true);
+}
+
+/* 摘要自动延续 + 金额格聚焦去折叠（捕获阶段） */
+function bindVoucherRowsFocus() {
   $('vRows').addEventListener('focus', function (e) {
     var t = e.target;
     // 摘要自动延续：聚焦到某行空摘要时，带入上一行摘要（多借多贷同业务共享摘要）
@@ -663,47 +691,53 @@ function setupVoucher() {
     var td = t.closest('.has-input');
     if (td) td.classList.remove('amt-blur');
   }, true);
-  // 双击金额格（借/贷）：自动填入使整张凭证借贷平衡的差额（仅当该格为空时）。
-  // 金额格折叠态(.amt-blur)显示 .amt-bg、首次单击才聚焦显示输入框，两次点击落不同内层元素，
-  // 浏览器不会合成 dblclick，故用「同格两次单击 + <500ms」手动检测；并额外绑原生 dblclick 兜底
-  // （格子已聚焦时两次点击都落 input，原生 dblclick 会触发）。
-  function fillInto(inp, val) {
-    inp.focus();
-    inp.value = val.toFixed(2);
-    inp.dispatchEvent(new Event('input', { bubbles: true })); // 复用既有逻辑：清对侧 / 格式化 / 刷新合计
-    inp.blur();
-  }
-  var _lastFillT = 0;
-  function fillCellBalance(td) {
-    var now = Date.now();
-    if (now - _lastFillT < 400) return; // 防 click 双击检测与原生 dblclick 重复触发
-    var inp = td.querySelector('.amt-edit-input');
-    if (!inp) return;
-    var i = +inp.getAttribute('data-i');
-    var isDr = inp.classList.contains('v-dr');
-    var key = isDr ? 'dr' : 'cr';
-    var otherKey = isDr ? 'cr' : 'dr';
-    if (U.num(vRows[i][key]) > 0) { showToast('该金额已填，未覆盖', 'warn'); return; }
-    var drT = 0, crT = 0;
-    vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
-    var fill = isDr ? (crT - drT) : (drT - crT); // 整张凭证借贷平衡所需差额
-    if (fill <= 0.005) { showToast('借贷已平或方向不符，无需补平', 'ok'); return; }
-    // 目标行：优先当前空行；若当前行已有对方金额（同行不能既借又贷），则找/建一个空行放补平数
-    var target = i;
-    if (U.num(vRows[i][otherKey]) > 0) {
-      target = -1;
-      for (var k = 0; k < vRows.length; k++) {
-        if (k !== i && U.num(vRows[k][key]) === 0 && U.num(vRows[k][otherKey]) === 0) { target = k; break; }
-      }
-      if (target < 0) { vRows.push(defaultVoucherRow()); target = vRows.length - 1; renderVoucherRows(); }
+}
+
+/* 双击金额格补平借贷差额：fillInto / fillCellBalance（被下面两个 binder 共用，故上提模块级） */
+// 双击金额格（借/贷）：自动填入使整张凭证借贷平衡的差额（仅当该格为空时）。
+// 金额格折叠态(.amt-blur)显示 .amt-bg、首次单击才聚焦显示输入框，两次点击落不同内层元素，
+// 浏览器不会合成 dblclick，故用「同格两次单击 + <500ms」手动检测；并额外绑原生 dblclick 兜底
+// （格子已聚焦时两次点击都落 input，原生 dblclick 会触发）。
+function fillInto(inp, val) {
+  inp.focus();
+  inp.value = val.toFixed(2);
+  inp.dispatchEvent(new Event('input', { bubbles: true })); // 复用既有逻辑：清对侧 / 格式化 / 刷新合计
+  inp.blur();
+}
+var _lastFillT = 0;
+function fillCellBalance(td) {
+  var now = Date.now();
+  if (now - _lastFillT < 400) return; // 防 click 双击检测与原生 dblclick 重复触发
+  var inp = td.querySelector('.amt-edit-input');
+  if (!inp) return;
+  var i = +inp.getAttribute('data-i');
+  var isDr = inp.classList.contains('v-dr');
+  var key = isDr ? 'dr' : 'cr';
+  var otherKey = isDr ? 'cr' : 'dr';
+  if (U.num(vRows[i][key]) > 0) { showToast('该金额已填，未覆盖', 'warn'); return; }
+  var drT = 0, crT = 0;
+  vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
+  var fill = isDr ? (crT - drT) : (drT - crT); // 整张凭证借贷平衡所需差额
+  if (fill <= 0.005) { showToast('借贷已平或方向不符，无需补平', 'ok'); return; }
+  // 目标行：优先当前空行；若当前行已有对方金额（同行不能既借又贷），则找/建一个空行放补平数
+  var target = i;
+  if (U.num(vRows[i][otherKey]) > 0) {
+    target = -1;
+    for (var k = 0; k < vRows.length; k++) {
+      if (k !== i && U.num(vRows[k][key]) === 0 && U.num(vRows[k][otherKey]) === 0) { target = k; break; }
     }
-    var tInp = (target === i) ? inp
-      : document.querySelector('#vRows .col-amount.has-input[data-field="v-' + key + '"] .amt-edit-input[data-i="' + target + '"]');
-    if (!tInp) tInp = inp;
-    _lastFillT = Date.now();
-    fillInto(tInp, fill);
-    if (target !== i) showToast('已在第 ' + (target + 1) + ' 行补平借贷差额', 'ok');
+    if (target < 0) { vRows.push(defaultVoucherRow()); target = vRows.length - 1; renderVoucherRows(); }
   }
+  var tInp = (target === i) ? inp
+    : document.querySelector('#vRows .col-amount.has-input[data-field="v-' + key + '"] .amt-edit-input[data-i="' + target + '"]');
+  if (!tInp) tInp = inp;
+  _lastFillT = Date.now();
+  fillInto(tInp, fill);
+  if (target !== i) showToast('已在第 ' + (target + 1) + ' 行补平借贷差额', 'ok');
+}
+
+/* 金额格单击聚焦 / 同格两次单击(<500ms)视为双击 → 补平 */
+function bindVoucherRowsAmtClick() {
   var _lastAmtKey = null, _lastAmtT = 0;
   $('vRows').addEventListener('click', function (e) {
     var td = e.target.closest('.col-amount.has-input');
@@ -720,10 +754,18 @@ function setupVoucher() {
     _lastAmtKey = key; _lastAmtT = now;
     if (inp) inp.focus(); // 单击：聚焦显示输入框
   });
+}
+
+/* 原生 dblclick 兜底补平 */
+function bindVoucherRowsDblClick() {
   $('vRows').addEventListener('dblclick', function (e) { // 兜底：格子已聚焦时原生 dblclick 可触发
     var td = e.target.closest('.col-amount.has-input');
     if (td) fillCellBalance(td);
   });
+}
+
+/* 保存 / 保存并新增 / 凭证字切换（换字后重算凭证号） */
+function bindVoucherActions() {
   var bSaveNew = $('btnSaveNewVoucher'); if (bSaveNew) bSaveNew.addEventListener('click', function () {
     var res = saveVoucher();
     if (res && res.ok && !res.unchanged) resetVoucherEdit(); // 无改动时保持当前凭证不误开新表
@@ -737,6 +779,27 @@ function setupVoucher() {
   var vWord = $('vWord'); if (vWord) vWord.addEventListener('change', function () {
     var no = $('vNo'); if (no) no.value = S.nextVoucherNo($('vWord').value, currentPeriod());
   });
+}
+/* —— 一次性事件绑定（惰性守卫） —— */
+function setupVoucher() {
+  var root = document.getElementById('vRows');
+  if (root && root.dataset.ready) return;
+  if (root) root.dataset.ready = '1';
+
+  bindAttachUpload();   // 附件上传绑定
+
+  // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
+  // 同时：跨月时凭证号自动取下一月的编号（不跨月不变）
+  bindVoucherDate();
+  bindVoucherRowsInput();
+  bindVoucherRowsKeydown();
+  bindVoucherRowsChange();
+  bindVoucherRowOps();
+  bindVoucherRowsBlur();
+  bindVoucherRowsFocus();
+  bindVoucherRowsAmtClick();
+  bindVoucherRowsDblClick();
+  bindVoucherActions();
 }
 
 function buildVoucher() {
