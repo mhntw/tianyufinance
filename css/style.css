@@ -108,7 +108,9 @@
   --st-tip-bg:  var(--st-warn-bg);  --st-tip-bd:  var(--st-warn-bg);  --st-tip-fg:  var(--ty-text-2);
   /* （--st-hl-bg 已于 2026-09-22 删除：它是"金底高亮"的旧底，两个使用方（明细账当前科目、资产树选中行）
        都已改为斑马纹浅蓝 --ty-row-alt，令牌不再被任何 var() 引用 —— 留着就是死令牌。） */
-  --st-hl-bd:   var(--st-warn-bg);  --st-hl-fg:   #7A5B00;
+  /* --st-hl-bd 于 2026-10-04 删除：定义但零引用（check_css_tokens 明确标"可删"）。
+     见 6357 行的既有说明 —— 它与 --st-hl-bg 同值，曾被误用于悬浮态（等于悬浮毫无变化）。 */
+                --st-hl-fg:   #7A5B00;
   --st-danger-bg: var(--ty-red-bg); --st-danger-fg: var(--ty-red);
   --st-ok-bg:   var(--ty-green-bg); --st-ok-fg:   var(--ty-green);
   --st-panel-bg: var(--ty-border);  --st-panel-bg2: #e8f1ff; --st-panel-bd: var(--ty-content-bg);
