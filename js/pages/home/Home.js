@@ -230,7 +230,7 @@ function fillMetrics() {
   setSigned('mOtherCash', balOfAt('1012'));
   setEl('periodFund', periodText);
 
-  // 资金净收入 = 所选期间「资金收入 − 资金支出」（流量：区间累计）
+  // 资金净流量 = 所选期间「资金收入 − 资金支出」（流量：区间累计，收付实现制口径）
   // 标准口径：取数来自科目余额模块（综合本位币）→ 资金类科目借方发生额(流入) − 贷方发生额(流出)。
   // 注意：这是「资金的收付差」，不是损益口径的净利润（旧实现误用当期净利润，与标准口径对不上）。
   // 归属「净利润」卡片的期间选择（与净利润同属利润/现金流维度）
@@ -345,31 +345,42 @@ function _lastNMonths(n, endYm) {
   for (var i = 0; i < n; i++) { arr.unshift(ym); ym = U.prevMonth(ym); }
   return arr;
 }
+// 趋势图窗口：年模式（本年/去年）→ 该年 1 月至末月整段，避免"本年趋势"混入上年月份；
+// 单月模式（本期/上期）→ 近 6 个月近期走势。endYm 为卡片所选期间末月。
+function _trendWindow(endYm, isYear) {
+  if (isYear) {
+    var y = endYm.slice(0, 4);
+    return U.monthList(y + '-01', endYm);
+  }
+  return _lastNMonths(6, endYm);
+}
 function renderHomeCharts(ctx) {
   if (!window.echarts) return;
-  // 净利润折线
-  var mp = _lastNMonths(6, ctx.pProfit.to);
+  // 净利润折线：趋势窗口——本年/去年用"1月至末月"整年窗口，本期/上期用近6个月
+  var isYearProfit = (periodProfit === 'currentYear' || periodProfit === 'lastYear');
+  var mp = _trendWindow(ctx.pProfit.to, isYearProfit);
   var c1 = _getChart('chartNetProfit');
   if (c1) {
     var net = mp.map(function (m) { return round2(S.plSummary(m).netProfit.cur); });
     c1.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: mp.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: net, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
     });
     c1.resize();
   }
-  // 收入成本双柱
-  var mr = _lastNMonths(6, ctx.pRevCost.to);
+  // 收入成本双柱：趋势窗口同净利润（年模式整年、单月模式近6个月）
+  var isYearRC = (periodRevCost === 'currentYear' || periodRevCost === 'lastYear');
+  var mr = _trendWindow(ctx.pRevCost.to, isYearRC);
   var c2 = _getChart('chartRevCost');
   if (c2) {
     var rev = mr.map(function (m) { return round2(S.plSummary(m).revenue.cur); });
     var cst = mr.map(function (m) { return round2(S.plSummary(m).cost.cur); });
     c2.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['收入', '成本'] },
       xAxis: { type: 'category', data: mr.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
@@ -406,7 +417,7 @@ function renderHomeCharts(ctx) {
     });
     c4.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: fundSeries, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
@@ -420,7 +431,7 @@ function renderHomeCharts(ctx) {
     var apSeries = ms.map(function (m) { return round2(-subjectBalance('2202', m)); });
     c5.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['应收', '应付'] },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
@@ -442,7 +453,7 @@ function renderHomeCharts(ctx) {
     });
     c6.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: availSeries, symbolSize: 5, lineStyle: { width: 2, color: '#46b97a' }, itemStyle: { color: '#46b97a' }, areaStyle: { color: 'rgba(70,185,122,0.08)' } }]
@@ -575,7 +586,7 @@ function bindAmtTargets() {
   markAmt('mBank', ['1002']);                   // 银行存款
   markAmt('mCash', ['1001']);                   // 库存现金
   markAmt('mOtherCash', ['1012']);              // 其他货币资金
-  markAmt('mFundNet', FUND_CODES);              // 资金净收入
+  markAmt('mFundNet', FUND_CODES);              // 资金净流量
   markAmt('mAvailFund', FUND_CODES);            // 现有资金
   markAmt('mAvailAr', SHORT_AR_CODES);          // 短期应收款
   markAmt('mAvailAp', SHORT_AP_CODES);          // 短期应付款
