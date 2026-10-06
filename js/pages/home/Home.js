@@ -321,7 +321,38 @@ function fillMetrics() {
     plProfit: plProfit, plRC: plRC, plFee: plFee,
     plKeyProfit: plKeyProfit, plKeyRC: plKeyRC, plKeyFee: plKeyFee
   });
+  // 本账套速览条：复用已算好的关键指标，点击下钻
+  renderHomeSummary();
 }
+
+/** 本账套速览条：把已算好的关键指标聚合成可点击下钻的卡片（打开即有用）
+ * 数值直接读首页指标元素文本（与下方卡片完全一致），点击跳对应账表，不重复计算。 */
+function renderHomeSummary() {
+  var el = $('homeSummary');
+  if (!el) return;
+  var period = currentPeriod();
+  var vchCount = (S.periodVouchers ? S.periodVouchers(period || '').length : 0);
+  var cards = [
+    { label: '资金余额', val: textOf('mFundBalance'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('1001'); } },
+    { label: '应收账款', val: textOf('mReceivable'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('1122'); } },
+    { label: '应付账款', val: textOf('mPayable'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('2202'); } },
+    { label: '净利润', val: textOf('mNetProfit'), go: function () { if (globalThis.goPage) globalThis.goPage('report-profit'); } },
+    { label: '本月凭证', val: vchCount + ' 张', go: function () { if (globalThis.goPage) globalThis.goPage('voucher-query'); } }
+  ];
+  el.innerHTML = cards.map(function (c, i) {
+    return '<button class="summary-card" data-i="' + i + '" type="button">'
+      + '<span class="summary-label">' + esc(c.label) + '</span>'
+      + '<span class="summary-val">' + esc(c.val) + '</span>'
+      + '</button>';
+  }).join('');
+  el.onclick = function (e) {
+    var b = e.target.closest('.summary-card');
+    if (!b) return;
+    var c = cards[parseInt(b.dataset.i, 10)];
+    if (c && c.go) c.go();
+  };
+}
+function textOf(id) { var n = $(id); return n ? n.textContent : '--'; }
 
 /* ---------------- 首页流量卡片 ECharts 大图（【2026-10-06】接入） ----------------
  * 三张流量卡（净利润/收入成本/费用）底部各嵌入一张 ECharts 图，与卡片数字同源：
