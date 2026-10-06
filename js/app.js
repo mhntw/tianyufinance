@@ -2060,4 +2060,6 @@
   globalThis.goPage = goPage;
   globalThis.gotoLedgerWithCode = gotoLedgerWithCode;
   globalThis.locateVoucherInQuery = locateVoucherInQuery;
+  // 暴露菜单数据源给命令面板（Ctrl/Cmd+K 快速跳转），与左侧导航/首页快捷菜单同源
+  globalThis.QUICK_MENU_ITEMS = QUICK_MENU_ITEMS;
 })();
