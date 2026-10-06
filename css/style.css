@@ -214,6 +214,13 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* 全站等宽数字：所有表格/卡片的金额、数量列 digit 对齐，读数不再参差（财务界面关键细节） */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 数字排版收口：金额列统一右对齐（兜底，避免个别表格漏挂 .ta-r/.num 时左偏） */
+.grid td.num, .grid td.ta-r, .col-amt, .col-amount, .c-amt, .si-amt, .grp-amt, td.num, .mono {
+  text-align: right;
 }
 
 body {
