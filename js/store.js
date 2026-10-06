@@ -1645,7 +1645,11 @@
       var cls = extraCls ? extraCls : 'subj-arrow';
       cls += isOpen ? '' : ' collapsed';
       var title = isOpen ? '收起下级科目' : '展开下级科目';
-      return '<span class="' + cls + '" data-code="' + code + '" data-c="' + code + '" title="' + title + '">' +
+      /* tabindex/role/data-kb-activate：三角本身是 <span>，无它则键盘 Tab 不到
+         （Enter/Space 由 app.js 的 TYKeyboard 全局激活委托转为 click）。
+         这一处是「全站树形三角的唯一出口」，改这里即同时修好科目表 / 科目余额表 / 费用明细主报表三处。 */
+      return '<span class="' + cls + '" data-code="' + code + '" data-c="' + code + '" title="' + title + '"' +
+        ' tabindex="0" role="button" data-kb-activate aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
         (isOpen ? '▼' : '▶') + '</span>';
     },
     // 科目编码 → 当前名称（显示层唯一入口）。

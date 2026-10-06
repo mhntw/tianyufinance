@@ -100,6 +100,7 @@ function showDialog(opts) {
       '</div>';
     document.body.appendChild(overlay);
     overlay.classList.add('show');           // .modal 默认 display:none
+    var opener = document.activeElement;     // 记录来源焦点，关闭后还原（键盘可达性）
     var input = isInput ? overlay.querySelector('.ty-dlg-input') : null;
     var okBtn = overlay.querySelector('.ty-dlg-ok');
     var cancelBtn = overlay.querySelector('.ty-dlg-cancel');
@@ -119,6 +120,7 @@ function showDialog(opts) {
       if (typeof document.removeEventListener === 'function') document.removeEventListener('keydown', onKey, false);
       if (input && input.removeEventListener) input.removeEventListener('keydown', onKey);
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (opener && document.contains(opener) && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} }
       resolve(valueOf(kind));
     }
     function onKey(e) {

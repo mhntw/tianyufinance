@@ -13,7 +13,7 @@
       <header class="topbar">
         <div class="topbar-left">
           <!-- 顶栏品牌：图标 + 完整标题（品牌统一在顶栏，侧栏不再单独放 logo，消除两处割裂） -->
-          <div class="topbar-brand" id="topbarBrand" title="返回首页">
+          <div class="topbar-brand" id="topbarBrand" title="返回首页" tabindex="0" role="button" data-kb-activate>
             <span class="topbar-brand-ico" aria-hidden="true">
               <img src="css/logo-icon.svg?v=dev" width="30" height="30" alt="">
             </span>
@@ -33,18 +33,16 @@
               <span class="acct-label">当前账期：</span>
               <span class="acct-period-val" id="topPeriodText">2026年07期</span>
             </div>
-            <span class="el-divider-vertical" role="separator"></span>
 
             <!-- 账套选择（JinBooks："账套："+ el-select 下拉 250px；复用 topAcctBtn 作为下拉触发，JS 渲染下拉列表） -->
             <div class="right-menu-item acct-book-block">
               <span class="acct-label">账套：</span>
               <div class="topbar-acct-btn" id="topAcctBtn" tabindex="0" role="button" aria-haspopup="listbox">
-                <span class="acct-book-name" id="topCompany">演示账套</span>
+                <span class="acct-book-name" id="topCompany"></span>
                 <i class="acct-book-arrow">▾</i>
               </div>
               <div class="book-dropdown" id="bookDropdown" hidden></div>
             </div>
-            <span class="el-divider-vertical" role="separator"></span>
           </div>
         </div>
 
@@ -56,7 +54,7 @@
               <div class="search-input-wrap">
                 <input type="text" id="searchInput" class="search-input" placeholder="输入金额/核算项目/科目/摘要" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
                 <button class="search-submit" id="searchToggle" title="搜索">
-                  <i class="topbar-search-ico">🔍</i>
+                  <i class="iconcool sousuo icon--topbar-search"></i>
                 </button>
               </div>
 
@@ -65,10 +63,10 @@
               </div>
             </div>
           </div>
-          <div class="topbar-user" id="topUser" title="当前操作员">
+          <button type="button" class="topbar-user" id="topUser" title="当前操作员">
             <span id="topOperator">会计</span>
             <i class="topbar-user-arrow">∨</i>
-          </div>
+          </button>
         </div>
       </header>
     <!-- 左侧导航：由 app.js 依据 QUICK_MENU_ITEMS 单一数据源渲染（与常用功能设置弹窗同源，自动同步） -->
@@ -95,22 +93,20 @@
         <!-- 云备份提醒：距上次备份≥7天且期间有改动才显示；可忽略（×当天静默） -->
         <div id="homeBackupTip" class="home-backup-tip" style="display:none">
           <span id="homeBackupTipTxt"></span>
-          <a id="btnBackupTipGo">去备份</a>
-          <a id="btnBackupTipClose">×</a>
+          <button type="button" id="btnBackupTipGo">去备份</button>
+          <button type="button" id="btnBackupTipClose">×</button>
         </div>
 
-        <!-- 本账套速览：打开即见的关键指标，点击下钻到对应账表 -->
-        <div class="home-summary" id="homeSummary"></div>
 
         <div class="home-section home-section-quick">
           <!-- 常用功能：整行标题栏已删除，设置图标下移到网格右上角（.home-quick-edit 绝对定位） -->
           <div class="home-section-content home-content">
           <div class="home-quick">
-            <span class="home-edit-btn is-link home-section-edit home-quick-edit" title="自定义常用功能">
+            <button type="button" class="home-edit-btn is-link home-section-edit home-quick-edit" title="自定义常用功能">
               <i class="iconcool zidingyi"></i>
-            </span>
+            </button>
 
-            <div class="qk-newvoucher" data-page="voucher">
+            <button type="button" class="qk-newvoucher" data-page="voucher">
               <div class="qk-new-ico">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#2f95ff" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </div>
@@ -118,7 +114,7 @@
                 <div class="qk-new-title">新增凭证</div>
                 <div class="qk-new-sub">立即录入</div>
               </div>
-            </div>
+            </button>
 
             <div class="home-quick-grid">
             </div>
@@ -324,7 +320,6 @@
               <span class="vh-period" id="vPeriodText">2026年07期</span>
             </div>
             <div class="vh-right">
-              <span class="vh-attach-icon">📎</span>
               <span>附件</span>
               <input id="vAttach" type="number" value="0" class="inp inp-xs" min="0">
               <span>张</span>
@@ -378,7 +373,7 @@
           <div class="modal-body vch-tpl-body">
             <div class="vch-tpl-top">
               <div class="vch-tpl-searchbox">
-                <span class="vch-tpl-search-ic">⌕</span>
+                <span class="iconcool sousuo icon--vch-tpl-search"></span>
                 <input id="vchTplSearch" class="vch-tpl-search" placeholder="搜索模板名称" autocomplete="off">
               </div>
             </div>
@@ -500,7 +495,7 @@
         <table class="grid vq-grid" id="qGrid">
           <thead><tr>
             <th><input type="checkbox" id="qCheckAll"></th>
-            <th>日期</th><th class="vq-th-no" id="qThNo" title="点击按凭证字号排序">凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th class="col-fill">摘要</th><th class="col-fill">科目</th>
+            <th>日期</th><th class="vq-th-no" id="qThNo" title="点击或回车按凭证字号排序" tabindex="0" role="button" data-kb-activate>凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th class="col-fill">摘要</th><th class="col-fill">科目</th>
             <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
             <th>附件</th><th>原单据编号</th><th>制单人</th>
           </tr></thead>
@@ -1251,10 +1246,10 @@
               </div>
             </div>
             <div class="ykj-filter-item-box">
-              <div class="ykj-filter-item-box-label">科目</div>
               <div class="ykj-filter-item-box-content">
                 <div class="ed-subj-select" id="edSubjectWrap">
                   <div class="ed-subj-trigger" id="edSubjectTrigger">
+                    <span class="ty-subject-label">科目</span>
                     <div class="ed-subj-tags" id="edSubjectTags">
                       <span class="ed-subj-placeholder" id="edSubjectPlaceholder">全部损益科目</span>
                     </div>
@@ -1371,7 +1366,7 @@
         </div>
 
         <div class="card" id="cardSysVch">
-          <div class="card-head"><span>凭证字</span><span class="card-head-op" id="btnAddWord" role="button">新增</span></div>
+          <div class="card-head"><span>凭证字</span><button type="button" class="card-head-op" id="btnAddWord">新增</button></div>
           <div class="grid-wrap">
             <table class="grid" id="vwGrid">
               <thead><tr><th>凭证字</th><th class="col-fill">打印标题</th><th class="col-op">操作</th></tr></thead>
@@ -1518,14 +1513,14 @@
             <div class="about-line">
               <span class="about-label">版本</span>
               <span class="about-val" id="aboutVersion">--</span>
-              <span class="about-link" id="aboutCheckUpdate" role="button">检查更新</span>
+              <button type="button" class="about-link" id="aboutCheckUpdate">检查更新</button>
               <!-- 检查结果**就地**显示在「检查更新」右侧（2026-09-30）：此前用屏幕中央的 toast，
                    看着像弹窗却没有可点的东西、2.2 秒就消失；现在常驻，有新版本时这里给可点的「下载」。 -->
               <span class="about-status" id="aboutUpdateStatus"></span>
             </div>
             <div class="about-line">
               <span class="about-label">邮箱</span>
-              <span class="about-val about-link" id="aboutMail" title="点击复制邮箱">tsmjg@icloud.com</span>
+              <span class="about-val about-link" id="aboutMail" title="点击或回车复制邮箱" tabindex="0" role="button" data-kb-activate>tsmjg@icloud.com</span>
             </div>
             <div class="about-line">
               <span class="about-label">源码</span>
@@ -1855,7 +1850,7 @@
     <div class="quick-settings-modal" id="quickSettingsModal">
       <div class="qs-header">
         <span class="qs-title">常用功能设置</span>
-        <span class="qs-close" id="qsClose">&times;</span>
+        <span class="qs-close" id="qsClose" tabindex="0" role="button" aria-label="关闭" data-kb-activate>&times;</span>
       </div>
       <div class="qs-body" id="qsBody">
 

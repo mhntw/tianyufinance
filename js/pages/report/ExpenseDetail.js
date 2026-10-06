@@ -25,8 +25,8 @@ export function renderExpenseDetail() {
 }
 
 function bindED() {
-  // 报表选项复选框（年度合计/同环比/展开所有级次/明细科目显示全称/零值）最简实现：
-  // index.html 五个 checkbox 直接用原生内联 onchange="__edOptChange()" 触发，
+  // 报表选项复选框（年度合计/同环比/展开所有级次/零值）的刷新入口：
+  // 触发来自 app.js 的 change 委托（对这批 id 挂 change → 调 window.__edOptChange），
   // 这里只把模块内的刷新入口挂到 window。注册放在 __edBound 检查之前，
   // 保证每次进入页面都一定注册成功，从根本上规避事件委托/绑定时机失效问题。
   window.__edOptChange = function () {
@@ -116,7 +116,7 @@ function edPopRenderTree(pop, roots, expanded) {
     const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
     return `<div class="ed-subj-node" data-code="${n.code}">
       <div class="ed-subj-row">
-        <span class="ed-subj-toggle ${toggleCls}"></span>
+        <span class="ed-subj-toggle ${toggleCls}"${hasChildren ? ` tabindex="0" role="button" aria-expanded="${isExpanded ? 'true' : 'false'}"` : ''}></span>
         <input type="checkbox" value="${n.code}" id="ed-subj-${n.code}" data-subj="1">
         <label for="ed-subj-${n.code}">${n.code} ${esc(edFullName(n))}</label>
       </div>
@@ -162,7 +162,10 @@ function edPopSync(pop, roots, getTree, renderTags) {
     const cb = pop.querySelector(`input[value="${n.code}"]`);
     if (cb) cb.checked = n._checked;
   });
-  renderTags();
+  // renderTags 即 edPopRenderTags(pop, tagsBox, getTree)：2026-10-04 抽出时漏传参，
+  // 导致 getTree 为 undefined、buildEDSubjectPop 初始渲染即抛错（费用明细表首屏空白，
+  // 点筛选栏复选框走 __edOptChange 直接刷新才出数）。此处补全参数。
+  renderTags(pop, $('edSubjectTags'), getTree);
 }
 
 /* 由 buildEDSubjectPop 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，函数体逐字未改。 */
@@ -183,7 +186,7 @@ function edPopRenderTags(pop, tagsBox, getTree) {
       const n = map[top[0]];
       const more = top.length > 1 ? `<span class="ed-subj-more">+${top.length - 1}</span>` : '';
       tagsBox.innerHTML =
-        `<span class="ed-subj-tag" data-code="${n.code}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${n.code}">×</span></span>${more}`;
+        `<span class="ed-subj-tag" data-code="${n.code}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${n.code}" tabindex="0" role="button" aria-label="移除">×</span></span>${more}`;
     }
   }
   const cnt = $('edSubjectCount');
@@ -198,6 +201,20 @@ function edPopRenderTags(pop, tagsBox, getTree) {
   // 触发报表刷新（避免每次点 checkbox 都刷新，只在关闭浮层或删除 tag 时刷新）
 }
 
+
+/* 下列监听器的目标是**常驻节点**（#edSubjectPop / #edSubjectTrigger / #edSubjectTags），
+   而 buildEDSubjectPop() 每次渲染（进页面 / 换期间 / 刷新报表）都会重跑。
+   直接 addEventListener 会让监听器一轮轮累积 —— 实测进页面两次即各挂 2 个，
+   于是每次点击或按键都连做两遍（开→立刻关、展开箭头 toggle 两遍＝看不出展开），
+   浮层因此永远打不开，键盘适配也一并失效（真实故障：鼠标点「科目」无反应）。
+   故统一走「先摘再挂」：既防累积，又保证闭包始终是本轮最新状态。 */
+const ED_WIRE = {};
+function rebind(target, type, key, fn) {
+  if (!target) return;
+  if (ED_WIRE[key]) target.removeEventListener(type, ED_WIRE[key]);
+  ED_WIRE[key] = fn;
+  target.addEventListener(type, fn);
+}
 
 function buildEDSubjectPop() {
   const pop = $('edSubjectPop');
@@ -233,7 +250,7 @@ function buildEDSubjectPop() {
   edPopSync(pop, roots, getTree, edPopRenderTags);
 
   // 事件委托：展开箭头、checkbox、底部全选、tag 删除
-  pop.addEventListener('click', e => {
+  rebind(pop, 'click', 'popClick', e => {
     const toggle = e.target.closest('.ed-subj-toggle');
     if (toggle) { toggleExpand(toggle.closest('.ed-subj-node').dataset.code); return; }
     const allBox = e.target.closest('#edSubjSelectAll');
@@ -248,24 +265,59 @@ function buildEDSubjectPop() {
 
   // tag 删除
   if (tagsBox) {
-    tagsBox.addEventListener('click', e => {
+    rebind(tagsBox, 'click', 'tagsClick', e => {
       const close = e.target.closest('.ed-subj-tag-close');
       if (close) { e.stopPropagation(); removeTag(close.dataset.code); refreshExpenseDetail(); }
     });
+    // 键盘：标签删除按钮 Enter/Space 触发（span 不会自发 click）
+    rebind(tagsBox, 'keydown', 'tagsKey', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const close = e.target.closest('.ed-subj-tag-close');
+      if (close) { e.preventDefault(); close.click(); }
+    });
   }
 
-  // 触发框开合
-  trigger.addEventListener('click', e => {
+  // 触发框开合（内含可聚焦的「标签删除」控件，不适用原生 <button>，故用 div + role=button）
+  trigger.setAttribute('tabindex', '0');
+  trigger.setAttribute('role', 'button');
+  trigger.setAttribute('aria-haspopup', 'true');
+  rebind(trigger, 'click', 'triggerClick', e => {
     if (e.target.closest('.ed-subj-tag-close')) return;
     pop.hidden = !pop.hidden;
   });
+  // 键盘：Enter/Space/↓ 开合，Esc 关闭
+  rebind(trigger, 'keydown', 'triggerKey', e => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (pop.hidden) {
+        pop.hidden = false;
+        const first = pop.querySelector('.ed-subj-toggle[tabindex="0"], input[type=checkbox][data-subj]');
+        if (first) first.focus();
+      } else { pop.hidden = true; }
+    } else if (e.key === 'Escape' && !pop.hidden) {
+      e.preventDefault(); pop.hidden = true;
+    }
+  });
+  // 浮层键盘：Enter/Space 触发聚焦的展开箭头，Esc 关闭并回到触发框
+  rebind(pop, 'keydown', 'popKey', e => {
+    if (e.key === 'Escape') { e.preventDefault(); pop.hidden = true; trigger.focus(); refreshExpenseDetail(); return; }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const toggle = e.target.closest('.ed-subj-toggle');
+    if (toggle) { e.preventDefault(); toggle.click(); }
+  });
+  // 压入全局 Esc 栈（按元素打标记，避免重复注册；自愈：关闭后自动剔除）
+  if (globalThis.TYKeyboard && !pop._escReg) {
+    pop._escReg = true;
+    globalThis.TYKeyboard.pushEsc(function () { return !pop.hidden; },
+      function () { pop.hidden = true; trigger.focus(); refreshExpenseDetail(); });
+  }
   // 点击页面其它处关闭（关闭时刷新报表）
   const closeHandler = e => {
     if (pop.hidden) return;
     const wrap = $('edSubjectWrap');
     if (!wrap.contains(e.target)) { pop.hidden = true; refreshExpenseDetail(); }
   };
-  document.addEventListener('click', closeHandler);
+  rebind(document, 'click', 'docClick', closeHandler);
 }
 
 function edSelectedSubjectCodes() {

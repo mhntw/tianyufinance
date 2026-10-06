@@ -1708,7 +1708,6 @@ function openTplRulePopover(anchor) {
     if (rule === 'subject') {
       var subjInp = pop.querySelector('#tmplPopSubj');
       if (subjInp) bindSubjectPicker(subjInp, {
-        bareInput: true,
         onPick: function (code, s) { subjInp.value = s && s.name ? (code + ' ' + s.name) : code; }
       });
     }

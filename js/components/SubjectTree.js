@@ -41,6 +41,7 @@ export function createSubjectTree(opts) {
   const all = [];         // 渲染前序全量节点
   let kw = '';
   let curCode = null;
+  let cursorCode = null;   // 键盘 roving 焦点所在节点（tabindex=0 的那一行）
 
   /* ---------- 结构构建：先建全部占位，再挂父子，天然规避顺序问题 ---------- */
   function build() {
@@ -87,6 +88,10 @@ export function createSubjectTree(opts) {
     const nameEl = document.createElement('span'); nameEl.className = 'dl-name'; nameEl.textContent = n.s.name;
     line.appendChild(arrow); line.appendChild(codeEl); line.appendChild(nameEl);
     n.line = line;
+    line.__node = n;                 // 行 → 节点反查（键盘导航用）
+    line.setAttribute('role', 'treeitem');
+    line.setAttribute('tabindex', '-1');
+    line.addEventListener('keydown', onLineKeydown);
 
     if (n.kids.length) {
       arrow.addEventListener('click', function (e) {
@@ -137,15 +142,68 @@ export function createSubjectTree(opts) {
       for (let i = 0; i < all.length; i++) {
         const n = all[i];
         n.line.classList.toggle('dl-hide', !keep.has(n.s.code));
-        if (n.kids.length) n.arrowEl.textContent = '▼';
+        if (n.kids.length) { n.arrowEl.textContent = '▼'; n.line.setAttribute('aria-expanded', 'true'); }
       }
+      refreshRoving();
       if (firstLine && firstLine.scrollIntoView) firstLine.scrollIntoView({ block: 'center' });
       return;
     }
     for (let i = 0; i < all.length; i++) {
       const n = all[i];
       n.line.classList.toggle('dl-hide', ancestorCollapsed(n.s.code));
-      if (n.kids.length) n.arrowEl.textContent = collapsed.has(n.s.code) ? '▶' : '▼';
+      if (n.kids.length) {
+        const expanded = !collapsed.has(n.s.code);
+        n.arrowEl.textContent = expanded ? '▼' : '▶';
+        n.line.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      }
+    }
+    refreshRoving();
+  }
+
+  /* ---------- 键盘导航（roving tabindex：同一时刻只有一行可 Tab 进入） ---------- */
+  function visibleNodes() {
+    return all.filter(function (n) { return n.line && !n.line.classList.contains('dl-hide'); });
+  }
+  function refreshRoving() {
+    const vis = visibleNodes();
+    if (!vis.length) return;
+    let target = (cursorCode && byCode[cursorCode] && !byCode[cursorCode].line.classList.contains('dl-hide'))
+      ? byCode[cursorCode].line : vis[0].line;
+    all.forEach(function (n) { n.line.setAttribute('tabindex', n.line === target ? '0' : '-1'); });
+  }
+  function focusNode(n) {
+    if (!n) return;
+    cursorCode = n.s.code;
+    n.line.focus();
+  }
+  function firstVisibleChild(n) {
+    for (let i = 0; i < n.kids.length; i++) {
+      if (!n.kids[i].line.classList.contains('dl-hide')) return n.kids[i];
+    }
+    return null;
+  }
+  function onLineKeydown(e) {
+    const n = e.currentTarget.__node;
+    if (!n) return;
+    const vis = visibleNodes();
+    const i = vis.indexOf(n);
+    if (e.key === 'ArrowDown') { e.preventDefault(); focusNode(vis[Math.min(i + 1, vis.length - 1)]); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); focusNode(vis[Math.max(i - 1, 0)]); }
+    else if (e.key === 'Home') { e.preventDefault(); focusNode(vis[0]); }
+    else if (e.key === 'End') { e.preventDefault(); focusNode(vis[vis.length - 1]); }
+    else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (n.kids.length) {
+        if (collapsed.has(n.s.code)) { collapsed.delete(n.s.code); refreshVisible(); }
+        else focusNode(firstVisibleChild(n));
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (n.kids.length && !collapsed.has(n.s.code)) { collapsed.add(n.s.code); refreshVisible(); }
+      else if (n.parent && byCode[n.parent]) focusNode(byCode[n.parent]);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (typeof opts.onPick === 'function') opts.onPick(String(n.s.code));
     }
   }
 
@@ -160,6 +218,7 @@ export function createSubjectTree(opts) {
 
   const body = document.createElement('div');
   body.className = 'dl-body';
+  body.setAttribute('role', 'tree');
 
   function setPanelClosed(v) {
     panelClosed = v; saveClosed();

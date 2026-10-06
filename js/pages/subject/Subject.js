@@ -212,7 +212,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     bindSubCodeCombo();
     // 改名提示：仅编辑已有科目时显示
     var nameTip = $('subjNameTip'); if (nameTip) nameTip.style.display = s ? '' : 'none';
-    $('subjectModal').classList.add('show');
+    openModal('subjectModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
   $('subjBody').addEventListener('click', async function (e) {
     if (e.target.classList.contains('subj-arrow')) {
@@ -307,7 +307,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     });
     exportTable(rows, '会计科目');
   });
-  $('btnCloseSubject').addEventListener('click', function () { $('subjectModal').classList.remove('show'); });
+  $('btnCloseSubject').addEventListener('click', function () { closeModal('subjectModal'); });
   $('btnSaveSubject').addEventListener('click', function () {
     var code = $('subCode').value;
     var extra = {};
@@ -323,7 +323,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var r = editing ? S.updateSubject(code, $('subName').value, pickedCls, extra)
                     : S.addSubject(newCode, $('subName').value, cls, extra);
     if (!r.ok) return showToast(r.msg, 'error');
-    $('subjectModal').classList.remove('show');
+    closeModal('subjectModal');
     renderSubjects(); showToast(editing ? '科目已保存' : '科目已新增');
   });
 export { refreshSubjects };

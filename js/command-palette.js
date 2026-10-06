@@ -37,7 +37,7 @@
     overlay.innerHTML =
       '<div class="cmd-modal" role="dialog" aria-label="快速跳转">' +
         '<div class="cmd-input-row">' +
-          '<span class="cmd-ico">⌕</span>' +
+          '<span class="iconcool sousuo icon--cmd"></span>' +
           '<input type="text" class="cmd-input" id="cmdInput" placeholder="跳转到模块、账簿、报表…（输入名称筛选）" autocomplete="off">' +
           '<kbd class="cmd-kbd">Esc</kbd>' +
         '</div>' +
@@ -93,8 +93,10 @@
     if (globalThis.goPage) globalThis.goPage(it.page);
   }
 
+  var lastFocus = null;
   function open() {
     if (!overlay) build();
+    lastFocus = document.activeElement;   // 记录来源焦点，关闭后还原
     overlay.style.display = 'flex';
     input.value = '';
     render('');
@@ -102,7 +104,11 @@
   }
   function close() {
     if (overlay) overlay.style.display = 'none';
+    if (lastFocus && document.contains(lastFocus) && typeof lastFocus.focus === 'function') { try { lastFocus.focus(); } catch (e) {} }
+    lastFocus = null;
   }
+  // 压入全局 Esc 栈（自愈：面板关闭后该项会被自动剔除）
+  if (globalThis.TYKeyboard) globalThis.TYKeyboard.pushEsc(function () { return !!overlay && overlay.style.display !== 'none'; }, close);
   function toggle() {
     if (overlay && overlay.style.display !== 'none') close(); else open();
   }
@@ -128,6 +134,7 @@
     else if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
     else if (e.key === 'Enter') { e.preventDefault(); select(active); }
+    else if (e.key === 'Tab') { e.preventDefault(); input.focus(); }   // 焦点陷阱：面板打开时 Tab 不跑到背后页面
   });
 
   // 顶栏可见入口：提示快捷键，点击亦可打开
@@ -140,7 +147,7 @@
     btn.id = 'cmdTrigger';
     btn.type = 'button';
     btn.title = '快速跳转（Ctrl/Cmd + K）';
-    btn.innerHTML = '<span class="cmd-trigger-ico">⌕</span><span>快速跳转</span><kbd class="cmd-kbd">⌘K</kbd>';
+    btn.innerHTML = '<span class="iconcool sousuo icon--cmd-trigger"></span><span>快速跳转</span><kbd class="cmd-kbd">⌘K</kbd>';
     btn.addEventListener('click', open);
     right.insertBefore(btn, right.firstChild);
   }

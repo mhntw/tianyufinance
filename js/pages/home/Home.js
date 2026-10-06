@@ -305,7 +305,10 @@ function fillMetrics() {
       var val = round2(plIsYearFee ? f.ytd : f.cur);
       var amtHtml = (val < 0 ? '−' : '') + absFmt(Math.abs(val));
       var cls = f.ids && f.ids.length ? 'fv2 amt-link' : 'fv2';
-      var attrs = f.ids && f.ids.length ? ' data-pl-rows="' + f.ids.join(',') + '"' : '';
+      // 可点行同步键盘语义（Enter/Space → click，见 app.js 的 TYKeyboard 全局激活委托）
+      var attrs = f.ids && f.ids.length
+        ? ' data-pl-rows="' + f.ids.join(',') + '" tabindex="0" role="button" data-kb-activate'
+        : '';
       return '<div class="' + cls + '"' + attrs + '>'
            + '<div class="fv2-f">' + esc(f.label) + '</div>'
            + '<div class="fv2-v' + (val < 0 ? ' neg' : '') + '">' + amtHtml + '</div>'
@@ -321,38 +324,8 @@ function fillMetrics() {
     plProfit: plProfit, plRC: plRC, plFee: plFee,
     plKeyProfit: plKeyProfit, plKeyRC: plKeyRC, plKeyFee: plKeyFee
   });
-  // 本账套速览条：复用已算好的关键指标，点击下钻
-  renderHomeSummary();
 }
 
-/** 本账套速览条：把已算好的关键指标聚合成可点击下钻的卡片（打开即有用）
- * 数值直接读首页指标元素文本（与下方卡片完全一致），点击跳对应账表，不重复计算。 */
-function renderHomeSummary() {
-  var el = $('homeSummary');
-  if (!el) return;
-  var period = currentPeriod();
-  var vchCount = (S.periodVouchers ? S.periodVouchers(period || '').length : 0);
-  var cards = [
-    { label: '资金余额', val: textOf('mFundBalance'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('1001'); } },
-    { label: '应收账款', val: textOf('mReceivable'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('1122'); } },
-    { label: '应付账款', val: textOf('mPayable'), go: function () { if (globalThis.gotoLedgerWithCode) globalThis.gotoLedgerWithCode('2202'); } },
-    { label: '净利润', val: textOf('mNetProfit'), go: function () { if (globalThis.goPage) globalThis.goPage('report-profit'); } },
-    { label: '本月凭证', val: vchCount + ' 张', go: function () { if (globalThis.goPage) globalThis.goPage('voucher-query'); } }
-  ];
-  el.innerHTML = cards.map(function (c, i) {
-    return '<button class="summary-card" data-i="' + i + '" type="button">'
-      + '<span class="summary-label">' + esc(c.label) + '</span>'
-      + '<span class="summary-val">' + esc(c.val) + '</span>'
-      + '</button>';
-  }).join('');
-  el.onclick = function (e) {
-    var b = e.target.closest('.summary-card');
-    if (!b) return;
-    var c = cards[parseInt(b.dataset.i, 10)];
-    if (c && c.go) c.go();
-  };
-}
-function textOf(id) { var n = $(id); return n ? n.textContent : '--'; }
 
 /* ---------------- 首页流量卡片 ECharts 大图（【2026-10-06】接入） ----------------
  * 三张流量卡（净利润/收入成本/费用）底部各嵌入一张 ECharts 图，与卡片数字同源：
@@ -362,6 +335,11 @@ function textOf(id) { var n = $(id); return n ? n.textContent : '--'; }
  * 期间语义：趋势截止月 = 卡片所选期间末月 p.to（本期=当月、上期=上月、本年=当期、去年=去年12月），
  *   与卡片数字取数完全一致；饼图用 cur 或 ytd 取决于该卡片期间模式。
  * 依赖：js/echarts.min.js（本地 vendor，仿 xlsx 离线可用），全局 window.echarts。
+ * 【2026-10-06】所有 tooltip 显式设 confine:true。ECharts 5.6 默认 appendToBody:true + confine:false，
+ *   提示框是挂在 document.body 上、且不限制在图内的绝对定位浮层；鼠标移动时（更新约 20 次/秒）
+ *   它会越出页面边缘 → 改变整页可滚动区域 → 触发响应式网格(.metric-grid-row auto-fit)回流 →
+ *   卡片/画布位移 → 指针相对位置重算 → 再次触发提示框更新 → 自激循环，肉眼即"鼠标一动卡片就闪"。
+ *   confine:true 把提示框限制在图表范围内，从根上杜绝这类回流（零视觉变化：提示内容很小，放得下）。
  */
 var _homeChart = {};
 function _getChart(id) {
@@ -395,7 +373,7 @@ function renderHomeCharts(ctx) {
     var net = mp.map(function (m) { return round2(S.plSummary(m).netProfit.cur); });
     c1.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: mp.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: net, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
@@ -411,13 +389,15 @@ function renderHomeCharts(ctx) {
     var cst = mr.map(function (m) { return round2(S.plSummary(m).cost.cur); });
     c2.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['收入', '成本'] },
       xAxis: { type: 'category', data: mr.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      // barMinHeight：与饼图 minAngle 同理——给柱一个最小高度，避免「成本」远小于「收入」时
+      // 矮柱细到看不见（默认 0）。仅保证可见，不改变数值与坐标轴比例。
       series: [
-        { name: '收入', type: 'bar', data: rev, barMaxWidth: 14, itemStyle: { color: '#3b6fe0', borderRadius: [3, 3, 0, 0] } },
-        { name: '成本', type: 'bar', data: cst, barMaxWidth: 14, itemStyle: { color: '#f0a23b', borderRadius: [3, 3, 0, 0] } }
+        { name: '收入', type: 'bar', data: rev, barMaxWidth: 14, barMinHeight: 2, itemStyle: { color: '#3b6fe0', borderRadius: [3, 3, 0, 0] } },
+        { name: '成本', type: 'bar', data: cst, barMaxWidth: 14, barMinHeight: 2, itemStyle: { color: '#f0a23b', borderRadius: [3, 3, 0, 0] } }
       ]
     });
     c2.resize();
@@ -430,9 +410,12 @@ function renderHomeCharts(ctx) {
       return { name: f.label, value: Math.abs(v) };
     }).filter(function (x) { return x.value; });
     c3.setOption({
-      tooltip: { trigger: 'item', formatter: function (p) { return p.name + '<br/>' + absFmt(p.value) + ' (' + p.percent + '%)'; } },
+      tooltip: { confine: true, trigger: 'item', formatter: function (p) { return p.name + '<br/>' + absFmt(p.value) + ' (' + p.percent + '%)'; } },
       legend: { show: true, type: 'scroll', bottom: 0, textStyle: { color: '#8a94a6', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
-      series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '45%'], avoidLabelOverlap: true, label: { show: false }, data: items, color: ['#3b6fe0', '#f0a23b', '#46b97a', '#9b6fe0', '#e06f8a', '#5bc0de'] }]
+      // minAngle：给每块一个最小圆心角（默认 0）。否则「财务费用」这类金额极小的项会被渲染成
+      // 一条几乎看不见的细线，用户以为"没显示"。角度被适度放大以保证可见，但图例/悬浮提示
+      // 仍按真实金额与占比显示，不改变数据口径。
+      series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '45%'], minAngle: 6, avoidLabelOverlap: true, label: { show: false }, data: items, color: ['#3b6fe0', '#f0a23b', '#46b97a', '#9b6fe0', '#e06f8a', '#5bc0de'] }]
     });
     c3.resize();
   }
@@ -448,7 +431,7 @@ function renderHomeCharts(ctx) {
     });
     c4.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: fundSeries, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
@@ -462,7 +445,7 @@ function renderHomeCharts(ctx) {
     var apSeries = ms.map(function (m) { return round2(-subjectBalance('2202', m)); });
     c5.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['应收', '应付'] },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
@@ -484,7 +467,7 @@ function renderHomeCharts(ctx) {
     });
     c6.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: availSeries, symbolSize: 5, lineStyle: { width: 2, color: '#46b97a' }, itemStyle: { color: '#46b97a' }, areaStyle: { color: 'rgba(70,185,122,0.08)' } }]
@@ -548,7 +531,7 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
   children.forEach(function (x) {
     var disp = isLiability ? -x.v : x.v;
     html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
-            '</span><span class="ai-val amt-link' + (disp < 0 ? ' neg' : '') + '" data-codes="' + esc(x.code) + '">' +
+            '</span><span class="ai-val amt-link' + (disp < 0 ? ' neg' : '') + '" data-codes="' + esc(x.code) + '" tabindex="0" role="button" data-kb-activate>' +
             signed(disp) + '</span></div>';
   });
   box.innerHTML = html;
@@ -588,10 +571,24 @@ function bindArapTabs() {
  * 目标为空（规则行缺失）时移除可点态：宁可不点，也不跳到与数字无关的地方。
  * 不可点的金额：资金净收入率、毛利率、费用占收入比等派生比率，
  *   以及预计可用资金主值（多科目净额、无可定位的单一目标）。 */
+// 可点金额是 <div>/<span>（无 tabindex 则键盘 Tab 不到）：可点态增删时同步键盘语义
+// （Enter/Space 由 app.js 的 TYKeyboard 全局激活委托转为 click）
+function setAmtActivatable(el, on) {
+  if (on) {
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    el.setAttribute('data-kb-activate', '');
+  } else {
+    el.removeAttribute('tabindex');
+    el.removeAttribute('role');
+    el.removeAttribute('data-kb-activate');
+  }
+}
 function clearAmtTarget(el) {
   el.classList.remove('amt-link');
   el.removeAttribute('data-codes');
   el.removeAttribute('data-pl-rows');
+  setAmtActivatable(el, false);
 }
 function markAmt(id, codes) {
   var el = $(id);
@@ -601,6 +598,7 @@ function markAmt(id, codes) {
   el.classList.add('amt-link');
   el.removeAttribute('data-pl-rows');
   el.setAttribute('data-codes', codes.join(','));
+  setAmtActivatable(el, true);
 }
 // 损益类卡片：目标为利润表的语义行 id 列表（多行则高亮多行，如费用 = 销售+管理+财务）
 function markPlRow(id, rowIds) {
@@ -611,6 +609,7 @@ function markPlRow(id, rowIds) {
   el.classList.add('amt-link');
   el.removeAttribute('data-codes');
   el.setAttribute('data-pl-rows', rowIds.join(','));
+  setAmtActivatable(el, true);
 }
 function bindAmtTargets() {
   markAmt('mFundBalance', FUND_CODES);          // 资金余额

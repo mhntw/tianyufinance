@@ -30,7 +30,7 @@ function generatePeriodRanges() {
 
     host.outerHTML =
       '<div class="ty-period-range" data-period="' + id + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '" data-default="' + def + '"' + (range ? ' data-range="' + range + '"' : '') + '>' +
-      '  <div class="ty-period-trigger" id="' + id + 'Trigger">' +
+      '  <div class="ty-period-trigger" id="' + id + 'Trigger" tabindex="0" role="button" aria-haspopup="true">' +
       '    <span class="ty-period-trigger-label">期间</span>' +
       '    <span class="ty-period-trigger-text is-placeholder" id="' + id + 'Text">请选择期间</span>' +
       '  </div>' +
@@ -361,6 +361,44 @@ function initEvents() {
     var step = parseInt(btn.dataset.step, 10) || 0;
     onYearNav(step);
   });
+
+  // 键盘：触发器 Enter/Space/↓ 打开，Esc 关闭并回到触发器；popover 内方向键移动月份格
+  document.addEventListener('keydown', function (e) {
+    var trigger = e.target.closest ? e.target.closest('.ty-period-trigger') : null;
+    if (trigger && e.key !== 'Escape' && e.key !== 'Tab') {
+      var wrap = trigger.closest('.ty-period-range');
+      if (!wrap) return;
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        var pop0 = getPop();
+        if (pop0 && state.wrap === wrap && !pop0.hidden) { closePop(); return; }
+        openPop(wrap);
+        var cell = getPop() && getPop().querySelector('.ty-period-cell.selected:not(.disabled)') ||
+                   (getPop() && getPop().querySelector('.ty-period-cell:not(.disabled)'));
+        if (cell) cell.focus();
+      }
+      return;
+    }
+    var pop = getPop();
+    if (pop && !pop.hidden && e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      var w = state.wrap;
+      closePop();
+      if (w) { var t = w.querySelector('.ty-period-trigger'); if (t) t.focus(); }
+    }
+  });
+  // popover 内月份格：←/→/↑/↓ 在可用格间移动焦点（默认 12 格 3 列布局，上下跳 3 格）
+  var pop = getPop();
+  if (pop) pop.addEventListener('keydown', function (e) {
+    var cells = Array.prototype.slice.call(pop.querySelectorAll('.ty-period-cell:not(.disabled)'));
+    if (!cells.length) return;
+    var i = cells.indexOf(document.activeElement);
+    if (i < 0) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); cells[Math.min(i + 1, cells.length - 1)].focus(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); cells[Math.max(i - 1, 0)].focus(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); cells[Math.min(i + 3, cells.length - 1)].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); cells[Math.max(i - 3, 0)].focus(); }
+  });
 }
 
 /* ---------------- public ---------------- */
@@ -395,4 +433,12 @@ export function initPeriodRangePicker() {
   _periodPickerInited = true;
   generatePeriodRanges();
   initEvents();
+  // 期间 popover 压入全局 Esc 栈：关闭并把焦点还给触发器（自愈：关闭后自动剔除）
+  if (globalThis.TYKeyboard) globalThis.TYKeyboard.pushEsc(
+    function () { var p = getPop(); return !!(p && !p.hidden); },
+    function () {
+      var w = state.wrap;
+      closePop();
+      if (w) { var t = w.querySelector('.ty-period-trigger'); if (t) t.focus(); }
+    });
 }

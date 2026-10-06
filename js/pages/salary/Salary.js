@@ -39,12 +39,12 @@ const periodRangeValue = H.periodRangeValue;
   });
   $('btnNewSalary').addEventListener('click', function () {
     $('sMonth').value = currentPeriod();
-    $('salaryModal').classList.add('show');
+    openModal('salaryModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   });
-  $('btnCloseSalary').addEventListener('click', function () { $('salaryModal').classList.remove('show'); });
+  $('btnCloseSalary').addEventListener('click', function () { closeModal('salaryModal'); });
   $('btnSaveSalary').addEventListener('click', function () {
     S.addPayroll({ month: $('sMonth').value, name: $('sName').value, category: $('sCat').value || '', should: U.num($('sShould').value), real: U.num($('sReal').value) });
-    $('salaryModal').classList.remove('show');
+    closeModal('salaryModal');
     $('sName').value = ''; $('sShould').value = ''; $('sReal').value = ''; $('sCat').value = '';
     renderSalary(periodRangeValue('salPeriod')); showToast('工资已保存');
   });
@@ -227,20 +227,20 @@ const periodRangeValue = H.periodRangeValue;
     var openDept = $('btnOpenDeptStaff');
     if (openDept) openDept.addEventListener('click', function () {
       refreshDeptStaff();                 // 打开时重新渲染部门职员
-      var m = $('deptStaffModal'); if (m) m.classList.add('show');
+      openModal('deptStaffModal');
     });
     var closeDept = $('btnCloseDeptStaff');
     if (closeDept) closeDept.addEventListener('click', function () {
-      var m = $('deptStaffModal'); if (m) m.classList.remove('show');
+      closeModal('deptStaffModal');
     });
     var openTpl = $('btnOpenSalaryTpl');
     if (openTpl) openTpl.addEventListener('click', function () {
       renderSalaryTplBody();              // 打开时重新渲染凭证模板
-      var m = $('salaryTplModal'); if (m) m.classList.add('show');
+      openModal('salaryTplModal');
     });
     var closeTpl = $('btnCloseSalaryTpl');
     if (closeTpl) closeTpl.addEventListener('click', function () {
-      var m = $('salaryTplModal'); if (m) m.classList.remove('show');
+      closeModal('salaryTplModal');
     });
   })();
 

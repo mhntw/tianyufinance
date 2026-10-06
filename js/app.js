@@ -237,6 +237,10 @@
    * 保留函数签名以兼容 store.js 内部调用。
    * ============================================================ */
   window.__setServerStatus = function (ok) {
+    // 账套存储初始化结束（成功或失败）→ 标记就绪并补写一次账套名
+    // （失败路径下 __refreshAll 可能未执行，这里保证顶栏名字最终有值）
+    _storeReady = true;
+    if (typeof syncAll === 'function') { try { syncAll(); } catch (e) {} }
     // Tauri 桌面版恒为文件模式，无需「未获文件权限」横幅；
     // 但保存失败(__onPersistError)必须显性告警，由下方横幅处理。
     if (ok && window.__onPersistOk) window.__onPersistOk();
@@ -317,7 +321,7 @@
     if (!data) return;
     var pop = ensureNavPop();
     var itemsHtml = (data.items || []).map(function (it) {
-      return '<a class="nav-pop-item" data-page="' + it.page + '">' + it.name + '</a>';
+      return '<a class="nav-pop-item" data-page="' + it.page + '" tabindex="0" role="menuitem">' + it.name + '</a>';
     }).join('');
     pop.innerHTML = '<div class="nav-pop-grid"><div class="nav-pop-col">' +
       '<div class="nav-pop-title" style="display:none">' + data.group + '</div>' + itemsHtml + '</div></div>';
@@ -425,10 +429,209 @@
     if (ms !== 0) t._timer = setTimeout(function () { t.className = 'toast'; }, ms > 0 ? ms : 2200);
   }
   globalThis.showToast = showToast;
-  function openModal(id) { var m = $(id); if (m) m.classList.add('show'); }
-  function closeModal(id) { var m = $(id); if (m) m.classList.remove('show'); }
+
+  /* ===== TYKeyboard：全站键盘交互的单一实现（收敛重复逻辑） =====
+     纯 DOM、无依赖；app.js（传统脚本）与各 ESM 页面统一经 globalThis.TYKeyboard 取用。
+     原语：
+       focusables(root)                          根内「可聚焦且可见」的控件（模态框自动聚焦/Tab 陷阱用）
+       createHighlightList({list,itemSelector})  高亮式列表（焦点留在触发器，用 .active 标记）：搜索/账套下拉
+       bindRovingList(container,{itemSelector})  焦点随项移动的列表：导航浮层子菜单
+       pushEsc(isOpen, close) / removeEsc(t)     全局 Esc 栈（多浮层叠加时只关最上层）
+     另有一条**全局激活委托**（模组加载时即生效，无需调用）：
+       [data-kb-activate] 元素上 Enter/Space → click()，配合 tabindex="0" role="button" 使用，
+       把「div/span/a(无href) 只绑了 click、键盘到不了」这类问题一次解决 */
+  globalThis.TYKeyboard = (function () {
+    var FOCUS_SEL = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    function isVisible(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
+    function focusables(root) {
+      return root ? Array.prototype.slice.call(root.querySelectorAll(FOCUS_SEL)).filter(isVisible) : [];
+    }
+    function itemsOf(root, sel) {
+      return root ? Array.prototype.slice.call(root.querySelectorAll(sel)).filter(isVisible) : [];
+    }
+    // 高亮式列表：焦点不离开触发器，用 .active 标记待选项（搜索下拉 / 账套下拉）
+    function createHighlightList(opts) {
+      var list = opts.list, sel = opts.itemSelector, cls = opts.activeClass || 'active';
+      var idx = -1;
+      function items() { return itemsOf(list, sel); }
+      function setActive(i) {
+        var it = items();
+        if (!it.length) { idx = -1; return; }
+        if (i < 0) i = it.length - 1;
+        if (i >= it.length) i = 0;
+        it.forEach(function (el, k) { el.classList.toggle(cls, k === i); });
+        idx = i;
+        it[i].scrollIntoView({ block: 'nearest' });
+      }
+      function reset() {
+        items().forEach(function (el, k) { el.classList.toggle(cls, k === idx); });
+        idx = -1;
+      }
+      function activate() {
+        if (!items().length) return false;
+        if (idx < 0) setActive(0);
+        var el = items()[idx];
+        if (el) { el.click(); return true; }
+        return false;
+      }
+      return {
+        items: items, index: function () { return idx; },
+        setActive: setActive, move: function (d) { setActive(idx + d); },
+        reset: reset, activate: activate
+      };
+    }
+    // 焦点随项移动的列表（浮层子菜单）：↑/↓/Home/End 移动焦点，Enter/Space 激活
+    function bindRovingList(container, opts) {
+      opts = opts || {};
+      var sel = opts.itemSelector || 'a, button';
+      function items() { return itemsOf(container, sel); }
+      function focusAt(i) {
+        var it = items(); if (!it.length) return;
+        if (i < 0) i = it.length - 1;
+        if (i >= it.length) i = 0;
+        it[i].focus();
+      }
+      container.addEventListener('keydown', function (e) {
+        var it = items(); var i = it.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); focusAt(i + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); focusAt(i - 1); }
+        else if (e.key === 'Home') { e.preventDefault(); focusAt(0); }
+        else if (e.key === 'End') { e.preventDefault(); focusAt(it.length - 1); }
+        else if ((e.key === 'Enter' || e.key === ' ') && i >= 0) { e.preventDefault(); it[i].click(); }
+        else if (e.key === 'Escape' && opts.onEscape) { e.preventDefault(); opts.onEscape(); }
+      });
+      return { items: items, focusFirst: function () { focusAt(0); } };
+    }
+    /* —— 全局激活委托：Enter/Space → click()，供「非原生可聚焦元素」使用 ——
+       用法：在元素上写 `tabindex="0" role="button" data-kb-activate`，
+       行为由这一处保证，全站一致（不必每处再写一遍 keydown —— 这正是"收敛为单一模块"的初衷）。
+       为什么按 [data-kb-activate] 显式声明、而不是泛匹配 role="button"：
+         期间触发器 / 导航标题 / 科目触发框等复合控件**自带** keydown，
+         泛匹配会对它们二次触发 click（开→关），造成回归。
+       为什么跳过原生控件：button / 带 href 的 a / 输入框在 Enter/Space 本就会自发 click，
+       这里再点一次就是双触发；焦点落在内层输入控件上时也不代理（避免抢键）。 */
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+      var el = t.closest('[data-kb-activate]');
+      if (!el) return;
+      if (el.tagName === 'BUTTON' || (el.tagName === 'A' && el.hasAttribute('href'))) return;
+      if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return;
+      e.preventDefault();
+      el.click();
+    });
+    /* —— 全局 Esc 栈：多浮层叠加时只关「最上层」 ——
+       pushEsc(isOpen, close)：isOpen() 返回该浮层当前是否打开，close() 关闭它。
+       处理器会从栈顶剔除「已关闭」的项（自愈，组件无需在关闭时手动注销），再关最上层；
+       模态框优先级最高（单独判断）；**没有任何浮层时不拦截**，不影响输入框等自身的 Esc。
+       需要"焦点还原"的，把还原写进 close() 即可。 */
+    var _escStack = [];
+    function pushEsc(isOpen, close) {
+      var t = { isOpen: isOpen, close: close };
+      _escStack.push(t);
+      return t;
+    }
+    function removeEsc(t) { var i = _escStack.indexOf(t); if (i >= 0) _escStack.splice(i, 1); }
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' && e.key !== 'Esc') return;
+      // 1) 模态框最高优先（无 id 的 dialog-bridge 弹窗由其自身关闭，这里不拦）
+      var modals = document.querySelectorAll('.modal.show');
+      if (modals.length) {
+        var top = modals[modals.length - 1];
+        if (!top.id) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (globalThis.closeModal) globalThis.closeModal(top.id);
+        return;
+      }
+      // 2) 浮层栈：剔除已关闭项后，关最上层
+      while (_escStack.length && !_escStack[_escStack.length - 1].isOpen()) _escStack.pop();
+      if (!_escStack.length) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      _escStack[_escStack.length - 1].close();
+    }, true);
+
+    return {
+      focusables: focusables, itemsOf: itemsOf,
+      createHighlightList: createHighlightList, bindRovingList: bindRovingList,
+      pushEsc: pushEsc, removeEsc: removeEsc
+    };
+  })();
+
+  /* —— 行内操作链接（不带 href 的 <a>）键盘可达兜底 ——
+     项目里大量行内操作写成不带 href 的 `<a class="link-*">`（编辑/删除/启用/穿透/还原…），
+     只有 click 委托：**光标是手型，Tab 却到不了** —— 无 href 的 <a> 天生不可聚焦。
+     这类写法分散在资产/工资/设置/凭证等 5 个页面十几处，且随新页面不断出现，
+     逐处补 tabindex 必漏，故这里统一兜底：
+       · 初始扫描 + MutationObserver 增量扫描（内容都是运行时 innerHTML 渲染的，必须增量）
+       · 补 tabindex="0" role="button" data-kb-activate（Enter/Space 由上面那条激活委托处理）
+       · 跳过 .disabled / aria-disabled="true"（如工资页「—」占位，本就不可操作）
+     注意：带 href 的 <a>（含 `href="javascript:;"` 那批工具条）原生可聚焦，这里不动。 */
+  (function () {
+    function fixOne(a) {
+      if (a.classList.contains('disabled') || a.getAttribute('aria-disabled') === 'true') return;
+      if (a.hasAttribute('data-kb-activate')) return;
+      a.setAttribute('tabindex', '0');
+      a.setAttribute('role', 'button');
+      a.setAttribute('data-kb-activate', '');
+    }
+    function fixAnchors(root) {
+      if (!root) return;
+      if (root.nodeType === 1 && root.tagName === 'A' && !root.hasAttribute('href')) fixOne(root);
+      var list = root.querySelectorAll ? root.querySelectorAll('a:not([href])') : [];
+      for (var i = 0; i < list.length; i++) fixOne(list[i]);
+    }
+    function start() {
+      fixAnchors(document);
+      new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i++) {
+          var added = records[i].addedNodes;
+          for (var j = 0; j < added.length; j++) {
+            if (added[j].nodeType === 1) fixAnchors(added[j]);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.body) start();
+    else document.addEventListener('DOMContentLoaded', start);
+  })();
+
+  // —— 模态框统一键盘支持 ——
+  function openModal(id) {
+    var m = $(id); if (!m) return;
+    var wasShown = m.classList.contains('show');
+    m.classList.add('show');
+    if (!wasShown) m.__prevFocus = document.activeElement;   // 记录来源焦点，供关闭时还原
+    // 焦点移入：若调用方已自行聚焦弹窗内元素（如改名输入框）则不打断
+    setTimeout(function () {
+      if (m.classList.contains('show') && !m.contains(document.activeElement)) {
+        var f = globalThis.TYKeyboard.focusables(m);
+        if (f.length) f[0].focus();
+      }
+    }, 0);
+  }
+  function closeModal(id) {
+    var m = $(id); if (!m) return;
+    m.classList.remove('show');
+    var pf = m.__prevFocus; m.__prevFocus = null;
+    if (pf && document.contains(pf) && typeof pf.focus === 'function') { try { pf.focus(); } catch (e) {} }
+  }
   globalThis.openModal = openModal;
   globalThis.closeModal = closeModal;
+  // 模态框 Tab 焦点陷阱（Esc 已由 TYKeyboard 的全局 Esc 栈统一处理，见上）。
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    var modals = document.querySelectorAll('.modal.show');
+    if (!modals.length) return;
+    var top = modals[modals.length - 1];   // DOM 末位 = 视觉最上层
+    var f = globalThis.TYKeyboard.focusables(top);
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    else if (!top.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  }, true);
   function currentPeriod() {
     var closed = (S.state && S.state.closedPeriods) || [];
     var natMonth = todayStr().slice(0, 7);
@@ -810,23 +1013,47 @@
     if (btn) { e.preventDefault(); tyPrint(btn); }
   });
 
-  /* ---------- 导航：左侧菜单，点击主菜单也能展开子菜单（单例浮层） ---------- */
+  /* ---------- 导航：左侧菜单，点击 / 键盘均可展开子菜单（单例浮层） ---------- */
+  // 展开/收起某分组（鼠标 hover 与键盘共用同一套显隐）
+  function toggleNavGroup(group) {
+    if (!group) return;
+    if (group.classList.contains('open')) { hideNavPopover(); return; }
+    document.querySelectorAll('.nav-group.open').forEach(function (g) { g.classList.remove('open'); });
+    group.classList.add('open');
+    showNavPopover(group);
+  }
+  function focusFirstNavPopItem() {
+    var pop = ensureNavPop();
+    var first = pop.querySelector('.nav-pop-item');
+    if (first) first.focus();
+  }
   document.getElementById('sidenav').addEventListener('click', function (e) {
     var title = e.target.closest('.nav-group-title');
     if (title) {
       // 点击主菜单：互斥展开 / 收起当前组（复用单例浮层）
       var group = title.closest('.nav-group');
       if (group.classList.contains('nav-group-direct')) return; // direct 分组由 click 进页面
-      if (group.classList.contains('open')) {
-        hideNavPopover();
-      } else {
-        document.querySelectorAll('.nav-group.open').forEach(function (g) { g.classList.remove('open'); });
-        group.classList.add('open');
-        showNavPopover(group);
-      }
-      return;
+      toggleNavGroup(group);
     }
     // 子菜单项渲染在单例浮层（挂在 body），sidenav 内不出现，故此处仅处理标题点击
+  });
+  // 键盘：标题 Enter/Space/→ 展开并聚焦首个子项，Esc 收起
+  document.getElementById('sidenav').addEventListener('keydown', function (e) {
+    var title = e.target.closest('.nav-group-title');
+    if (!title) return;
+    var group = title.closest('.nav-group');
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (group.classList.contains('nav-group-direct')) {
+        var pg = group.getAttribute('data-page');
+        if (pg) { hideNavPopover(); goPage(pg); }
+        return;
+      }
+      if (group.classList.contains('open')) hideNavPopover();
+      else { toggleNavGroup(group); focusFirstNavPopItem(); }
+    } else if (e.key === 'Escape') {
+      hideNavPopover();
+    }
   });
   // 单例浮层内的子菜单项点击：统一走 goPage
   function bindNavPopClick() {
@@ -845,9 +1072,31 @@
       hideNavPopover();
       goPage(page, path);
     });
+    // 键盘：浮层内子项 ↑/↓/Home/End 移动焦点，Enter/Space 激活，Esc 收起并回到当前标题
+    globalThis.TYKeyboard.bindRovingList(pop, {
+      itemSelector: '.nav-pop-item',
+      onEscape: function () {
+        var openTitle = document.querySelector('.nav-group.open .nav-group-title');
+        hideNavPopover();
+        if (openTitle) openTitle.focus();
+      }
+    });
+    // 焦点从浮层移到其它地方（Tab 离开）时收起
+    pop.addEventListener('focusout', function (e) {
+      var to = e.relatedTarget;
+      if (to && (pop.contains(to) || (to.closest && to.closest('.nav-group-title')))) return;
+      scheduleNavClose();
+    });
+    // 导航浮层压入全局 Esc 栈：关闭并把焦点还给当前分组标题（自愈：关闭后自动剔除）
+    // 注意：此处注册（而非 hideNavPopover 定义处）——那里在 TYKeyboard 定义之前，会过早调用。
+    globalThis.TYKeyboard.pushEsc(function () { return !!(NAV_POP && NAV_POP.style.display !== 'none'); }, function () {
+      var openTitle = document.querySelector('.nav-group.open .nav-group-title');
+      hideNavPopover();
+      if (openTitle) openTitle.focus();
+    });
   }
 
-  /* ---------- 首页按钮事件委托（qk / qk-newvoucher / metric-tab / 工具栏 / 标签页） ---------- */
+  /* ---------- 首页按钮事件委托（qk / qk-newvoucher / 工具栏 / 标签页） ---------- */
   (function () {
     var homePage = $('page-home');
     if (!homePage) return;
@@ -869,6 +1118,25 @@
       if (qk) { e.preventDefault(); goPage(qk.getAttribute('data-page')); return; }
       // 编辑按钮 → 打开常用功能设置弹窗
       if (e.target.closest('.home-section-edit')) { openQuickSettings(); return; }
+    });
+    // 键盘委托：标签页栏（Enter 打开 / Delete 关闭 / ←→/Home/End 移动）、常用功能图标与新增凭证卡（Enter 跳转）、编辑按钮
+    document.getElementById('content').addEventListener('keydown', function (e) {
+      var isActivate = (e.key === 'Enter' || e.key === ' ');
+      var closeBtn = e.target.closest('.tab-close[data-close]');
+      if (closeBtn && isActivate) { e.preventDefault(); closeBtn.click(); return; }
+      var tab = e.target.closest('.tab-item[data-page]');
+      if (tab) {
+        var items = Array.prototype.slice.call(tab.parentNode.querySelectorAll('.tab-item'));
+        var i = items.indexOf(tab);
+        if (isActivate) { e.preventDefault(); goPage(tab.getAttribute('data-page')); }
+        else if (e.key === 'Delete') { e.preventDefault(); var c = tab.querySelector('.tab-close'); if (c) c.click(); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); var nr = items[Math.min(i + 1, items.length - 1)]; if (nr) nr.focus(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); var pl = items[Math.max(i - 1, 0)]; if (pl) pl.focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); if (items[0]) items[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); if (items[items.length - 1]) items[items.length - 1].focus(); }
+        return;
+      }
+      // 常用功能图标 / 新增凭证卡 / 自定义按钮已改原生 <button>：Enter 自带 click → 走上面的 click 委托，无需此处处理
     });
   })();
 
@@ -947,6 +1215,9 @@
     return null;
   }
 
+  // 常用功能设置浮层不是 .modal（按 style.display 开关），走不到模态框那套统一键盘处理，
+  // 故单独补：焦点移入 + Tab 陷阱 + Esc 关闭（入全局 Esc 栈）+ 关闭后焦点还原。
+  var _qsPrevFocus = null;
   function openQuickSettings() {
     var overlay = $('quickSettingsOverlay');
     var body = $('qsBody');
@@ -984,11 +1255,39 @@
       });
     });
     overlay.style.display = 'flex';
+    _qsPrevFocus = document.activeElement;   // 关闭后把焦点还回触发它的按钮
+    if (!overlay._kbBound) {
+      overlay._kbBound = true;
+      // Tab 焦点陷阱：不跑出浮层（用与模态框同一套 focusables 口径）
+      overlay.addEventListener('keydown', function (e) {
+        if (e.key !== 'Tab' || !globalThis.TYKeyboard) return;
+        var f = globalThis.TYKeyboard.focusables(overlay);
+        if (!f.length) return;
+        var first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        else if (!overlay.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      });
+      // Esc 入全局 Esc 栈（多浮层叠加时只关最上层；自愈：关闭后自动剔除）
+      if (globalThis.TYKeyboard) {
+        globalThis.TYKeyboard.pushEsc(
+          function () { var o = $('quickSettingsOverlay'); return !!o && o.style.display !== 'none' && o.style.display !== ''; },
+          function () { closeQuickSettings(); });
+      }
+    }
+    setTimeout(function () {
+      if (overlay.style.display === 'none') return;          // 期间已被关掉
+      if (overlay.contains(document.activeElement)) return;  // 调用方已自行聚焦，不打断
+      var f = globalThis.TYKeyboard ? globalThis.TYKeyboard.focusables(overlay) : [];
+      if (f.length) f[0].focus();
+    }, 0);
   }
 
   function closeQuickSettings() {
     var overlay = $('quickSettingsOverlay');
     if (overlay) overlay.style.display = 'none';
+    var pf = _qsPrevFocus; _qsPrevFocus = null;   // 焦点还原：还回打开浮层前的元素
+    if (pf && document.contains(pf) && typeof pf.focus === 'function') { try { pf.focus(); } catch (e) {} }
   }
 
   // 其他科目指标 swiper 滚动（scrollSubject）已迁入 js/pages/home/Home.js
@@ -1022,7 +1321,8 @@
     iconKeys.forEach(function (key) {
       var item = findQuickItem(key);
       if (!item) return;
-      var a = document.createElement('a');
+      var a = document.createElement('button');
+      a.type = 'button';                     // 原生 <button>：可聚焦、Enter/Space 自带 click，无需补 tabindex/role
       a.className = 'qk';
       a.setAttribute('data-page', item.page);
       // 图标：优先用 QUICK_MENU_ITEMS 上声明的 iconcool 字形（与左侧导航同一套字形，观感一致）；
@@ -1073,14 +1373,15 @@
       // 结账等 direct 分组：直接点击进入页面，无子菜单弹出
       if (group.direct) {
         html += '<div class="nav-group nav-group-direct" data-page="' + group.page + '">';
-        html += '<div class="nav-group-title nav-direct-title">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
+        html += '<div class="nav-group-title nav-direct-title" tabindex="0" role="button">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
         html += '</div>';
         return;
       }
       // 仅渲染标题；子菜单内容由「单例浮层」在 hover 时按需渲染，
       // 不再为每个组各生成一个 .nav-pop（避免多节点残留重叠）。
+      // tabindex/role：键盘可聚焦并用 Enter/Space/→ 展开（见下方 sidenav keydown）
       html += '<div class="nav-group">';
-      html += '<div class="nav-group-title">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
+      html += '<div class="nav-group-title" tabindex="0" role="button" aria-haspopup="true">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
       html += '</div>';
     });
     // 菜单区包进滚动容器（.sidebarMenuWrapper--1lMd-：flex:1; overflow-y:auto），
@@ -1092,7 +1393,7 @@
     var op = document.createElement('div');
     op.className = 'nav-op-wrapper';
     op.innerHTML =
-      '<div class="nav-op-btn" id="navCollapseBtn" title="收起导航">' +
+      '<div class="nav-op-btn" id="navCollapseBtn" title="收起导航" tabindex="0" role="button" data-kb-activate>' +
         '<svg class="nav-op-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="12" x2="3" y2="12"/><polyline points="8,7 3,12 8,17"/></svg>' +
       '</div>';
     nav.appendChild(op);
@@ -1323,7 +1624,7 @@
       var isCur = id === cur;
       var off = false;
       try { off = !!(window.S && typeof window.S.isBookEnabled === 'function' && !window.S.isBookEnabled(id)); } catch (e) {}
-      return '<div class="book-item' + (isCur ? ' cur' : '') + '" data-book="' + esc(id) + '"' + (isCur ? '' : ' title="点击切换到该账套"') + '>'
+      return '<div class="book-item' + (isCur ? ' cur' : '') + '" role="menuitem" data-book="' + esc(id) + '"' + (isCur ? '' : ' title="点击切换到该账套"') + '>'
         + '<span class="book-item-name">' + esc(name) + '</span>'
         + (isCur ? '<span class="book-item-cur">当前</span>' : (off ? '<span class="book-item-off">停用</span>' : ''))
         + '</div>';
@@ -1340,19 +1641,45 @@
     if (window.S && typeof window.S.refreshBookIndex === 'function') {
       try {
         var p = window.S.refreshBookIndex();
-        if (p && typeof p.then === 'function') p.then(function () { renderBookDropdown(); }).catch(function () {});
+        if (p && typeof p.then === 'function') p.then(function () {
+          renderBookDropdown();
+          if (!bookDropdown.hidden && bookHL.index() >= 0) bookHL.setActive(bookHL.index());  // 重渲染后保留键盘高亮
+        }).catch(function () {});
       } catch (e) {}
     }
   }
-  function closeBookDropdown() { if (bookDropdown) bookDropdown.hidden = true; }
+  // 键盘高亮：统一走 TYKeyboard.createHighlightList（焦点留在触发器，.active 标记待选项）
+  var bookHL = globalThis.TYKeyboard.createHighlightList({ list: bookDropdown, itemSelector: '.book-item' });
+  function closeBookDropdown() {
+    if (bookDropdown) bookDropdown.hidden = true;
+    bookHL.reset();
+  }
+  // 账套下拉压入全局 Esc 栈（自愈：关闭后自动剔除）
+  globalThis.TYKeyboard.pushEsc(function () { return !!(bookDropdown && !bookDropdown.hidden); }, closeBookDropdown);
+  function openBookDropdownByKey() {
+    openBookDropdown();
+    var cur = -1;
+    bookHL.items().forEach(function (it, i) { if (it.classList.contains('cur')) cur = i; });
+    bookHL.setActive(cur >= 0 ? cur : 0);   // 默认高亮当前账套，无则首项
+  }
   if (topAcctBtn) {
     topAcctBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       if (bookDropdown && bookDropdown.hidden) openBookDropdown(); else closeBookDropdown();
     });
     topAcctBtn.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openBookDropdown(); }
-      if (e.key === 'Escape') closeBookDropdown();
+      var isOpen = bookDropdown && !bookDropdown.hidden;
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        if (!isOpen) { openBookDropdownByKey(); return; }
+        if (e.key === 'ArrowDown') { bookHL.move(1); return; }
+        if (bookHL.index() < 0) bookHL.setActive(0);      // Enter/Space：激活高亮项
+        bookHL.activate();
+      } else if (e.key === 'ArrowUp') {
+        if (isOpen) { e.preventDefault(); e.stopPropagation(); bookHL.move(-1); }
+      } else if (e.key === 'Escape') {
+        if (isOpen) { e.stopPropagation(); closeBookDropdown(); }
+      }
     });
   }
   if (bookDropdown) {
@@ -1379,6 +1706,7 @@
   }
   // 点击页面其他区域关闭下拉
   document.addEventListener('click', function () { closeBookDropdown(); });
+
 
   // 纯本地单机版：已移除云端登录门、账号弹窗、登录/退出逻辑。
 
@@ -1407,6 +1735,8 @@
   var searchToggle = $('searchToggle');
   var searchBar = $('searchBar');
   var searchDropdown = $('searchDropdown');
+  // 搜索结果键盘高亮：统一走 TYKeyboard.createHighlightList（焦点留在输入框，.active 标记待选项）
+  var searchHL = globalThis.TYKeyboard.createHighlightList({ list: searchDropdown, itemSelector: '.search-item' });
 
   // 彻底防浏览器自动填充：动态 name（每次加载随机化，浏览器无法匹配已保存的表单字段）
   ['searchInput'].forEach(function (id) {
@@ -1437,6 +1767,8 @@
     if (searchDropdown) searchDropdown.hidden = true;
     runSearch('');
   }
+  // 搜索结果下拉压入全局 Esc 栈（自愈：关闭后自动剔除）
+  globalThis.TYKeyboard.pushEsc(function () { return !!(searchDropdown && !searchDropdown.hidden); }, closeSearch);
 
   function runSearch(kw) {
     kw = (kw || '').trim();
@@ -1599,8 +1931,17 @@
     openSearch();
   });
   if (searchInput) {
-    searchInput.addEventListener('input', function () { runSearch(this.value); });
-    searchInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') runSearch(this.value); if (e.key === 'Escape') closeSearch(); });
+    searchInput.addEventListener('input', function () { searchHL.reset(); runSearch(this.value); });
+    // 搜索结果键盘导航：↑/↓ 在结果项间移动高亮，Enter 打开高亮项，Esc 关闭
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); searchHL.move(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); searchHL.move(-1); }
+      else if (e.key === 'Enter') {
+        if (searchHL.index() < 0) searchHL.setActive(0);
+        if (searchHL.activate()) e.preventDefault();   // 打开高亮项（复用 click 委托的 data-go 跳转）
+        else runSearch(searchInput.value);             // 无结果项时才回退为执行搜索
+      } else if (e.key === 'Escape') { closeSearch(); }
+    });
   }
 
   // 结果点击：委托到 searchDropdown（不再用已删除的 searchPop）
@@ -1744,8 +2085,11 @@
       var tab = document.createElement('div');
       tab.className = 'tab-item' + (t.page === activePage ? ' active' : '');
       tab.setAttribute('data-page', t.page);
+      tab.setAttribute('tabindex', '0');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', t.page === activePage ? 'true' : 'false');
       tab.innerHTML = '<span>' + t.name + '</span>';
-      tab.innerHTML += '<span class="tab-close" data-close="' + t.page + '">×</span>';
+      tab.innerHTML += '<span class="tab-close" role="button" tabindex="0" data-close="' + t.page + '">×</span>';
       bar.appendChild(tab);
     });
     // 激活的是最后一个标签（新打开/切到最后一个/关闭后）→ 滚到最右让新标签必见；
@@ -1879,6 +2223,7 @@
   /* ============================================================
    * 同步所有含期间下拉的查询页
    * ============================================================ */
+  var _storeReady = false;   // 账套存储是否已初始化完成（就绪前不写兜底账套名，避免闪「演示账套」）
   function syncAll() {
     var tpEl = $('topPeriodText');
     if (tpEl) tpEl.textContent = formatPeriod(currentPeriod());
@@ -1892,7 +2237,9 @@
     var tcEl = $('topCompany');
     if (tcEl) {
       var name = ((S.state && S.state.company && S.state.company.name) || fallbackName || '').trim();
-      tcEl.textContent = name || DEFAULT_COMPANY_NAME;
+      // 账套数据就绪前（_storeReady=false）且暂无真实名时保持空，避免闪出兜底「演示账套」；
+      // 就绪后（__setServerStatus 置 _storeReady=true）再写入真实名或兜底名。
+      if (_storeReady || name) tcEl.textContent = name || DEFAULT_COMPANY_NAME;
     }
     updateTopOperator();
   }

@@ -167,7 +167,7 @@
   display:flex; align-items:center; gap:10px;
   padding:14px 16px; border-bottom:1px solid var(--ty-border);
 }
-.cmd-ico{ font-size:18px; color:var(--ty-text-3); line-height:1; }
+.icon--cmd{ font-size:18px; color:var(--ty-text-3); line-height:1; }
 .cmd-input{
   flex:1; border:0; outline:0; background:transparent;
   font-size:15px; color:var(--ty-text); font-family:var(--ty-font);
@@ -200,31 +200,20 @@
 /* 顶栏"快速跳转"入口 */
 .cmd-trigger{
   display:flex; align-items:center; gap:6px;
-  border:1px solid var(--ty-border); background:var(--ty-white);
-  color:var(--ty-text-2); border-radius:8px; padding:5px 10px;
-  font-size:13px; cursor:pointer; font-family:var(--ty-font);
+  height:28px; box-sizing:border-box;
+  border:1px solid var(--ty-border-2); background:var(--ty-white);
+  color:var(--ty-text-3); border-radius:6px; padding:0 10px;   /* 文字用占位提示灰，与搜索框空态灰一致 */
+  font-size:var(--fs-md); cursor:pointer; font-family:var(--ty-font);
+  white-space:nowrap;          /* 防止中文在顶栏被压缩时逐字折行成竖排 */
+  flex-shrink:0;               /* 顶栏拥挤时不收缩，整词保持一行 */
 }
 .cmd-trigger:hover{ border-color:var(--ty-blue); color:var(--ty-blue-dark); }
-.cmd-trigger .cmd-kbd{ margin-left:2px; }
-.cmd-trigger-ico{ font-size:15px; line-height:1; }
-
-/* ============================================================
- * 首页「本账套速览」条（打开即见的关键指标，点击下钻）
- * ============================================================ */
-.home-summary{
-  display:flex; gap:12px; flex-wrap:wrap; margin:0 0 18px;
-}
-.summary-card{
-  flex:1 1 0; min-width:140px; text-align:left; cursor:pointer;
-  background:var(--ty-white); border:1px solid var(--ty-border); border-radius:12px;
-  padding:14px 16px; font-family:var(--ty-font); color:var(--ty-text);
-  display:flex; flex-direction:column; gap:8px;
-  transition:border-color .15s, box-shadow .15s, transform .05s;
-}
-.summary-card:hover{ border-color:var(--ty-blue); box-shadow:0 4px 14px rgba(20,28,38,.08); }
-.summary-card:active{ transform:translateY(1px); }
-.summary-label{ font-size:13px; color:var(--ty-text-3); }
-.summary-val{ font-size:20px; font-weight:700; color:var(--ty-text); font-variant-numeric:tabular-nums; }
+.cmd-trigger .cmd-kbd{ margin-left:2px; flex-shrink:0; }
+/* 【2026-10-06】搜索图标统一为 iconcool「sousuo」字形（\e692）：
+   原先搜索框用 emoji 🔍、快速跳转用 Unicode ⌕，两者字形完全不同（前者带金属质感、后者是细小空心环）。
+   iconcool 字形在本 em 框内留白较大，故 17px ≈ 原 15px 的 🔍 视觉重量；两处用同一字形同一字号，严格一致。 */
+.icon--cmd-trigger{ font-size:17px; line-height:1; flex-shrink:0; }
+.icon--topbar-search{ font-size:17px; line-height:1; }
 
 *, *::before, *::after { box-sizing: border-box; }   /* 原 jdy-base.css 并入：伪元素同样 border-box */
 
@@ -330,8 +319,8 @@ img, svg { display: block; max-width: 100%; }
   color: var(--ty-text);
   display: flex;   /* 【2026-10-06】grid 三列改横向 flex：整个顶栏元素都从左排开（不再把右列推到右端） */
   align-items: center;
-  gap: 40px;      /* 【2026-10-06】放大顶栏各主块间距（品牌 / 账期账套 / 搜索用户 之间更开） */
-  padding: 0 28px 0 20px;
+  gap: 18px;      /* 收紧顶栏主块间距，整体更紧凑一体（品牌 / 账期账套 / 搜索用户） */
+  padding: 0 20px;   /* 左右内距统一收窄 */
   position: relative;
   z-index: 200;   /* 修复：顶栏下拉(fixed 1300 受限于 topbar 层叠上下文) 需盖过下方内容区 .content z-index:100，
                      否则账套/搜索下拉弹出时会被内容区盖住；顶栏整层提到 200 即可浮于内容区之上 */
@@ -422,13 +411,6 @@ img, svg { display: block; max-width: 100%; }
 }
 .topbar-company:hover { color: var(--ty-blue); background: var(--ty-blue-2); }
 
-/* 期间文字 */
-.topbar-period-text {
-  font-size: var(--fs-sm);
-  color: var(--ty-text-2);
-  padding: 4px 8px;
-}
-
 /* 搜索按钮 */
 .topbar-search-btn {
   width: 30px; height: 30px;
@@ -440,7 +422,6 @@ img, svg { display: block; max-width: 100%; }
   display: flex; align-items: center; justify-content: center;
 }
 
-.topbar-period,
 .topbar-user {
   font-size: var(--fs-xs);
   color: var(--ty-text-2);
@@ -788,7 +769,7 @@ img, svg { display: block; max-width: 100%; }
   padding: 0 10px; border: 1px solid var(--ty-border-2); border-radius: 6px; background: var(--ty-white);
 }
 .vch-tpl-searchbox:focus-within { border-color: var(--ty-blue); box-shadow: 0 0 0 2px rgba(47, 149, 255, .08); }
-.vch-tpl-search-ic { font-size: var(--fs-lg); color: var(--ty-text-3); line-height: 1; }
+.icon--vch-tpl-search { font-size: var(--fs-lg); color: var(--ty-text-3); line-height: 1; }
 .vch-tpl-search { flex: 1; border: none; outline: none; font-size: var(--fs-sm); color: var(--ty-text); background: none; }
 .vch-tpl-list { max-height: 56vh; overflow: auto; margin-top: 8px; padding: 0 2px 2px; }
 .vch-tpl-sec { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--ty-blue-dark); }
@@ -838,7 +819,7 @@ img, svg { display: block; max-width: 100%; }
 /* 菜单内分组分隔线（「更多」里把 打印 / 录入辅助 / 更正与废弃 三组分开，见 Voucher.js 的 bindVchMore） */
 .vch-menu-sep { height: 1px; margin: 4px 0; background: var(--ty-border); }
 .vch-menu a { display: block; padding: 7px 14px; font-size: var(--fs-sm); color: var(--ty-text); text-decoration: none; white-space: nowrap; }
-.vch-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
+.vch-menu a:hover, .vch-menu a:focus { background: var(--ty-blue-2); color: var(--ty-blue); outline: none; }
 /* 红字项（红字冲销 / 删除凭证）：这两项都会【实际改动已入账的账务】，
    与「打印 / 模板 / 复制」在性质上不同，需一眼区分。
    类名取中性的 red 而非 danger —— 把红字冲销叫「危险操作」是错的，
@@ -1253,12 +1234,6 @@ select:not([class]),
   gap: 6px;
   vertical-align: top;
 }
-.ykj-filter-item-box-label {
-  font-size: var(--fs-xs);
-  color: var(--ty-text);
-  line-height: 30px;
-  white-space: nowrap;
-}
 .ykj-filter-item-box-content { display: block; }
 /* 筛选区输入框统一走自适应三件套（禁止页面级固定 width）：
    日期/期间/月份等语义输入框用 min-width 保底最小可操作宽、max-width 防撑破 */
@@ -1299,16 +1274,20 @@ select:not([class]),
    标签 + 共N项 + caret）自然撑开，max-width:100% 兜底防溢出；弹层 .ed-subj-pop 同为
    自适应：width:max-content 按最长行（nowrap）撑开、min-width:100% 对齐触发框、
    max-width 视口兜底防屏幕边缘溢出 */
-.ed-subj-select { position: relative; display: inline-block; width: auto; min-width: 120px; max-width: 100%; }
+/* 费用明细科目框：比其它页多「已选科目标签 + 共N项」两块，固定 220px 会把标签区挤到裁切
+   （实测标签需 154px 仅得 95px）。故用自适应：空态仍取 220px 与整行对齐，
+   有选中项时按内容撑开（shrink-to-fit），上限 340px 防止把筛选行撑爆。 */
+.ed-subj-select { position: relative; display: inline-block; width: auto; min-width: 220px; max-width: 340px; }
 .ed-subj-trigger {
-  position: relative; height: 28px; min-height: 28px; padding: 0 22px 0 0;
+  position: relative; height: 28px; min-height: 28px; padding: 0 22px 0 8px;   /* 左内距 8px：与其它页科目框一致，容纳框内「科目」前缀 */
   background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: pointer; display: flex; align-items: stretch;
 }
 .ed-subj-trigger:hover { border-color: var(--ty-border); }
+.ed-subj-trigger .ty-subject-label { align-self: center; }   /* 框内「科目」前缀（触发器是 stretch 布局，需单独居中） */
 .ed-subj-tags {
   flex: 1; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px;
-  padding: 0 8px; height: 28px; line-height: 28px; overflow: hidden; white-space: nowrap;
+  padding: 0; height: 28px; line-height: 28px; overflow: hidden; white-space: nowrap;   /* 左内距已由 .ed-subj-trigger 提供 */
 }
 .ed-subj-countbox {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
@@ -2081,7 +2060,6 @@ label.req::before {
   white-space: nowrap;
   position: relative; /* 承载绝对定位的附件浮层（脱离文档流，不影响本行 flex 布局） */
 }
-.vh-attach-icon { font-size: var(--fs-lg); }
 /* 已上传附件浮层：点击「上传附件」后展示，可逐个移除 */
 .vh-attach-panel {
   position: absolute;
@@ -3299,7 +3277,8 @@ label.req::before {
   background: var(--ty-white);
   box-shadow: inset 0 0 0 1px var(--ty-blue);
 }
-/* 操作列按钮（iconcool tianjia / shanchu） */
+/* 操作列按钮（字形用字面 '+' / '−'，未走 iconcool：见下方 .tmpl-op-add/::before、.tmpl-op-del/::before；
+   2026-10-06 修正此注释 —— 原写"iconcool tianjia / shanchu"，与实际实现不符，易误导） */
 .tmpl-op {
   display: inline-flex;
   align-items: center;
@@ -3511,7 +3490,7 @@ label.req::before {
      titleWrapper--2ThdD     → home-section-title   （区块标题行）
      editBtn--2VJ9T          → home-edit-btn        （自定义常用功能按钮）
      drag-container          → metric-grid          （指标网格）
-     drag-wrapper-container  → metric-grid-row      （指标网格行，负责 flex 排布）
+     drag-wrapper-container  → metric-grid-row      （指标网格行，grid auto-fit 自适应列）
      grid-square-wrapper     → metric-slot          （指标卡片槽位，JS 靠它读 data-metric）
      drag-rect + grid-square → metric-card          （指标卡片本体，两个类合并为一个）
      drag-header             → metric-card-head     （卡片头部条）
@@ -3643,18 +3622,17 @@ label.req::before {
 /* 常用功能块外层容器（来源 main chunk.css 原值）：水平 padding 与
    home-section-metrics 同为 24px，确保"常用功能"标题左缘与"财务指标"对齐。
    注意：本项目常用功能块只挂此类（不挂 ifBdg），与结构一致。 */
-/* 【2026-10-04】max-width:1240px + margin:0 auto 与 .home-section-metrics 同值 →
- *   两区块等大居中、左缘对齐；超出部分留在两侧页边，避免常用功能块比财务指标块更宽导致的错位。 */
+/* 常用功能块：随窗口全宽铺开（不再限宽 1240 居中），最大化时利用整屏宽度；
+ * 内部图标网格 .home-quick-grid 为 flex-wrap，自然换行填充。与财务指标块同全宽、左缘对齐。 */
 .home-section-quick {
   padding: 20px 24px 0;
   min-height: 130px;
-  max-width: 1240px;
-  margin: 0 auto;
   overflow: hidden;   /* 原值：清内部 contentL/contentR 子浮动 */
 }
 /* 标题右侧自定义按钮（home-edit-btn：font-size:22px 深色，hover 变蓝） */
 .home-section-edit.home-edit-btn {
   margin-left: auto;
+  padding: 0;              /* 原生 button 需显式归零 UA padding */
   color: var(--ty-text);
   font-size: 22px;
   line-height: 1;
@@ -3665,25 +3643,6 @@ label.req::before {
 }
 .home-section-edit.home-edit-btn:hover { color: var(--ty-blue); }
 
-/* 财务指标 Tab（财务指标 / 行业对标） */
-.metric-tabs {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.metric-tab-main {
-  font-size: var(--fs-lg);
-  font-weight: 400;
-  color: var(--ty-text-3);
-  padding-bottom: 8px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all .15s;
-}
-.metric-tab-main.active {
-  color: var(--ty-blue);
-  border-bottom-color: var(--ty-blue);
-}
 /* ---- 常用功能（外层 home-section 已是白底卡片，此处仅 flex 行布局）---- */
 /* 内容行（home-section-content：display:flex;flex-direction:row）
    position:relative 作为右上角设置图标的定位参考 */
@@ -3815,60 +3774,34 @@ label.req::before {
  * 真实取值来源：云会计_files/main.d261698f.chunk.css
  * ============================================================ */
 
-/* 网格容器（首页财务指标卡片）
- * 机制：metric-grid-row 宽 = 100% + 16px（向右溢出 16px，抵掉外层白框的右内边距），
- *       每个格子 padding-right:16px 形成列间距，于是最右一列与白框右缘齐平。
- * 说明：这里只保留实际生效的设定 ——
- *   · .metric-grid 的父级是普通 block（非 flex 容器），故自身不需要 flex-basis/flex-grow；
- *   · 格子由 .metric-grid-row 的 flex 布局负责，flex 子项会被 blockify，
- *     故 .metric-slot 不需要 display:inline-block；外层白框本就是白底，
- *     白底对白底也不可见，故不需要 background-color。 */
+/* 网格容器（首页财务指标卡片）：auto-fit 自适应列数（窗口越宽列越多），列/行间距由 grid gap 统一控制。
+   HTML 里 .metric-slot 带 width-1 占位类，宽度一律交回 grid 轨道（见 .metric-grid .width-1）。 */
 .metric-grid { width: 100%; }
 .metric-grid .metric-grid-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 20px 16px;             /* 行距 20 / 列距 16（原 padding-right+margin-bottom 改为 grid gap） */
+  width: 100%;
   position: relative;
-  width: calc(100% + 16px);
 }
 .metric-grid .metric-slot {
-  padding-right: 16px;      /* 列间距 */
-  margin-bottom: 20px;      /* 行间距 */
-  box-sizing: border-box;   /* 必要：否则 1/3 宽 + 16px 内边距会撑破一行 */
-  /* 防横向溢出：flex 子项默认 min-width:auto（最小宽=内容宽），容器变窄时不收缩会溢出 */
-  min-width: 0;
-  /* 格子最小高度 = 卡片高度下限（卡片 height:100% 填满格子）。
-     内容更高的卡片会自然撑高，同行由 flex stretch 拉齐；整体调高/调矮只改这一个数。
-     【2026-10-04】6 列窄卡时设 320px（窄而高）；改 3 列后卡片变宽、行数不变，
-     320px 会在内容下方留出大片空白，故下调为 200px。
-     【2026-10-04 续·A 方案】200px 在默认 1280 窗口下卡宽≈385、比例≈1.8:1，偏扁
-     （行业舒适 KPI 卡为 1.3~1.6:1）。按行业基线把下限提到 250px → 比例≈1.54:1，
-     扁感消除；短卡（如净利润仅 2 行）底部留白为行业通行做法，可接受。
-     【2026-10-05】曾尝试方型 390px（比例≈1:1），但图表仅 140px 在方卡内占比过小、
-     纵向被压缩、观感显矮。现【2026-10-06】取消 1:1 方形，改为竖长卡：
-     下限提到 520px，配合图表加高到 220px，图表不再被压、卡片视觉重心下移。 */
-  min-height: 520px;
+  box-sizing: border-box;   /* 卡片含内边距时不撑破网格轨道 */
+  min-width: 0;             /* 网格子项默认 min-width:auto，窄屏不收缩会横向溢出 */
+  /* 固定高度：6 张卡**恒等高**，与数据/加载时序无关。
+     此前用 grid 跨行等高（grid-auto-rows）在 WebView 里偶发不收敛，会出现"时有时无的高矮不一"，
+     故改为固定高；卡片填满格子（.metric-card height:100%），内容超出 520 时由卡片自身滚动。 */
+  height: 520px;
 }
 
-/* 首页财务指标：一行 3 张卡（HTML 只用 width-1；width-2/3/4 无处使用，已删除）
-   【2026-10-04 由 6 列改为 3 列】6 列时每卡仅约 161px（见下方 .fv7 注释的历史依据），
-   标签与金额被迫竖排、右侧大片留白；3 列约 380px，与「工作台」定位相符。
-   6 张卡 → 2 行 × 3 张。 */
-.metric-grid .width-1 { width: calc(100% / 3); }
-/* 窄屏回退：宽度不够时自动降档，避免挤压错乱。
-   【注意】降档阈值必须低于主宽度，否则会出现"窗口变窄反而更宽"的倒挂
-   （原 1400/1200 两档在 6 列基准下是降档，改成 3 列基准后会变成升档，故已重排）。 */
-@media (max-width: 1200px) {
-  .metric-grid .width-1 { width: 50%; }
-}
-@media (max-width: 760px) {
-  .metric-grid .width-1 { width: 100%; padding-right: 0; }
-}
+/* 首页财务指标：卡片列数由 grid auto-fit 自适应（见 .metric-grid-row），
+ *   不再写死 3 列 / 窄屏媒体查询降档 —— 窗口越宽列越多、卡片保持舒适尺寸、窄屏自动换行不溢出。
+ *   HTML 仅用 width-1 作占位类，宽度交回 grid 轨道控制。 */
+.metric-grid .width-1 { width: auto; }
 /*  home-section-metrics 白框内边距 + 标题 tab 样式（来源同 main chunk.css） */
-/* 【2026-10-04 首页 KPI 卡片优化】大屏下限制区块最大宽度（1240px）+ 居中，
- *   否则窗口越宽每张卡越扁（2560 屏下卡宽可被拉到 ~680px、宽高比 >3:1）。
- *   1240 与常用功能块同值 → 两区块左缘始终对齐；≤1240 窗口不受影响（全宽）。
- *   卡片宽 = (1240 - 48 区padding) / 3 - 16 列距 ≈ 368px，是个不扁不挤的舒适值。 */
-.home-section-metrics { padding: 24px 24px 28px; max-width: 1240px; margin: 0 auto; }   /* 财务指标区块上下边距调大 */
+/* 【2026-10-06 响应式铺满】财务指标块随窗口全宽；卡片由 .metric-grid-row 的
+ *   grid auto-fit 自动增减列数（minmax(min(100%,300px),1fr)），窗口越宽列越多、卡片保持舒适尺寸，
+ *   不再限宽居中导致两侧留白；窄屏自动降列、不溢出。 */
+.home-section-metrics { padding: 24px 24px 28px; }   /* 财务指标区块上下边距调大 */
 /*  chunk.css 全局 reset：,ul{margin:0;padding:0}。
    浏览器默认 ul 有 padding-left:40px，导致"财务指标/行业对标"tab 文字比
    "常用功能"标题右移 40px 不对齐。此处显式清零与参考实现一致。 */
@@ -3892,9 +3825,9 @@ label.req::before {
   border: 1px solid var(--ty-border);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0,0,0,.04);
-  /* 填满格子：格子被 flex 拉伸到本行最高，卡片填满它，同行卡片底部才齐平。
-     卡片高度下限由格子的 min-height 决定（见上）。 */
+  /* 填满格子：.metric-slot 为固定高，卡片 height:100% 填满它，同行卡片恒等高。 */
   height: 100%;
+  overflow: auto;   /* 内容超出卡片高度时卡内滚动（滚动放在卡片上，不裁掉它自身的阴影） */
 }
 /* 卡片内层（.*-card）撑满并改为纵向 flex，使图表可 margin-top:auto 贴底，
    同一行各卡图表底边对齐（不同卡数字行数不同也无妨）。 */
@@ -3902,13 +3835,8 @@ label.req::before {
 /* 图统一为 .*-card 的直接最后子项，靠 margin-top:auto 贴底，同行各图底边对齐。
    单一约定：图是卡片根的最后子；改结构/加卡只要遵守此条即永远对齐，无需逐张打补丁。 */
 
-/* 【2026-10-04 首页 KPI 卡片优化】主数字放大成视觉重心，消除"宽而扁、主数不突出"的观感。
- *   原 .fv1-v 仅 14px（与子项标签同字号），整卡读起来像一条没有重点的扁条。
- *   主数字（资金余额 / 应收·应付 / 净利润 / 收入 / 费用…即各卡首个 .fv1-v）放大到 25px、保持 600 字重；
- *   子项（.fv2/.fv3/.fv7/.fv8）维持小字号 → 形成清晰层级。
- *   注：revenueCost 卡的「成本」同为 .fv1，一并放大（它也是该卡主数之一），无副作用。
- *   【2026-10-04 续·A 方案】22→25px：行业 KPI 主数普遍 20~32px，取 24~26 中值 25，
- *   配合卡片加高到 250px，主数成明确视觉重心、扁条感消除。 */
+/* 主数字放大成视觉重心：各卡首个 .fv1-v 用 25px（子项 .fv2/.fv3/.fv7/.fv8 维持小字号）。
+   注：revenueCost 卡的「成本」同为 .fv1，一并放大（它也是该卡主数之一），无副作用。 */
 .metric-card .fv1-v { font-size: 25px; }
 
 /* 【2026-10-06】首页卡片图表容器：图贴卡片底部（margin-top:auto），统一底部对齐
@@ -3921,8 +3849,7 @@ label.req::before {
   padding: 0 var(--card-pad-x);
   box-sizing: border-box;
 }
-/* 应收应付明细随末级科目数量增多而可能超高，锁定高度并内部滚动，
-   避免撑高整张卡（flex stretch 会连累同行）。 */
+/* 应收应付明细条目多时锁定高度、卡内滚动，避免撑破固定高的卡片。 */
 .arap-body { max-height: 210px; overflow-y: auto; }
 
 /* 卡片头部（metric-card-head：44px 高、圆角上 8px、两端对齐，
@@ -4082,45 +4009,6 @@ label.req::before {
         → e37a8ae（2026-10-04 收尾，删除余下规则）。
    ⚠ 请勿因"看起来少了个功能"而径直恢复本段。将来若要做，请按新方案重做：一处 CSS 单点 +
       一个开关按钮 + 一条卡口，**不要**再像旧版那样逐个 id/类硬编码 20+ 个选择器（删改时极易分家）。 */
-/* ============================================================
- * 指标/科目自定义弹窗（单例浮层 #metricPop / #subjectPop）
- * 结构：.ty-pop (flex 居中遮罩) > .ty-pop-mask(背景) + .ty-pop-box(内容)
- * ============================================================ */
-.ty-pop {
-  position: fixed; inset: 0; z-index: 1200;
-  display: none; align-items: center; justify-content: center;
-}
-.ty-pop[style*="flex"] { display: flex; }
-.ty-pop-mask {
-  position: absolute; inset: 0; background: rgba(2, 36, 51, 0.35);
-}
-.ty-pop-box {
-  position: relative; width: 320px; max-width: 90vw;
-  background: var(--ty-white); border-radius: 8px; overflow: hidden;
-  box-shadow: 0 10px 40px rgba(2, 36, 51, 0.25); font-size: var(--fs-sm);
-}
-.ty-pop-title {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; font-weight: 400; color: var(--ty-text);
-  border-bottom: 1px solid var(--ty-blue-2);
-}
-.ty-pop-title .close { font-style: normal; font-size: 18px; color: var(--ty-text-3); cursor: pointer; line-height: 1; }
-.ty-pop-title .close:hover { color: var(--ty-text); }
-.ty-pop-content { padding: 12px 16px; max-height: 60vh; overflow-y: auto; }
-.ty-pop-tip { color: var(--ty-blue); font-size: var(--fs-xs); margin-bottom: 8px; }
-.ty-pop-list { display: flex; flex-direction: column; gap: 2px; }
-.ty-pop-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 12px 16px; border-top: 1px solid var(--ty-blue-2);
-}
-.ty-pop-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; cursor: pointer; color: var(--ty-text);
-  border-radius: 4px;
-}
-.ty-pop-row:hover { background: var(--ty-blue-2); }
-.ty-pop-row input { width: 15px; height: 15px; accent-color: var(--ty-blue); }
-
 /* 资金余额卡片期间选择：原生 select 套 ty-select 外观（select-period 箭头） */
 .ty-select.select-period select.ty-select-selection-item {
   -webkit-appearance: none;
@@ -4261,26 +4149,23 @@ label.req::before {
    数据刷新时不会因为 1/8 宽度不同而左右跳动。财务看板逐行比对金额时很实用。 */
 .fv1-v, .fv2-v, .fv3-v, .fv5-v, .fv7-v, .fv8-v { font-variant-numeric: tabular-nums; }
 
-  /* 【2026-10-05 首页财务指标·负数红字】负值标红（行业惯例：红字＝负数）。
-   *   不动全局 signed（Ledger/Voucher 等多页共用，改了会污染全站）；首页用 setSigned
-   *   局部给负值元素挂 .neg 类，子项在渲染处直接加 neg。各级别（主数/子项/比率/明细）统一红。
-   *   特异度 0,3,0 高于 .fv7-v.is-rate(0,2,0) 等，确保覆盖。 */
-  .metric-card .fv1-v.neg,
-  .metric-card .fv2-v.neg,
-  .metric-card .fv3-v.neg,
-  .metric-card .fv5-v.neg,
-  .metric-card .fv7-v.neg,
-  .metric-card .fv8-v.neg,
-  .metric-card .ai-val.neg { color: var(--ty-red); }
+/* 首页财务指标·负数红字：负值标红（行业惯例：红字＝负数）。
+   不动全局 signed（Ledger/Voucher 等多页共用）；首页用 setSigned 局部给负值元素挂 .neg。
+   特异度 0,3,0 高于 .fv7-v.is-rate(0,2,0) 等，确保覆盖。 */
+.metric-card .fv1-v.neg,
+.metric-card .fv2-v.neg,
+.metric-card .fv3-v.neg,
+.metric-card .fv5-v.neg,
+.metric-card .fv7-v.neg,
+.metric-card .fv8-v.neg,
+.metric-card .ai-val.neg { color: var(--ty-red); }
 
-  /* 【2026-10-05 主数↔子项分隔线】主数行(.fv1)下方 1px 细线，强化"主张量 vs 分解项"层级；
-   *   6 张卡主数均为 .fv1 且位于主数区顶部，统一选择器对所有卡语义一致、不会画乱。 */
-  .metric-card .fv1 { border-bottom: 1px solid var(--ty-border); padding-bottom: 8px; margin-bottom: 8px; }
+/* 主数↔子项分隔线：主数行(.fv1)下方 1px 细线，强化「主张量 vs 分解项」层级。 */
+.metric-card .fv1 { border-bottom: 1px solid var(--ty-border); padding-bottom: 8px; margin-bottom: 8px; }
 
-  /* 【2026-10-05 卡片 hover 反馈】卡片主数/子项可点跳利润表/总账，hover 阴影增强可点感；
-   *   仅阴影、无位移，避免布局抖动（稳定优先）。 */
-  .metric-card { transition: box-shadow .15s ease; }
-  .metric-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+/* 卡片 hover 反馈：主数/子项可点跳利润表/总账，hover 阴影增强可点感（仅阴影、无位移）。 */
+.metric-card { transition: box-shadow .15s ease; }
+.metric-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
 
 /* ---- 较上期/较同期 箭头图标（ic-inc 增=红 / ic-dec 减=绿）---- */
 .ic {
@@ -4348,23 +4233,17 @@ label.req::before {
 .marginT8 { margin-top: 8px; }
 
 /* ============================================================
- * 顶部栏下拉：期间 / 用户
+ * 顶部栏：用户（记账员入口，点击改名的按钮）
  * ============================================================ */
-.topbar-period, .topbar-user { position: relative; }
-.topbar-period { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); color: var(--ty-white); border-radius: 4px; padding: 4px 10px; font-size: var(--fs-sm); cursor: pointer; }
-.topbar-period:hover { background: rgba(255,255,255,.2); }
-.topbar-user { color: var(--ty-text); font-size: var(--fs-sm); cursor: pointer; padding: 4px 6px; display: flex; align-items: center; gap: 4px; background: transparent; border-radius: 0; }
+.topbar-user {
+  position: relative;
+  color: var(--ty-text); font-size: var(--fs-sm); cursor: pointer;
+  padding: 4px 6px; display: flex; align-items: center; gap: 4px;
+  background: transparent; border-radius: 0;
+}
 .topbar-user #topOperator { color: var(--ty-text); }  /* 统一深色（原蓝色下划线，消除顶栏颜色杂乱） */
 .topbar-user:hover #topOperator { color: var(--ty-blue); }
 .topbar-user-arrow { font-size: var(--fs-lg); font-weight: 600; line-height: 1; color: var(--ty-text-2); }
-.user-pop, .period-pop { position: absolute; top: 110%; right: 0; background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 200; min-width: 160px; overflow: hidden; }
-.user-pop a { display: block; padding: 10px 14px; font-size: var(--fs-sm); color: var(--ty-text); cursor: pointer; }
-.user-pop a:hover { background: var(--ty-nav-active); color: var(--ty-blue); }
-.user-pop-head { padding: 10px 14px; font-size: var(--fs-sm); font-weight: 400; color: var(--ty-text-2); border-bottom: 1px solid var(--ty-border); background: var(--ty-th-bg); }
-.period-pop { max-height: 320px; overflow-y: auto; min-width: 140px; }
-.period-pop a { display: block; padding: 8px 14px; font-size: var(--fs-sm); color: var(--ty-text); cursor: pointer; white-space: nowrap; }
-.period-pop a:hover { background: var(--ty-nav-active); color: var(--ty-blue); }
-.period-pop a.cur { background: var(--ty-nav-active); color: var(--ty-blue); font-weight: 400; }
 
 /* ============================================================
  * 顶部栏：账套/期间下拉（ty-layout-accountselect 复刻）
@@ -4454,12 +4333,12 @@ label.req::before {
   margin: 0 !important;
   white-space: nowrap !important;
   min-width: 0 !important;   /* 允许中列内容随窗口收缩（账套名省略），不溢出压右列搜索框 */
-  gap: 16px !important;      /* 【2026-10-06】账期与账套合并一行纯文字，间距适当放大 */
+  gap: 10px !important;      /* 账期与账套间距收紧，顶栏更紧凑 */
 }
 .topbar .right-menu-item {
   display: inline-flex !important;
   align-items: center !important;
-  padding: 0 8px !important;
+  padding: 0 !important;          /* 清零内距，期间↔账套间距统一交由 .right-menu 的 gap 控制 */
   color: var(--ty-text) !important;
   cursor: pointer !important;
   outline: none !important;
@@ -4491,34 +4370,40 @@ label.req::before {
   margin: 0 !important;
 }
 
-/* 账套块（与账期合并为一行纯文字，去掉选择框边框/背景） */
+/* 账套块：与顶栏「快速跳转」「搜索框」统一成同一套带框控件（高 28px / 边框 --ty-border-2 / 圆角 6px） */
 .topbar .acct-book-block .topbar-acct-btn {
   display: inline-flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  height: auto !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
   line-height: normal !important;
-  padding: 0 2px !important;
+  padding: 0 10px 0 12px !important;
   margin: 0 !important;
-  background: transparent !important;   /* 【2026-10-06】去掉账套选择框，改为纯文字（与账期合并一行、无框） */
-  border: none !important;
-  border-radius: 0 !important;
+  background: var(--ty-white) !important;
+  border: 1px solid var(--ty-border-2) !important;
+  border-radius: 6px !important;
   cursor: pointer !important;
   outline: none !important;
   color: var(--ty-text) !important;
   font-size: var(--fs-md) !important;
   font-weight: 400 !important;
-  transition: color .2s !important;
+  transition: border-color .15s, color .15s !important;
   min-width: 0 !important;
   max-width: none !important;
   width: auto !important;
   position: relative !important;
 }
-/* 无框后：聚焦时仅文字变蓝提示可点（不再有边框变化） */
+/* 框控件：悬停/聚焦时边框与文字转品牌蓝，提示可点（与快速跳转一致） */
+.topbar .acct-book-block .topbar-acct-btn:hover {
+  border-color: var(--ty-blue) !important;
+  color: var(--ty-blue-dark) !important;
+}
 .topbar .acct-book-block .topbar-acct-btn:focus,
 .topbar .acct-book-block .topbar-acct-btn:focus-visible {
-  color: var(--ty-blue) !important;
+  border-color: var(--ty-blue) !important;
+  color: var(--ty-blue-dark) !important;
 }
 .topbar .acct-book-name {
   display: inline-block !important;
@@ -4554,8 +4439,8 @@ label.req::before {
   position: fixed;
   z-index: 1300;
   background: var(--ty-white);
-  border: 1px solid var(--ty-border);
-  border-radius: 4px;
+  border: 1px solid var(--ty-border-2);
+  border-radius: 6px;
   box-shadow: 0 6px 18px rgba(0,0,0,.12);
   padding: 4px 0;
   max-height: 320px;
@@ -4574,7 +4459,8 @@ label.req::before {
   cursor: pointer;
   white-space: nowrap;
 }
-.book-dropdown .book-item:hover {
+.book-dropdown .book-item:hover,
+.book-dropdown .book-item.active {   /* 键盘 ↑/↓ 高亮（与 hover 同色） */
   background: var(--ty-blue-2);
   color: var(--ty-blue);
 }
@@ -4611,7 +4497,7 @@ label.req::before {
 /* ——— 右列（搜索框 + 操作员） ——— */
 .topbar .topbar-right {
   justify-content: flex-start !important;   /* 【2026-10-06】整个顶栏左对齐：右列搜索+用户也贴左 */
-  gap: 14px !important;   /* 【2026-10-06】放大搜索与用户间距 */
+  gap: 10px !important;   /* 快速跳转/搜索/用户间距收紧 */
 }
 
 /* ============================================================
@@ -4642,10 +4528,10 @@ label.req::before {
   height: 28px;                 /* 【2026-10-06】由 32px 降到 28px（与全站 .btn 等高），避免比顶栏纯文字显得过高、更协调 */
   box-sizing: border-box;
   background: var(--ty-white);
-  border: 1px solid var(--ty-border-2);   /* 【2026-10-06】与页面筛选框（期间/科目）边框色统一，全站表单框一致 */
-  border-radius: 4px;           /* 与账套选择框圆角统一 */
+  border: 1px solid var(--ty-border-2);   /* 与页面筛选框（期间/科目）边框色统一，全站表单框一致 */
+  border-radius: 6px;           /* 与顶栏「账套选择」「快速跳转」圆角统一 */
   padding: 0 4px 0 10px;
-  margin-right: 6px;
+  margin-right: 0;
 }
 .search-bar .search-input-wrap {
   display: flex; align-items: center; gap: 4px; padding: 0 2px;
@@ -4653,12 +4539,22 @@ label.req::before {
 }
 .search-bar .search-input {
   flex: 0 1 auto;              /* 不强制撑满父，宽度交给 field-sizing 随输入内容自动 */
-  width: 220px;               /* 不支持 field-sizing 时的回退宽度 */
-  field-sizing: content;      /* 【2026-10-06】输入框宽度随输入文字自动伸缩（Chrome123+ / 现代浏览器） */
+  width: 220px;               /* 回退：不支持 field-sizing 的运行时维持固定宽（支持者见下方 @supports） */
   min-width: 120px;
   max-width: 420px;
   border: none; outline: none; font-size: var(--fs-md);   /* 字号与账套选择框统一 */
   color: var(--ty-text); background: transparent;
+}
+/* 【2026-10-06】原先把 width:220px 与 field-sizing:content 写在同一规则里 —— 二者互斥：
+   field-sizing 只在 width:auto 时生效，故"随输入文字伸缩"实际从未生效（实测输入超长文本仍恒 220px）。
+   拆到 @supports 内改成 width:auto + min-width:220px：空态/短文本仍取 220px 基准（观感与原来一致、不塌缩），
+   输入超过 220px 才撑开，上限交给上面的 max-width:420px。 */
+@supports (field-sizing: content) {
+  .search-bar .search-input {
+    width: auto;
+    min-width: 220px;        /* 空态/短文本基准宽，保持原 220px 观感 */
+    field-sizing: content;
+  }
 }
 
 /* 搜索结果下拉：fixed 顶层浮层（顶栏 .topbar 有 overflow:hidden + z-index 低于内容区，
@@ -4677,6 +4573,7 @@ label.req::before {
    合并后避免"改第一条不生效"（第二条同特异性仍在，只是恰好没写那几个属性）。 */
 .search-item .si-main { display: flex; justify-content: space-between; gap: 10px; line-height: 18px; }
 .search-item:hover { background: var(--ty-blue-2); }
+.search-item.active { background: var(--ty-blue-2); }   /* 键盘 ↑/↓ 高亮（与 hover 同色，提示当前待选） */
 .search-item .si-title { font-weight: 400; color: var(--ty-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-item .si-sub { font-size: var(--fs-xs); color: var(--ty-muted); }
 .search-item .si-amt { color: var(--ty-red); font-family: var(--ty-font); }
@@ -6063,7 +5960,7 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
   content: ''; width: 6px; height: 6px; border-radius: 50%;
   background: var(--ty-orange); flex: 0 0 auto;
 }
-.home-backup-tip a { cursor: pointer; white-space: nowrap; }
+.home-backup-tip a, .home-backup-tip button { padding: 0; cursor: pointer; white-space: nowrap; }
 /* 动作走蓝色可点文字（与"设为默认/停用"同款），悬停才加下划线 */
 .home-backup-tip #btnBackupTipGo { color: var(--ty-blue-dark); }
 .home-backup-tip #btnBackupTipGo:hover { text-decoration: underline; }
@@ -6077,7 +5974,7 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
 .card-sub { margin: 14px 0 6px; padding: 8px 0 0; font-size: var(--fs-sm); font-weight: 500; color: var(--ty-text); border-top: 1px solid var(--ty-border-2); }
 .card-tools { margin-left: auto; display: flex; gap: 8px; }
 /* card-head 右侧操作链接（蓝色文字，非按钮） */
-.card-head-op { margin-left: 10px; color: var(--ty-blue); font-size: var(--fs-sm); cursor: pointer; user-select: none; }
+.card-head-op { margin-left: 10px; padding: 0; color: var(--ty-blue); font-size: var(--fs-sm); cursor: pointer; user-select: none; }
 .card-head-op:hover { text-decoration: underline; }
 .card-filter { padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); background: var(--ty-white); }   /* 原为 var(--st-panel-bg)（= --ty-border #e2e7ec 灰底），与白卡不协调，改白；全站仅操作日志卡使用 */
 .card-filter .filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
@@ -6163,7 +6060,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .orig-batch-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 108px; padding: 4px 0;
   background: var(--ty-white); border: 1px solid var(--ty-border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, .12); z-index: 80; }
 .orig-batch-menu a { display: block; padding: 7px 14px; color: var(--ty-text); text-decoration: none; font-size: var(--fs-sm); white-space: nowrap; }
-.orig-batch-menu a:hover { background: var(--ty-blue-2); color: var(--ty-blue); }
+.orig-batch-menu a:hover, .orig-batch-menu a:focus { background: var(--ty-blue-2); color: var(--ty-blue); outline: none; }
 .btn.ty-dropdown { position: relative; padding-right: 24px; }
 .btn.ty-dropdown::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; }
@@ -6275,9 +6172,13 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-range {
   position: relative; display: inline-block; vertical-align: middle;
 }
+/* 【2026-10-06】原为固定 220px（与科目框等宽），实测对不上内容：
+   单期「2026年10期」只需 146px（白留 74px 显宽），而区间「2026年10期 ~ 2026年12期」需 242px（反被裁）。
+   故改自适应：宽度随文案收缩/撑开，下限 148px 贴合单期、上限 260px 容纳区间（更长则省略号兜底）。 */
 .ty-period-trigger {
   position: relative; display: flex; align-items: center;
-  height: 28px; width: 220px; max-width: 100%; padding: 0 22px 0 8px;   /* 【2026-10-06】与科目框同固定宽，恒等宽 */
+  height: 28px; width: auto; min-width: 148px; max-width: 260px;
+  padding: 0 22px 0 8px;                              /* 左 8px 给 label、右 22px 留箭头 */
   background: var(--ty-white); border: 1px solid var(--ty-border-2); border-radius: 3px;
   cursor: pointer; white-space: nowrap;
 }
@@ -6309,7 +6210,10 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 }
 /* 文本字号与 .btn 对齐（原为 --fs-xs 12px，比按钮小一号，同排时显得矮小）；
    左侧的 .ty-period-trigger-label（「会计期间」）保持 --fs-xs —— 它是次要标签，小一号是对的。 */
-.ty-period-trigger-text { font-size: var(--fs-sm); color: var(--ty-text); }
+.ty-period-trigger-text {
+  font-size: var(--fs-sm); color: var(--ty-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;   /* 超出 260px 上限时省略号，不溢出边框 */
+}
 .ty-period-trigger-text.is-placeholder { color: var(--ty-text-3); }
 
 .ty-period-trigger::after {
@@ -6540,6 +6444,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .indent-4, .grid .indent-4 { padding-left: var(--ind-4); }
 .indent-5, .grid .indent-5 { padding-left: var(--ind-5); }
 .dl-tn:hover { background: var(--ty-blue-2, var(--ty-blue-2)); }
+.dl-tn:focus { outline: none; background: var(--ty-blue-2); box-shadow: inset 0 0 0 1px var(--ty-blue); }   /* 键盘聚焦行 */
 .dl-tn-parent { font-weight: 500; }
 /* .dl-arrow 的尺寸/颜色/悬停已统一到「展开折叠三角」唯一规范（见文末） */
 .dl-code {
@@ -6651,7 +6556,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   color: var(--ty-text);
 }
 .about-val.flex { flex: 1; }
-.about-link { color: var(--ty-blue); cursor: pointer; }
+.about-link { padding: 0; color: var(--ty-blue); cursor: pointer; }
 .about-link:hover { text-decoration: underline; }
 /* 「检查更新」的结果（2026-09-30）：就地显示在那四个字右侧，常驻不消失。
    此前走 showToast —— 它固定在**屏幕正中央**、看着像弹窗却没有任何可点处

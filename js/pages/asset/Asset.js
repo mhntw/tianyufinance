@@ -34,8 +34,17 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     ul.innerHTML = '';
     ul.appendChild(_assetTreeRoot('全部', selCode === '', onPick));
   }
+  /* 树项是 <li>：不补语义则键盘 Tab 不到（只有 click 委托）。
+     统一补 tabindex/role/data-kb-activate —— Enter/Space 由 app.js 的 TYKeyboard 全局激活委托转为 click。 */
+  function _kbTreeItem(li, selected) {
+    li.setAttribute('tabindex', '0');
+    li.setAttribute('role', 'treeitem');
+    li.setAttribute('aria-selected', selected ? 'true' : 'false');
+    li.setAttribute('data-kb-activate', '');
+    return li;
+  }
   function _assetTreeRoot(name, selected, onPick) {
-    var li = document.createElement('li');
+    var li = _kbTreeItem(document.createElement('li'), selected);
     li.className = 'orig-tree-parent' + (selected ? ' selected' : '');
     // 本树是平铺的（「全部」+ 末级），无展开/折叠，故不再输出三角占位。
     // 原 <span class="tree-arrow"></span> 是空标签：画三角的 CSS 选择器为
@@ -46,7 +55,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return li;
   }
   function _assetTreeLeaf(name, selected, onPick, code) {
-    var li = document.createElement('li');
+    var li = _kbTreeItem(document.createElement('li'), selected);
     li.className = 'orig-tree-child' + (selected ? ' selected' : '');
     li.innerHTML = esc(name);
     li.addEventListener('click', function () { onPick(code); });
@@ -1062,7 +1071,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       else el.removeAttribute('title');
     });
     $('assetModal').setAttribute('data-asset-id', id || '');
-    $('assetModal').classList.add('show');
+    openModal('assetModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
   // 收集表单为卡片对象
   function _collectAsset() {
@@ -1081,9 +1090,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       salvage: U.num($('aOriginal').value) * U.num($('aSalvageRate').value) / 100
     };
   }
-  $('btnCloseAsset').addEventListener('click', function () { $('assetModal').classList.remove('show'); });
-  $('btnCloseAssetHistory').addEventListener('click', function () { $('assetHistoryModal').classList.remove('show'); });
-  $('btnCloseAssetHistory2').addEventListener('click', function () { $('assetHistoryModal').classList.remove('show'); });
+  $('btnCloseAsset').addEventListener('click', function () { closeModal('assetModal'); });
+  $('btnCloseAssetHistory').addEventListener('click', function () { closeModal('assetHistoryModal'); });
+  $('btnCloseAssetHistory2').addEventListener('click', function () { closeModal('assetHistoryModal'); });
   // aAcq / aPeriodUsed 也挂上：这两个字段决定锚点月，变动时需即时刷新期初累计折旧的时点提示
   ['aOriginal', 'aSalvageRate', 'aLife', 'aAcq', 'aPeriodUsed'].forEach(function (id) {
     var el = $(id); if (el) el.addEventListener('input', _calcMonthDepr);
@@ -1134,7 +1143,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       showToast('卡片已' + (editId ? '更新' : '保存') + '；其开始使用日期为 ' + acqM +
         '，在当前期间（' + curPeriod + '）的清单中不显示 —— 请切换到 ' + acqM + ' 或之后查看');
     }
-    $('assetModal').classList.remove('show');
+    closeModal('assetModal');
     renderAssets(); syncAll();
   }
   $('btnSaveAsset').addEventListener('click', _saveAsset);
@@ -1382,9 +1391,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('catAsset').value = c ? c.asset : '1601';
     $('catDepr').value = c ? c.depr : '1602';
     $('catMemo').value = c ? c.memo : '';
-    $('catModal').classList.add('show');
+    openModal('catModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
-  $('btnCloseCat').addEventListener('click', function () { $('catModal').classList.remove('show'); });
+  $('btnCloseCat').addEventListener('click', function () { closeModal('catModal'); });
   $('btnSaveCat').addEventListener('click', function () {
     var idx = num($('catModal').getAttribute('data-idx'));
     var c = {
@@ -1397,7 +1406,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var list = assetCats();
     if (idx >= 0) list[idx] = c; else list.push(c);
     S.state.assetCats = list;
-    $('catModal').classList.remove('show');
+    closeModal('catModal');
     renderAssetCategory(); syncAll(); showToast('类别已保存');
   });
 
@@ -1478,7 +1487,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       });
       body.innerHTML = html;
     }
-    $('assetHistoryModal').classList.add('show');
+    openModal('assetHistoryModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
 
   /* 固定资产卡片页工具条「资产类别」弹窗入口 */
@@ -1486,13 +1495,11 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var opener = $('btnAssetCatMgr');
     if (opener) opener.addEventListener('click', function () {
       renderAssetCategory();
-      var m = $('assetCatListModal');
-      if (m) m.classList.add('show');
+      openModal('assetCatListModal');
     });
     var closer = $('btnCloseAssetCatList');
     if (closer) closer.addEventListener('click', function () {
-      var m = $('assetCatListModal');
-      if (m) m.classList.remove('show');
+      closeModal('assetCatListModal');
     });
   })();
   /* 卡片页工具条「部门」弹窗入口：**复用工资页那个「部门职员」弹窗**（部门基础资料全库只有一份，
@@ -1503,8 +1510,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!opener) return;
     opener.addEventListener('click', function () {
       if (globalThis.__renderDeptStaff) globalThis.__renderDeptStaff();
-      var m = $('deptStaffModal');
-      if (m) m.classList.add('show');
+      openModal('deptStaffModal');
     });
   })();
 

@@ -385,7 +385,7 @@ function renderAttachPanel() {
   panel.innerHTML = vAttachFiles.map(function (f, i) {
     return '<div class="vh-attach-item" title="' + (f.name || '') + '">' +
       '<span class="vh-attach-name">' + (f.name || '') + '</span>' +
-      '<a href="#" class="vh-attach-del" data-i="' + i + '" title="移除">✕</a>' +
+      '<a href="#" class="vh-attach-del" data-i="' + i + '" title="移除">×</a>' +
       '</div>';
   }).join('');
 }
@@ -1604,7 +1604,7 @@ function openVchTplSave() {
   var nm = $('vchTplSaveName'); if (nm) nm.value = first;
   var cat = $('vchTplSaveCat'); if (cat) cat.value = '';
   var amt = $('vchTplSaveAmt'); if (amt) amt.checked = false;
-  m.classList.add('show');
+  openModal('vchTplSaveModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
 }
 function commitVchTplSave() {
   var rows = (vRows || []).filter(function (r) { return r.code; });
@@ -1623,17 +1623,18 @@ function commitVchTplSave() {
   var r = S.saveVchTemplate(nm, entries);
   if (!r.ok) return showToast(r.msg, 'error');
   showToast('已保存为模板「' + r.tpl.name + '」（' + entries.length + ' 条分录）', 'success', 3200);
-  var m = $('vchTplSaveModal'); if (m) m.classList.remove('show');
+  closeModal('vchTplSaveModal');
   renderVchTplList();
 }
 function openVchTpl() {
-  var m = $('vchTplModal'); if (!m) return;
-  m.classList.add('show');
+  if (!$('vchTplModal')) return;
+  openModal('vchTplModal');
   var s = $('vchTplSearch'); if (s) s.value = '';
   renderVchTplList();
+  // 打开即聚焦搜索框：先于 openModal 的默认聚焦完成，故不会被抢走
   if (s) { try { s.focus(); } catch (e) {} }
 }
-function closeVchTpl() { var m = $('vchTplModal'); if (m) m.classList.remove('show'); }
+function closeVchTpl() { closeModal('vchTplModal'); }
 /* —— 系统模板（软件内置，只读）：套用前把基准科目适配到本账套科目 ——
  * 匹配顺序：本账套精确编码 → old/small2013 损益码迁移 → 同名科目 → 名称前缀取最短编码。
  * 匹配不到的行不进模板，避免带空科目行套用；缺行在卡片上红字提示、套用时提醒补录。
@@ -1848,7 +1849,7 @@ function applyVchTpl(t) {
   // 「保存为模板」面板
   var saveModal = $('vchTplSaveModal');
   if (saveModal) {
-    function hideSaveTpl() { saveModal.classList.remove('show'); }
+    function hideSaveTpl() { closeModal('vchTplSaveModal'); }
     var bSaveOk = $('btnVchTplSaveOk'), bSaveCls = $('btnVchTplSaveClose'), bSaveCal = $('btnVchTplSaveCancel');
     if (bSaveOk) bSaveOk.addEventListener('click', commitVchTplSave);
     if (bSaveCls) bSaveCls.addEventListener('click', hideSaveTpl);
@@ -1905,15 +1906,13 @@ globalThis.__VOUCHER__ = {
   var btn = document.getElementById('btnRecycleBin');
   if (!btn) return;
   btn.addEventListener('click', function () {
-    var modal = document.getElementById('recycleBinModal');
-    if (!modal) return;
-    modal.classList.add('show');
+    if (!document.getElementById('recycleBinModal')) return;
+    openModal('recycleBinModal');
     refreshRecycleBin();
   });
   // 关闭按钮
   function closeRecycleBin() {
-    var m = document.getElementById('recycleBinModal');
-    if (m) m.classList.remove('show');
+    closeModal('recycleBinModal');
   }
   var x = document.getElementById('recycleBinClose');
   if (x) x.addEventListener('click', closeRecycleBin);

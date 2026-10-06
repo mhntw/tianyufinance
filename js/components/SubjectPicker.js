@@ -41,8 +41,10 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
   opts = opts || {};
   const onlyParent = !!opts.onlyParent;
   const limit = opts.limit | 0;         // >0 时最多渲染这么多行（长列表收敛，避免一屏几百项）
-  const bareInput = !!opts.bareInput;   // 无内置搜索框，搜索由外部输入框驱动
-  const filterInput = opts.filterInput || null; // 外部输入框（bareInput=true 时用）
+  // 【2026-10-07】原先还有一个「内置搜索框」分支（bareInput=false 时才创建），
+  // 但全站两个调用点都传 bareInput:true，该分支从未被创建、也没有任何 keydown —— 纯死代码，已删除。
+  // 现在本弹层**恒由外部输入框驱动**：过滤 + ↑↓/Enter 键盘导航都挂在 filterInput 上。
+  const filterInput = opts.filterInput || null; // 外部输入框
   closeSubjectPop();
   const pop = document.createElement('div');
   pop.className = 'subj-range-pop';
@@ -53,17 +55,6 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
     boxShadow: '0 6px 20px rgba(0,0,0,.14)', width: '300px',
     fontSize: '13px', color: 'var(--ty-text)', overflow: 'hidden'
   });
-
-  const search = bareInput ? null : (function () {
-    const s = document.createElement('input');
-    s.placeholder = '搜索编码或名称';
-    Object.assign(s.style, {
-      width: '100%', boxSizing: 'border-box', border: 'none',
-      borderBottom: '1px solid var(--ty-border)', outline: 'none',
-      padding: '8px 10px', fontSize: '13px'
-    });
-    return s;
-  })();
 
   const list = document.createElement('div');
   Object.assign(list.style, { maxHeight: '280px', overflowY: 'auto' });
@@ -123,7 +114,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
   }
 
   render(''); // 打开弹层时始终显示全部，搜索靠 input 事件实时过滤（避免选完科目后再次打开被旧值锁死）
-  if (search) search.addEventListener('input', function () { render(search.value); });
+  // 内置搜索框的 input 监听随该死分支一并删除；过滤由外部 filterInput 的 input 事件承担（见下）
   if (filterInput) {
     // 外部输入框驱动过滤 + 键盘导航：↑↓ 移动高亮、Enter 选中、Esc 关闭
     filterInput._subjPopRender = render;
@@ -141,20 +132,18 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
       } else if (e.key === 'Escape') { closeSubjectPop(); }
     });
   }
-  if (search) pop.appendChild(search);
   pop.appendChild(list);
 
   // 定位：贴近触发元素下沿，超出视口则上翻
   document.body.appendChild(pop);
   const r = anchor.getBoundingClientRect();
   const top = r.bottom + 4;
-  const popH = 280 + (search ? 36 : 0) + 4;
+  const popH = 280 + 4;   // 列表高度上限 + 间隙（内置搜索框已删除，不再 +36）
   const flip = (top + popH > window.innerHeight) && (r.top - popH - 4 > 0);
   pop.style.left = r.left + 'px';
   pop.style.top = (flip ? r.top - popH - 4 : top) + 'px';
   pop.style.minWidth = Math.max(r.width, 220) + 'px';
   openPop = pop;
-  if (search) search.focus();
   return pop;
 }
 
@@ -212,7 +201,7 @@ export function bindSubjectPicker(input, opts) {
       var s = null, all = getSubjects() || [];
       for (var i = 0; i < all.length; i++) { if (String(all[i].code) === String(code)) { s = all[i]; break; } }
       onPick(code, s);
-    }, { bareInput: true, filterInput: input, onlyParent: onlyParent, limit: limit });
+    }, { filterInput: input, onlyParent: onlyParent, limit: limit });
   }
   input.addEventListener('focus', doOpen);
   input.addEventListener('click', doOpen);
