@@ -403,13 +403,13 @@
     }
     return { start: sInp ? sInp.value : '', end: eInp ? eInp.value : '' };
   }
-  // 期间格式化：兼容 "YYYY-MM" 与 "YYYYMM" 两种账套月份格式 -> "YYYY年第N期"
+  // 期间格式化：兼容 "YYYY-MM" 与 "YYYYMM" 两种账套月份格式 -> "YYYY年MM期"（补零、无「第」）
   // 注：本账套月份统一为 "YYYY-MM"（见 store.allMonths/currentPeriod），
   // 旧实现按 "YYYYMM" 取 substring(4,6) 会把 "2026-07" 误解析为 "2026年第0期"，故先去连字符归一。
   function formatPeriod(m) {
     if (!m) return '—';
     // 期间文案单点（见 store.js 的 periodText）：收口前顶栏/首页卡片/报表头各写一份，
-    // 同一个月出现「2026年第7期」「2026年07期」「2026年7期」三种写法。
+    // 同一个月曾出现「2026年第7期」「2026年07期」「2026年7期」三种写法（现统一为「2026年07期」）。
     return U.periodText(m);
   }
   function todayStr() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
@@ -878,9 +878,8 @@
 
   /** 所有可选菜单项（按功能分类）
    *  icon：iconcool 字形名（键见 js/ty-menu-icons.js 的 TY_MENU_ICON_PATHS）。
-   *        该库只有 26 个【分组级】字形，做不到「一功能一图标」，同组内按语义就近复用
-   *        （如报表组的资产负债表/应交税金明细表共用文档字形）；取不到字形时
-   *        renderQuickIcons 自动回退为「名称首字」，故 icon 缺失不会渲染空白。 */
+   *        库内共 29 个字形，24 个功能项已做到「一项一图」，无重复引用；
+   *        取不到字形时 renderQuickIcons 自动回退为「名称首字」，故 icon 缺失不会渲染空白。 */
   var QUICK_MENU_ITEMS = [
     { group: '凭证', items: [
       { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',       icon: 'icon-jizhangpingzheng' },
@@ -897,8 +896,8 @@
       { key: 'report-balance',  name: '资产负债表',   page: 'report-balance',icon: 'baobiao3' },
       { key: 'report-profit',   name: '利润表',       page: 'report-profit', icon: 'baobiao5' },
       { key: 'cash-flow',       name: '标准现金流量表',page:'report-cashflow',icon: 'zidingyibaobiao' },
-      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',icon: 'baobiao3' },
-      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',icon: 'baobiao5' },
+      { key: 'tax-payable',     name: '主要应交税金明细表',page:'report-tax',icon: 'shuiwu2' },
+      { key: 'expense-detail',  name: '费用明细表',   page: 'expense-detail',icon: 'feiyongjiancha' },
     ]},
     /* 标准：结账（独立页面，无子菜单，含期末处理/反结账 Tab） */
     { group: '结账', direct: true, page: 'settle', items: [
@@ -907,7 +906,7 @@
     { group: '资产', items: [
       { key: 'asset-card',          name: '固定资产卡片', page: 'asset-card',      icon: 'zichan3' },
       { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',  icon: 'zichan4' },
-      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',icon: 'zichan4' },
+      { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',icon: 'biandong' },
     ]},
     { group: '工资', items: [
       { key: 'salary-table', name: '工资',   page: 'salary', icon: 'gongzi3' },
@@ -924,9 +923,9 @@
   ];
 
   /** 默认勾选的菜单项（key 列表，顺序即首页展示顺序；录凭证为固定项，另计大卡片不占 15 个名额）
-   *  默认：录凭证（固定）→ 查凭证 → 明细账 → 总账 → 科目余额表 → 资产负债表 → 利润表 → 标准现金流量表 → 费用明细表
+   *  默认：录凭证（固定）→ 查凭证 → 明细账 → 总账 → 科目余额表 → 资产负债表 → 利润表 → 费用明细表
    */
-  var DEFAULT_QUICK_KEYS = ['voucher-edit','voucher-query','detail-ledger','general-ledger','trial-balance','report-balance','report-profit','cash-flow','expense-detail'];
+  var DEFAULT_QUICK_KEYS = ['voucher-edit','voucher-query','detail-ledger','general-ledger','trial-balance','report-balance','report-profit','expense-detail'];
   // 固定项：始终勾选、不可取消（录凭证是日常第一入口，取消会造成首页无凭证入口）
   var FIXED_QUICK_KEY = 'voucher-edit';
 
@@ -1032,8 +1031,8 @@
       var circle = d
         ? '<svg viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + d + '"/></svg>'
         : item.name.charAt(0);
-      // 圆点底色**不再内联**（原为 item.color，24 项十几种色，反馈"太杂太复杂"）——
-      // 统一交给 CSS 的 .qk-circle（--ty-blue-dark），改色只改样式表一处。
+      // 圆点底色统一交给 CSS 的 .qk-circle（--ty-blue-2 浅蓝底 + --ty-blue-dark 蓝字形），
+      // 改色只改样式表一处（单一数据源风格，避免"十几种色太杂"）。
       // circle（字形 path）来自 ty-menu-icons.js 的硬编码字形表，item.name 来自本文件
       // QUICK_MENU_ITEMS 的硬编码字面量 —— 两者都不是用户输入或导入数据，无注入面。
       /* escape-ok: circle 与 item.name 均为硬编码常量，不含用户输入 */
@@ -1671,8 +1670,8 @@
     // 报表/凭证子页面
     if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
 
-    // 同步导航 active 状态（nav-group-title / nav-pop-item / home-trigger）
-    document.querySelectorAll('.nav-group-title, .nav-pop-item, .home-trigger').forEach(function (el) {
+    // 同步导航 active 状态（nav-group-title / nav-pop-item）
+    document.querySelectorAll('.nav-group-title, .nav-pop-item').forEach(function (el) {
       el.classList.toggle('active', el.getAttribute('data-page') === page);
     });
     // 子页面激活时，也高亮其所属分组标题

@@ -10,6 +10,14 @@ const absFmt = H.absFmt;
 const signed = H.signed;
 
 function setEl(id, val) { const el = $(id); if (el) el.textContent = val; }
+// 【2026-10-05 负数红字】setEl 的"金额版"：写带符号文本给负值挂 .neg 类（CSS 标红）。
+//   不动全局 signed（Ledger/Voucher 等多页共用）；仅首页卡片用此，局部生效、零污染。
+function setSigned(id, val) {
+  var el = $(id);
+  if (!el) return;
+  el.textContent = signed(val);
+  el.classList.toggle('neg', val < 0);
+}
 
 /* ---------------- 首页指标口径常量 ----------------
  * 资金类：库存现金 + 银行存款 + 其他货币资金
@@ -192,8 +200,11 @@ function bindBackupTip() {
 
 /** 填充财务指标卡片数据：存量卡固定最新期末，三张流量卡各自独立期间 */
 function fillMetrics() {
-  // 最新期间：存量指标（资金余额/应收应付/预计可用资金）固定显示最新期末
-  var latestPeriod = (S.state.company && S.state.company.currentPeriod) || currentPeriod();
+  // 最新期间：存量指标（资金余额/应收应付/预计可用资金）固定显示「当前期」。
+  // 【2026-10-05】对标金蝶：首页 6 张卡统一用 currentPeriod()（当前期/最近有凭证期），
+  //   与首页顶栏「当前账期」(app.js:1685/1884 用 currentPeriod()) 保持一致；
+  //   不再用第三套 company.currentPeriod，也不再背离顶栏用 lastClosedPeriod 结账期。取数底座 subjectEndBalance 不动。
+  var latestPeriod = currentPeriod();
   var periodText = latestPeriod ? latestPeriod.replace('-', '年') + '期' : '--';
   // 三张流量卡片各自独立的期间对象
   var pProfit = resolvePeriod(periodProfit);
@@ -213,10 +224,10 @@ function fillMetrics() {
 
   // ---- 资金余额卡（存量：最新期末余额）----
   var totalFund = sumBalAt(FUND_CODES);
-  setEl('mFundBalance', signed(totalFund));
-  setEl('mBank', signed(balOfAt('1002')));
-  setEl('mCash', signed(balOfAt('1001')));
-  setEl('mOtherCash', signed(balOfAt('1012')));
+  setSigned('mFundBalance', totalFund);
+  setSigned('mBank', balOfAt('1002'));
+  setSigned('mCash', balOfAt('1001'));
+  setSigned('mOtherCash', balOfAt('1012'));
   setEl('periodFund', periodText);
 
   // 资金净收入 = 所选期间「资金收入 − 资金支出」（流量：区间累计）
@@ -230,7 +241,7 @@ function fillMetrics() {
       fundDr += a.dr; fundCr += a.cr;
     });
   });
-  setEl('mFundNet', signed(round2(fundDr - fundCr)));
+  setSigned('mFundNet', round2(fundDr - fundCr));
 
   // ---- 应收 / 应付（存量：最新期末余额；单科目，合计=明细之和，对齐首页卡片）----
   renderArapItems(latestPeriod, '1122', 'arapItemsAr', 'mReceivable', '应收');
@@ -242,10 +253,10 @@ function fillMetrics() {
   // 余额方向：资产类(应收)借正贷负 → 正常为正；负债类(应付)正常是贷方余额，取反后为正显示。
   var shortAr = sumBalAt(SHORT_AR_CODES);
   var shortAp = -sumBalAt(SHORT_AP_CODES);
-  setEl('mAvailCash', signed(round2(totalFund + shortAr - shortAp)));
-  setEl('mAvailFund', signed(totalFund));
-  setEl('mAvailAr', signed(shortAr));
-  setEl('mAvailAp', signed(shortAp));
+  setSigned('mAvailCash', round2(totalFund + shortAr - shortAp));
+  setSigned('mAvailFund', totalFund);
+  setSigned('mAvailAr', shortAr);
+  setSigned('mAvailAp', shortAp);
   setEl('periodAvail', periodText);
 
   // ---- 损益（流量：区间累计）----
@@ -260,7 +271,7 @@ function fillMetrics() {
   var plIsYearProfit = (periodProfit === 'currentYear' || periodProfit === 'lastYear');
   var plKeyProfit = plIsYearProfit ? 'ytd' : 'cur';
   var plProfit = S.plSummary(pProfit.to);
-  setEl('mNetProfit', signed(round2(plProfit.netProfit[plKeyProfit])));
+  setSigned('mNetProfit', round2(plProfit.netProfit[plKeyProfit]));
   setEl('mProfitRate', (plProfit.revenue[plKeyProfit] ? (plProfit.netProfit[plKeyProfit] / plProfit.revenue[plKeyProfit] * 100) : 0).toFixed(1) + '%');
   markPlRow('mNetProfit', plProfit.netProfit.ids);
   hintPlMissing(plProfit.netProfit, 'mNetProfit', '净利润');
@@ -268,8 +279,8 @@ function fillMetrics() {
   var plIsYearRC = (periodRevCost === 'currentYear' || periodRevCost === 'lastYear');
   var plKeyRC = plIsYearRC ? 'ytd' : 'cur';
   var plRC = S.plSummary(pRevCost.to);
-  setEl('bIncome', signed(round2(plRC.revenue[plKeyRC])));
-  setEl('bCost', signed(round2(plRC.cost[plKeyRC])));
+  setSigned('bIncome', round2(plRC.revenue[plKeyRC]));
+  setSigned('bCost', round2(plRC.cost[plKeyRC]));
   setEl('bGrossMargin', (plRC.revenue[plKeyRC] ? (1 - plRC.cost[plKeyRC] / plRC.revenue[plKeyRC]) * 100 : 0).toFixed(1) + '%');
   markPlRow('bIncome', plRC.revenue.ids);
   markPlRow('bCost', plRC.cost.ids);
@@ -281,7 +292,7 @@ function fillMetrics() {
   var plFee = S.plSummary(pFee.to);
   var feeAmt = round2(plFee.expense[plKeyFee]);
   var revForFee = round2(plFee.revenue[plKeyFee]);
-  setEl('bExpense', signed(feeAmt));
+  setSigned('bExpense', feeAmt);
   setEl('feeToIncome', revForFee ? (feeAmt / revForFee * 100).toFixed(1) + '%' : '--%');
   hintPlMissing(plFee.expense, 'bExpense', '期间费用（销售+管理+财务）');
   // 费用子项：格式与「预计可用资金」卡片下方的三项完全一致（.fv2）——
@@ -297,11 +308,146 @@ function fillMetrics() {
       var attrs = f.ids && f.ids.length ? ' data-pl-rows="' + f.ids.join(',') + '"' : '';
       return '<div class="' + cls + '"' + attrs + '>'
            + '<div class="fv2-f">' + esc(f.label) + '</div>'
-           + '<div class="fv2-v">' + amtHtml + '</div>'
+           + '<div class="fv2-v' + (val < 0 ? ' neg' : '') + '">' + amtHtml + '</div>'
            + '</div>';
     }).join('');
   } else if (formulaEl) {
     formulaEl.innerHTML = '';
+  }
+
+  // ---- 首页三张流量卡片 ECharts 大图（【2026-10-06】接入，与卡片数字同源、接当前期语义）----
+  renderHomeCharts({
+    pProfit: pProfit, pRevCost: pRevCost, pFee: pFee,
+    plProfit: plProfit, plRC: plRC, plFee: plFee,
+    plKeyProfit: plKeyProfit, plKeyRC: plKeyRC, plKeyFee: plKeyFee
+  });
+}
+
+/* ---------------- 首页流量卡片 ECharts 大图（【2026-10-06】接入） ----------------
+ * 三张流量卡（净利润/收入成本/费用）底部各嵌入一张 ECharts 图，与卡片数字同源：
+ *   净利润 → 折线（截至所选期间末月的最近 6 个月净利润趋势）
+ *   收入成本 → 双柱（最近 6 个月收入 / 成本）
+ *   费用 → 饼图（所选期间费用子项构成，cur/ytd 随卡片期间模式）
+ * 期间语义：趋势截止月 = 卡片所选期间末月 p.to（本期=当月、上期=上月、本年=当期、去年=去年12月），
+ *   与卡片数字取数完全一致；饼图用 cur 或 ytd 取决于该卡片期间模式。
+ * 依赖：js/echarts.min.js（本地 vendor，仿 xlsx 离线可用），全局 window.echarts。
+ */
+var _homeChart = {};
+function _getChart(id) {
+  var el = document.getElementById(id);
+  if (!el || !window.echarts) return null;
+  if (!_homeChart[id]) _homeChart[id] = window.echarts.init(el);
+  return _homeChart[id];
+}
+// 截至 endYm 往前 n 个月（含 endYm），由近及远
+function _lastNMonths(n, endYm) {
+  var arr = [], ym = endYm;
+  for (var i = 0; i < n; i++) { arr.unshift(ym); ym = U.prevMonth(ym); }
+  return arr;
+}
+function renderHomeCharts(ctx) {
+  if (!window.echarts) return;
+  // 净利润折线
+  var mp = _lastNMonths(6, ctx.pProfit.to);
+  var c1 = _getChart('chartNetProfit');
+  if (c1) {
+    var net = mp.map(function (m) { return round2(S.plSummary(m).netProfit.cur); });
+    c1.setOption({
+      grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      xAxis: { type: 'category', data: mp.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      series: [{ type: 'line', smooth: true, data: net, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
+    });
+    c1.resize();
+  }
+  // 收入成本双柱
+  var mr = _lastNMonths(6, ctx.pRevCost.to);
+  var c2 = _getChart('chartRevCost');
+  if (c2) {
+    var rev = mr.map(function (m) { return round2(S.plSummary(m).revenue.cur); });
+    var cst = mr.map(function (m) { return round2(S.plSummary(m).cost.cur); });
+    c2.setOption({
+      grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['收入', '成本'] },
+      xAxis: { type: 'category', data: mr.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      series: [
+        { name: '收入', type: 'bar', data: rev, barMaxWidth: 14, itemStyle: { color: '#3b6fe0', borderRadius: [3, 3, 0, 0] } },
+        { name: '成本', type: 'bar', data: cst, barMaxWidth: 14, itemStyle: { color: '#f0a23b', borderRadius: [3, 3, 0, 0] } }
+      ]
+    });
+    c2.resize();
+  }
+  // 费用饼图（所选期间费用子项构成）
+  var c3 = _getChart('chartFee');
+  if (c3) {
+    var items = (ctx.plFee.expense.formula || []).map(function (f) {
+      var v = round2(ctx.plKeyFee === 'ytd' ? f.ytd : f.cur);
+      return { name: f.label, value: Math.abs(v) };
+    }).filter(function (x) { return x.value; });
+    c3.setOption({
+      tooltip: { trigger: 'item', formatter: function (p) { return p.name + '<br/>' + absFmt(p.value) + ' (' + p.percent + '%)'; } },
+      legend: { show: true, type: 'scroll', bottom: 0, textStyle: { color: '#8a94a6', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '45%'], avoidLabelOverlap: true, label: { show: false }, data: items, color: ['#3b6fe0', '#f0a23b', '#46b97a', '#9b6fe0', '#e06f8a', '#5bc0de'] }]
+    });
+    c3.resize();
+  }
+
+  // ---- 存量卡片图表（固定当前期，显示截至当前期的最近 6 个月期末走势，与卡片主值同源）----
+  var ms = _lastNMonths(6, currentPeriod());
+  var labels = ms.map(function (m) { return m.slice(5) + '月'; });
+  // 资金余额折线（库存现金+银行存款+其他货币资金 期末余额）
+  var c4 = _getChart('chartFund');
+  if (c4) {
+    var fundSeries = ms.map(function (m) {
+      var s = 0; FUND_CODES.forEach(function (c) { s += subjectBalance(c, m); }); return round2(s);
+    });
+    c4.setOption({
+      grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      series: [{ type: 'line', smooth: true, data: fundSeries, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
+    });
+    c4.resize();
+  }
+  // 应收·应付双线（应收=1122 期末余额；应付=2202 取反为正，与卡片显示一致）
+  var c5 = _getChart('chartArap');
+  if (c5) {
+    var arSeries = ms.map(function (m) { return round2(subjectBalance('1122', m)); });
+    var apSeries = ms.map(function (m) { return round2(-subjectBalance('2202', m)); });
+    c5.setOption({
+      grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['应收', '应付'] },
+      xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      series: [
+        { name: '应收', type: 'line', smooth: true, data: arSeries, symbolSize: 4, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' } },
+        { name: '应付', type: 'line', smooth: true, data: apSeries, symbolSize: 4, lineStyle: { width: 2, color: '#f0a23b' }, itemStyle: { color: '#f0a23b' } }
+      ]
+    });
+    c5.resize();
+  }
+  // 预计可用资金折线（现有资金+短期应收−短期应付 期末净额）
+  var c6 = _getChart('chartAvail');
+  if (c6) {
+    var availSeries = ms.map(function (m) {
+      var tf = 0; FUND_CODES.forEach(function (c) { tf += subjectBalance(c, m); });
+      var sar = 0; SHORT_AR_CODES.forEach(function (c) { sar += subjectBalance(c, m); });
+      var sap = 0; SHORT_AP_CODES.forEach(function (c) { sap += subjectBalance(c, m); });
+      return round2(tf + sar - sap);
+    });
+    c6.setOption({
+      grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : absFmt(v); } },
+      xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      series: [{ type: 'line', smooth: true, data: availSeries, symbolSize: 5, lineStyle: { width: 2, color: '#46b97a' }, itemStyle: { color: '#46b97a' }, areaStyle: { color: 'rgba(70,185,122,0.08)' } }]
+    });
+    c6.resize();
   }
 }
 
@@ -351,16 +497,22 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
     return { name: s.name, code: s.code, v: subjectBalance(s.code, month) };
   }).filter(function (x) { return x.v; })
     .sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+  // 显示符号：资产(应收)借余正常为正、贷余异常(预收)标红；负债(应付)贷余正常为正、借余异常(预付)标红。
+  // 即"按科目正常方向归一"——取反仅对负债生效，标红(neg)取决于归一后 disp<0，与 setSigned 行为一致。
+  // 【2026-10-05】修复：应付原 signed(x.v) 显负号+红字，与同文件行250"取反后为正显示"及同页 mAvailAp 矛盾；
+  //   仅翻转显示符号，不动取数(subjectEndBalance 带符号底座)、不聚合、不写回。
+  var isLiability = (label === '应付');
   var html = '';
   children.forEach(function (x) {
+    var disp = isLiability ? -x.v : x.v;
     html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
-            '</span><span class="ai-val amt-link" data-codes="' + esc(x.code) + '">' +
-            signed(x.v) + '</span></div>';
+            '</span><span class="ai-val amt-link' + (disp < 0 ? ' neg' : '') + '" data-codes="' + esc(x.code) + '">' +
+            signed(disp) + '</span></div>';
   });
   box.innerHTML = html;
-  // 合计 = 父科目余额（父行已含全部下级）
+  // 合计 = 父科目余额（父行已含全部下级）；显示符号同明细：负债取反为正（与 mAvailAp 一致），异常方向才红
   var total = round2(subjectBalance(code, month));
-  setEl(totalId, signed(total));
+  setSigned(totalId, isLiability ? -total : total);
 }
 
 // 应收 / 应付 Tab 切换（卡片内两个主体互斥显隐）
@@ -450,8 +602,9 @@ function bindAmtJump() {
       case 'revenueCost':   p = resolvePeriod(periodRevCost); break;
       case 'fee':           p = resolvePeriod(periodFee); break;
       default: {
-        // 存量卡片（fundBalance / arap / estimatedBalance）：固定最新期末
-        var lp = (S.state.company && S.state.company.currentPeriod) || currentPeriod();
+        // 存量卡片（fundBalance / arap / estimatedBalance）：固定「当前期」，与 fillMetrics 的 latestPeriod 同源
+        // （防"卡片显示期 ≠ 点入内容期"错位）。【2026-10-05】对标金蝶，统一为 currentPeriod()（与顶栏当前账期一致）。
+        var lp = currentPeriod();
         p = { end: lp, from: lp, to: lp, text: lp ? ymText(lp) : '--' };
       }
     }
@@ -531,6 +684,13 @@ function setupHome() {
   bindAmtTargets();
   bindAmtJump();
   bindBackupTip();
+  // 【2026-10-06】图表 resize：窗口缩放时让首页 ECharts 实例跟随容器尺寸重绘（只绑一次）
+  if (!globalThis.__homeChartResizeBound) {
+    globalThis.__homeChartResizeBound = true;
+    window.addEventListener('resize', function () {
+      Object.keys(_homeChart).forEach(function (k) { if (_homeChart[k]) _homeChart[k].resize(); });
+    });
+  }
 }
 globalThis.__renderHome = refreshHome;
 globalThis.__HOME__ = {

@@ -65,7 +65,6 @@
               </div>
             </div>
           </div>
-          <span class="el-divider-vertical" role="separator"></span>
           <div class="topbar-user" id="topUser" title="当前操作员">
             <span id="topOperator">会计</span>
             <i class="topbar-user-arrow">∨</i>
@@ -83,9 +82,6 @@
       <div class="selftest-banner" id="selftestBanner" hidden></div>
 
       <div class="content-toolbar">
-        <div class="home-trigger active" data-page="home" title="首页">
-          <span class="tab-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg></span>
-        </div>
         <div class="tab-bar" id="tabBar"></div>
       </div>
 
@@ -160,6 +156,7 @@
                     <div class="fv3-v" id="mFundNet">--</div>
                   </div>
                 </div>
+                <div class="metric-chart" id="chartFund"></div>
               </div>
             </div>
           </div>
@@ -171,18 +168,17 @@
                   <div class="tab-wrapper"><ul><li class="active" data-arap="ar">应收</li><li data-arap="ap">应付</li></ul></div>
                   <span class="card-period" id="periodArap">--</span>
                 </div>
-                <div style="height:100%;">
-                  <div class="padding">
-                    <div class="arap-body" data-arap="ar">
-                      <div class="fv1"><div class="fv1-f">应收账款</div><div class="fv1-v" id="mReceivable">--</div></div>
-                      <div class="arap-items" id="arapItemsAr"></div>
-                    </div>
-                    <div class="arap-body" data-arap="ap" style="display:none;">
-                      <div class="fv1"><div class="fv1-f">应付账款</div><div class="fv1-v" id="mPayable">--</div></div>
-                      <div class="arap-items" id="arapItemsAp"></div>
-                    </div>
+                <div class="padding">
+                  <div class="arap-body" data-arap="ar">
+                    <div class="fv1"><div class="fv1-f">应收账款</div><div class="fv1-v" id="mReceivable">--</div></div>
+                    <div class="arap-items" id="arapItemsAr"></div>
+                  </div>
+                  <div class="arap-body" data-arap="ap" style="display:none;">
+                    <div class="fv1"><div class="fv1-f">应付账款</div><div class="fv1-v" id="mPayable">--</div></div>
+                    <div class="arap-items" id="arapItemsAp"></div>
                   </div>
                 </div>
+                <div class="metric-chart" id="chartArap"></div>
               </div>
             </div>
           </div>
@@ -194,14 +190,13 @@
                   <div class="title">预计可用资金</div>
                   <span class="card-period" id="periodAvail">--</span>
                 </div>
-                <div>
-                  <div class="padding">
-                    <div class="fv1"><div class="fv1-f">预计可用资金</div><div class="fv1-v" id="mAvailCash">--</div></div>
-                    <div class="fv2"><div class="fv2-f">现有资金</div><div class="fv2-v" id="mAvailFund">--</div></div>
-                    <div class="fv2"><div class="fv2-f">短期应收款</div><div class="fv2-v" id="mAvailAr">--</div></div>
-                    <div class="fv2"><div class="fv2-f">短期应付款</div><div class="fv2-v" id="mAvailAp">--</div></div>
-                  </div>
+                <div class="padding">
+                  <div class="fv1"><div class="fv1-f">预计可用资金</div><div class="fv1-v" id="mAvailCash">--</div></div>
+                  <div class="fv2"><div class="fv2-f">现有资金</div><div class="fv2-v" id="mAvailFund">--</div></div>
+                  <div class="fv2"><div class="fv2-f">短期应收款</div><div class="fv2-v" id="mAvailAr">--</div></div>
+                  <div class="fv2"><div class="fv2-f">短期应付款</div><div class="fv2-v" id="mAvailAp">--</div></div>
                 </div>
+                <div class="metric-chart" id="chartAvail"></div>
               </div>
             </div>
           </div>
@@ -215,12 +210,13 @@
                 </div>
                 <div class="padding">
                   <div class="detail">
-                    <div class="fv7"><div class="fv7-f">净利润</div><div class="fv7-v" id="mNetProfit">--</div></div>
+                    <div class="fv1"><div class="fv1-f">净利润</div><div class="fv1-v" id="mNetProfit">--</div></div>
                   </div>
                   <div class="detail" style="margin-top:24px;">
                     <div class="fv7"><div class="fv7-f">净利润率</div><div class="fv7-v is-rate" id="mProfitRate">--%</div></div>
                   </div>
                 </div>
+                <div class="metric-chart" id="chartNetProfit"></div>
               </div>
             </div>
           </div>
@@ -234,15 +230,16 @@
                 </div>
                 <div class="padding">
                   <div class="detail">
-                    <div class="fv7">
-                      <div class="fv7-f">收入</div><div class="fv7-v" id="bIncome">--</div>
+                    <div class="fv1">
+                      <div class="fv1-f">收入</div><div class="fv1-v" id="bIncome">--</div>
                     </div>
                   </div>
                   <div class="detail" style="margin-top:24px;">
-                    <div class="fv7"><div class="fv7-f">成本</div><div class="fv7-v" id="bCost">--</div></div>
+                    <div class="fv1"><div class="fv1-f">成本</div><div class="fv1-v" id="bCost">--</div></div>
                     <div class="fv8"><div class="fv8-f">毛利率</div><div class="fv8-v" id="bGrossMargin">--%</div></div>
                   </div>
                 </div>
+                <div class="metric-chart" id="chartRevCost"></div>
               </div>
             </div>
           </div>
@@ -257,7 +254,7 @@
                 <div class="fee-body">
                   <div class="padding">
                     <div class="detail">
-                      <div class="fv7"><div class="fv7-f">费用</div><div class="fv7-v" id="bExpense">--</div></div>
+                      <div class="fv1"><div class="fv1-f">费用</div><div class="fv1-v" id="bExpense">--</div></div>
                       <div class="formula-row" id="feeFormula"></div>
                     </div>
                   </div>
@@ -265,6 +262,7 @@
                     <div class="detail-split"><div class="fv5"><div class="fv5-f">费用占收入比</div><div class="fv5-v" id="feeToIncome">--%</div></div></div>
                   </div>
                 </div>
+                <div class="metric-chart" id="chartFee"></div>
               </div>
             </div>
           </div>
@@ -480,9 +478,9 @@
                  注：本页无「本年累计」列，跨年区间无口径冲突。 -->
             <div data-period="q" data-default="currentPeriod" data-range="true" data-on-change="__renderQuery"></div>
             <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
                 <div class="ty-subject-range" id="qCodeWrap">
+                  <span class="ty-subject-label">科目</span>
                   <input type="text" id="qCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
                 </div>
               </div>
@@ -513,6 +511,7 @@
         <div class="page-actions">
             <div data-period="gl" data-default="currentPeriod" data-on-change="__renderGl"></div>
             <div class="ty-subject-range" id="glCodeWrap">
+              <span class="ty-subject-label">科目</span>
               <input type="text" id="glCode" placeholder="全部科目" autocomplete="off" title="选择单个科目">
             </div>
             <span id="glFilterHint" class="gl-filter-hint" hidden></span>
@@ -554,9 +553,9 @@
       <section class="page" id="page-multi-ledger">
         <div class="page-actions">
             <div class="ykj-filter-item-box">
-              <label class="ykj-filter-item-box-label">科目</label>
               <div class="ykj-filter-item-box-content">
                 <div class="ty-subject-range" id="mlCodeWrap">
+                  <span class="ty-subject-label">科目</span>
                   <input type="text" id="mlCode" placeholder="请选择非明细科目" title="多栏账需选择有下级科目的科目">
                 </div>
               </div>
@@ -604,7 +603,7 @@
 
       <section class="page" id="page-report-balance">
         <div class="page-actions">
-            <div data-period="bs" data-default="lastClosedPeriod" data-on-change="__renderBs"></div>
+            <div data-period="bs" data-default="currentPeriod" data-on-change="__renderBs"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnBsExport">导出</button>
         </div>
@@ -623,7 +622,7 @@
 
       <section class="page" id="page-report-profit">
         <div class="page-actions">
-            <div data-period="pl" data-default="lastClosedPeriod" data-on-change="__renderPl"></div>
+            <div data-period="pl" data-default="currentPeriod" data-on-change="__renderPl"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnPlExport">导出</button>
         </div>
@@ -640,7 +639,7 @@
 
       <section class="page" id="page-report-cashflow">
         <div class="page-actions">
-            <div data-period="cf" data-default="lastClosedPeriod" data-on-change="__renderCf"></div>
+            <div data-period="cf" data-default="currentPeriod" data-on-change="__renderCf"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnCfExport">导出</button>
         </div>
@@ -657,7 +656,7 @@
 
       <section class="page" id="page-report-tax">
         <div class="page-actions">
-            <div data-period="tx" data-default="lastClosedPeriod" data-on-change="__renderTx"></div>
+            <div data-period="tx" data-default="currentPeriod" data-on-change="__renderTx"></div>
             <button class="btn" data-print>打印</button>
             <button class="btn" id="btnTxExport">导出</button>
         </div>
@@ -1245,7 +1244,7 @@
         <div class="page-actions">
             <div class="ykj-filter-item-box">
               <div class="ykj-filter-item-box-content">
-                <div data-period="ed" data-default="lastClosedPeriod" data-on-change="__renderExpenseDetail"></div>
+                <div data-period="ed" data-default="currentPeriod" data-on-change="__renderExpenseDetail"></div>
               </div>
             </div>
             <div class="ykj-filter-item-box">
@@ -1835,6 +1834,7 @@
   <script src="js/standards.js?v=dev"></script>
   <script src="js/store.js?v=dev"></script>
   <script src="js/xlsx.full.min.js?v=dev"></script>
+  <script src="js/echarts.min.js?v=dev"></script>
   <script src="js/ty-io.js?v=dev"></script>
   <script src="js/ty-menu-icons.js?v=dev"></script>
   <!-- buffer.js / mdb-reader.js 不再于此静态引入：二者合计 769K（703K + 66K），
