@@ -1211,39 +1211,12 @@ if (qThNo) qThNo.addEventListener('click', function () {
   var s = $('qPeriodStart'), e = $('qPeriodEnd'); renderQuery(s ? s.value : '', e ? e.value : '');
 });
 var bQNew = $('btnQNewVoucher'); if (bQNew) bQNew.addEventListener('click', function () { goPage('voucher'); });
-// btnQPrint 已加 data-print，由全局委托统一走 tyPrint()，此处不再单独绑定。
 // 查凭证导出：与列表同源（含跨期、科目过滤、字号排序），导出为 Excel
 var bQExport = $('btnQExport'); if (bQExport) bQExport.addEventListener('click', exportQuery);
-var bQDelete = $('btnQDelete'); if (bQDelete) bQDelete.addEventListener('click', async function () {
-  var cks = document.querySelectorAll('#qBody .row-check:checked');
-  if (!cks.length) { showToast('请先勾选要删除的凭证', 'warn'); return; }
-  // 规则：删除仅进回收站（可还原），属可逆操作 → 无需操作密码（与「清空回收站」等不可逆操作区分）。
-  // 但必须填写删除原因（审计留痕）：同一原因写入本批每张凭证的 deleteReason 与操作日志 reason 字段。
-  var reason = await H.promptAsync(
-    '您确认要删除选中的 ' + cks.length + ' 张凭证吗？删除会产生断号。请填写删除原因（必填，将记入各凭证与操作日志）：',
-    '',
-    { title: '删除凭证' }
-  );
-  if (reason === null || reason === undefined) return;   // 用户取消
-  if (!reason.trim()) return showToast('必须填写删除原因，未填写则取消删除', 'error');
-  // 同单张删除：不再弹二次确认（理由见 bindVchMore 里删除项的注释）
-  var n = 0, fail = 0, failMsg = '';
-  cks.forEach(function (c) {
-    var r = S.removeVoucher(c.getAttribute('data-id'), reason.trim());
-    if (r.ok) n++; else { fail++; if (!failMsg) failMsg = r.msg; }
-  });
-  if (n) { syncAll(); qRender(); }
-  if (n && fail) showToast('已删除 ' + n + ' 张，' + fail + ' 张未删：' + failMsg, 'warn');
-  else if (n) showToast('已删除 ' + n + ' 张凭证');
-  else if (fail) showToast('删除失败：' + failMsg, 'error');
-});
-var qCheckAll = $('qCheckAll');
-if (qCheckAll) qCheckAll.addEventListener('change', function () {
-  // 注意：本文件是 ES module（严格模式），forEach 回调里的 `this` 是 undefined，
-  // 写 c.checked = this.checked 会抛 TypeError 并被全局兜底捕获成「系统异常」提示。
-  // 统一用箭头函数继承外层 this，或直接引用 qCheckAll.checked（此处取后者，最直白）。
-  document.querySelectorAll('#qBody .row-check').forEach(function (c) { c.checked = qCheckAll.checked; });
-});
+/* 【2026-10-07】移除查凭证页「批量删除」按钮及其绑定，并一并不再渲染勾选列
+   （表头全选框 #qCheckAll + 每行 .row-check）。删除凭证入口保留在凭证编辑页
+   「更多」菜单（vchMoreDelete，带填原因 + 软删除进回收站），查凭证页只负责查看/导出，
+   勾选列已无用途，移除避免死 UI。对应 HTML 见 index.html（btnQDelete、#qCheckAll 已删）。 */
 
 // 取当前查询条件下的凭证列表（跨期逐月汇总 + 科目过滤 + 字号排序）。
 // 抽成独立函数，供列表渲染与 Excel 导出复用，保证「所见即所导」。
@@ -1342,14 +1315,11 @@ function renderQuery(start, end) {
       if (!matchSubjectCode(sc.codes, e.code)) { first = false; return; }
       var tr = document.createElement('tr');
       tr.setAttribute('data-vid', v.id);
-      var chk = first ? '<input type="checkbox" class="row-check" data-id="' + v.id + '">' : '';
       var dateCell = first ? v.date : '';
       var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>' + queryFlags(v, revOf, reversedSet)) : '';
       // 制单人来自账套数据（可能源自导入文件），必须转义后再拼进 HTML
       var makerCell = first ? escHtml(makerOf(v)) : '';
       tr.innerHTML =
-        // 复选框列不写内联对齐：对齐统一走「列对齐约定」（除金额列右对齐，其余左对齐）
-        '<td>' + chk + '</td>' +
         '<td>' + dateCell + '</td>' +
         '<td>' + noCell + '</td>' +
         // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
@@ -1368,7 +1338,7 @@ function renderQuery(start, end) {
   vs.forEach(function (v) { v.entries.forEach(function (e) { sumDr += U.num(e.dr); sumCr += U.num(e.cr); }); });
   var trt = document.createElement('tr');
   trt.className = 'grp-row';
-  trt.innerHTML = '<td></td><td colspan="4" class="ta-r">合 计</td>' +
+  trt.innerHTML = '<td colspan="4" class="ta-r">合 计</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumDr) + '</td>' +
     '<td class="ta-r mono grp-amt">' + money(sumCr) + '</td>' +
     // 末尾补空列：表头 10 列，本行 = 1(空) + 4(合计) + 2(借贷) + 3(补空) = 10。
