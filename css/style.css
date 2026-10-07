@@ -198,17 +198,7 @@
   border-top:1px solid var(--ty-border);
 }
 /* 顶栏"快速跳转"入口 */
-.cmd-trigger{
-  display:flex; align-items:center; gap:6px;
-  height:28px; box-sizing:border-box;
-  border:1px solid var(--ty-border-2); background:var(--ty-white);
-  color:var(--ty-text-3); border-radius:6px; padding:0 10px;   /* 文字用占位提示灰，与搜索框空态灰一致 */
-  font-size:var(--fs-md); cursor:pointer; font-family:var(--ty-font);
-  white-space:nowrap;          /* 防止中文在顶栏被压缩时逐字折行成竖排 */
-  flex-shrink:0;               /* 顶栏拥挤时不收缩，整词保持一行 */
-}
-.cmd-trigger:hover{ border-color:var(--ty-blue); color:var(--ty-blue-dark); }
-.cmd-trigger .cmd-kbd{ margin-left:2px; flex-shrink:0; }
+
 /* 【2026-10-06】搜索图标统一为 iconcool「sousuo」字形（\e692）：
    原先搜索框用 emoji 🔍、快速跳转用 Unicode ⌕，两者字形完全不同（前者带金属质感、后者是细小空心环）。
    iconcool 字形在本 em 框内留白较大，故 17px ≈ 原 15px 的 🔍 视觉重量；两处用同一字形同一字号，严格一致。 */
@@ -295,17 +285,7 @@ img, svg { display: block; max-width: 100%; }
 .relative { position: relative; }
 .absolute { position: absolute; }
 
-/* ---------- 主按钮基类（原 jdy-base.css §5） ---------- */
-/* 主按钮：.ty-btn-primary background:var(--ty-g-color-theme) → var(--ty-blue) */
-.ty-btn-primary {
-  background: var(--ty-btn);
-  color: var(--ty-white);
-  border-radius: 4px;
-  padding: 6px 16px;
-  font-size: var(--fs-md);
-  transition: background .15s;
-}
-.ty-btn-primary:hover { background: var(--ty-blue-dark); }
+
 
 /* ============================================================
  * 顶部栏（风格：白底 + 品牌logo）
@@ -386,20 +366,7 @@ img, svg { display: block; max-width: 100%; }
 }
 .topbar-acct-btn:hover { background: var(--ty-btn-hover); }
 
-/* 导入账套按钮 */
-.topbar-btn {
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  color: var(--ty-white);
-  background: var(--ty-btn);
-  border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-  transition: .12s;
-}
-.topbar-btn:hover { background: var(--ty-btn-hover); }
-.topbar-btn:disabled { opacity: .6; cursor: default; }
+
 
 /* 账套选择（右侧） */
 .topbar-company {
@@ -411,22 +378,7 @@ img, svg { display: block; max-width: 100%; }
 }
 .topbar-company:hover { color: var(--ty-blue); background: var(--ty-blue-2); }
 
-/* 搜索按钮 */
-.topbar-search-btn {
-  width: 30px; height: 30px;
-  border-radius: 6px;
-  border: 1px solid var(--ty-border-2);
-  background: var(--ty-white);
-  cursor: pointer;
-  font-size: var(--fs-md);
-  display: flex; align-items: center; justify-content: center;
-}
 
-.topbar-user {
-  font-size: var(--fs-xs);
-  color: var(--ty-text-2);
-  line-height: normal;   /* 覆盖 .topbar 继承的 line-height:48px，避免用户名被撑高溢出顶栏 */
-}
 
 /* ============================================================
  * 布局（.wrapper--2un8t：display:flex; height:100%; 侧栏与内容区同级 flex 兄弟平排）
@@ -994,22 +946,10 @@ section.page > .page-actions {
   min-width: 0;
 }
 
-/* 【2026-10-06】页面首行工具栏轻量化（与顶栏简洁风格统一）：
-   普通功能按钮（打印/导出/查询/回收站等）去边框白底 → 轻文字按钮（hover 浅蓝底）；
-   主按钮(.btn-primary 如"新增")、危险按钮(.btn-danger 如"删除")保留语义色，不弱化。
-   期间框已在 .ty-period-trigger 去框；科目输入框(.ty-subject-range)/复选框等非功能按钮保持原样。 */
-/* 【2026-10-06】首行功能按钮不要框，文字统一为可点击蓝色（期间框/科目框已恢复带框）；
-   主按钮(.btn-primary)/危险按钮(.btn-danger)也一并转蓝字无框，整行统一轻量蓝色文字 */
-.page-actions .btn,
-.page-actions .btn-primary,
-.page-actions .btn-danger {
-  background: transparent; border-color: transparent; color: var(--ty-blue);
-}
-.page-actions .btn:hover,
-.page-actions .btn-primary:hover,
-.page-actions .btn-danger:hover {
-  background: var(--ty-blue-2); border-color: transparent; color: var(--ty-blue);
-}
+/* 【2026-10-07 重建】移除"容器级覆盖"反模式：首行按钮不再被 .page-actions 统一抹成蓝字无框。
+   按钮视觉改由「语义类」决定 —— .btn-primary 蓝底实心(主)、.btn 白底灰边(次)、
+   .btn-danger 红底白字(危险)、.btn-ghost 透明蓝边(低强调)、.btn-link 纯文字(最低)。
+   同一语义全站视觉一致、层级清晰；期间框/科目框的"去框"是表单控件口径，与按钮无关。 */
 
 .filter-item { display: inline-flex; align-items: center; gap: 6px; }
 .filter-item label { font-size: var(--fs-sm); color: var(--ty-text-2); white-space: nowrap; }
@@ -1099,7 +1039,7 @@ select:not([class]):focus { border-color: var(--ty-blue); }
   color: var(--ty-text);
   background: var(--ty-white);
   border: 1px solid var(--ty-border-2);
-  border-radius: 3px;
+  border-radius: 4px;   /* 【2026-10-07】由 3px 统一为 4px，与 .btn-sm/.btn-xs/.vet-del 对齐 */
   cursor: pointer;
   transition: all .15s;
   white-space: nowrap;
@@ -1111,6 +1051,19 @@ select:not([class]):focus { border-color: var(--ty-blue); }
 }
 
 .btn:active { background: var(--ty-blue-2); }
+
+/* 键盘聚焦态（a11y）：全站基础 .btn 此前无 focus 轮廓，键盘 Tab 走查不可见。
+   实心主/危险钮上用白色描边更清晰；outline 独立于 background，不受子类覆盖影响。 */
+.btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-second:focus-visible,
+.btn-ghost:focus-visible,
+.btn-danger:focus-visible {
+  outline: 2px solid var(--ty-blue);
+  outline-offset: 2px;
+}
+.btn-primary:focus-visible,
+.btn-danger:focus-visible { outline-color: var(--ty-white); }
 
 .btn-primary {
   color: var(--ty-white);
@@ -1127,6 +1080,11 @@ select:not([class]):focus { border-color: var(--ty-blue); }
 /* 次要按钮（重置/上一页/下一页等，配合 .btn-primary 使用） */
 .btn-second { color: var(--ty-blue); background: var(--ty-white); border-color: var(--ty-border-2); }
 .btn-second:hover { border-color: var(--ty-blue); }
+
+/* 危险按钮（删除/清空等破坏性操作）：红底白字实心，与 .btn-primary 对称强对比。
+   基础层此前缺失（仅零星页面覆盖提及），导致"删除"无危险色；现已补齐，全站 .btn-danger 一律生效。 */
+.btn-danger { color: var(--ty-white); background: var(--ty-red); border-color: var(--ty-red); }
+.btn-danger:hover { color: var(--ty-white); background: var(--ty-red); border-color: var(--ty-red); filter: brightness(.92); }
 
 /* 独立在页面底部的保存按钮 */
 .page > .btn {
@@ -1979,29 +1937,9 @@ label.req::before {
 }
 .vt-left { display: flex; align-items: center; }
 .vt-right { display: flex; align-items: center; gap: 8px; }
-/* 新增凭证卡片（contentL：标题 + 副标题） */
-.voucher-btn {
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 6px 16px;
-  border: 1px solid var(--ty-blue);
-  border-radius: 4px;
-  background: var(--ty-white);
-  color: var(--ty-blue);
-  cursor: pointer;
-  line-height: 1.2;
-}
-.voucher-btn:hover { background: var(--ty-blue-2); }
-.voucher-btn .vb-title { font-size: var(--fs-md); font-weight: 400; }
-.voucher-btn .vb-sub { font-size: var(--fs-2xs); color: var(--ty-blue); }
+
 .voucher-toolbar .btn-primary { background: var(--ty-btn); color: var(--ty-white); }
-.voucher-toolbar .btn-danger { color: var(--ty-red); border-color: var(--ty-red); }
-.voucher-toolbar .btn-danger:hover { background: var(--st-danger-bg); }
-/* 说明：原 .btn-group + .btn-arrow 组合用于「按钮 + 下拉倒三角」，
-   但查凭证页的审核/打印/导出/删除四个 ▾ 背后并无任何下拉菜单，属纯装饰且误导用户，
-   已连同 HTML 一并移除。此处保留 .btn-group 供后续真正需要下拉的按钮复用。 */
-.btn-group { position: relative; display: inline-flex; }
+
 
 /* 表头行：凭证字+号+日期 | 标题+期间 | 附件（白底、细线分隔） */
 .voucher-head-row {
@@ -2783,7 +2721,7 @@ label.req::before {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
   padding: 16px;
 }
 
@@ -2806,6 +2744,14 @@ label.req::before {
   background: var(--ty-btn-hover);
   border-color: var(--ty-btn-hover);
 }
+
+/* 危险钮即使非首个子元素也保持红色（基础 .btn-danger 已定义红底白字），不被上方 first-child 蓝底规则覆盖 */
+.modal-actions .btn-danger {
+  color: var(--ty-white);
+  background: var(--ty-red);
+  border-color: var(--ty-red);
+}
+.modal-actions .btn-danger:hover { background: var(--ty-red); border-color: var(--ty-red); filter: brightness(.92); }
 
 .modal-title .modal-x {
   float: right; border: none; background: none; font-size: 20px; line-height: 42px;
@@ -3345,16 +3291,7 @@ label.req::before {
   font-weight: 400;
   border-bottom-color: var(--ty-blue);
 }
-.btn-block {
-  display: block;
-  width: 100%;
-  margin: 12px 0 4px;
-  height: 36px;
-  background: var(--ty-btn);
-  border-color: var(--ty-btn);
-  color: var(--ty-white);
-}
-.btn-block:hover { background: var(--ty-btn-hover); border-color: var(--ty-btn-hover); }
+
 
 /* ============================================================
  * Toast
@@ -3468,10 +3405,12 @@ label.req::before {
 /* 数据与安全-数据恢复（原基础功能区 backup-list，tool-card 系已随 #page-tools 删除） */
 .backup-list { margin-top: 12px; }
 .backup-item { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--ty-border); border-radius: 4px; margin-bottom: 8px; font-size: var(--fs-sm); }
-.btn-xs { padding: 3px 10px; font-size: var(--fs-xs); }
-.btn-danger-xs { padding: 3px 10px; font-size: var(--fs-xs); color: var(--ty-red); border-color: var(--ty-red); background: var(--ty-white); }
-.btn-danger-xs:hover { background: var(--st-danger-bg); }
-.book-ops .btn + .btn { margin-left: 6px; }
+.btn-xs { height: 24px; min-width: 0; padding: 0 8px; font-size: var(--fs-xs); }
+
+/* 凭证模板「目标科目」行删除钮（此前无 CSS 定义 = 浏览器裸按钮，风格缺失）；复用危险小钮语义 */
+.vet-del { height: 24px; padding: 3px 10px; font-size: var(--fs-xs); color: var(--ty-red); background: var(--ty-white); border: 1px solid var(--ty-red); border-radius: 4px; cursor: pointer; }
+.vet-del:hover { background: var(--st-danger-bg); }
+.book-ops .btn + .btn { margin-left: 8px; }
 
 /* ============================================================
  * 首页工作台（对标参考产品首页）
@@ -4233,19 +4172,6 @@ label.req::before {
 .marginT8 { margin-top: 8px; }
 
 /* ============================================================
- * 顶部栏：用户（记账员入口，点击改名的按钮）
- * ============================================================ */
-.topbar-user {
-  position: relative;
-  color: var(--ty-text); font-size: var(--fs-sm); cursor: pointer;
-  padding: 4px 6px; display: flex; align-items: center; gap: 4px;
-  background: transparent; border-radius: 0;
-}
-.topbar-user #topOperator { color: var(--ty-text); }  /* 统一深色（原蓝色下划线，消除顶栏颜色杂乱） */
-.topbar-user:hover #topOperator { color: var(--ty-blue); }
-.topbar-user-arrow { font-size: var(--fs-lg); font-weight: 600; line-height: 1; color: var(--ty-text-2); }
-
-/* ============================================================
  * 顶部栏：账套/期间下拉（ty-layout-accountselect 复刻）
  * ============================================================ */
 /* ============================================================
@@ -4262,7 +4188,7 @@ label.req::before {
 /* ——— 左区品牌：图标 + 完整标题（顶栏横贯全宽后，品牌统一在顶栏，含 TY 图标与名称） ——— */
 .topbar .topbar-brand {
   padding: 4px 12px 4px 10px !important;  /* 有图标：左侧 padding 10、右侧 12 */
-  gap: 10px !important;                   /* 图标与文字间距 10 */
+  gap: 11px !important;                   /* 图标与文字间距 11（2026-10-07：图标 30→32，间距 +1 保持呼吸感） */
   user-select: none !important;
   cursor: pointer !important;             /* 保留点击回首页，不改变视觉 */
   transition: none !important;            /* 鼠标悬停不做任何颜色/背景过渡 */
@@ -4272,11 +4198,13 @@ label.req::before {
   outline: none !important;
   box-shadow: none !important;
 }
-/* 鼠标悬停：不变色、不变背景（用户明确要求"不要蓝色/变色"） */
+/* 鼠标悬停/点击：不变色、不变背景、不冒框（用户明确要求"不要蓝色/变色"）。
+   ⚠ 【2026-10-07】原先这组连 :focus-visible 一并清掉，代价是**键盘用户完全看不出焦点在哪** ——
+   而它是 tabindex=0 + role=button 的可操作元素（键盘可达性补齐时接入了 data-kb-activate）。
+   现把 :focus-visible 移出本组，改由下面单独给它一个焦点环。 */
 .topbar .topbar-brand:hover,
 .topbar .topbar-brand:active,
-.topbar .topbar-brand:focus,
-.topbar .topbar-brand:focus-visible {
+.topbar .topbar-brand:focus {
   background: transparent !important;
   color: inherit !important;
   border: none !important;
@@ -4284,6 +4212,13 @@ label.req::before {
   box-shadow: none !important;
   opacity: 1 !important;
   transform: none !important;
+}
+/* 键盘焦点环（仅 :focus-visible）。WKWebView 实测：鼠标点击只命中 :focus（fv=false）→ 不冒框；
+   Tab 聚焦才命中 :focus-visible（fv=true）→ 看得见。故与上面"鼠标零变化"的要求不冲突。
+   位置必须在上一组之后：两者同为 !important 且特异性相同，靠书写顺序覆盖。 */
+.topbar .topbar-brand:focus-visible {
+  outline: 2px solid var(--ty-blue) !important;
+  outline-offset: 2px !important;
 }
 /* 嵌套的文字/容器 hover 时也完全不变色 */
 .topbar .topbar-brand:hover .topbar-brand-text-wrap,
@@ -4299,20 +4234,36 @@ label.req::before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;    /* 【2026-10-07】30 → 32：品牌名加粗到 600 后，图标需略大才配得住（实测比例更稳） */
+  height: 32px;
   flex-shrink: 0;
 }
-.topbar .topbar-brand-ico img { display: block; }  /* 顶栏用 SVG（logo-icon）矢量图，img 块化避免基线间隙 */
+.topbar .topbar-brand-ico img { display: block; width: 32px; height: 32px; }  /* 顶栏用 SVG（logo-icon）矢量图，img 块化避免基线间隙 */
+/* 【2026-10-07 品牌名分层】原先「添钰财务管理系统」整串同字号/同色/同字重（22px/500/+0.5px），
+   8 个字读起来是一堵墙 —— 品牌名不突出，识别性只能靠"整体放大"来补，而顶栏只有 60px（22px 已占 37%）。
+   现拆为两级：品牌名实（.brand-name：22px/600/主色/字距 0）、品类名虚（.brand-cat：14px/400/三级灰，
+   同一基线、左距 7px）。附带收益是**更省空间**：品牌盒 239 → 199px（实测），中列得到更多余量。
+   品类名用 --ty-text-3（#69737f，对白底 4.82:1，满足 WCAG AA 4.5:1）—— 勿再调浅。 */
 .topbar .topbar-brand-text {
-  font-size: 20px !important;       /* 【2026-10-06】放大品牌字号（原 17px 偏小不醒目），与顶栏控件协调 */
-  font-weight: 500 !important;      /* 适度加粗，靠字号而非夸张体积突出品牌 */
-  color: var(--ty-text) !important; /* 统一顶栏深色，不再孤立使用 #1a3a6b */
-  letter-spacing: 0.5px !important; /* 收紧字距，避免过散 */
+  font-weight: 400 !important;      /* 基准字重交由 .brand-name/.brand-cat 各自定义 */
+  letter-spacing: 0 !important;     /* 22px 下原来的 +0.5px（≈+0.023em）偏松，CJK 标题取 0 更"整" */
   line-height: 1 !important;
   white-space: nowrap !important;
   background: transparent !important;
   transition: none !important;
+}
+.topbar .topbar-brand-text .brand-name {
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  color: var(--ty-text) !important;
+  letter-spacing: 0 !important;
+}
+.topbar .topbar-brand-text .brand-cat {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  color: var(--ty-text-3) !important;
+  letter-spacing: 0 !important;
+  margin-left: 7px !important;      /* 与品牌名的呼吸距离（比字间距略大，避免被读成一串） */
 }
 
 /* ——— 中心列：right-menu（期别 + 账套）纯文字，与左品牌贴排（不再靠右） ——— */
@@ -4320,6 +4271,12 @@ label.req::before {
   justify-content: flex-start !important;  /* 【2026-10-06】flex-end→flex-start：窄屏时中列内容不再向左溢出压住左品牌标题 */
   align-items: center !important;
   min-width: 0 !important;
+  /* 【2026-10-07】margin-left:auto：把「中列（账期/账套）+ 右列（搜索）」整体推到顶栏右端。
+     顶栏自 2026-10-06 由 grid 改横向 flex 后，三个子块都从左依次排开 —— 品牌留在左端没问题，
+     但账期/账套/搜索也贴左边，整条顶栏就成了"全左对齐"。
+     auto margin 只吃掉「品牌」与「中列」之间的全部余量：中列内部仍是 flex-start 左排（账期→账套），
+     右列紧随中列，故三块之间的相对关系与窄屏收缩行为都不变。 */
+  margin-left: auto !important;
 }
 .topbar .right-menu {
   display: inline-flex !important;
@@ -4364,7 +4321,7 @@ label.req::before {
   display: inline-block !important;
   font-size: var(--fs-md) !important;
   color: var(--ty-text) !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;   /* 【2026-10-07】由 500 降回 400：账期与账套名字重一致，不再显得过重抢眼 */
   line-height: 48px !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -4503,6 +4460,24 @@ label.req::before {
 /* ============================================================
  * 顶部栏：全局搜索（kp-layout-search 复刻）
  * ============================================================ */
+/* 顶栏「快速跳转」入口（command-palette.js 动态注入，id=cmdTrigger）。
+   【2026-10-07 恢复】此前被误判为「0 使用的死样式」而删除，但 js/command-palette.js:146
+   仍在输出该类名——它是顶栏真实存在的入口按钮，删掉样式后变成裸按钮。
+   （教训：判断死样式必须同时扫 css / index.html / js，只 grep css 会漏掉 JS 动态输出的类。）
+   按新按钮规范对齐：高度 28px（同 .btn）、圆角 4px（统一圆角）。 */
+.cmd-trigger{
+  display:flex; align-items:center; gap:6px;
+  height:28px; box-sizing:border-box;
+  border:1px solid var(--ty-border-2); background:var(--ty-white);
+  color:var(--ty-text-3); border-radius:4px; padding:0 10px;
+  font-size:var(--fs-md); cursor:pointer; font-family:var(--ty-font);
+  white-space:nowrap;          /* 防止中文在顶栏被压缩时逐字折行成竖排 */
+  flex-shrink:0;               /* 顶栏拥挤时不收缩，整词保持一行 */
+}
+.cmd-trigger:hover{ border-color:var(--ty-blue); color:var(--ty-blue-dark); }
+.cmd-trigger:focus-visible{ outline:2px solid var(--ty-blue); outline-offset:2px; }
+.cmd-trigger .cmd-kbd{ margin-left:2px; flex-shrink:0; }
+
 .topbar-search { position: relative; display: flex; align-items: center; }
 /* 🔍 提交按钮：位于搜索框内最右（复刻） */
 .search-submit {
@@ -4916,12 +4891,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   color: var(--ty-text-2);
   margin-right: auto;
 }
-.settle-card .btn-ghost {
-  background: transparent;
-  border: 1px solid var(--ty-blue);
-  color: var(--ty-blue);
-}
-.settle-card .btn-ghost:hover { background: var(--ty-blue-2); }
 .settle-card.settle-card-disabled .btn-ghost {
   border-color: var(--ty-border-2);
   color: var(--ty-text-3);
@@ -5667,7 +5636,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .btn-ghost {
   background: transparent;
   color: var(--ty-blue);
-  border: 1px solid var(--ty-border);
+  border: 1px solid var(--ty-blue);   /* 【2026-10-07】边框灰→蓝，与 .btn-second 同走"蓝=可点"语义，消除 .btn-ghost 自身边框色矛盾 */
 }
 .btn-ghost:hover { background: var(--ty-blue-2); }
 
@@ -5937,16 +5906,21 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
 /* 复选/单选行：起点与 form-row 控件列一致（label 96px + gap 10px = 106px），checkbox 与输入框同列成线 */
 .card .chk-row,
 .card .radio-row { padding-left: 106px; }
-/* 首页「云备份」状态徽标：7 天节流、可忽略；平时不显示
+/* 首页「状态提醒徽标」：现有两处共用 —— ① 云备份（7 天节流）② 记账员未设置。平时不显示。
+   JS 契约：靠元素 id 的 display:none/'' 切换显隐（#homeBackupTip / #homeOperatorTip，见 Home.js 的 checkXxxTip）。
    【2026-10-04 由「满宽黄条」改为「状态徽标」】原为通栏浅黄条（--st-warn-bg 铺满整行、
    内边距 10px/14px、出现时把整页内容整体下压 54px），观感接近报错横幅。
    改为紧凑徽标：琥珀状态点 + 12px 文字 + 蓝色可点文字动作；宽度随内容、左侧随内容缩进 24px、
-   垂直占用降到约 26px。信息一项不减（三种状态的文案、去配置/去备份、× 静默 7 天都在），
-   只是不再抢视觉。JS 契约不变（仍靠 #homeBackupTip 的 display:none/'' 切换显隐）。 */
-.home-backup-tip {
+   垂直占用降到约 26px。信息一项不减（文案、动作、× 静默都在），只是不再抢视觉。
+   【2026-10-07】类名 .home-backup-tip → .home-tip：第二个使用者出现后，名字不该再绑定"备份"；
+   动作/关闭按钮由 id 选择器（#btnBackupTipGo / #btnBackupTipClose）改为 .tip-go / .tip-close ——
+   原先写死 id，新提醒没法复用同一套配色，只能复制一份样式。两条提醒同现时依次竖排，间距取下方 margin-top。 */
+/* 三条提醒的横向容器：桌面空间足够时排成一行；窄屏自动换行（优雅降级，不挤压） */
+.home-tips { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 10px 24px 0 24px; }
+.home-tip {
   display: flex; align-items: center; gap: 8px;
   width: fit-content;
-  margin: 10px 24px 0 24px;
+  margin: 0;   /* 外边距/缩进改由 .home-tips 容器统一负责，避免每条各自留白导致竖排 */
   padding: 3px 12px 3px 10px;
   background: var(--st-warn-bg);
   border: 1px solid var(--st-warn-bg);
@@ -5956,17 +5930,16 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
   line-height: 18px;
 }
 /* 琥珀状态点：表达"这是提醒"而非报错。橙色按全站惯例只用于图标/底色，不作文字。 */
-.home-backup-tip::before {
+.home-tip::before {
   content: ''; width: 6px; height: 6px; border-radius: 50%;
   background: var(--ty-orange); flex: 0 0 auto;
 }
-.home-backup-tip a, .home-backup-tip button { padding: 0; cursor: pointer; white-space: nowrap; }
+.home-tip a, .home-tip button { padding: 0; cursor: pointer; white-space: nowrap; }
 /* 动作走蓝色可点文字（与"设为默认/停用"同款），悬停才加下划线 */
-.home-backup-tip #btnBackupTipGo { color: var(--ty-blue-dark); }
-.home-backup-tip #btnBackupTipGo:hover { text-decoration: underline; }
-.home-backup-tip #btnBackupTipClose { font-size: var(--fs-md); color: var(--ty-text-3); line-height: 1; }
-.home-backup-tip #btnBackupTipClose:hover { color: var(--ty-text); }
-/* 从首页提醒跳转而来时，「云备份」按钮短暂高亮 */
+.home-tip .tip-go { color: var(--ty-blue-dark); }
+.home-tip .tip-go:hover { text-decoration: underline; }
+
+/* 从首页提醒跳转而来时，目标按钮短暂高亮（云备份 / 记账员 两处共用） */
 .btn-hl { outline: 2px solid var(--ty-orange); outline-offset: 1px; }
 /* 卡片标题栏（含右侧操作按钮）：字号统一 14px（整数，与 sys-tab 同级） */
 .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ty-border-2); font-weight: 400; color: var(--ty-text); font-size: var(--fs-md); }
@@ -6032,7 +6005,7 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .log-pager { display: flex; align-items: center; gap: 8px; }
 .log-page { font-size: var(--fs-xs); color: var(--ty-text-3); min-width: 56px; text-align: center; }
 .log-pagesize { height: 28px; border: 1px solid var(--ty-border-2); border-radius: 4px; font-size: var(--fs-xs); padding: 0 4px; }
-.btn-sm { height: 26px; min-width: 60px; padding: 0 12px; font-size: var(--fs-xs); line-height: 24px; border-radius: 4px; border: 1px solid transparent; cursor: pointer; }
+.btn-sm { height: 26px; min-width: 60px; padding: 0 12px; font-size: var(--fs-xs); line-height: 24px; border-radius: 4px; cursor: pointer; }
 .btn-sm.btn-primary { background: var(--ty-btn); color: var(--ty-white); }
 
 

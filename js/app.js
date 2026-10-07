@@ -1506,7 +1506,8 @@
 
     // --- 内联事件处理器移除后的委托绑定（B1 收敛） ---
     // （原 .vf-edit-maker 铅笔按钮已于 2026-09-21 移除：它是无实际行为的死按钮，
-    //   而改名功能本来就在右上角「记账员」，属重复入口 —— 去掉而非接通。）
+    //   而改名功能本来就在「记账员」设置里，属重复入口 —— 去掉而非接通。
+    //   ⚠ 2026-10-07：该入口已由顶栏迁至「系统设置 → 基本信息 → 记账员」，此描述同步更正。）
     // 总账 "展开所有级次" checkbox
     var glExp = $('glExpandAll');
     if (glExp) glExp.addEventListener('change', function () { if (globalThis.__renderGl) globalThis.__renderGl(); });
@@ -1530,7 +1531,10 @@
   var topOverlay = $('topOverlay');
   if (topOverlay) topOverlay.addEventListener('click', closeAllTopPop);
 
-  // 右上角：纯本地单机版，显示当前账套的记账员（不依赖云端账号）
+  // 系统设置 →「基本信息 → 记账员」：纯本地单机版，显示当前账套的记账员（不依赖云端账号）
+  // 【2026-10-07 迁址】原在顶栏右上角（`#topUser` 按钮 + `#topOperator` 文本）。
+  //   顶栏是常驻位置，而记账员是一次性设置（会计换人/离职才改）——常驻一个低频入口不划算，
+  //   且顶栏经轻量化收敛后只保留账期/账套/搜索/快速跳转。故迁入系统设置，与公司名称、启用期间同列。
   // 点击可改名：用于会计换人/离职场景。保存到 company.bookkeeper 并持久化，
   // 之后新录凭证的制单人、新操作日志的操作人都按新名字记录；
   // 历史凭证 maker 已固化、不受影响（可追溯离职前操作人）。
@@ -1539,31 +1543,56 @@
   //   「已删除 / 已结账 / 借贷平衡 / 被业务单据引用」，均【不】校验录入人。
   //   即：本单机版当前允许修改或删除他人录入的凭证，制单人（maker）仅作留痕，不作权限依据。
   //   若将来要启用该内控，需在 updateVoucher / removeVoucher 中比对 v.maker 与当前 bookkeeper。
-  function updateTopOperator() {
-    var topOperator = $('topOperator');
-    if (!topOperator) return;
+  /* 记账员是否「未设置」——**单一实现**。占位默认值（'记账员'/'财务'）一律视同未设置：
+     默认账套的 company.bookkeeper 就是 '财务'，所以"能记账"并不代表"填过名字"。
+     使用者：本文件的 updateOperatorLabel（设置页那一行显示）、Home.js 的首页提醒 checkOperatorTip。 */
+  function operatorUnset() {
     var S = window.S;
-    var name = (S && S.state && S.state.company && S.state.company.bookkeeper) || '记账员';
-    topOperator.textContent = name;
-    topOperator.title = '当前账套记账员（点击可修改，本地单机版无需登录）';
+    var name = (S && S.state && S.state.company && S.state.company.bookkeeper) || '';
+    /* 占位默认值（都算"未填真实姓名"，应触发提醒）：'记账员' / '财务' / '会计'
+       其中 '财务' 来自新建默认账套（store.js），'会计' 也属系统设置里的默认占位名。 */
+    return !name || name === '记账员' || name === '财务' || name === '会计';
   }
-  updateTopOperator();
+  globalThis.__operatorUnset__ = operatorUnset;
 
-  // 点击右上角记账员：打开居中弹窗改名（单机、单操作员，改账套记账员名即可留痕）
-  var topUserEl = $('topUser');
-  if (topUserEl && typeof window.S !== 'undefined') {
-    topUserEl.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var S = window.S;
-      if (!S || !S.state || !S.state.company) return;
-      var cur = S.state.company.bookkeeper || '记账员';
-      var inputEl = $('opNameInput');
-      if (inputEl) {
-        inputEl.value = cur === '记账员' ? '' : cur; // 若为占位默认值，则留空引导填写真实姓名
-        inputEl.focus(); inputEl.select();
-      }
-      openModal('operatorModal');
-    });
+  function updateOperatorLabel() {
+    var el = $('sysOpVal');
+    if (!el) return;
+    var S = window.S;
+    var name = (S && S.state && S.state.company && S.state.company.bookkeeper) || '';
+    // 未设置时显示灰色「未设置」：让"没填过"一眼可见，而不是伪装成一个像真名的默认值。
+    var isUnset = operatorUnset();
+    el.textContent = isUnset ? '未设置' : name;
+    el.classList.toggle('muted', isUnset);
+  }
+  updateOperatorLabel();
+
+  /* 打开改名弹窗。抽成函数是因为有两个入口：
+     ① 设置页「记账员 → 修改」按钮；② 首页提醒「去设置」跳过来后直接弹窗（Home.js bindHomeTips 的第 ③ 条）。
+     暴露为 globalThis.__OP_OPEN__ 供后者调用（与 __CS_OPEN_CONFIG__ 同一套做法）。 */
+  function openOperatorModal() {
+    var S = window.S;
+    if (!S || !S.state || !S.state.company) return;
+    var cur = S.state.company.bookkeeper || '';
+    var inputEl = $('opNameInput');
+    if (inputEl) {
+      // 占位默认值（'记账员'/'财务'）一律留空，引导填写真实姓名（保存逻辑同样拒绝它们）
+      inputEl.value = (cur === '记账员' || cur === '财务') ? '' : cur;
+    }
+    openModal('operatorModal');
+    /* ⚠ 聚焦必须在 openModal **之后**：显示前输入框还在 display:none 的弹窗里，
+       focus() 会被静默忽略 —— 原先就是先 focus 再 openModal，于是焦点实际落在
+       弹窗第一个可聚焦元素（标题栏的 ×）上，用户还得手动 Tab 回输入框。
+       （openModal 的兜底聚焦只在"焦点不在弹窗内"时才动手，故此处不会被覆盖。） */
+    if (inputEl) { inputEl.focus(); inputEl.select(); }
+  }
+  globalThis.__OP_OPEN__ = openOperatorModal;
+
+  // 点击「记账员」旁的「修改」：打开居中弹窗改名（单机、单操作员，改账套记账员名即可留痕）
+  // 【2026-10-07 迁址】原绑定在顶栏 `#topUser` 按钮上；现由系统设置页的 `#btnEditOperator` 承担。
+  var opEditBtn = $('btnEditOperator');
+  if (opEditBtn && typeof window.S !== 'undefined') {
+    opEditBtn.addEventListener('click', function () { openOperatorModal(); });
   }
   // 记账员改名弹窗：确定
   var btnOpSave = $('btnOpSave');
@@ -1582,7 +1611,7 @@
     // 持久化：localStorage + 服务端主账本 + 自动备份
     if (S.persist) S.persist();
     if (S.addLog) S.addLog('修改记账员', '将记账员由「' + cur + '」改为「' + name + '」', '设置');
-    updateTopOperator();
+    updateOperatorLabel();
     closeModal('operatorModal');
     showToast('记账员已改为「' + name + '」');
   });
@@ -1972,6 +2001,10 @@
   // force=true 时无论是否已激活都重渲染整页；默认 false 时若目标页已是 active 页
   // 则只同步导航高亮与标签栏、跳过重渲染——避免切回已打开标签时重复取数+重算、
   // 并保留用户当前滚动位置（多标签行为：已开的标签切回不重算）。
+  /* 【2026-10-07】此处曾加过"本次运行首次进凭证页 toast 轻推"，现撤掉：
+     记账员提醒统一由**首页的被动提醒条**承担（Home.js 的 checkOperatorTip，可 × 静默、可一键跳设置）。
+     同一件事挂两条渠道、其中一条还不可静默，只是更吵 —— 提醒应能被用户关掉。 */
+
   function goPage(page, force) {
     if (typeof force !== 'boolean') force = false;
     // 先记录目标页「进入前」是否已激活，用于「切回已打开标签不重渲染」优化。
@@ -2241,7 +2274,7 @@
       // 就绪后（__setServerStatus 置 _storeReady=true）再写入真实名或兜底名。
       if (_storeReady || name) tcEl.textContent = name || DEFAULT_COMPANY_NAME;
     }
-    updateTopOperator();
+    updateOperatorLabel();
   }
 
   // 统一刷新入口：优先全量刷新（__refreshAll），未定义时降级为顶部期间同步（syncAll）

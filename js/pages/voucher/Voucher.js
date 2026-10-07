@@ -1704,7 +1704,7 @@ function renderVchTplList() {
       + (segs ? '<div class="vch-tpl-preview">' + segs + '</div>' : '') + miss
       + '</div>'
       + '<div class="vch-tpl-ops">' + use
-      + (builtin ? '' : '<button type="button" class="btn btn-xs vch-tpl-del" data-id="' + escAttr(t.id) + '">删除</button>')
+      + (builtin ? '' : '<button type="button" class="btn btn-danger btn-xs vch-tpl-del" data-id="' + escAttr(t.id) + '">删除</button>')
       + '</div>'
       + '</div>';
   }

@@ -13,12 +13,15 @@
       <header class="topbar">
         <div class="topbar-left">
           <!-- 顶栏品牌：图标 + 完整标题（品牌统一在顶栏，侧栏不再单独放 logo，消除两处割裂） -->
-          <div class="topbar-brand" id="topbarBrand" title="返回首页" tabindex="0" role="button" data-kb-activate>
+          <!-- 品牌名与品类名分两个 span（2026-10-07）：原先整串同字号同色同字重，8 个字读起来是一堵墙，
+               识别性只能靠"整体放大"来补，而顶栏只有 60px。分层后品牌名实、品类名虚，且总宽更省 40px。
+               aria-label 用来说明"动作"（返回首页）：否则朗读器会把可访问名读成整串品牌文案。 -->
+          <div class="topbar-brand" id="topbarBrand" title="返回首页" aria-label="返回首页" tabindex="0" role="button" data-kb-activate>
             <span class="topbar-brand-ico" aria-hidden="true">
-              <img src="css/logo-icon.svg?v=dev" width="30" height="30" alt="">
+              <img src="css/logo-icon.svg?v=dev" width="32" height="32" alt="">
             </span>
             <span class="topbar-brand-text-wrap">
-              <span class="topbar-brand-text">添钰财务管理系统</span>
+              <span class="topbar-brand-text"><span class="brand-name">添钰</span><span class="brand-cat">财务管理系统</span></span>
             </span>
           </div>
 
@@ -63,10 +66,6 @@
               </div>
             </div>
           </div>
-          <button type="button" class="topbar-user" id="topUser" title="当前操作员">
-            <span id="topOperator">会计</span>
-            <i class="topbar-user-arrow">∨</i>
-          </button>
         </div>
       </header>
     <!-- 左侧导航：由 app.js 依据 QUICK_MENU_ITEMS 单一数据源渲染（与常用功能设置弹窗同源，自动同步） -->
@@ -90,12 +89,37 @@
 
         <div class="home-main">
 
-        <!-- 云备份提醒：距上次备份≥7天且期间有改动才显示；可忽略（×当天静默） -->
-        <div id="homeBackupTip" class="home-backup-tip" style="display:none">
-          <span id="homeBackupTipTxt"></span>
-          <button type="button" id="btnBackupTipGo">去备份</button>
-          <button type="button" id="btnBackupTipClose">×</button>
+        <!-- 首页提醒条：三条共用 .home-tip 外观（琥珀点 + 文案 + 蓝色动作 + ×）。
+             显示顺序 = 下面的 DOM 顺序，按"该先处理哪个"排：更新（一次性，错过就没了）
+             → 云备份（数据安全）→ 记账员（配置项，能一次填完）。
+             交互与静默规则统一在 Home.js 的 bindOneTip / checkXxxTip，勿在此写行内事件；
+             按钮一律用 .tip-go / .tip-close 选择器、**不带 id**（id 只留给需要被 JS 直接寻址的容器）。 -->
+
+        <!-- 有新版本：由 update.js 的启动静默检查推送（每版本节流 7 天，见 ty_update_notified）。
+             原先这里没有这条，而是弹一个「屏幕中央的常驻 Toast」—— 它有两个毛病：会被后续任何提示
+             顶掉内容（"常驻"其实常驻不住），且残留的 onclick 会让普通提示变成"点了就去下载"。
+             故改为本条（与另两条同一套范式：可 ×、不占屏幕中央、点击即下载）。 -->
+        <div class="home-tips">
+        <div id="homeUpdateTip" class="home-tip" style="display:none">
+          <span id="homeUpdateTipTxt"></span>
+          <button type="button" class="tip-go">去下载</button>
+          
         </div>
+
+        <!-- 云备份提醒：距上次备份≥7天且期间有改动才显示；可忽略（× 静默 7 天） -->
+        <div id="homeBackupTip" class="home-tip" style="display:none">
+          <span id="homeBackupTipTxt"></span>
+          <button type="button" class="tip-go">去备份</button>
+          
+        </div>
+
+        <!-- 记账员未设置提醒：company.bookkeeper 仍是占位名（'记账员'/'财务'/'会计'）时显示 -->
+        <div id="homeOperatorTip" class="home-tip" style="display:none">
+          <span id="homeOperatorTipTxt"></span>
+          <button type="button" class="tip-go">去设置</button>
+          
+        </div>
+        </div><!-- /.home-tips -->
 
 
         <div class="home-section home-section-quick">
@@ -487,7 +511,7 @@
             <button class="btn" id="btnRecycleBin" title="查看已删除的凭证并可还原">回收站</button>
             <button class="btn" id="btnQPrint" data-print>打印</button>
             <button class="btn" id="btnQExport">导出</button>
-            <button class="btn" id="btnQDelete">删除</button>
+            <button class="btn btn-danger" id="btnQDelete">删除</button>
         </div>
 
         <div class="scroll-area">
@@ -830,7 +854,7 @@
       <section class="page" id="page-salary">
         <div class="page-actions">
             <div data-period="sal" data-default="currentPeriod" data-on-change="__renderSalary"></div>
-            <button class="btn" id="btnNewSalary">新增工资</button>
+            <button class="btn btn-primary" id="btnNewSalary">新增工资</button>
             <button class="btn" id="btnGenSalaryAccrual">计提工资凭证</button>
             <button class="btn" id="btnGenSalaryPay">发放工资凭证</button>
             <button class="btn" id="btnOpenDeptStaff">部门职员</button>
@@ -1193,7 +1217,7 @@
           </div>
           <input type="search" class="subj-search" id="subjSearch" placeholder="搜索编码/名称" autocomplete="off">
           <label class="subj-check"><input type="checkbox" id="subjExpandAll"> 展开所有级次</label>
-          <button class="btn" id="btnNewSubject">新增</button>
+          <button class="btn btn-primary" id="btnNewSubject">新增</button>
           <button class="btn" id="btnSubjImport">导入</button>
           <input type="file" id="subjImportFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
           <button class="btn" id="btnSubjExport">导出</button>
@@ -1219,7 +1243,7 @@
 
       <section class="page" id="page-opening" data-unsaved-scope="opening">
         <div class="page-actions">
-            <button class="btn" id="btnSaveOpening">保存</button>
+            <button class="btn btn-primary" id="btnSaveOpening">保存</button>
             <button class="btn" id="btnOpenCheck">试算平衡</button>
             <button class="btn" id="btnOpenExport">导出</button>
         </div>
@@ -1349,6 +1373,15 @@
           <div class="set-row">
             <label>公司名称</label>
             <span class="set-value" id="sysNameVal"></span>
+          </div>
+          <!-- 记账员：2026-10-07 由顶栏迁入（顶栏只留账期/账套/搜索/快速跳转，不再常驻低频设置入口）。
+               它同时是凭证「制单人」与操作日志操作人的来源 —— 存 company.bookkeeper。 -->
+          <div class="set-row">
+            <label>记账员</label>
+            <div class="set-value">
+              <span id="sysOpVal" class="muted"></span>
+              <button class="btn-link" id="btnEditOperator" title="修改当前账套记账员（用于凭证制单人与操作日志）">修改</button>
+            </div>
           </div>
           <div class="set-row">
             <label>启用期间</label>

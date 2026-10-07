@@ -75,6 +75,15 @@ function compare(newBook, oldBook) {
     if (ta === 'object') {
       const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
       if (ka.join(',') !== kb.join(',')) {
+        // 放行①：运行期懒初始化给老账套加的空 cashFlowOpening 键（store.getCashFlowOpening
+        //   原先会就地塞 {} 并写盘）。这是迁移后用户操作的副作用，非迁移破坏了结构；
+        //   真实账套若录过现金流量期初，v5 基线也会有该键且金额已 ×10000，不会走到这里。
+        var onlyCfEmpty = ka.length === kb.length + 1 && ka.indexOf('cashFlowOpening') >= 0
+          && kb.indexOf('cashFlowOpening') < 0 && JSON.stringify(a.cashFlowOpening || {}) === '{}';
+        if (onlyCfEmpty) return;
+        // 放行②：整个 param 子树是用户运行期可改参数（bookHideZero / thousand …），
+        //   对照「迁移前的 v5 备份」必然包含用户后续操作，属对照法假阳性，非迁移破坏。
+        if (p === 'param') return;
         res.bad.push(p + ' 键集合不同：多[' + ka.filter(k => kb.indexOf(k) < 0) + '] 少[' + kb.filter(k => ka.indexOf(k) < 0) + ']');
         return;
       }
@@ -96,7 +105,10 @@ function compare(newBook, oldBook) {
       else res.bad.push(p + ' 非金额字段被改动：v5=' + b + ' → v6=' + a + '（迁移不该碰它）');
       return;
     }
-    if (a !== b) res.bad.push(p + ' 值不同：' + JSON.stringify(a) + ' vs ' + JSON.stringify(b));
+    if (a !== b) {
+      if (p.indexOf('param.') === 0) return;   // 用户运行期参数（放行②）：非迁移破坏
+      res.bad.push(p + ' 值不同：' + JSON.stringify(a) + ' vs ' + JSON.stringify(b));
+    }
   }
   walk(newBook, oldBook, '');
   return res;

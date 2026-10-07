@@ -599,7 +599,7 @@ function renderCustomCards(procList, profitCard) {
         '<span class="settle-card-op">' +
           '<a class="settle-link" data-act="disable">' + (enabled ? '禁用' : '启用') + '</a>' +
           '<a class="settle-link" data-act="setting">设置</a>' +
-          '<a class="settle-link link-del" data-act="delete">删除</a>' +
+          '<a class="settle-link btn-link-danger" data-act="delete">删除</a>' +
         '</span>' +
       '</div>' +
       '<div class="settle-card-body">' + cardBodyHtml + '</div>' +

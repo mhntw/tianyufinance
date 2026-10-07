@@ -56,6 +56,18 @@ function booksDir() {
   if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), '添钰财务', 'books');
   return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), '添钰财务', 'books');
 }
+/* 账套可用性：空账套（0 张凭证）不能当样本 —— 同一取样问题会同时造成假绿与假红：
+   I9「明细账余额连续（0 组）」、I13「已结清期间（0 期）」这类会因为"没数据"而**空转通过**，
+   而 I15 又会因为"扫不到任何金额字段"**直接报失败**。
+   【2026-10-07】与 tools/verify_vs_ais.js 的 bookUsable 对齐（那里早有同样的血泪教训：
+   本脚本曾长期拿一本 0 凭证的「测试」账套做对照，稳定产出假差异，覆盖最广的一张网就此报废）。
+   起因：应用里新建一本空白测试账套后，它按 mtime 成了"最新账套"，本脚本立刻开始拿它当样本。 */
+function bookUsable(p) {
+  try {
+    const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return ((d.vouchers || []).length > 0) && ((d.subjects || []).length > 10);
+  } catch (e) { return false; }
+}
 function findBook(arg) {
   if (arg && fs.existsSync(arg)) return arg;
   // 默认取最新账套
@@ -72,7 +84,18 @@ function findBook(arg) {
     console.log('本脚本需要真实账套作为样本，无账套环境（如 CI）自动跳过，返回 0，不计为失败。');
     process.exit(0);
   }
-  return files[0].path;
+  // 在「最新」之上再要求「可用」：mtime 最新的那本可能正是刚建的空白账套
+  const usable = files.filter(f => bookUsable(f.path));
+  if (usable.length) {
+    if (usable[0].path !== files[0].path) {
+      console.log('注：mtime 最新的账套不可用（0 张凭证或科目不足），已改用最新的可用账套：' + usable[0].name);
+    }
+    return usable[0].path;
+  }
+  console.log('跳过：目录里有账套（' + files.length + ' 本），但没有一本可用（均 0 张凭证 / 科目不足）——');
+  console.log('本脚本需要真实业务账套做样本，与"无账套即跳过"同一口径，返回 0，不计为失败。');
+  console.log('（判据见 bookUsable；如需强行指定样本，可用参数传入账套路径）');
+  process.exit(0);
 }
 
 /* ============================================================

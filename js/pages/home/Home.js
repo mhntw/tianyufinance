@@ -113,47 +113,45 @@ function refreshHome(opts) {
   fillMetrics();
   syncCardPeriodSelects();
   if (!opts.skipTip) checkBackupTip();
+  // 下面两条是**同步**判定（不问后端、不发请求），故不受 skipTip 约束：每次刷新都重算 ——
+  // 改完名 / 切到「已设置记账员」的账套后立即消失；更新提醒则按上一次推送的结果重绘。
+  checkOperatorTip();
+  checkUpdateTip();
 }
 
-/* ---------------- 首页「云备份」提醒（被动一条，两级静默） ---------------- */
-// 静默力度按「用户做了什么」区分，避免"点了去配置但没配成"反而安静 7 天：
-// × 忽略        → 7 天（用户明确不想看）
-// 去配置/去备份 → 到明天 0 点（响应了但没办成，第二天再来；办成了后端状态自会变，横幅自动消失）
-var TIP_MUTE_MS = 7 * 24 * 60 * 60 * 1000;
-var TIP_MUTE_KEY = 'hbTipMute';
+/* ---------------- 首页「有新版本」提醒（由 update.js 推送，不主动轮询） ----------------
+   节流不在这里做：update.js 已按「每版本 7 天」记 ty_update_notified，它不推就不显示 ——
+   所以这条**没有自己的静默键**（× 只隐藏本次，下次启动是否再提由 update.js 决定），
+   避免两处节流打架（一个说"别提醒"，一个说"该提醒了"）。 */
+var _pendingUpdate = null;   // { latest, asset } —— 收到推送才置值
+function checkUpdateTip() {
+  var tip = $('homeUpdateTip');
+  if (!tip) return;
+  if (!_pendingUpdate) { tip.style.display = 'none'; return; }
+  var txt = $('homeUpdateTipTxt');
+  var tag = (_pendingUpdate.latest && _pendingUpdate.latest.tag) || '';
+  if (txt) txt.textContent = '发现新版本 v' + tag;
+  tip.style.display = '';
+}
+/* 供 update.js 的静默检查调用（跨模块经 globalThis，与 __CS_OPEN_CONFIG__ / __OP_OPEN__ 同一套做法） */
+globalThis.__showHomeUpdateTip = function (latest, asset) {
+  _pendingUpdate = { latest: latest, asset: asset };
+  checkUpdateTip();
+};
 
-function msUntilTomorrow() {
-  var d = new Date();
-  d.setHours(24, 0, 0, 0);
-  return d.getTime() - Date.now();
-}
-// hbTipMute 存「静默截止时间戳」；过期或解析失败一律视为不静默（宁可多提醒，不可漏提醒）
-function tipMuted() {
-  try {
-    var v = localStorage.getItem(TIP_MUTE_KEY);
-    if (!v) return false;
-    var t = Number(v);
-    if (!isFinite(t) || t <= 0) {
-      // 兼容旧值：时间戳字符串或 toDateString()，均为过去时刻 → 自然到期，不静默
-      t = Date.parse(v);
-      if (!isFinite(t)) return false;
-    }
-    return Date.now() < t;
-  } catch (e) { return false; }
-}
-function muteTip(ms) {
-  try { localStorage.setItem(TIP_MUTE_KEY, String(Date.now() + (ms || 0))); } catch (e) {}
-}
+/* ---------------- 首页「云备份」提醒（被动一条，纯常驻） ----------------
+   【2026-10-07】原为「两级静默」（× 静默 7 天 / 点动作静默到明天 0 点），现改为**纯常驻**：
+   条件没满足就一直显示，不给"临时藏起来"的口子。故删除 TIP_MUTE_MS / TIP_MUTE_KEY /
+   OP_TIP_MUTE_KEY / msUntilTomorrow / tipMuted / muteTip 整套静默设施；
+   旧 localStorage 静音键（hbTipMute / opTipMute）的残留值不再被读取，自然失效。 */
 
 function checkBackupTip() {
   var tip = $('homeBackupTip');
   if (!tip || typeof window.Storage === 'undefined' || !window.Storage.syncPending) return;
   window.Storage.syncPending().then(function (r) {
     if (!r) { tip.style.display = 'none'; return; }
-    // 处于静默期（× 7 天 / 点过按钮到明天）→ 不打扰
-    if (tipMuted()) { tip.style.display = 'none'; return; }
     var txt = $('homeBackupTipTxt');
-    var go = $('btnBackupTipGo');
+    var go = tip.querySelector('.tip-go');   // 按钮不带 id：统一按类取（见 bindOneTip 的说明）
     if (r.unconfigured) {
       tip.dataset.go = 'config';
       if (txt) txt.textContent = '尚未配置云备份';
@@ -174,13 +172,34 @@ function checkBackupTip() {
     tip.style.display = '';
   }).catch(function () { tip.style.display = 'none'; });
 }
-function bindBackupTip() {
-  var go = $('btnBackupTipGo'), close = $('btnBackupTipClose');
+/* ---------------- 首页提醒条：统一绑定（三条提醒的唯一入口） ----------------
+   【2026-10-07】纯常驻模式：取消临时静默与 × 关闭（index.html 已删 .tip-close），
+   显隐完全由业务条件决定 —— 没办成就一直显示，办成（条件不再满足）才消失。
+   三条提醒只剩一个动作按钮 .tip-go，点了各做各的事。
+   新增提醒 = index.html 加一条 .home-tip + 本函数加一行 bindOneTip（按钮不带 id）。 */
+function bindOneTip(tipId, onGo) {
+  var tip = $(tipId);
+  if (!tip) return;
+  var go = tip.querySelector('.tip-go');
   if (go) go.addEventListener('click', function () {
+    if (onGo) onGo();
+  });
+}
+function bindHomeTips() {
+  // ① 更新：点「去下载」直接下载并收起（不静默：下次启动是否再提，由 update.js 的每版本 7 天节流决定）
+  bindOneTip('homeUpdateTip', function () {
+    var p = _pendingUpdate;
+    var tip = $('homeUpdateTip');
+    if (tip) tip.style.display = 'none';
+    if (p && globalThis.__TY_UPDATE__ && globalThis.__TY_UPDATE__.download) {
+      globalThis.__TY_UPDATE__.download(p.latest, p.asset);
+    }
+  });
+  // ② 云备份：跳过去后滚动到「云同步」卡；未配置 → 高亮「配置」并直接弹出配置，否则高亮「云备份」
+  bindOneTip('homeBackupTip', function () {
     var tipEl = $('homeBackupTip');
     var isCfg = tipEl && tipEl.dataset.go === 'config';
     if (globalThis.goPage) globalThis.goPage('system-settings');
-    // 跳过去后滚动到「云同步」卡；未配置 → 高亮「配置」并直接弹出配置，否则高亮「云备份」
     setTimeout(function () {
       var card = document.getElementById('cardCloudSync');
       if (card) card.scrollIntoView({ block: 'center' });
@@ -188,15 +207,41 @@ function bindBackupTip() {
       if (b) { b.classList.add('btn-hl'); setTimeout(function () { b.classList.remove('btn-hl'); }, 1600); }
       if (isCfg && globalThis.__CS_OPEN_CONFIG__) globalThis.__CS_OPEN_CONFIG__();
     }, 150);
-    // 只静默到明天：没配成 / 没备份成，第二天继续提醒
-    muteTip(msUntilTomorrow());
   });
-  if (close) close.addEventListener('click', function () {
-    var tip = $('homeBackupTip');
-    if (tip) tip.style.display = 'none';
-    muteTip(TIP_MUTE_MS);
+  // ③ 记账员：跳到该行、高亮「修改」，并直接把改名弹窗弹出来（只有一个字段，别让用户再找一步）
+  bindOneTip('homeOperatorTip', function () {
+    if (globalThis.goPage) globalThis.goPage('system-settings');
+    setTimeout(function () {
+      var val = document.getElementById('sysOpVal');
+      var row = val && val.closest ? val.closest('.set-row') : null;
+      if (row) row.scrollIntoView({ block: 'center' });
+      var b = document.getElementById('btnEditOperator');
+      if (b) { b.classList.add('btn-hl'); setTimeout(function () { b.classList.remove('btn-hl'); }, 1600); }
+      if (globalThis.__OP_OPEN__) globalThis.__OP_OPEN__();
+    }, 150);
   });
 }
+
+/* ---------------- 首页「记账员未设置」提醒（纯常驻，无静默） ----------------
+   为什么要提醒：company.bookkeeper 同时是**凭证制单人**（store.js:1895 的 v.maker）与
+   **操作日志的操作人**；而默认账套的它就是占位名 '财务'，不填也照样能记账 ——
+   于是"制单人是谁"长期是一句空话。放在首页被动提醒一条，不做成开机弹窗。
+   判定用 app.js 暴露的 __operatorUnset__（占位名 '记账员'/'财务' 一律视同未设置），
+   与「系统设置 → 基本信息」的显示口径**同一实现**，避免两处口径不一致。
+   【2026-10-07】改为纯常驻：不再有 7 天 / 到明天的静默，没设置就一直显示。 */
+function checkOperatorTip() {
+  var tip = $('homeOperatorTip');
+  if (!tip) return;
+  var unset = globalThis.__operatorUnset__ && globalThis.__operatorUnset__();
+  if (!unset) { tip.style.display = 'none'; return; }
+  var c = (window.S && S.state && S.state.company) || {};
+  var nm = c.bookkeeper || '';
+  var txt = $('homeOperatorTipTxt');
+  // 把"会被记成什么名字"直接写出来，比单说"未设置"更能说明后果
+  if (txt) txt.textContent = '尚未设置记账员' + (nm ? '：凭证制单人将记为「' + nm + '」' : '');
+  tip.style.display = '';
+}
+
 
 /** 填充财务指标卡片数据：存量卡固定最新期末，三张流量卡各自独立期间 */
 function fillMetrics() {
@@ -335,11 +380,15 @@ function fillMetrics() {
  * 期间语义：趋势截止月 = 卡片所选期间末月 p.to（本期=当月、上期=上月、本年=当期、去年=去年12月），
  *   与卡片数字取数完全一致；饼图用 cur 或 ytd 取决于该卡片期间模式。
  * 依赖：js/echarts.min.js（本地 vendor，仿 xlsx 离线可用），全局 window.echarts。
- * 【2026-10-06】所有 tooltip 显式设 confine:true。ECharts 5.6 默认 appendToBody:true + confine:false，
- *   提示框是挂在 document.body 上、且不限制在图内的绝对定位浮层；鼠标移动时（更新约 20 次/秒）
- *   它会越出页面边缘 → 改变整页可滚动区域 → 触发响应式网格(.metric-grid-row auto-fit)回流 →
- *   卡片/画布位移 → 指针相对位置重算 → 再次触发提示框更新 → 自激循环，肉眼即"鼠标一动卡片就闪"。
- *   confine:true 把提示框限制在图表范围内，从根上杜绝这类回流（零视觉变化：提示内容很小，放得下）。
+ * 【2026-10-06】所有 tooltip 设 confine:true（限制在图内，防止它越界去改变页面的可滚动区域）。
+ * 【2026-10-07】在此之上再设 appendTo: document.body —— 这才是"鼠标在图上一动、上方数据左右闪"的正解。
+ *   实测（用户真机、控制台探针）：悬停图表时**只有被悬停那张卡**的 clientWidth 从 352 掉到 335（-17px），
+ *   offsetWidth 不变 —— 即卡片内**纵向滚动条闪现/收起**，卡片内容随之整体左右移 17px。
+ *   成因：卡片是 overflow:auto 的滚动容器（.metric-card），而提示框是该容器内的绝对定位后代，
+ *   **会参与"可滚动溢出"计算**。鼠标在图上一动，提示框就把卡片顶过 520px 的溢出阈值 → 滚动条出现 →
+ *   内容窄 17px → 数据左移；鼠标移开阈值回落 → 滚动条消失 → 数据右移。肉眼即"闪一下"。
+ *   把提示框挂到 body 后，它不再是卡片的滚动后代，滚动条就没有理由出现；confine:true 仍在，
+ *   保证它不越出图外，也就不会反过来改变整页的可滚动区域（2026-10-06 治的就是那种情况）。
  */
 var _homeChart = {};
 function _getChart(id) {
@@ -373,7 +422,7 @@ function renderHomeCharts(ctx) {
     var net = mp.map(function (m) { return round2(S.plSummary(m).netProfit.cur); });
     c1.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: mp.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: net, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
@@ -389,7 +438,7 @@ function renderHomeCharts(ctx) {
     var cst = mr.map(function (m) { return round2(S.plSummary(m).cost.cur); });
     c2.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['收入', '成本'] },
       xAxis: { type: 'category', data: mr.map(function (m) { return m.slice(5) + '月'; }), axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
@@ -410,7 +459,7 @@ function renderHomeCharts(ctx) {
       return { name: f.label, value: Math.abs(v) };
     }).filter(function (x) { return x.value; });
     c3.setOption({
-      tooltip: { confine: true, trigger: 'item', formatter: function (p) { return p.name + '<br/>' + absFmt(p.value) + ' (' + p.percent + '%)'; } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'item', formatter: function (p) { return p.name + '<br/>' + absFmt(p.value) + ' (' + p.percent + '%)'; } },
       legend: { show: true, type: 'scroll', bottom: 0, textStyle: { color: '#8a94a6', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
       // minAngle：给每块一个最小圆心角（默认 0）。否则「财务费用」这类金额极小的项会被渲染成
       // 一条几乎看不见的细线，用户以为"没显示"。角度被适度放大以保证可见，但图例/悬浮提示
@@ -431,7 +480,7 @@ function renderHomeCharts(ctx) {
     });
     c4.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: fundSeries, symbolSize: 5, lineStyle: { width: 2, color: '#3b6fe0' }, itemStyle: { color: '#3b6fe0' }, areaStyle: { color: 'rgba(59,111,224,0.08)' } }]
@@ -445,7 +494,7 @@ function renderHomeCharts(ctx) {
     var apSeries = ms.map(function (m) { return round2(-subjectBalance('2202', m)); });
     c5.setOption({
       grid: { left: 4, right: 12, top: 28, bottom: 20, containLabel: true },
-      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       legend: { show: true, top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#8a94a6', fontSize: 11 }, data: ['应收', '应付'] },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
@@ -467,7 +516,7 @@ function renderHomeCharts(ctx) {
     });
     c6.setOption({
       grid: { left: 4, right: 12, top: 16, bottom: 20, containLabel: true },
-      tooltip: { confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
+      tooltip: { appendTo: document.body, confine: true, trigger: 'axis', valueFormatter: function (v) { return v == null ? '--' : signed(v); } },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#c8ced6' } }, axisTick: { show: false }, axisLabel: { color: '#8a94a6', fontSize: 11 } },
       yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [{ type: 'line', smooth: true, data: availSeries, symbolSize: 5, lineStyle: { width: 2, color: '#46b97a' }, itemStyle: { color: '#46b97a' }, areaStyle: { color: 'rgba(70,185,122,0.08)' } }]
@@ -724,7 +773,7 @@ function setupHome() {
   bindCardPeriodSelects();
   bindAmtTargets();
   bindAmtJump();
-  bindBackupTip();
+  bindHomeTips();   // 三条首页提醒条的统一点（更新 / 云备份 / 记账员）
   // 【2026-10-06】图表 resize：窗口缩放时让首页 ECharts 实例跟随容器尺寸重绘（只绑一次）
   if (!globalThis.__homeChartResizeBound) {
     globalThis.__homeChartResizeBound = true;

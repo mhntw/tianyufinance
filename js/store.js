@@ -5524,8 +5524,11 @@
     // 对照：该页仅录入各现金流量项目「本年累计」(balance) 一列，无期初列（期初现金由现金科目余额体现）。
     // 存储：{ itemId: { ytd:Number } }，itemId 为 cashFlowItems 的 id。
     getCashFlowOpening: function () {
-      this.state.cashFlowOpening = this.state.cashFlowOpening || {};
-      return this.state.cashFlowOpening;
+      // 【2026-10-07】不再就地给 state 塞空对象：原写法在「仅读取」时也会把
+      //   cashFlowOpening:{} 写盘，使老账套凭空多一个空键，导致迁移保真审计把
+      //   「运行期懒初始化副作用」误报为「迁移破坏了结构」。只读返回局部 {} 即可；
+      //   setCashFlowOpening 内部自行确保 state 上有该键。
+      return this.state.cashFlowOpening || {};
     },
     setCashFlowOpening: function (itemId, ytd) {
       this.state.cashFlowOpening = this.state.cashFlowOpening || {};

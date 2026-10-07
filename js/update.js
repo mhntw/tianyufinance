@@ -129,18 +129,10 @@
     });
   }
 
-  // 让“发现新版本”提示点击后真正触发下载并收起 toast
-  function bindToastDownload(asset, latest) {
-    var tEl = document.getElementById('toast');
-    if (!tEl) return;
-    tEl.style.cursor = 'pointer';
-    tEl.onclick = function () {
-      tEl.onclick = null;
-      tEl.style.cursor = '';
-      tEl.className = 'toast';
-      triggerDownload(asset ? asset.url : null, latest.url);
-    };
-  }
+  /* 【2026-10-07 删除】原 bindToastDownload：给**共享的** #toast 元素挂 onclick + 手型光标，
+     用来实现"点击更新提示即下载"。问题见 silentCheckUpdate 内的说明 ——
+     内容被后续提示顶掉后，onclick 与手型光标仍然残留，普通提示会变得"点了就去下载"。
+     该行为现由首页提醒条的「去下载」承担（Home.js 的 bindHomeTips → __TY_UPDATE__.download）。 */
 
   /* 手动「检查更新」（用户点的这次）：结果**只**写到按钮右侧，不再弹屏幕中央的 toast。
      启动时的静默检查（silentCheckUpdate）另有 toast —— 那时用户不在"关于"卡里，
@@ -187,15 +179,22 @@
 
         var asset = pickAsset(latest.assets);
         surfaceDownload(latest, asset);
-        var toast = window.showToast;
-        if (toast) {
-          toast('发现新版本 v' + latest.tag + '，点击下载 →', 'success', 0);
-          bindToastDownload(asset, latest);
+        /* 【2026-10-07】原先这里弹一个 ms=0 的**屏幕中央常驻 Toast**，并给共享的 #toast 挂 onclick 下载。
+           两个毛病：① #toast 是单元素复用，任何后续提示（"正在切换到某账套…"、每周备份提醒）都会顶掉
+           它的内容 —— 所谓"常驻"其实常驻不住；② tEl.onclick 与手型光标不会随内容清除，后来的普通提示
+           会显示成可点、点下去真的去下载安装包。
+           现改为把"有新版本"推给**首页那条提醒条**（与云备份 / 记账员同一套范式：不占屏幕中央、可 ×、点击下载）。
+           节流仍在下面那行 ty_update_notified（每版本 7 天），故同版本不会被重复推送。 */
+        if (window.__showHomeUpdateTip) {
+          window.__showHomeUpdateTip(latest, asset);
+        } else if (window.showToast) {
+          // 兜底（首页提醒条未就绪，理论上不会走到）：只做一次性文字提示，不再给共享 toast 挂点击下载
+          window.showToast('发现新版本 v' + latest.tag + '，可到「关于」页下载', 'success', 6000);
         }
         try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify({ t: Date.now(), version: latest.tag })); } catch (e) {}
       })
       /* 链尾必须接住拒绝（2026-10-04）：静默检查本就不该打扰用户，但 then 回调里抛错
-         （localStorage / surfaceDownload / bindToastDownload 都可能）会冒到全局兜底弹
+         （localStorage / surfaceDownload / __showHomeUpdateTip 都可能）会冒到全局兜底弹
          「系统异常」—— 一次后台检查反而吓用户一跳。手动检查有 catch，这里漏了。 */
       .catch(function (e) { console.warn('[update] 静默检查失败：' + (e && e.message || e)); });
   }
@@ -208,6 +207,11 @@
     check: checkUpdateManual,
     silentCheck: silentCheckUpdate,
     getVersion: getCurrentVersion,
+    /* 供首页提醒条的「去下载」调用（见 Home.js 的 bindHomeTips）——
+       原先"点击即下载"是挂在共享 #toast 的 onclick 上，见上面删除说明。 */
+    download: function (latest, asset) {
+      triggerDownload(asset ? asset.url : null, latest && latest.url);
+    },
     REPO_RELEASE: REPO_RELEASE
   };
 })();
