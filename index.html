@@ -559,8 +559,9 @@
         <div class="dl-layout">
           <div class="dl-main">
             <table class="grid" id="dlGrid">
-              <!-- 列序与金蝶明细账一致：…借方｜贷方｜方向｜余额（方向在余额前） -->
-              <thead><tr><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th></tr></thead>
+              <!-- 列序与导出一致（9 列）：科目编码｜科目名称｜日期｜凭证字号｜摘要｜借方｜贷方｜方向｜余额
+                   （科目两列 2026-10-14 补：查一级科目时逐笔要能看出实际入账的二级科目，见 renderDlSegment） -->
+              <thead><tr><th>科目编码</th><th>科目名称</th><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th></tr></thead>
               <tbody id="dlBody"></tbody>
             </table>
           </div>

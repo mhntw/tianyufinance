@@ -21,6 +21,13 @@
  * 【本脚本测的是真代码】把 js/pages/** 的源码加载进 Node（只改 import/export 语法 + 尾部挂调试钩子），
  *   `bookScopeChanged` 也是从 js/app.js 源码里**抽出来的真实实现**，不是复刻。
  *
+ * 【2026-10-14 定稿】守卫**只保留一套语义**（app.js 的单点 bookScopeChanged）。
+ *   当天两起报障（点凭证字号进来是空白凭证 / 点科目编码跳错科目）一度被当成"守卫不够用"，
+ *   加了一套 bookChanged + registerBookReset/runBookResets 的机制（换账套时 app.js 主动复位），
+ *   结果把 2 行的**顺序**问题上升成跨 6 个文件的机制，还引入了"换账套后凭证字号为空"的新缺陷 —— 已整体回滚。
+ *   真实根因是**跳转入口顺序写反**：先设状态、后切页时，切页同步触发的刷新里的复位会清掉刚设好的状态。
+ *   修法是"先切页、再设状态"（见 Voucher.loadVoucherToEdit / Ledger.__dlJumpTo，以及下方 jumpOrder 卡口）。
+ *
  * 用法：node tools/verify_book_scope_reset.js
  * ============================================================ */
 const fs = require('fs'), path = require('path');
@@ -84,6 +91,15 @@ check(!!srcSeen, 'app.js 里应存在 _bookScopeSeen（记账套的已见标识�
 check(!!srcFn && /bookKey\(\)/.test(srcFn),
   'bookScopeChanged 的判据应复用 bookKey()（含会计年度起始月），不得自己写一遍比较',
   srcFn ? srcFn.split('\n').filter(l => /bookKey|bookId/.test(l)).join(' / ') : '');
+/* 【反向约定 2026-10-14】守卫**只保留一套语义**。
+   两起跳转缺陷（凭证字号进来空白凭证 / 科目编码跳错科目）的根因是**跳转入口顺序写反**，
+   修法是"先切页、再设状态"（见下方 jumpOrder 卡口），**不是**给守卫加第二套语义、
+   也不是加"换账套时主动复位"的注册表 —— 那种机制化改法（2026-10-14 曾实现并返工）
+   把 2 行顺序问题上升成跨 6 个文件的机制，反而引入了新的时序缺陷（换账套后凭证字号为空）。
+   故这里断言 app.js 里**不存在**那些机制，防止将来又绕回去。 */
+check(!/function bookChanged\(/.test(appSrc) && !/function runBookResets\(/.test(appSrc)
+  && !/_bookResetHooks/.test(appSrc),
+  'app.js 不应再出现 bookChanged / runBookResets / _bookResetHooks 这类第二套守卫机制（跳转顺序已解决根因）');
 
 let BOOK = 'A|2024-01';
 function bookKey() { return BOOK; }          // 测试用的「账套身份」来源（真实实现里是 app.js 的 bookKey）
@@ -99,25 +115,29 @@ if (srcFn && srcSeen) {
     bookScopeChanged = factory(bookKey);
   } catch (e) {
     console.log('⚠ 抽取 app.js 的 bookScopeChanged 失败：' + e.message);
-    bookScopeChanged = function () { return false; };
   }
 }
 check(bookScopeChanged('__probe__') === true,
   '应能取到真实的 bookScopeChanged 实现（首次调用应为 true；若这里是 false，说明抽取失败、后续断言会误绿）');
 
-/* 语义断言：同账套 false、换账套 true、首次 true */
+/* 语义断言：单点守卫就一套语义 —— 首次调用即 true（供"复位值取当下动态值"的调用点，如结账页），
+   同一账套内后续调用 false（用户当次的选择必须保留），换账套后再次 true。 */
 (function semantics() {
   BOOK = 'A|2024-01';
   const f = bookScopeChanged;
-  check(f('k1') === true, 'bookScopeChanged 首次调用应为 true（初始化视为需要置一次初值）');
-  check(f('k1') === false, '同一账套内再次调用应为 false（用户当次的选择必须保留）');
+  check(f('s1') === true, 'bookScopeChanged 首次调用应为 true（复位值取当下动态值的调用点靠它对齐当期）');
+  check(f('s1') === false, '同一账套内再次调用应为 false（用户当次的选择必须保留）');
   BOOK = 'B|2024-01';
-  check(f('k1') === true, '换账套后同一 key 应为 true（这正是各页复位的触发条件）');
-  check(f('k1') === false, '换账套后第二次调用应恢复 false（不得每次刷新都复位）');
-  check(f('k2') === true, '新 key 首次调用应为 true（不同页各自记）');
+  check(f('s1') === true, '换账套后同一 key 应为 true（这正是各页复位的触发条件）');
+  check(f('s1') === false, '换账套后第二次调用应恢复 false（不得每次刷新都复位）');
+  check(f('s2') === true, '新 key 首次调用也应为 true（不同页各自记，互不影响）');
+  // 同一本书、会计年度起始月不同 → 必须算作换账套（bookKey 含起始月，默认期间会随之变）；
+  // 只比 bookId 的实现会在这里返回 false，这条就是防它退化。
+  BOOK = 'A|2024-01';
+  check(f('s3') === true, '新 key 首次调用应为 true（为下一条做基准）');
   BOOK = 'A|2025-01';
-  check(f('k1') === true,
-    '会计年度起始月变了也应视为账套变化（bookKey 含起始月，默认期间会随之变）');
+  check(f('s3') === true,
+    '同书但会计年度起始月变了，也必须视为账套变化（判据必须复用含起始月的 bookKey）');
   BOOK = 'A|2024-01';
 })();
 
@@ -153,6 +173,8 @@ global.__TY_HELPERS__ = {
   moneyRed: n => String(n), openModal() {}, closeModal() {},
   currentPeriod: () => CUR_M, periodRangeValue: () => CUR_M, periodRangeValues: () => ({ start: CUR_M, end: CUR_M }),
   syncAll() {}, S: S, U: U, num: NUM, round2: n => { const v = Number(n) || 0; const r = Math.round(v * 100) / 100; return r === 0 ? 0 : r; },
+  // 页面模块取的就是这一个守卫（抽取到的 app.js 真实实现）；
+  // 包一层是为了让页面拿到的是**抽取后**的实现（顶层 bookScopeChanged 变量可能已被替换）。
   bookKey: bookKey, bookScopeChanged: function (k) { return bookScopeChanged(k); }
 };
 /* 页面模块 import 的其余符号（组件 / _shared）在此打桩 —— 只让模块能装载与刷新，
@@ -210,9 +232,23 @@ globalThis.__PAGE_HOOK__ = {
 };`);
   check(!!L, 'Ledger.js 应能加载并暴露调试钩子');
 
+  /* —— 本次运行**首次**进明细账就点科目跳转（用户报障的主场景）——
+     __dlJumpTo 的约定是「先切页、再设状态」：切页同步触发的 refreshDl 里 bookScopeChanged('dl')
+     首次为 true，会把 dlCurCode 复位、并可能自动定位到编码最小的发生科目；但随后本入口把目标科目
+     写上并重绘，复位结果被覆盖 → 最终停在该科目。
+     修复前顺序写反（先设 dlCurCode 再 goPage），复位/自动定位发生在最后 → 点 1002 却看到 1001。
+     ⚠ 壳里 global.goPage 未定义 → __dlJumpTo 会静默不跳转、断言变成假绿，
+       故装上复刻 app.js 行为的桩（切页 + 调本页刷新）。 */
+  global.goPage = function () { L.refreshDl(); };
+  globalThis.__dlJumpTo('1002');
+  check(L.dlCurCode === '1002',
+    '首次进明细账即点科目跳转：必须停在该科目（顺序写反会被复位清掉 → 自动定位到编码最小的科目）',
+    '实际 ' + L.dlCurCode);
+  global.goPage = undefined;   // 后续断言按需各自装桩
+
   // —— 同一账套内：用户选的科目/过滤必须保留 ——
   BOOK = 'A|2024-01';
-  L.refreshGl(); L.refreshDl(); L.refreshMl();      // 初始化（各自首次会复位一次，正常）
+  L.refreshGl(); L.refreshDl(); L.refreshMl();      // 进页面（首次会复位 = 回到初始态，随后才设值）
   L.dlCurCode = '1002'; L.glFilterCodes = new Set(['1001']); L.glJumpHl = true; L.mlCurCode = '2202';
   L.dlTreeSig = 'sig-A'; L.dlAutoFirstDone = true;
   L.refreshGl(); L.refreshDl(); L.refreshMl();
@@ -259,6 +295,30 @@ globalThis.__PAGE_HOOK__ = {
   L.refreshDl();
   check(L.dlTree !== treeB,
     '换账套且发生科目数量相同：科目树也必须重建（旧实现只比科目数量 → 会继续列旧账套科目）');
+
+  /* —— 换账套后跳转（另一条路径：换账套时该页未激活，没被它自己的刷新碰到）——
+     这里没有"换账套时 app.js 主动复位"的机制（那是 2026-10-14 被回滚的过度设计）：
+     陈旧状态由**跳转时切页触发的刷新**清掉 —— 复位发生在设状态之前，故最终仍是目标科目。 */
+  installBook('A');            // 1001 库存现金 / 1002 银行存款，两科目都有发生额
+  BOOK = 'D|2024-01';
+  L.refreshDl();               // 记录 D 账套
+  BOOK = 'E|2024-01';          // 换账套（本页此刻未激活，没人刷新它）
+  L.dlCurCode = '1002'; L.glFilterCodes = new Set(['1001']); L.mlCurCode = '2202';   // 上一本的残留
+
+  const prevGoPage = global.goPage;
+  global.goPage = function () { L.refreshDl(); };
+  var staleTreeE = fakeTree('E 之前那一份科目树');
+  L.dlTree = staleTreeE;
+  globalThis.__dlJumpTo('1002');
+  global.goPage = prevGoPage;
+  check(L.dlCurCode === '1002',
+    '换账套后从总账点科目编码跳明细账：必须停在该科目（顺序写反会被复位改成编码最小的科目）',
+    '实际 ' + L.dlCurCode);
+  /* 反向确认：这次切页触发的刷新**确实**认出了换账套并复位过 ——
+     否则上面那条可能只是"陈旧值恰好等于目标科目"而蒙对（跳转入口最后一定会写目标科目，
+     单看 dlCurCode 无法区分"复位后重设"与"压根没复位"）。科目树是否被作废重建能区分两者。 */
+  check(L.dlTree !== staleTreeE,
+    '跳转切页触发的刷新里，上一本账套的科目树必须被作废重建（否则说明换账套复位没发生，上面那条是蒙对的）');
 })();
 
 /* ============================================================
@@ -269,11 +329,33 @@ globalThis.__PAGE_HOOK__ = {
   const V = loadPage('js/pages/voucher/Voucher.js', `
 globalThis.__PAGE_HOOK__ = {
   refreshVoucher: refreshVoucher,
+  loadVoucherToEdit: loadVoucherToEdit,
   get vRows() { return vRows; }, set vRows(v) { vRows = v; },
   get vEditId() { return vEditId; }, set vEditId(v) { vEditId = v; }
 };`);
   check(!!V, 'Voucher.js 应能加载并暴露调试钩子');
   if (!V) return;
+
+  /* —— 本次运行**首次**进凭证页就点凭证字号跳转（报障的主场景）——
+     loadVoucherToEdit 的约定是「先切页、再设状态」：切页同步触发的 refreshVoucher 里
+     bookScopeChanged('voucher') 首次为 true → resetVoucherEdit 把表单清成 4 行空白；
+     但随后本入口才写 vEditId / 分录行，复位结果被覆盖 → 用户看到的是他要的那张凭证。
+     修复前顺序写反 → 复位发生在最后 → 点凭证字号进来是一张空白凭证。
+     ⚠ 壳里给 H 的 goPage 是空桩 → 必须装复刻 app.js 行为的桩（切页 + 调本页刷新）。 */
+  const stubGoFirst = global.__TY_HELPERS__.goPage;
+  global.__TY_HELPERS__.goPage = function () { V.refreshVoucher(); };
+  S.state.vouchers = [{ id: 'v-first', date: '2026-02-12', word: '记', no: 1, deleted: '', summary: '首次跳转',
+    entries: [{ code: '1001', dr: 300, cr: 0, summary: '首次跳转' },
+              { code: '1002', dr: 0, cr: 300, summary: '首次跳转' }] }];
+  if (S.normalizeState) S.normalizeState();
+  S._glCache = {};
+  V.loadVoucherToEdit('v-first');
+  check(V.vEditId === 'v-first' && (V.vRows || []).some(function (r) { return r.code === '1001'; }),
+    '首次进凭证页即点凭证字号跳转：表单不得被复位成空白凭证',
+    'vEditId=' + V.vEditId + ' 行=' + JSON.stringify((V.vRows || []).map(function (r) { return r.code || '空'; })));
+  global.__TY_HELPERS__.goPage = stubGoFirst;
+  V.vRows = []; V.vEditId = null;    // 清现场，继续后面的断言
+
   BOOK = 'A|2024-01';
   V.refreshVoucher();
   // 模拟用户正在编辑一张凭证（属于 A 账套）
@@ -288,6 +370,42 @@ globalThis.__PAGE_HOOK__ = {
   check(!V.vEditId || V.vRows.length === 0,
     '换账套：正在编辑的凭证表单必须复位（否则旧账套分录残留在新账套，一保存就是错账）',
     'vEditId=' + V.vEditId + ' 行数=' + (V.vRows || []).length);
+
+  /* —— 换账套后进凭证页：表单必须被**重新初始化**（用户 2026-10-14 报障：看不到凭证字号）——
+     换账套时的复位与空白初始化都在 refreshVoucher 的入口守卫里同步完成：
+     bookScopeChanged('voucher') 为 true → resetVoucherEdit() → 4 行空白 + 凭证字/号都填上。
+     （曾经把复位拆成"换账套那一刻只作废状态、渲染留给进页面"的两段式，那是被回滚的机制化改法：
+     一旦中途抛错就留下"有分录行但凭证号为空"的半初始化现场，本页根本没有兜底分支去救它。） */
+  BOOK = 'C|2024-01';
+  V.refreshVoucher();                                     // 换账套后进凭证页
+  check(V.vRows.length === 4 && V.vEditId === null,
+    '换账套后进凭证页：应重新初始化空白凭证（4 行）', 'vRows=' + V.vRows.length);
+  const wEl = global.__TY_HELPERS__.$('vWord'), nEl = global.__TY_HELPERS__.$('vNo');
+  check(!!wEl && wEl.value === '记',
+    '换账套后凭证字下拉必须有值（空 = 用户报的「看不到凭证字号」）', 'vWord=' + (wEl && wEl.value));
+  check(!!nEl && String(nEl.value) !== '',
+    '换账套后凭证号必须有值（空 = 用户报的「看不到凭证字号」）', 'vNo=' + (nEl && nEl.value));
+
+  /* —— 换账套后跳转载入已有凭证（另一条路径：换账套时凭证页未激活）——
+     跳转入口「先切页」触发的 refreshVoucher 认出换账套、清成空白表单，
+     随后 loadVoucherToEdit 才写入目标凭证 —— 顺序保证最终看到的是那张凭证。 */
+  const prevGoPage = global.__TY_HELPERS__.goPage;
+  global.__TY_HELPERS__.goPage = function () { V.refreshVoucher(); };
+  installBook('D');
+  S.state.vouchers = [{ id: 'v-d', date: '2026-02-10', word: '记', no: 3, deleted: '', summary: '跳转测试',
+    entries: [{ code: '1001', dr: 700, cr: 0, summary: '跳转测试' },
+              { code: '1002', dr: 0, cr: 700, summary: '跳转测试' }] }];
+  if (S.normalizeState) S.normalizeState();
+  S._glCache = {};
+  BOOK = 'D|2024-01';
+  V.loadVoucherToEdit('v-d');
+  check(V.vEditId === 'v-d',
+    '换账套后点凭证字号跳转：必须载入该凭证（vEditId 被清 = 用户看到的「空白凭证」）',
+    'vEditId=' + V.vEditId);
+  check((V.vRows || []).some(function (r) { return r.code === '1001'; }),
+    '换账套后点凭证字号跳转：该凭证的分录行必须还在（被 resetVoucherEdit 清成 4 行空行即空白凭证）',
+    '行=' + JSON.stringify((V.vRows || []).map(function (r) { return r.code || '空'; })));
+  global.__TY_HELPERS__.goPage = prevGoPage;
 })();
 
 /* ============================================================
@@ -362,19 +480,52 @@ globalThis.__PAGE_HOOK__ = {
  * 六、静态卡口：守卫是**被真的接上**的（而非只写在注释里）
  * ============================================================ */
 (function wiring() {
+  /* 守卫是**单点**的：app.js 的 bookScopeChanged（见其定义处注释）挂在 __TY_HELPERS__，
+     各页取用 + 在刷新入口按 key 复位。用哪个 key 是各页自己的事；页面**不得**再写一套账套判据。 */
   const pages = [
     ['js/pages/ledger/Ledger.js', ['gl', 'dl', 'ml']],
     ['js/pages/voucher/Voucher.js', ['voucher']],
-    ['js/pages/settle/Settle.js', ['settle']],
-    ['js/pages/report/ExpenseDetail.js', ['ed']]
+    ['js/pages/report/ExpenseDetail.js', ['ed']],
+    ['js/pages/settle/Settle.js', ['settle']]
   ];
   pages.forEach(function (p) {
     const src = fs.readFileSync(path.join(ROOT, p[0]), 'utf8');
-    check(/const\s+bookScopeChanged\s*=/.test(src), p[0] + ' 应取用 bookScopeChanged（取自 helpers，含 fallback）');
+    // fallback 必须返回 false（= 不重置）：写成 true 会把用户当次录的内容每次刷新都清掉
+    check(/const\s+bookScopeChanged\s*=\s*H\.bookScopeChanged\s*\|\|\s*function\s*\(\s*\)\s*\{\s*return false;\s*\}/.test(src),
+      p[0] + ' 应取 app.js 的单点守卫 bookScopeChanged（fallback 必须「不重置」）');
     p[1].forEach(function (k) {
       const re = new RegExp('bookScopeChanged\\(\\s*[\'"]' + k + '[\'"]\\s*\\)');
       check(re.test(src), p[0] + ' 应在刷新入口调用 bookScopeChanged("' + k + '") 做复位');
     });
+  });
+  /* 【根因卡口 2026-10-14】跳转入口必须「先切页、再设状态」——
+     两起跳转缺陷（凭证字号进来空白凭证 / 科目编码跳错科目）的真实根因就是顺序写反：
+     先设状态、后切页时，切页**同步**触发的刷新里的账套复位会把刚设好的状态清掉，随后
+     本页的"空白初始化 / 首次自动定位"接管，用户看到的就是空白凭证 / 编码最小的科目。
+     顺序对了，复位结果被后续赋值覆盖，两种账套情形都正确，不需要任何"跳过复位"的补丁。
+     这里按源码位置断言顺序，防止"顺手整理"时把两行调换回去。 */
+  [
+    ['js/pages/voucher/Voucher.js', 'function loadVoucherToEdit(',
+      'openVoucherPage();', 'vEditId = v.id;'],
+    ['js/pages/ledger/Ledger.js', 'globalThis.__dlJumpTo = function (',
+      "goPage('detail-ledger')", 'dlCurCode = String(code);']
+  ].forEach(function (j) {
+    const src = fs.readFileSync(path.join(ROOT, j[0]), 'utf8');
+    const i0 = src.indexOf(j[1]);
+    const iPage = i0 < 0 ? -1 : src.indexOf(j[2], i0);     // 切页
+    const iState = i0 < 0 ? -1 : src.indexOf(j[3], i0);    // 设状态
+    check(i0 >= 0 && iPage >= 0 && iState >= 0 && iPage < iState,
+      j[0] + '：跳转入口必须"先切页、再设状态"（' + j[2] + ' 要在 ' + j[3] + ' 之前）—— '
+      + '顺序写反，切页触发的复位就会清掉刚设好的状态',
+      '切页@' + iPage + ' 设状态@' + iState);
+  });
+  /* 反向约定：**不得**再给单个跳转入口加"本次跳过复位"的补丁 ——
+     根因（跳转入口顺序写反）已由"先切页、再设状态"的约定消除；
+     补丁不仅多余，还会让下一个改这段的人以为问题仍在。 */
+  ['js/pages/voucher/Voucher.js', 'js/pages/ledger/Ledger.js'].forEach(function (f) {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    check(!/keepLoadedVoucher|keepDlCodeOnce/.test(src),
+      f + ' 不得再引入"跳转期间跳过复位"的补丁（根因已修）');
   });
   /* ⚠ 反向约定（防止后来者"顺手补齐"）：**不得**把科目选择器句柄置 null 当作"换账套复位" ——
      bindSubjectPicker 有幂等保护（在元素 dataset 打标记），已绑过再调会**直接 return undefined**，

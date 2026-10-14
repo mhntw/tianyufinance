@@ -15,7 +15,12 @@ const closeModal = H.closeModal;
    故模板侧的金额一律经 tmplMoney 显示、经 U.amt 换算后再送 store，避免「元」被当整数喂给 money()
    而显示成 1/10000（5000 → 0.50）。 */
 const tmplMoney = function (v) { return money(U.amt(v)); };
-// 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态
+/* 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged 注释）。
+   本页用它的理由与别处略有不同：这里的复位值是**动态当下值** selMonth = currentPeriod() ——
+   模块首次求值时记下的月份可能已经过月（软件跨月不重启时，selMonth 会停在启动那个月），
+   故首次进结账页也要对齐「当下是哪个期间」，正需要"首次也复位"。
+   本页没有"跳转方先填状态、再切页"的入口（那种入口靠顺序约定解决，见 Voucher/Ledger 的注释），
+   不存在"刚设好的状态被复位清掉"的风险。 */
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 // （原先这里还有一份 `const esc = H.esc || 内联映射表` —— 已随引导块收口删除，esc 由单点提供。）
 

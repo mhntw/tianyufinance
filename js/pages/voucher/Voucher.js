@@ -18,6 +18,7 @@ import { H, S, U, round2, $ } from '../../common/helpers.js?v=dev';
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = H.periodRangeValue;
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态。
+// fallback 取 false = "不重置"，即退化成原有行为；绝不能写成 true —— 那会把用户当次录的内容每次刷新都清掉。
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { subjectFullName } from '../../common/subject-name.js';
@@ -1066,6 +1067,13 @@ function loadVoucherToEdit(id) {
     v = vs[0] || null;
   }
   if (!v) { showToast('凭证不存在', 'error'); return; }
+  /* 【跳转入口的顺序约定：先切页、再设状态 —— 2026-10-14 定稿】
+     切页会**同步**触发本页刷新（refreshVoucher）：其中的账套复位与空白初始化必须发生在我们
+     填表**之前**。写在后面就会把刚要载入的凭证清掉 —— 首次进凭证页时 bookScopeChanged 返回
+     true → resetVoucherEdit() → 用户点凭证字号进来看到的是一张 4 行空白凭证。
+     顺序调正后，复位结果天然被下面这些赋值覆盖，两种账套情形都正确，**不需要任何"跳过复位"的补丁**。
+     同一约定见 Ledger.__dlJumpTo / __glJumpTo、Report.__plJumpToRow（它们一直是这个顺序，从没出过问题）。 */
+  openVoucherPage();
   vEditId = v.id;
   // 编辑模式：隐藏「保存并新增」（删除 / 红字冲销 / 复制在「更多」菜单里自动出现）
   var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = true;
@@ -1099,7 +1107,6 @@ function loadVoucherToEdit(id) {
   });
   while (vRows.length < 4) vRows.push(defaultVoucherRow());
   renderVoucherRows();
-  openVoucherPage();
 }
 
 

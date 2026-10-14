@@ -324,10 +324,16 @@ function refreshDl() {
   renderDl(range);
 }
 // 跨页跳转：总账等页点「科目编码」→ 切到明细账并定位该科目（明细账单科目模式）
+/* 【跳转入口的顺序约定：先切页、再设状态 —— 2026-10-14 定稿】
+   与 __glJumpTo 同构：**先** goPage（它会同步触发 refreshDl 的账套复位/首次自动定位），
+   **再**设目标科目并重绘。顺序若写反，切页触发的复位会把这个刚设好的科目清成 null，
+   紧接着的「首次自动定位」把页面换成编码最小的发生科目（点 1002 银行存款却看到 1001 库存现金）。
+   中间那次"自动定位"的重绘与本次重绘在同一个 JS 任务内完成，用户看不到闪烁。 */
 globalThis.__dlJumpTo = function (code) {
   if (code == null) return;
-  dlCurCode = String(code);
   if (globalThis.goPage) globalThis.goPage('detail-ledger');
+  dlCurCode = String(code);
+  refreshDl();
 };
 // 账簿中 .link-gl-subject（科目编码链接）点击 → 跳明细账（只绑一次）
 if (!globalThis.__glSubjectBound) {
@@ -388,33 +394,47 @@ function renderDlSegment(tb, code, range, vmap) {
   var endView = S.displayBalance(d.endDr - d.endCr, s.normal, '平');
   function lineView(row) { return S.displayBalance(S.netFromBalDir(row.bal, row.dir), s.normal, '平'); }
   function amtText(v) { return v ? money(v) : ''; }
+  /* 前两列「科目编码 / 科目名称」的单元格（**与导出 exportDl 同源**）：
+     逐笔行写该笔分录**实际入账科目**（store 在 rows 里给的 r.entryCode），期初/合计/累计行写
+     查询科目本身 —— 否则查一级科目（含下级）时占满整列的只是「5401 主营业务成本」，
+     看不出 540101 客房 / 540102 折旧 等二级归类（用户 2026-10-14 报障）。
+     entryCode 为空或查不到科目（脏编码）时回退查询科目；金额与方向列不受影响。 */
+  function subjCells(oneCode) {
+    var ec = String(oneCode || '');
+    var e = ec ? S.subject(ec) : null;
+    return '<td class="mono">' + escHtml(e ? e.code : s.code) + '</td>' +
+      '<td>' + escHtml(e ? e.name : s.name) + '</td>';
+  }
   // 科目分组行：单科目模式下一眼看不出在看哪个科目，"全部"模式下更是必需
   var th = document.createElement('tr');
   th.className = 'dl-subj-head';
-  th.innerHTML = '<td class="mono">' + escHtml(s.code) + '</td><td colspan="6">' + escHtml(s.name) + '</td>';
+  th.innerHTML = '<td class="mono">' + escHtml(s.code) + '</td><td colspan="8">' + escHtml(s.name) + '</td>';
   tb.appendChild(th);
   var tro = document.createElement('tr');
   tro.className = 'dl-seg';
   // 期初行：借贷方列强制空，只在方向+余额列显示净额（列序与金蝶一致：方向在前、余额在后）
-  tro.innerHTML = '<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td>' + obView.dir + '</td><td class="ta-r mono">' + amtText(obView.amount) + '</td>';
+  /* escape-ok: subjCells 内部逐个 escHtml；obView.dir 是「借/贷/平」常量；amtText 产出 money() 格式化数字 */
+  tro.innerHTML = subjCells(s.code) + '<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td>' + obView.dir + '</td><td class="ta-r mono">' + amtText(obView.amount) + '</td>';
   tb.appendChild(tro);
   d.rows.forEach(function (r) {
     // 凭证字号可点 → 跳转到该凭证（可编辑，store 保证仅未结账期间可保存）
     var vchTd = voucherLinkCell(r, vmap);
     var v = lineView(r);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.date + '</td><td>' + vchTd + '</td>' +
+    tr.innerHTML = subjCells(r.entryCode) + '<td>' + r.date + '</td><td>' + vchTd + '</td>' +
       '<td class="cell-ellipsis" title="' + escAttr(r.summary) + '">' + escHtml(r.summary) + '</td>' +
       '<td class="ta-r mono">' + money(r.dr) + '</td><td class="ta-r mono">' + money(r.cr) + '</td><td>' + v.dir + '</td><td class="ta-r mono">' + amtText(v.amount) + '</td>';
     tb.appendChild(tr);
   });
   var trc = document.createElement('tr');
   trc.className = 'dl-seg';
-  trc.innerHTML = '<td></td><td></td><td>本期合计</td><td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
+  /* escape-ok: subjCells 内部逐个 escHtml；endView.dir 是「借/贷/平」常量；money/amtText 产出格式化数字 */
+  trc.innerHTML = subjCells(s.code) + '<td></td><td></td><td>本期合计</td><td class="ta-r mono">' + money(d.periodDr) + '</td><td class="ta-r mono">' + money(d.periodCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
   tb.appendChild(trc);
   var try_ = document.createElement('tr');
   try_.className = 'dl-seg';
-  try_.innerHTML = '<td></td><td></td><td>本年累计</td><td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
+  /* escape-ok: 同上（本年累计行，值与来源与本期合计行完全同类） */
+  try_.innerHTML = subjCells(s.code) + '<td></td><td></td><td>本年累计</td><td class="ta-r mono">' + money(d.ytdDr) + '</td><td class="ta-r mono">' + money(d.ytdCr) + '</td><td>' + endView.dir + '</td><td class="ta-r mono">' + amtText(endView.amount) + '</td>';
   tb.appendChild(try_);
   return true;
 }
@@ -424,7 +444,7 @@ function renderDl(range) {
   tb.innerHTML = '';
   var sc = dlSubjectCodes();
   if (sc.err) {
-    tb.innerHTML = '<tr><td colspan="7" class="empty-hint" style="color:var(--ty-red)">' + escHtml(sc.err) + '</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="empty-hint" style="color:var(--ty-red)">' + escHtml(sc.err) + '</td></tr>';
     return;
   }
   if (!range || !range.start || !range.end) return;
@@ -441,7 +461,8 @@ function renderDl(range) {
   if (!shown) {
     var emptyText = (range.start && range.end && range.start !== range.end)
       ? '所选期间范围无明细记录' : '本期无明细记录';
-    tb.innerHTML = '<tr><td colspan="7" class="empty-hint">' + emptyText + '</td></tr>';
+    /* escape-ok: emptyText 是本函数内的硬编码文案（两种），不含任何用户输入 */
+    tb.innerHTML = '<tr><td colspan="9" class="empty-hint">' + emptyText + '</td></tr>';
   }
   // 右侧科目快速切换树：账套变化重建 + 单一科目查询时高亮当前行
   dlTreeSyncCurrent(sc);
@@ -757,7 +778,14 @@ function exportDl() {
       var vch = (r.word || '') + '-' + (r.no || '');
       // 明细行：store 给「绝对值 + 实际方向」，先由 store.netFromBalDir 归一为净额，再走同一口径
       var v = S.displayBalance(S.netFromBalDir(r.bal, r.dir), s.normal);
-      rows.push([s.code, s.name, r.date || '', vch, r.summary || '', U.yuan(num(r.dr)) || '', U.yuan(num(r.cr)) || '', v.dir, U.yuan(v.amount) || '']);
+      // 科目两列写「该笔分录**实际入账科目**」（store 已在 rows 里给出 entryCode = e.code），
+      // 不是查询科目：查 5401（含下级）时期初/合计行才是科目级汇总，逐笔行若统一写 5401，
+      // 导出件里就只剩「5401 主营业务成本」，看不出 540101 客房 / 540102 折旧 等二级归类。
+      // entryCode 为空或查不到科目（脏编码）时回退查询科目。
+      // 金额口径（借/贷/方向/余额）不受此影响，仍与屏幕 renderDlSegment 完全同源。
+      var ec = String(r.entryCode || '');
+      var es = ec ? S.subject(ec) : null;
+      rows.push([es ? es.code : s.code, es ? es.name : s.name, r.date || '', vch, r.summary || '', U.yuan(num(r.dr)) || '', U.yuan(num(r.cr)) || '', v.dir, U.yuan(v.amount) || '']);
     });
     var endView = S.displayBalance(num(d.endDr) - num(d.endCr), s.normal);
     rows.push([s.code, s.name, '', '', '本期合计', U.yuan(num(d.periodDr)) || '', U.yuan(num(d.periodCr)) || '', endView.dir, U.yuan(endView.amount) || '']);

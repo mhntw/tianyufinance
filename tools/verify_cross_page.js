@@ -729,24 +729,25 @@ function netFromDirBal(dir, bal) {
   if (!d || d === '平') return 0;
   return (d === '借') ? amt(bal) : -amt(bal);
 }
-// 明细账行视图：屏幕 7 列（日期/凭证字号/摘要/借/贷/方向/余额）；
-// 导出 9 列（前两列是科目编码/名称）。屏幕另有「科目分组头行」（仅 1 个 td），需剔除。
-function dlRowView(cells, exported) {
-  const off = exported ? 2 : 0;
+// 明细账行视图：屏幕与导出**同为 9 列**（科目编码/名称 + 日期/凭证字号/摘要/借/贷/方向/余额），
+//   故两侧都跳过前 2 列（2026-10-14 屏幕补齐科目两列后与导出同构）。
+//   屏幕另有「科目分组头行」（仅 2 个 td：科目 + colspan），靠下面的长度判据剔除。
+function dlRowView(cells, off) {
   if (cells.length < off + 7) return null;
   return {
+    code: String(cells[off - 2] || '').trim(), name: String(cells[off - 1] || '').trim(),
     date: String(cells[off + 0] || '').trim(), seg: String(cells[off + 2] || '').trim(),
     dr: cells[off + 3], cr: cells[off + 4],
     dir: String(cells[off + 5] || '').trim(), bal: cells[off + 6]
   };
 }
-function indexDl(rows, exported) {
+function indexDl(rows, off) {
   const out = [];
-  rows.forEach(function (c) { const v = dlRowView(c, exported); if (v) out.push(v); });
+  rows.forEach(function (c) { const v = dlRowView(c, off); if (v) out.push(v); });
   return out;
 }
 function compareDl(m, code, scr, exp) {
-  const a = indexDl(scr, false), b = indexDl(exp, true);
+  const a = indexDl(scr, 2), b = indexDl(exp, 2);
   CHECKED++;
   if (a.length !== b.length) {
     fail('[' + m + '] 明细账 ' + code + ' 行数不一致：屏幕 ' + a.length + ' 行 / 导出 ' + b.length + ' 行（同条件下一侧被隐藏或多出）');
@@ -755,18 +756,47 @@ function compareDl(m, code, scr, exp) {
   for (let i = 0; i < n; i++) {
     const x = a[i], y = b[i];
     const who = code + ' ' + x.date + ' ' + x.seg;
+    // 科目两列（屏幕 2026-10-14 补齐）也必须逐格一致：两侧都要给「该笔分录实际入账科目」，
+    //   一侧回退成查询科目、另一侧没回退，就是新的"屏幕与导出各说各话"。
+    if (x.code !== y.code || x.name !== y.name) {
+      fail('[' + m + '] 明细账 ' + who + ' 科目列不一致：屏「' + x.code + ' ' + x.name + '」导「' + y.code + ' ' + y.name + '」');
+    }
     if (x.seg !== y.seg) fail('[' + m + '] 明细账 ' + code + ' 第 ' + (i + 1) + ' 行行序错位：屏「' + x.seg + '」导「' + y.seg + '」');
     if (!eqAmt(amt(x.dr), amt(y.dr))) fail('[' + m + '] 明细账 ' + who + ' 借方不一致：屏「' + x.dr + '」导「' + y.dr + '」');
     if (!eqAmt(amt(x.cr), amt(y.cr))) fail('[' + m + '] 明细账 ' + who + ' 贷方不一致：屏「' + x.cr + '」导「' + y.cr + '」');
     if (x.dir !== y.dir) fail('[' + m + '] 明细账 ' + who + ' 方向列不一致：屏「' + x.dir + '」导「' + y.dir + '」');
     if (!eqAmt(amt(x.bal), amt(y.bal))) fail('[' + m + '] 明细账 ' + who + ' 余额不一致：屏「' + x.bal + '」导「' + y.bal + '」');
   }
+  assertDlSubjectColumn(m, code, b);
+}
+/* 科目列的内容断言（用户 2026-10-14 报障的那条）：
+   查**一级科目（含下级）**时，逐笔行的科目列必须是该笔分录实际入账的科目 ——
+   若该期内确有下级科目的分录发生，而整列仍只有查询科目本身，就是「看不出二级归类」复发。
+   判据只在这种科目上生效：叶子科目 / 只有自身分录的科目，整列写自己才是正确的。 */
+function assertDlSubjectColumn(m, code, exportedRows) {
+  const kids = {};
+  (S.childCodesOf(code) || []).forEach(function (c) { kids[c] = 1; });
+  if (!Object.keys(kids).length) return;
+  const hasKidEntry = (S.state.vouchers || []).some(function (v) {
+    if (v.deleted === 'y') return false;
+    if (String(v.date || '').slice(0, 7) !== m) return false;
+    return (v.entries || []).some(function (e) { return kids[e.code]; });
+  });
+  if (!hasKidEntry) return;
+  CHECKED++;
+  const seen = {};
+  exportedRows.forEach(function (r) { if (r.code) seen[r.code] = 1; });
+  const hitKid = Object.keys(seen).some(function (c) { return c !== code && c.indexOf(code) === 0; });
+  if (!hitKid) {
+    fail('[' + m + '] 明细账 ' + code + ' 有下级科目分录，但导出科目列只有「' + code + '」'
+      + '（应为该笔分录实际入账的下级科目，如 ' + Object.keys(kids).slice(0, 2).join('/') + '）');
+  }
 }
 // 明细账余额还原：期初余额行 → 期初净额；本期合计/本年累计 → 期末净额
 function verifyDlNet(m, code, scr) {
   const r = (S.generalLedger(m) || []).filter(function (x) { return String(x.code) === code; })[0];
   if (!r) return;
-  const rows = indexDl(scr, false);
+  const rows = indexDl(scr, 2);
   const chk = function (seg, truth, label) {
     const v = rows.filter(function (x) { return x.seg === seg; })[0];
     if (!v) { fail('[' + m + '] 明细账 ' + code + ' 缺少「' + seg + '」行'); return; }
