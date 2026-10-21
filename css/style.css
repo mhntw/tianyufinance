@@ -1996,59 +1996,7 @@ label.req::before {
   font-size: var(--fs-sm);
   color: var(--ty-text-2);
   white-space: nowrap;
-  position: relative; /* 承载绝对定位的附件浮层（脱离文档流，不影响本行 flex 布局） */
 }
-/* 已上传附件浮层：点击「上传附件」后展示，可逐个移除 */
-.vh-attach-panel {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 30;
-  min-width: 240px;
-  max-width: 320px;
-  max-height: 220px;
-  overflow-y: auto;
-  margin-top: 6px;
-  padding: 6px 0;
-  background: var(--ty-white);
-  border: 1px solid var(--ty-border);
-  border-radius: 4px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .14);
-  white-space: normal;
-}
-.vh-attach-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  font-size: var(--fs-xs);
-  color: var(--grid-text);
-}
-.vh-attach-item:hover { background: var(--st-panel-bg2); }
-.vh-attach-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vh-attach-del {
-  flex: none;
-  color: var(--ty-red);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  line-height: 1;
-  padding: 0 2px;
-}
-.vh-attach-del:hover { text-decoration: none; opacity: .75; }
-.vh-attach-empty { padding: 6px 10px; font-size: var(--fs-xs); color: var(--ty-text-3); }
-.vh-upload {
-  color: var(--ty-blue);
-  text-decoration: none;
-  font-size: var(--fs-xs);
-  margin-left: 4px;
-}
-.vh-upload:hover { text-decoration: underline; }
-
 /* 凭证表格（式，列宽/行高源码）
  * 采用定宽表格 + 外层横向滚动，确保金额列 198px 永不被压缩，
  * 从而 letter-spacing:9px 与 11×9.0909% 位格严格对齐（像素级）。
@@ -2302,8 +2250,19 @@ label.req::before {
   background-color: var(--ty-blue-2);
   color: var(--grid-text);
 }
-/* 负值红字（red 类） */
-.amt-red { color: var(--ty-red); }
+/* 原 .amt-red（负值红字）已删除（2026-10-21）：负数改由负号表达，位格不再染色。
+   ⚠ 别和上面的 CSS 变量 --amt-red（位格竖线「元|角」的浅红）搞混，那个是画线用的，仍在使用。 */
+/* 负数额文本（凭证位格内的负数，2026-10-21）：
+   位格 11 格没有符号位，负数改为文本显示 "-1234.56"，负号一眼可见、不着色。
+   只影响负数那一行；正数仍是位格。 */
+.amt-neg-text {
+  flex: 1 1 auto;
+  align-self: center;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* 文本分支不画位格竖线：文本不对齐 11 格，画线会压在数字上 */
+.amt-bg.amt-bg-text::after { display: none; }
 /* 万亿模式纯文本（trillionAmount） */
 .amt-trillion {
   text-align: right;
@@ -4088,16 +4047,8 @@ label.req::before {
    数据刷新时不会因为 1/8 宽度不同而左右跳动。财务看板逐行比对金额时很实用。 */
 .fv1-v, .fv2-v, .fv3-v, .fv5-v, .fv7-v, .fv8-v { font-variant-numeric: tabular-nums; }
 
-/* 首页财务指标·负数红字：负值标红（行业惯例：红字＝负数）。
-   不动全局 signed（Ledger/Voucher 等多页共用）；首页用 setSigned 局部给负值元素挂 .neg。
-   特异度 0,3,0 高于 .fv7-v.is-rate(0,2,0) 等，确保覆盖。 */
-.metric-card .fv1-v.neg,
-.metric-card .fv2-v.neg,
-.metric-card .fv3-v.neg,
-.metric-card .fv5-v.neg,
-.metric-card .fv7-v.neg,
-.metric-card .fv8-v.neg,
-.metric-card .ai-val.neg { color: var(--ty-red); }
+/* 首页财务指标·负数标红已于 2026-10-21 取消（用户要求"简单稳定"，红字强调属非必要）：
+   负值仍由 signed() 带出负号，但不再染色；Home.js 也不再挂 .neg。 */
 
 /* 主数↔子项分隔线：主数行(.fv1)下方 1px 细线，强化「主张量 vs 分解项」层级。 */
 .metric-card .fv1 { border-bottom: 1px solid var(--ty-border); padding-bottom: 8px; margin-bottom: 8px; }
@@ -4551,7 +4502,9 @@ label.req::before {
 .search-item.active { background: var(--ty-blue-2); }   /* 键盘 ↑/↓ 高亮（与 hover 同色，提示当前待选） */
 .search-item .si-title { font-weight: 400; color: var(--ty-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-item .si-sub { font-size: var(--fs-xs); color: var(--ty-muted); }
-.search-item .si-amt { color: var(--ty-red); font-family: var(--ty-font); }
+/* 【2026-10-21】金额不再恒为红色（原 color: var(--ty-red)，与正负无关，纯强调）：
+   全站金额统一正文色，红只留给警示语义。 */
+.search-item .si-amt { color: var(--ty-text); font-family: var(--ty-font); }
 .search-empty { padding: 24px 12px; text-align: center; color: var(--ty-muted); font-size: var(--fs-sm); }
 /* 定位/命中行高亮（利润表跳转 / 总账跳转 / 全局搜索 三处共用同一套）
    下面三点缺一个就会「看不出来」，勿随意回退：
@@ -5584,8 +5537,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   }
   .grid tbody tr:hover td { background: var(--ty-white) !important; }
   .grid .ta-r, .grid .col-amt { text-align: right; }
-  /* 数字着色（红字）在打印时保留但转深灰，避免浅红看不清 */
-  .grid .amt-neg, .grid .num-neg { color: var(--ty-text) !important; }
   /* 行勾选列 / 操作列在打印时隐藏 */
   .grid col.c-check, .grid col.c-op,
   .grid th.col-check, .grid td.col-check,

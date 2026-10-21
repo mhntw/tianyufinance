@@ -352,10 +352,20 @@ function opRestore() {
   const cands = (S.state.vouchers || []).filter(v => v.deleted === 'y' && closed.indexOf(vmonth(v)) < 0);
   if (!cands.length) return;
   const v = cands[rndInt(cands.length)];
+  const m = vmonth(v);
+  /* 业务约束（2026-10-22，store.restoreVoucher）：还原一张结转损益凭证时，若本期已存在
+   *   其它结转损益凭证会被拒绝（防本年利润重复结转）。这是有意的保护，不是不变量破坏，
+   *   模糊测试必须认可它，否则随机还原会"意外"触发合法拦截而误报失败。 */
+  const dupCarry = S.voucherKind(v) === 'carryPL'
+    && S.periodVouchersOfKind(m, S.VOUCHER_KINDS.CARRY_PL).some(x => x.id !== v.id);
   const r = S.restoreVoucher(v.id);
-  if (!check('未结账期已删凭证可还原', r && r.ok === true, JSON.stringify(r))) return;
-  stats.restore++;
-  check('还原后不再带 deleted 标记', v.deleted !== 'y');
+  if (dupCarry) {
+    check('还原会制造重复结转的结转凭证被拒（合法拦截）', r && r.ok === false, JSON.stringify(r));
+  } else {
+    if (!check('未结账期已删凭证可还原', r && r.ok === true, JSON.stringify(r))) return;
+    stats.restore++;
+    check('还原后不再带 deleted 标记', v.deleted !== 'y');
+  }
 }
 
 /* 结账一个期间（含「被结转损益拦截」时的恢复逻辑）；返回 { r, dbg }。

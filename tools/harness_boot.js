@@ -37,7 +37,20 @@ function installBootImports(globalObj, rootDir) {
   /* 在函数作用域里求值，再把名字整表返回 —— 避免往真实全局塞一堆 const（那会污染壳）。 */
   const boot = (0, eval)('(function () {\n' + src + '\nreturn { ' +
     NAMES.map(function (n) { return n + ': ' + n; }).join(', ') + ' };\n})')();
-  g.__XP_IMPORTS__ = Object.assign(g.__XP_IMPORTS__ || {}, boot);
+
+  /* 页面另有的 ESM 纯函数模块（当前只有金额位格 amt_cells.mjs）。
+     壳的 stripEsm 会把它改写成 __XP_IMPORTS__['computeAmtCells']，缺了就是
+     "computeAmtCells is not a function"。这里求值**真实现**（不是桩）：
+     位格是纯函数、无 DOM，正好可以直接跑，避免测试壳和页面各算一套。 */
+  let amount = {};
+  try {
+    const amtSrc = fs.readFileSync(path.join(root, 'js', 'pages', 'voucher', 'amt_cells.mjs'), 'utf8')
+      .replace(/^\s*export\s+(?=(const|function|let|var)\b)/gm, '');
+    amount = (0, eval)('(function () {\n' + amtSrc +
+      '\nreturn { computeAmtCells: computeAmtCells, AMT_UNITS: AMT_UNITS };\n})')();
+  } catch (e) { /* 模块不存在时保持旧行为（只影响用到它的页面装载） */ }
+
+  g.__XP_IMPORTS__ = Object.assign(g.__XP_IMPORTS__ || {}, boot, amount);
   return boot;
 }
 

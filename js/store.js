@@ -1464,18 +1464,9 @@
             }).catch(function () {});
           }
         } catch (e) {}
-        // 3) 清理跟随该账套的结账自定义/预置模板（全局 localStorage，按 bookId 归属标记），
-        //    避免删除账套后这些模板仍残留在全局、下次进入其它账套时串台显示
-        try {
-          var TMPL_KEY = 'settle_templates_v1';
-          var list = JSON.parse(localStorage.getItem(TMPL_KEY) || '[]');
-          if (Array.isArray(list)) {
-            // 仅按 bookId 清理：系统默认模板（dep/cost/vat/surTax/incTax/profit）永远不带 bookId，不会被误删；
-            // 其余跟随账套的自定义/预置模板带上 bookId，删除账套时随之清除
-            var kept = list.filter(function (t) { return !(t && t.bookId === id); });
-            if (kept.length !== list.length) localStorage.setItem(TMPL_KEY, JSON.stringify(kept));
-          }
-        } catch (e) {}
+        /* 3) （2026-10-21 起无需清理）结账模板已随账套存进 state.settleTemplates，
+              删账套即随文件消失；旧 localStorage 键已降级为只读迁移源，删除账套时不必再改写它。
+              原先这里按 bookId 清理全局键的逻辑已移除 —— 那正是"两个真值源"的残留。 */
         // 4) 待主账本真正删完后重建索引，确保列表与磁盘一致
         return self.refreshBookIndex().then(function () {
           // 5) 若删的是「当前账套」，必须把当前账套指针移走（见下方方法说明）
@@ -1923,14 +1914,10 @@
       if (!tpl.entries.some(function (e) { return e.code; })) return { ok: false, msg: '模板至少需要一条带科目的分录' };
       this.state.vchTemplates = this.state.vchTemplates || [];
       this.state.vchTemplates.push(tpl);
-      // 同步到结账凭证模板（localStorage），让录凭证保存的模板也能在期末处理中使用
-      // （"保存为模板 → 自动出现在结账凭证模板"行为）
+      // 同步到结账凭证模板：**只写账套**（2026-10-21 起账套是唯一权威）。
+      // 旧实现在这里双写 localStorage —— 那个键是全局单键，换安装标识 / 换电脑即失效，
+      // 造成"有的模板扛过换账套、有的丢"的分裂行为；现统一以账套为准。
       try {
-        var STL_KEY = 'settle_templates_v1';
-        var _stl = JSON.parse(localStorage.getItem(STL_KEY) || '[]');
-        if (!Array.isArray(_stl)) _stl = [];
-        // 已存在的同名模板先移除（避免重复 push）
-        _stl = _stl.filter(function (s) { return !(s.fromVchTpl && s.vchTplId === tpl.id); });
         var _settleEntry = {
           id: 'vch_' + tpl.id,          // 前缀区分系统模板（profit/dep/vat...）
           name: tpl.name,
@@ -1956,14 +1943,12 @@
           vchTplId: tpl.id,
           bookId: this.bookId   // 跟随当前账套：金额模板绝不能跨账套串台
         };
-        _stl.push(_settleEntry);
-        localStorage.setItem(STL_KEY, JSON.stringify(_stl));
-        // 同时写入 store.state.settleTemplates，让 settleTplEnabled 能读到 enabled=true
         this.state.settleTemplates = this.state.settleTemplates || [];
         var existing = this.state.settleTemplates.filter(function(s){ return !(s.fromVchTpl && s.vchTplId === tpl.id); });
         existing.push(_settleEntry);
         this.state.settleTemplates = existing;
-      } catch (_) { /* localStorage 失败不阻断主流程 */ }
+        this.state._settleTplMigrated = true;   // 账套里已有模板记录：不必再从旧 localStorage 迁移
+      } catch (_) { /* 不应阻断主流程 */ }
       this.persist();
       return { ok: true, tpl: tpl };
     },
@@ -1974,23 +1959,13 @@
       if (idx < 0) return { ok: false, msg: '模板不存在' };
       arr.splice(idx, 1);
       // 同步删除结账凭证模板里对应的条目（vchTplId 匹配）
-      // 【必须同时清 state.settleTemplates】saveVchTemplate 是「localStorage + state」双写，
-      // 此处若只清 localStorage：state 里的残留项（带 custom:true + 完整 template）会在下次
-      // loadSettleTemplates 时被重新合并回模板列表，形成「凭证模板已删、期末模板还在」的死卡，
-      // 而且 persistSettleTemplates 又会把它写回 localStorage —— 删了会自我复活。
+      // 【只清账套即可】2026-10-21 起模板定义以 state.settleTemplates 为唯一权威，
+      // localStorage 旧键已降级为只读迁移源，不再需要同步删除（也不应再写它）。
       if (Array.isArray(this.state.settleTemplates)) {
         this.state.settleTemplates = this.state.settleTemplates.filter(function (s) {
           return !(s.fromVchTpl && s.vchTplId === id);
         });
       }
-      try {
-        var STL_KEY2 = 'settle_templates_v1';
-        var _stl2 = JSON.parse(localStorage.getItem(STL_KEY2) || '[]');
-        if (Array.isArray(_stl2)) {
-          _stl2 = _stl2.filter(function (s) { return !(s.fromVchTpl && s.vchTplId === id); });
-          localStorage.setItem(STL_KEY2, JSON.stringify(_stl2));
-        }
-      } catch (_) {}
       this.persist();
       return { ok: true };
     },
@@ -2288,6 +2263,18 @@
       // 还原前检查所在期间是否已结账（结账期间内不应有活动凭证）
       if (this.isPeriodClosed(voucherMonth(v)))
         return { ok: false, msg: '该凭证所在月份已结账，请先反结账再还原' };
+      /* 防重复结转：还原一张「结转损益」凭证时，若本期已存在**其它**结转损益凭证则拦截。
+       * 最危险场景：用户点「重新结转」会软删旧结转凭证（进回收站），若误点「还原」，本期就
+       * 并存两套结转凭证 → 本年利润（3103）双倍结转。这种错比账不平更难察觉：借贷仍平，
+       * 只是净额翻倍，且会顺着结账、未分配利润一路传到下年期初。
+       * 只拦 carryPL + 本期已有其它 carryPL 这一条路径：
+       *   · 还原普通凭证、或还原「本期唯一一张结转凭证」都不受影响；
+       *   · 与 removeVoucher 的软删语义对称——删了能还原，但还原不能制造重复。 */
+      if (this.voucherKind(v) === 'carryPL') {
+        var _dupCarry = this.periodVouchersOfKind(voucherMonth(v), this.VOUCHER_KINDS.CARRY_PL)
+          .some(function (x) { return x.id !== id; });
+        if (_dupCarry) return { ok: false, msg: '本期已有结转损益凭证，还原此凭证会导致本年利润重复结转；请先删除当前结转凭证，或使用「重新结转损益」刷新。' };
+      }
       v.deleted = 'n';
       delete v.deletedAt;
       delete v.deletedBy;
@@ -2536,6 +2523,49 @@
         if (subs.length) return subs[0];
       }
       return null;
+    },
+    // 本年利润科目代码（单点）：优先科目角色（standards.roles.PROFIT_YEAR），回退 3103。
+    // 【为什么必须单点】结转损益 / 年末结转 / 利润分配 / 资产负债表诊断都按这个科目取数；
+    //   以前结账页卡片硬编码 '3103'，用户一旦把本年利润换成别的科目（如小企业准则的 3131），
+    //   会出现「结转凭证正确生成、卡片却显示未结转 0.00」的分叉。
+    profitYearCode: function () {
+      var r = this.subjectRole('PROFIT_YEAR');
+      return String((r && r.code) || PROFIT_CODE);
+    },
+    /* 本年利润期末余额（**唯一取数口径**，carryYearEnd 与 settleChecklist 共用）。
+     * 口径：角色科目本身或它的下级科目（本年利润也可能只建明细）。
+     * 返回 null = 总账里根本没有这个科目的任何行（调用方决定是报错还是当 0）。
+     * 【为什么必须单点】carryYearEnd 原用常量 PROFIT_CODE('3103') 取余额、
+     *   却用 subjectRole 生成分录：科目一旦被换成别的编码（如旧准则 3131），
+     *   就会出现「分录按角色科目生成、余额却按 3103 取 → 报『缺失本年利润科目』」
+     *   或「余额取到别的科目」。settleChecklist 又各写了一份同样的累计逻辑，两处迟早分叉。 */
+    profitYearBalance: function (month) {
+      var pCode = String(this.profitYearCode());
+      var rows = this.generalLedger(month) || [];
+      var hit = rows.filter(function (r) { return String(r.code) === pCode; });
+      if (!hit.length) hit = rows.filter(function (r) { return String(r.code).indexOf(pCode) === 0; });
+      if (!hit.length) return null;
+      var bal = 0;
+      hit.forEach(function (r) {
+        bal += (r.normal === 'dr' ? (num(r.endDr) - num(r.endCr)) : (num(r.endCr) - num(r.endDr)));
+      });
+      return bal;
+    },
+    // 结转损益的「目标科目」：结账模板显式配置 > 科目角色 > 3103（模板留空即用角色）
+    // 自愈：模板里存了旧默认 '3103'、但账套已把本年利润换成别的科目（该科目不存在）时，
+    //   不跟着失效编码走，回落到科目角色 —— 避免历史模板值把结转目标带偏。
+    settleProfitTargetCode: function () {
+      var tpls = (this.state && this.state.settleTemplates) || [];
+      if (Array.isArray(tpls)) {
+        for (var i = 0; i < tpls.length; i++) {
+          var t = tpls[i];
+          if (t && t.id === 'profit' && t.targetSubj) {
+            var code = String(t.targetSubj).trim();
+            if (this.subject(code)) return code;
+          }
+        }
+      }
+      return this.profitYearCode();
     },
     // 凭证借贷平衡校验
     voucherBalance: function (entries) {
@@ -2840,12 +2870,31 @@
       function has(code) { return !!codes[String(code)]; }
       function startsWith(p) { return codeList.some(function (c) { return c.indexOf(p) === 0; }); }
       function hasRole(role) { var s = self.subjectRole(role); return !!(s && has(s.code)); }
+      /* 同上，但把「角色科目本身或它的下级科目」都算命中。
+       * 【为什么只给年度结转用】角色解析出来的是「一级科目」，而分录常落在其明细科目上
+       *   （真实账套：利润分配 3104 → 3104006 / 310415）。只做精确匹配会让年结凭证
+       *   永远识别不出来 —— 实测恰好 3 张（添钰 2025-12 记-63、绅蓝 2024-12 记-150、
+       *   绅蓝 2025-12 记-67）kind 恒为 undefined，连带三个后果：
+       *     · 结账清单 yearend 走「本年利润无余额→无需结转」分支，把「已结转」显示成「无需结转」；
+       *     · 12 月利润分配被「请先结转本年利润」挡住（数据里明明有）；
+       *     · carryYearEnd 的幂等保护对导入账套形同虚设（可能重复生成年结凭证 = 错账）。
+       * 【为什么不全局放宽】实测把 hasRole 全部改成含下级后，两本账套会额外多识别
+       *   34 张（工资计提 21 / 工资发放 11 / 利润分配 2）。数值虽不变，但工资与利润分配
+       *   的期末行为会跟着变 —— 那是另一件事，须单独评估。P1 只修年结这条链。 */
+      function hasRoleOrChild(role) {
+        var s = self.subjectRole(role);
+        if (!s) return false;
+        var c0 = String(s.code);
+        return has(c0) || startsWith(c0);
+      }
       var K = this.VOUCHER_KINDS;
 
       // 1) 结转损益：同时出现「损益类科目」与「本年利润」（本软件与结转凭证的共同结构）
       if (hasPL && hasRole('PROFIT_YEAR')) return K.CARRY_PL;
       // 2) 年度结转：本年利润 + 利润分配，且不含损益类科目（含损益的归入结转损益）
-      if (hasRole('PROFIT_YEAR') && hasRole('PROFIT_RESIDUAL') && !hasPL) return K.CARRY_YE;
+      //    两者都按「本身或下级」匹配：未分配利润几乎总是明细科目（3104006/310415），
+      //    用精确匹配会让导入的年结凭证恒漏标（见 hasRoleOrChild 注释）。
+      if (hasRoleOrChild('PROFIT_YEAR') && hasRoleOrChild('PROFIT_RESIDUAL') && !hasPL) return K.CARRY_YE;
       // 2.5) 利润分配：利润分配科目 +（盈余公积或应付股利），且不含本年利润（含本年利润归 CARRY_YE）
       if (hasRole('PROFIT_RESIDUAL') && !hasRole('PROFIT_YEAR') && (hasRole('SURPLUS_RESERVE') || hasRole('DIVIDEND_PAYABLE'))) return K.PROFIT_DIST;
       // 3) 计提折旧：【与 deprVoucherIn() 严格同口径】贷方落在累计折旧科目 + 借方是费用类。
@@ -3014,15 +3063,22 @@
           }
         });
       });
-      // 按科目性质分成收入类 entriesRev 和费用类 entriesExp
+      /* 按科目性质分成收入类 entriesRev 和费用类 entriesExp。
+       * 【与金蝶逐条对齐的三条规则】实测两本真实账套全部 86 张结转损益凭证（收入 40 / 费用 46，0 异常）：
+       *   ① 科目一律按**编码升序**排版，与凭证录入顺序无关 —— 故必须显式 sort()，
+       *      不能依赖 Object.keys 的插入序（以前恰好是升序，靠的是录入习惯，不是规则）；
+       *   ② 收入凭证：各收入科目在前，本年利润恒在**末行**；
+       *   ③ 费用凭证：本年利润恒在**首行**，各费用科目在后（见下方 unshift）。
+       *   分录摘要统一「结转本期损益」（金蝶 1657 条分录里占绝对多数；本系统原为「结转+科目名」，
+       *   重新结转后与金蝶比对会整片不一致，但金额并无差异 —— 典型"看着不同、其实一样"的假差异）。 */
       var entriesRev = [], entriesExp = [];
-      Object.keys(map).forEach(function (code) {
+      Object.keys(map).sort().forEach(function (code) {
         var s = self.subject(code);
         var amt = map[code];
         if (s.cls === 'revenue') {
-          entriesRev.push({ code: code, name: s.name, summary: '结转' + s.name, dr: amt, cr: 0 });
+          entriesRev.push({ code: code, name: s.name, summary: '结转本期损益', dr: amt, cr: 0 });
         } else {
-          entriesExp.push({ code: code, name: s.name, summary: '结转' + s.name, dr: 0, cr: amt });
+          entriesExp.push({ code: code, name: s.name, summary: '结转本期损益', dr: 0, cr: amt });
         }
       });
       var net = totalRev - totalExp;
@@ -3042,9 +3098,18 @@
         var _bal = self.voucherBalance(entries);
         if (!_bal.balanced) {
           var _diff = round2(_bal.dr - _bal.cr);
-          var _last = entries[entries.length - 1];
-          if (_diff > 0) _last.cr = round2(num(_last.cr) + _diff);   // 借 > 贷 → 补贷
-          else if (_diff < 0) _last.dr = round2(num(_last.dr) - _diff); // 贷 > 借 → 补借
+          /* 配平必须落在「本年利润」这条轧差分录上。
+           * 以前本年利润恒在末行，直接取 entries[last] 恰好正确；现在费用凭证把它移到首行
+           * （对齐金蝶），若仍取 last 就会去改某个**费用科目**的金额 —— 账虽然是平的，
+           * 但被改的是业务科目，等于悄悄改了成本费用（比不平更糟）。故先按科目定位，
+           * 找不到才退回末行（separate=false 的合并模式仍把本年利润放末行）。 */
+          var _plug = null;
+          for (var _i = entries.length - 1; _i >= 0; _i--) {
+            if (String(entries[_i].code) === String(profitCode)) { _plug = entries[_i]; break; }
+          }
+          if (!_plug) _plug = entries[entries.length - 1];
+          if (_diff > 0) _plug.cr = round2(num(_plug.cr) + _diff);   // 借 > 贷 → 补贷
+          else if (_diff < 0) _plug.dr = round2(num(_plug.dr) - _diff); // 贷 > 借 → 补借
           // 必须留痕：plug 会**悄悄改变金额**，若汇总环节真有错会被它掩盖。
           // 差几分属正常的逐科目 round2 累积，差到「元」级则说明汇总有问题，需人工核查。
           var _msg = '[结转] 损益结转借贷差 ' + yuanFmt(_diff) + ' 元，已调整末笔分录配平';
@@ -3059,16 +3124,16 @@
       // separate=true（默认）：收入→3103（贷）一张、费用→3103（借）一张
       if (opts.separate !== false) {
         var saved1 = null, saved2 = null;
-        // 凭证 1：收入类 → 本年利润（3103 在贷方）
+        // 凭证 1：收入类 → 本年利润（3103 在**末行**，与金蝶一致）
         if (entriesRev.length || totalRev !== 0) {
           var e1 = entriesRev.slice();
-          if (totalRev !== 0) e1.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: totalRev });
+          if (totalRev !== 0) e1.push({ code: profitCode, name: profitName, summary: '结转本期损益', dr: 0, cr: totalRev });
           saved1 = doSave(e1);
         }
-        // 凭证 2：成本费用类 → 本年利润（3103 在借方）
+        // 凭证 2：成本费用类 → 本年利润（3103 在**首行**，与金蝶一致；原实现放末行，比对时首行对不上）
         if (entriesExp.length || totalExp !== 0) {
           var e2 = entriesExp.slice();
-          if (totalExp !== 0) e2.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: totalExp, cr: 0 });
+          if (totalExp !== 0) e2.unshift({ code: profitCode, name: profitName, summary: '结转本期损益', dr: totalExp, cr: 0 });
           saved2 = doSave(e2);
         }
         if (!saved1 && !saved2) return { ok: false, msg: '结转损益失败' };
@@ -3076,8 +3141,8 @@
         // 同时结转（一张净额，旧逻辑）
         var entriesAll = entriesRev.concat(entriesExp);
         if (net !== 0) {
-          if (net > 0) entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: 0, cr: net });
-          else entriesAll.push({ code: profitCode, name: profitName, summary: '结转本年利润', dr: -net, cr: 0 });
+          if (net > 0) entriesAll.push({ code: profitCode, name: profitName, summary: '结转本期损益', dr: 0, cr: net });
+          else entriesAll.push({ code: profitCode, name: profitName, summary: '结转本期损益', dr: -net, cr: 0 });
         }
         if (!entriesAll.length) return { ok: false, msg: '结转损益失败：无损益类科目' };
         doSave(entriesAll);
@@ -3107,10 +3172,11 @@
       var profit = this.subjectRole('PROFIT_YEAR');
       var undist = this.subjectRole('PROFIT_RESIDUAL');
       if (!profit || !undist) return { ok: false, msg: '缺失本年利润/利润分配科目' };
-      // 本年利润余额（含本期结转损益后）
-      var glRow = (this.generalLedger(month) || []).filter(function (r) { return r.code === PROFIT_CODE; })[0];
-      if (!glRow) return { ok: false, msg: '缺失本年利润科目' };
-      var bal = glRow.normal === 'dr' ? (num(glRow.endDr) - num(glRow.endCr)) : (num(glRow.endCr) - num(glRow.endDr));
+      // 本年利润余额（含本期结转损益后）：走单点口径，与结账清单 yearend 检查完全同源。
+      // 原实现硬编码 PROFIT_CODE 取余额、却用 subjectRole 生成分录 —— 两者一旦不是同一编码
+      // （换准则 / 只建明细科目），就会误报「缺失本年利润科目」而 12 月无法年结。
+      var bal = this.profitYearBalance(month);
+      if (bal === null) return { ok: false, msg: '缺失本年利润科目' };
       if (bal === 0) return { ok: false, msg: '本年利润无余额，无需结转' };
       var entries;
       if (bal > 0) {
@@ -3168,15 +3234,24 @@
       /* 【2026-09-26 收口】此处原先自带一份 `var R = x => Math.round(x*100)/100` ——
          round2 的**重复实现**，且比规范版少了 `-0` 归一（见 round2 注释：(-0).toLocaleString 会显示
          "-0.00"、写进 Excel 也可能带负号）。同一口径两份实现，改一处必漏另一处，故直接用 round2。 */
+      var undistCode = String(undist.code);        // 利润分配（含其明细，按前缀匹配）
+      /* 【2026-10-22 修复金额翻倍】原实现把年结凭证的**两侧各加一次**：
+           3103 借方 += dr  →  得 +net
+           3104 贷方 += cr  →  再加 +net（同一笔金额，借贷必然相等）
+         实测合成账套：净利润 1 亿元 → net 变 2 亿元，提取盈余公积/分配股利全部翻倍。
+         此前一直没暴露：导入账套年结凭证识别不出，函数恒被「请先结转本年利润」挡住，
+         这段代码从未真正执行过（历史账套里 profitDist 凭证 0 张，确认无脏数据）。
+         现只取「利润分配」一侧的净额（贷 − 借）：它就是转入未分配利润的金额，
+         亏损年度为负数，天然落到下面的 !(net>0) 分支，不会误分配。 */
       var net = 0;
       ye.forEach(function (v) {
         v.entries.forEach(function (e) {
-          if (e.code === '3103' || e.code === PROFIT_CODE) net += num(e.dr);
-          if (/^3104/.test(e.code) || e.code === undist.code) net += num(e.cr);
+          var c = String(e.code);
+          if (c === undistCode || c.indexOf(undistCode) === 0) net += num(e.cr) - num(e.dr);
         });
       });
       net = round2(net);
-      if (!(net > 0)) return { ok: false, msg: '本期无净利润可供分配（结转本年利润凭证金额为 0）' };   // net 是 0.0001 元整数
+      if (!(net > 0)) return { ok: false, msg: '本期无可供分配的净利润（本年利润结转金额 ' + money(net) + '）' };   // net 是 0.0001 元整数
       // 找科目：优先明细（310101 法定 / 310102 任意 / 2232 应付利润），回退父科目或名称匹配
       function findSub(kw, code) {
         var s = code ? self.subject(code) : null; if (s) return s;
@@ -3188,13 +3263,21 @@
       var surplus = this.subjectRole('SURPLUS_RESERVE');
       var entries = [];
       var alloc = 0;
-      if (legal) { var a = R(net * 0.10); entries.push({ code: legal.code, name: legal.name, summary: '提取法定盈余公积', dr: 0, cr: a }); alloc += a; }
-      if (disc) { var b = R(net * 0.10); entries.push({ code: disc.code, name: disc.name, summary: '提取任意盈余公积', dr: 0, cr: b }); alloc += b; }
+      /* 【2026-10-22 修复运行时崩溃】此处原为 R(net*0.10) 等 5 处调用，而局部 `var R = x => …`
+         已在 2026-09-26「round2 重复实现收口」时被删除、调用点却没跟着改 ——
+         一点「利润分配」就抛 ReferenceError（页面表现为按钮报错、账没生成）。
+         此前一直没暴露：导入账套的年结凭证识别不出，本函数恒被前置条件「请先结转本年利润」
+         挡住，崩溃路径根本走不到；修好年结识别后立刻暴露，故一并修掉。
+         ⚠ 不能用 round2 代替 R：round2 是「元级保留两位小数」的对外口径，而此处的 net / 生成
+           分录金额都是**内部定点整数**（1 元 = 10000 单位），对它做 ×100/100 不等于「归一到分」。
+           定点金额的归整口径就是 Math.round 到整数（与 _addVoucher 的入参约定一致）。 */
+      function pct(parent, p) { return Math.round(parent * p); }   // 定点整数按比例取整
+      if (legal) { var a = pct(net, 0.10); entries.push({ code: legal.code, name: legal.name, summary: '提取法定盈余公积', dr: 0, cr: a }); alloc += a; }
+      if (disc) { var b = pct(net, 0.10); entries.push({ code: disc.code, name: disc.name, summary: '提取任意盈余公积', dr: 0, cr: b }); alloc += b; }
       // 无明细科目时回退：合并计提盈余公积 20%（法定+任意）
-      if (!legal && !disc && surplus) { var c = R(net * 0.20); entries.push({ code: surplus.code, name: surplus.name, summary: '提取盈余公积', dr: 0, cr: c }); alloc += c; }
-      if (div) { var d = R(net * 0.30); entries.push({ code: div.code, name: div.name, summary: '分配股利', dr: 0, cr: d }); alloc += d; }
+      if (!legal && !disc && surplus) { var c = pct(net, 0.20); entries.push({ code: surplus.code, name: surplus.name, summary: '提取盈余公积', dr: 0, cr: c }); alloc += c; }
+      if (div) { var d = pct(net, 0.30); entries.push({ code: div.code, name: div.name, summary: '分配股利', dr: 0, cr: d }); alloc += d; }
       if (!entries.length) return { ok: false, msg: '未找到盈余公积/应付股利科目，请先在「科目」中增设利润分配明细科目，或使用自定义结转模板' };
-      alloc = R(alloc);
       entries.unshift({ code: undist.code, name: undist.name, summary: '利润分配（提取盈余公积及分配股利）', dr: alloc, cr: 0 });
       var v = {
         word: this.state.param.voucherWord || '记', date: lastDay(month), attach: 0,
@@ -3333,21 +3416,27 @@
       // （3103 未清零、未并入 3104）。此前 carryYearEnd() 已实现但全工程零调用（死代码），
       // 此处将其接入结账检查，使 12 月未结转时被拦截并可见。
       if (String(month).substring(5, 7) === '12') {
-        var hasUndist = !!self.subject('3104');
-        if (!hasUndist) {
+        // 科目口径单点：此前硬编码 '3104' / PROFIT_CODE，用户把科目换成别的编码
+        // （或未分配利润只有明细科目）时，会恒判「无利润分配科目，跳过年度结转」——
+        // 那是把「没做」显示成「不用做」，最坏的一种误报。改走科目角色，与 carryYearEnd 同源。
+        var undistRole = self.subjectRole('PROFIT_RESIDUAL');
+        if (!undistRole) {
           add('yearend', '结转本年利润', 'ok', '无利润分配科目，跳过年度结转');
         } else {
-          var glP = (self.generalLedger(month) || []).filter(function (r) { return r.code === PROFIT_CODE; })[0];
-          var pBal = glP
-            ? (glP.normal === 'dr' ? (num(glP.endDr) - num(glP.endCr)) : (num(glP.endCr) - num(glP.endDr)))
-            : 0;
+          // 与 carryYearEnd 同源：取不到行按 0 处理（本项只做提示，不因此拦截结账）。
+          var pBal = self.profitYearBalance(month) || 0;
           // 按 v.kind 判定：原摘要正则对导入凭证恒不命中，
           // 会让 12 月永远判「未结转本年利润」而卡死结账。
           var yeDone = kindCount(self.VOUCHER_KINDS.CARRY_YE) > 0;
-          if (pBal === 0) {
+          // 【分支顺序】先看「有没有年结凭证」，再看余额：
+          // 两者都成立时（余额已结平 = 结转成功的常态），旧写法先命中 pBal===0 而提示
+          // 「本年利润无余额，无需结转」—— 把「已结转」说成「不用结转」，用户以为年结没做。
+          // 实测两本账套 3 个 12 月（添钰 2025-12、绅蓝 2024-12/2025-12）全部落在这个分支上。
+          if (yeDone) {
+            add('yearend', '结转本年利润', 'ok',
+              '本年利润已结转至未分配利润' + (pBal === 0 ? '' : '（当前余额 ' + money(pBal) + '，为结转后新发生）'));
+          } else if (pBal === 0) {
             add('yearend', '结转本年利润', 'ok', '本年利润无余额，无需结转');
-          } else if (yeDone) {
-            add('yearend', '结转本年利润', 'ok', '本年利润已结转至未分配利润');
           } else {
             add('yearend', '结转本年利润', 'fail',
               '12 月须结转本年利润（当前余额 ' + money(pBal) + '）至未分配利润，否则跨年未分配利润失真');

@@ -10,13 +10,13 @@ const absFmt = H.absFmt;
 const signed = H.signed;
 
 function setEl(id, val) { const el = $(id); if (el) el.textContent = val; }
-// 【2026-10-05 负数红字】setEl 的"金额版"：写带符号文本给负值挂 .neg 类（CSS 标红）。
-//   不动全局 signed（Ledger/Voucher 等多页共用）；仅首页卡片用此，局部生效、零污染。
+// setEl 的"金额版"：写带符号文本（负值保留负号）。
+// 【2026-10-21】取消负数标红：原先给负值挂 .neg 由 CSS 染红，用户反馈"负号红色"这种强调非必要，
+//   现一律用常规正文色，只保留负号本身（数字口径不变，仍是 signed 带符号）。
 function setSigned(id, val) {
   var el = $(id);
   if (!el) return;
   el.textContent = signed(val);
-  el.classList.toggle('neg', val < 0);
 }
 
 /* ---------------- 首页指标口径常量 ----------------
@@ -348,7 +348,9 @@ function fillMetrics() {
   if (formulaEl && plFee.expense.formula && plFee.expense.formula.length) {
     formulaEl.innerHTML = plFee.expense.formula.map(function (f) {
       var val = round2(plIsYearFee ? f.ytd : f.cur);
-      var amtHtml = (val < 0 ? '−' : '') + absFmt(Math.abs(val));
+      // 负号统一走 signed()：原先手写 U+2212（−）+ absFmt(Math.abs()) 双重取绝对值，
+      // 与同页指标卡（setSigned → signed，ASCII 连字符）字形宽度不同、金额列不对齐。
+      var amtHtml = signed(val);
       var cls = f.ids && f.ids.length ? 'fv2 amt-link' : 'fv2';
       // 可点行同步键盘语义（Enter/Space → click，见 app.js 的 TYKeyboard 全局激活委托）
       var attrs = f.ids && f.ids.length
@@ -356,7 +358,7 @@ function fillMetrics() {
         : '';
       return '<div class="' + cls + '"' + attrs + '>'
            + '<div class="fv2-f">' + esc(f.label) + '</div>'
-           + '<div class="fv2-v' + (val < 0 ? ' neg' : '') + '">' + amtHtml + '</div>'
+           + '<div class="fv2-v">' + amtHtml + '</div>'
            + '</div>';
     }).join('');
   } else if (formulaEl) {
@@ -571,8 +573,8 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
     return { name: s.name, code: s.code, v: subjectBalance(s.code, month) };
   }).filter(function (x) { return x.v; })
     .sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
-  // 显示符号：资产(应收)借余正常为正、贷余异常(预收)标红；负债(应付)贷余正常为正、借余异常(预付)标红。
-  // 即"按科目正常方向归一"——取反仅对负债生效，标红(neg)取决于归一后 disp<0，与 setSigned 行为一致。
+  // 显示符号：资产(应收)借余正常为正、贷余为负；负债(应付)贷余正常为正、借余为负。
+  // 即"按科目正常方向归一"——取反仅对负债生效，负号由 signed(disp) 带出（2026-10-21 起不再标红）。
   // 【2026-10-05】修复：应付原 signed(x.v) 显负号+红字，与同文件行250"取反后为正显示"及同页 mAvailAp 矛盾；
   //   仅翻转显示符号，不动取数(subjectEndBalance 带符号底座)、不聚合、不写回。
   var isLiability = (label === '应付');
@@ -580,11 +582,11 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
   children.forEach(function (x) {
     var disp = isLiability ? -x.v : x.v;
     html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
-            '</span><span class="ai-val amt-link' + (disp < 0 ? ' neg' : '') + '" data-codes="' + esc(x.code) + '" tabindex="0" role="button" data-kb-activate>' +
+            '</span><span class="ai-val amt-link" data-codes="' + esc(x.code) + '" tabindex="0" role="button" data-kb-activate>' +
             signed(disp) + '</span></div>';
   });
   box.innerHTML = html;
-  // 合计 = 父科目余额（父行已含全部下级）；显示符号同明细：负债取反为正（与 mAvailAp 一致），异常方向才红
+  // 合计 = 父科目余额（父行已含全部下级）；显示符号同明细：负债取反为正（与 mAvailAp 一致）
   var total = round2(subjectBalance(code, month));
   setSigned(totalId, isLiability ? -total : total);
 }

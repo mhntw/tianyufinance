@@ -94,7 +94,7 @@ walk(JS_DIR, []).forEach(file => {
        不含 HTML 标签，无需转义。循环多轮以处理嵌套（money(num(x))）。 */
     // tmplMoney(v) = money(U.amt(v))：与 money 同类（结账模板侧的金额格式化出口，
     //   产出固定格式数字串，不含 HTML），故一并列入白名单，避免其入参 dr/cr/diff 被误报。
-    const SAFE_CALL = /\b(tmplMoney|money|moneyRed|num|round2|amtCell|signed|fmt|esc|escHtml|escAttr|dirText|balText|walk)\s*\([^()]*\)/g;
+    const SAFE_CALL = /\b(tmplMoney|money|num|round2|amtCell|signed|fmt|esc|escHtml|escAttr|dirText|balText|walk)\s*\([^()]*\)/g;
     let work = stripped;
     for (let pass = 0; pass < 6; pass++) {
       const next = work.replace(SAFE_CALL, '');

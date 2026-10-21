@@ -1355,7 +1355,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function refreshAssetCategory() { renderAssetCategory(); }
   $('btnResetCat').addEventListener('click', async function () {
     if (!(await H.confirmAsync('恢复默认资产类别将覆盖当前已自定义的类别与折旧参数，确认继续？', { title: '恢复默认类别' }))) return;
-    S.state.assetCats = null; renderAssetCategory(); showToast('已恢复默认类别');
+    S.state.assetCats = null; S.persist(); renderAssetCategory(); showToast('已恢复默认类别');
   });
   $('btnNewCat').addEventListener('click', function () { _openCatModal(-1); });
   $('btnDelCat').addEventListener('click', async function () {
@@ -1364,7 +1364,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!(await H.confirmAsync('确认停用选中的 ' + checked.length + ' 个资产类别？\n停用后新增资产不能再选该类，历史资产类别保留。', { title: '停用资产类别' }))) return;
     var list = assetCats();
     checked.forEach(function (i) { if (list[i]) list[i].enabled = false; });
-    S.state.assetCats = list; renderAssetCategory(); showToast('已停用'); syncAll();
+    S.state.assetCats = list; S.persist(); renderAssetCategory(); showToast('已停用'); syncAll();
   });
   $('catBody').addEventListener('click', async function (e) {
     if (e.target.classList.contains('link-toggle')) {
@@ -1375,6 +1375,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         if (!(await H.confirmAsync('确认停用资产类别「' + (cat ? cat.name : '') + '」？', { title: '停用资产类别' }))) return;
       }
       cat.enabled = disabling ? false : true;
+      // 就地改的是 state 里的同一份对象，但**不会自动落盘** —— 必须显式 persist，否则重启后复位
+      S.persist();
       renderAssetCategory(); showToast(disabling ? '已停用' : '已启用'); syncAll();
     } else if (e.target.classList.contains('link-edit')) {
       _openCatModal(num(e.target.getAttribute('data-cat')));
@@ -1406,6 +1408,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var list = assetCats();
     if (idx >= 0) list[idx] = c; else list.push(c);
     S.state.assetCats = list;
+    S.persist();
     closeModal('catModal');
     renderAssetCategory(); syncAll(); showToast('类别已保存');
   });

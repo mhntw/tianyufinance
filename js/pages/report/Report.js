@@ -3,7 +3,7 @@
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 //
 // 设计要点：
-// - globalThis.__TY_HELPERS__ 由 app.js 注册（$, money, moneyRed, currentPeriod, periodRangeValue, S, U ...）
+// - globalThis.__TY_HELPERS__ 由 app.js 注册（$, money, signed, currentPeriod, periodRangeValue, S, U ...）
 // - globalThis.__TY_EXPORT__ 由 store.js 注册（store, util ...）
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
@@ -11,11 +11,9 @@
 // 转义提醒：报表行名/标签可能来自用户编辑的科目表或导入账套 —— 是真实注入面（本页曾 0 处转义，已补齐）。
 import { H, EX, $, S, U, money, esc, currentPeriod } from '../../common/helpers.js?v=dev';
 
-const moneyRed = H.moneyRed || function (n) {
-  // 负数必须带负号：只染红而丢掉负号会把负值误显示为正数。
-  var s = money(Math.abs(n));
-  return n < 0 ? '<span class="ty-red">-' + s + '</span>' : s;
-};
+/* 负数金额只带负号、不染红（2026-10-21 取消 moneyRed：它返回 HTML 片段，
+   与 money/signed 这类纯文本格式化函数不同型，且负号逻辑与 signed 重复写了一遍）。 */
+const signed = H.signed;
 const lastClosedPeriod = H.lastClosedPeriod;
 // 起止期间取值：统一走 app.js 的单点实现（H.periodRangeValue），避免多份拷贝失同步。
 const periodRangeValue = H.periodRangeValue;
@@ -58,7 +56,7 @@ globalThis.setRptHead = function (rowId, title, cols, month, periodText) {
 // 金额单元格：按标准，金额列用普通无衬线字体（与正文同字体），右对齐，不做等宽
 function amtCell(v, extra) {
   var cls = 'ta-r' + (extra ? ' ' + extra : '');
-  return '<td class="' + cls + '">' + moneyRed(v) + '</td>';
+  return '<td class="' + cls + '">' + signed(v) + '</td>';
 }
 
 /* ===================== 资产负债表 ===================== */
@@ -108,7 +106,7 @@ function renderBs(month) {
     var codes = [].concat(row.codes || [], row.minus || []);
     if (!codes.length || Math.abs(row.end) < 0.005) return amtCell(row.end);
     return '<td class="ta-r"><a href="#" class="bs-amt-link" data-codes="' + codes.join(',') + '">' +
-           moneyRed(row.end) + '</a></td>';
+           signed(row.end) + '</a></td>';
   }
   var max = Math.max(aRows.length, lRows.length);
   // 行次（资产负债表：资产侧 1..N、负债及所有者权益侧 N+1.. 整体连续编号）
@@ -151,9 +149,11 @@ function renderBs(month) {
     // （即账套结转损益未完整执行，损益科目尚有余额残留）。
     var period = currentPeriod();
     var pl = S.profitStatement(period);
-    var glRow = (S.generalLedger(period) || []).filter(function (x) { return x.code === '3103'; })[0];
+    // 本年利润科目走单点解析（角色 > 3103），兼容科目重映射的账套
+    var profitCode = S.profitYearCode();
+    var glRow = (S.generalLedger(period) || []).filter(function (x) { return String(x.code) === profitCode; })[0];
     var carried = 0;
-    // 余额换算走 store.displayBalance（唯一实现）：此处需 3103 按贷方为正的净值
+    // 余额换算走 store.displayBalance（唯一实现）：此处需本年利润按贷方为正的净值
     if (glRow) carried = S.displayBalance(glRow.endDr - glRow.endCr, glRow.normal).amount;
     var net = pl ? pl.netProfit : 0;
     var residual = Math.abs((net - carried) - diff) < U.AMT_SCALE; // 差额≈未结转损益净额？（1 元容差，内部整数）
@@ -263,8 +263,8 @@ function renderPl(month) {
     var fmtCodes = (r.codes || []).join(',');
     function plAmt(v) {
       return clickable
-        ? '<a href="#" class="pl-amt-link" data-codes="' + fmtCodes + '">' + moneyRed(v) + '</a>'
-        : moneyRed(v);
+        ? '<a href="#" class="pl-amt-link" data-codes="' + fmtCodes + '">' + signed(v) + '</a>'
+        : signed(v);
     }
     tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + esc(r.label) +
                    '</td><td>' + no + '</td>' +
@@ -394,10 +394,10 @@ function renderCf(month) {
   function row(cls, name, num, amt, y, bold) {
     var tr = document.createElement('tr');
     tr.className = cls || '';
-    // 用色约定（全站报表统一）：只有负数标红，正数走默认色。
-    // 此前这里写的是 amt<0 ? ty-red : ty-green —— 正数一律染绿，与利润表/资产负债表口径不一致。
-    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (amt < 0 ? 'ty-red' : '');
-    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '') + (y < 0 ? 'ty-red' : '');
+    // 用色约定（2026-10-21 起全站统一）：金额一律默认色，负数靠 money() 带出的负号表达，
+    // 不再标红 —— 红字在财务界面只留给"警示/危险"语义，负数本身不是异常。
+    var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '');
+    var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '');
     tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + esc(name) + '</td>' +
       '<td>' + (num === '' ? '' : num) + '</td>' +
       '<td class="' + amtCls + '">' + money(amt) + '</td>' +
@@ -504,9 +504,9 @@ function renderTx(month) {
     if (r.level === 0) tr.className = 'grp-row';
     // 层级缩进走全站统一尺度：一级 indent-2(18px)、二级 indent-3(32px)
     var nameCls = r.level === 2 ? 'cf-sub indent-3' : (r.level === 1 ? 'cf-sub2 indent-2' : '');
-    // 用色约定（全站报表统一）：只有负数标红，正数走默认色
-    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.cur < 0 ? 'ty-red' : '');
-    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '') + (r.ytd < 0 ? 'ty-red' : '');
+    // 用色约定（2026-10-21 起全站统一）：金额一律默认色，负数靠 money() 带出的负号表达，不再标红
+    var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '');
+    var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '');
     tr.innerHTML = '<td class="' + nameCls + '">' + esc(r.name) + '</td>' +
       '<td>' + (r.level === 2 ? r.rowNum : '') + '</td>' +
       '<td class="' + amtCls + '">' + money(r.cur) + '</td>' +

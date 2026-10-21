@@ -317,7 +317,6 @@
                 <div class="vch-menu-sep"></div>
                 <a href="#" id="vchMoreTplUse">从模板生成凭证</a>
                 <a href="#" id="vchMoreTplSave">保存为凭证模板</a>
-                <a href="#" id="vchMoreCopy">复制当前凭证</a>
                 <div class="vch-menu-sep" id="vchMoreSepAct"></div>
                 <a href="#" id="vchMoreReverse" class="vch-menu-red">红字冲销</a>
                 <a href="#" id="vchMoreDelete" class="vch-menu-red">删除凭证</a>
@@ -344,12 +343,11 @@
               <span class="vh-period" id="vPeriodText">2026年07期</span>
             </div>
             <div class="vh-right">
+              <!-- 「上传附件」已于 2026-10-21 移除（电子附件使用频率极低，且会往磁盘写实体文件）；
+                   只保留「附件 __ 张」这个凭证必填/必印字段，历史凭证的附件元信息仍原样保存。 -->
               <span>附件</span>
               <input id="vAttach" type="number" value="0" class="inp inp-xs" min="0">
               <span>张</span>
-              <a href="#" class="vh-upload" id="vUploadAttach">上传附件</a>
-              <input type="file" id="vAttachFile" multiple hidden>
-              <div class="vh-attach-panel" id="vAttachPanel" hidden></div>
             </div>
           </div>
 

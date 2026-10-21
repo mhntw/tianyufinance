@@ -362,13 +362,14 @@
   //     资产负债表「未分配利润」、首页指标、红字判定等处的负值
   //     都被渲染成了正数（-2,424,599.93 → 红色 2,424,599.93，方向相反）。
   //     索性改名 absFmt，让「取绝对值」在调用处显式可见，杜绝顺手误用。
-  //   【默认选择】要显示带符号的金额：屏幕用 signed()，报表着色用 moneyRed()。
+  //   【默认选择】要显示带符号的金额一律用 signed()。
+  //   【2026-10-21 取消 moneyRed】它返回 HTML 片段，与其他格式化函数（纯文本）不同型：
+  //     · 只能用于 innerHTML 上下文，不能给 textContent / 属性 / 导出用；
+  //     · 负号逻辑与 signed 重复写了一遍；
+  //     · 转义卡口要给它开白名单、测试壳要手工同步。
+  //   报表负数改为只带负号、不再标红（负号本身已表达方向）。
   function absFmt(n) { return n == null ? '--' : money(Math.abs(n)); }
   function signed(n) { return (n < 0 ? '-' : '') + money(Math.abs(n)); }
-  // 报表金额着色（负数）：按会计惯例显示为 "-1,234.56" 并标红。
-  // 历史实现 money(Math.abs(n)) 只染红、丢掉负号，导致资产负债表「未分配利润」等
-  // 负值被渲染成正数（如 -2,424,599.93 显示为红色 2,424,599.93），符号方向相反。
-  function moneyRed(n) { return n < 0 ? '<span class="ty-red">-' + money(Math.abs(n)) + '</span>' : money(n); }
   /* 【2026-09-26 收口】此处原先自带一份「金额归零」实现 —— **且少了 -0 归一**，
      而 store 的 round2 已把 -0 归一成 0（(-0).toLocaleString() 会显示 "-0.00"、写进 Excel 可能带负号；
      金额里不存在"负零"）。同一口径两份实现必漏一处，故改为**委托 store 的唯一实现**。
@@ -718,7 +719,7 @@
     // 避免某次迁移误删私有 helper 导致整页 ReferenceError 崩溃。
     var pick = function (v) { return (typeof v !== 'undefined') ? v : undefined; };
     globalThis.__TY_HELPERS__ = {
-      $: pick($), money: pick(money), absFmt: pick(absFmt), signed: pick(signed), moneyRed: pick(moneyRed),
+      $: pick($), money: pick(money), absFmt: pick(absFmt), signed: pick(signed),
       round2: pick(round2), esc: pick(esc), formatPeriod: pick(formatPeriod), todayStr: pick(todayStr),
       nowTimeStr: pick(nowTimeStr), showToast: pick(showToast), openModal: pick(openModal),
       closeModal: pick(closeModal), bookKey: pick(bookKey),
@@ -2139,65 +2140,31 @@
    * 录入/汇总/查询三页逻辑已整体迁移至 js/pages/voucher/Voucher.js（ESM 模块），
    * 经 PAGE_REFRESHERS 字典（renderVia('Voucher'/'Sum'/'Query')）调用；
    * 编辑入口 showVoucherEdit/loadVoucherToEdit 委托到 globalThis.__VOUCHER__。
-   * 金额位格纯函数 amtInnerHtml/isRed/amtCellHtml/clearAmtCells/trOf 等仍保留
-   * 在下方（被其他模块以全局方式复用，未迁移）。
+   * 金额位格的实际实现（amtInnerHtml / amtCellHtml / clearAmtCells / trOf 等）已随页面迁到
+   * js/pages/voucher/Voucher.js；本文件只留 amtUnitsHtml/amtHeaderHtml 画表头单位行。
+   * 【勿在本文件重建金额位格副本】—— 旧副本的「剥负号 + 红字」口径会悄悄复活负号问题。
    * ============================================================ */
 
-  // 金额位格 —— 严格 Pd 组件
-  //
-  // 源码（main.cf2e18af.chunk.js 的 Pd 函数，逐行对应）：
-  // var t = value ? value.toString() : "";
-  // t && parseFloat(t) && (t = parseFloat(t).toFixed(2));
-  // t = t.replace("-", "");
-  // if (t.length > 12) return 万亿模式文本;
-  // var n = (Array(12).join("_") + t.replace(".","")).slice(-11)
-  // .split("").map(e => e.replace("_",""));
-  // DOM:
-  // isNumber && <p class="amountValueWrapper"><span>去小数点纯数字</span></p>
-  // n.map((t,n) => <div class="amountLine amountLineActive?(activeIndex===n)">
-  // isNumber ? " " : t
-  // </div>)
-  // 负值：容器加 red 类（红字）。
-  //
-  // 注意：表头的「亿千百十万千百十元角分」单位行，
-  // 也是同一个 Pd 组件渲染 value="亿千百十万千百十元角分"（isNumber=false），
-  // 因此单位与数字位格天生对齐——本项目表头同样复用本函数。
-
-  // Pd 组件 DOM（严格对应源码）：
-  // value:   金额数值（数字/字符串），或单位串"亿千百十万千百十元角分"
-  // isNumber:true  → 数字模式，数字层显示去点纯数字，位格放空格
-  // isNumber:false → 单位/文本模式，11 个位格直接放字符（用于对账单位行、合计）
-  // activeIndex:   当前高亮位（蓝底白字）
-  // red:           负值红字
-  function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2) {
-    var raw = (value === '' || value == null || value === 0) ? '' : value.toString();
-    var t = raw;
-    // 仅当 force2 时强制两位小数（合计行/借贷平衡检查用）；普通位格保持用户输入原样
-    if (force2 && t && parseFloat(t)) t = parseFloat(t).toFixed(2);
-    // 剥离负号、负数只由红色表达 —— 口径与理由见 js/pages/voucher/Voucher.js 的同名函数。
-    // 另注：本函数与那份是【两份副本】。本份当前只被 amtHeaderHtml 用于表头单位行
-    // （value 是 '亿千百十万千百十元角分'、red 恒为 false），不渲染实际金额。
-    t = t.replace('-', '');
-    // 万亿模式：超过 12 位直接纯文本显示
-    if (t.length > 12) {
-      return '<div class="amt-bg amt-trillion' + (red ? ' amt-red' : '') + '">' +
-        (parseFloat(t) ? parseFloat(t).toFixed(2) : t) + '</div>';
-    }
-    var chars = (Array(12).join('_') + t.replace('.', '')).slice(-11).split('').map(function (e) { return e.replace('_', ''); });
+  /* 金额位格的「表头单位行」（亿千百十万千百十元角分）。
+     2026-10-21 清理：这里原有一份完整的 Pd 组件副本（含「剥负号 + .amt-red 红字」旧口径），
+     但实际只被下面的 amtHeaderHtml 用来画 11 个格子的单位字符，从不渲染金额 ——
+     留着只会让后来人复用出一份「负号丢失 + 红色负数」的实现。
+     实际金额位格（含负号、正负数、合计）全站唯一实现在 js/pages/voucher/Voucher.js。 */
+  function amtUnitsHtml(activeIndex) {
+    var unit = '亿千百十万千百十元角分';
     var cells = '';
     for (var k = 0; k < 11; k++) {
       var active = (activeIndex === k) ? ' amt-cell-active' : '';
-      // 数字直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
-      cells += '<div class="amt-cell' + active + '">' + chars[k] + '</div>';
+      cells += '<div class="amt-cell' + active + '">' + unit.charAt(k) + '</div>';
     }
-    return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + '</div>';
+    return '<div class="amt-bg">' + cells + '</div>';
   }
 
-  // 表头金额单位行（复用 Pd 组件渲染"亿千百十万千百十元角分"，非数字模式）
+  // 表头金额单位行（档位与金额位格同构，故单位天生对齐）
   function amtHeaderHtml(title) {
     return '<div class="amt-header">' +
       '<div class="amt-title">' + title + '</div>' +
-      '<div class="amt-units-wrap">' + amtInnerHtml('亿千百十万千百十元角分', false, -1, false) + '</div>' +
+      '<div class="amt-units-wrap">' + amtUnitsHtml(-1) + '</div>' +
       '</div>';
   }
 

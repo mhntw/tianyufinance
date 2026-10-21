@@ -167,7 +167,7 @@ const TOASTS = [];
 const H = {
   $: getEl, money: money, esc: esc, escHtml: esc, num: num, round2: round2,
   absFmt: function (v) { return money(Math.abs(Number(v) || 0)); },
-  signed: function (v) { return money(v); }, moneyRed: function (v) { return money(v); },
+  signed: function (v) { return money(v); },
   currentPeriod: function () { return CUR_MONTH; },
   lastClosedPeriod: function () { return ''; },
   periodRangeValue: function () { return CUR_MONTH; },
@@ -205,7 +205,7 @@ const S = global.S;
   });
   H.absFmt = function (v) { return RU.money(Math.abs(Number(v) || 0)); };
   H.signed = function (v) { return RU.money(v); };
-  H.moneyRed = function (v) { return RU.money(v); };
+
 })();
 S.persist = function () { };
 S.addLog = function () { };

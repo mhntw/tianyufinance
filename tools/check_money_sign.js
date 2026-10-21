@@ -5,7 +5,7 @@
  *
  * 【为什么要这个脚本】「负值被显示成正数」在本项目已至少发作 4 次：
  *   · 资产负债表「未分配利润」：money(Math.abs(n)) 只染红、丢负号，
- *     -2,424,599.93 被渲染为红色 2,424,599.93，符号方向相反（见 app.js moneyRed 注释）；
+ *     -2,424,599.93 被渲染为红色 2,424,599.93，符号方向相反（见 app.js signed 注释）；
  *   · 首页财务指标：借用 fmt() 抹掉贷方余额 / 亏损 / 净流出的负号（见 Home.js 注释）；
  *   · 异常余额方向（亏损年 3103 借记、资产出现贷方余额）下丢失负号（见 store.js）；
  *   · 凭证录入金额框：回填只认正数，红字金额聚焦时显示成空白。
@@ -19,21 +19,21 @@
  *   ✗ 失败（退出码 1）
  *     1. app.js 出现「抹符号、但名字看不出来」的金额格式化函数
  *        —— 判据：函数体含 money(Math.abs(…))，且**无**（形参 < 0）负号补丁，名字又不含 abs
- *     2. 应保号的函数真的保号：signed / moneyRed 必须含（形参 < 0）；money 不得含 Math.abs
+ *     2. 应保号的函数真的保号：signed 必须含（形参 < 0）；money 不得含 Math.abs
  *     3. 页面引用的金额族 helper 必须在 __TY_HELPERS__ 里存在；且不得再引用已废弃的 H.fmt
  *        —— 防「改名只改一半」：2026-09-21 改 fmt→absFmt 时，
  *           _shared.js 的 export 与两个页面的 import 差点漏改（ESM 会直接报错）。
  *     4. 打印件的自包含样式里必须有 .ty-red
  *        —— 打印件不引 css/style.css，缺这条则打印出的报表负数不标红、与正数难分辨。
  *     5. 报表负号不可隐藏（行为断言 + 静态禁令）
- *        a) 实测 signed(-1234.56) / moneyRed(-1234.56) 的输出里必须真的有 "-"，正数则不得有
+ *        a) 实测 signed(-1234.56) 的输出里必须真的有 "-"，正数则不得有
  *           —— 报表的负数出口就这两个函数，所以断言它们的【实际输出】，
  *              而不是"看代码里有没有 (n < 0 ?) 判断"。
  *              第一版正是这个错：把 moneyRed 里的负号删掉后它仍 PASS ——
  *              那个 < 0 判断还在，但已不再输出负号（检查太松＝摆设）。
  *        b) 报表页（js/pages/report/**）不得调用 absFmt(…) —— 它是专门抹符号的工具，
  *           报表里出现即意味着负值会被显示成正数
- *           （资产负债表「未分配利润」历史上已发作过一次，见 app.js moneyRed 注释）。
+ *           （资产负债表「未分配利润」历史上已发作过一次，见 app.js signed 注释）。
  *        注：账簿页（ledger）不在此列 —— 那边是「科目正常方向 + 带符号余额」结构，
  *           反向余额显示为负数，方向未被隐藏。
  *   ⚠ 提示（不影响退出码）
@@ -72,7 +72,7 @@ const warns = [];
 
 /* ---------------- 工具 ---------------- */
 // 取某函数定义的 { 形参, 函数体 }。函数体用 [^}]* 截取——
-// 足以覆盖本文件的金额工具（money/absFmt/signed/moneyRed 体内无 } ），
+// 足以覆盖本文件的金额工具（money/absFmt/signed 体内无 } ），
 // 而含对象字面量的 esc 等因不含 Math.abs 自然被规则 1 跳过。
 function bodyOf(src, name) {
   const re = new RegExp('function\\s+' + name + '\\s*\\(([^)]*)\\)\\s*\\{([^}]*)\\}');
@@ -107,7 +107,7 @@ while ((m1 = fnRe.exec(appSrc))) {
     fails.push('js/app.js  '
       + '函数 ' + name + '() 内部用 Math.abs 抹掉了符号，但既没有负号补丁，名字也看不出 —— '
       + '这正是历史上被反复误用的那个坑。请改名（如 ' + name + ' → abs' + name.charAt(0).toUpperCase() + name.slice(1) + '）'
-      + '或改用 signed() / moneyRed()。');
+      + '或改用 signed()。');
   }
 }
 /* 【命中数卡口】规则 1 是纯遍历：app.js 里若一个「单参 function」都匹配不到（正则失效、
@@ -119,7 +119,7 @@ if (fnScanned === 0) {
 }
 
 /* ---------------- 规则 2：应保号的函数必须真的保号 ---------------- */
-[['signed', true], ['moneyRed', true]].forEach(function (pair) {
+[['signed', true]].forEach(function (pair) {
   const name = pair[0];
   const f = bodyOf(appSrc, name);
   if (!f) { fails.push('js/app.js  找不到 ' + name + '() 的定义 —— 守护对象缺失，规则失效。'); return; }
@@ -138,7 +138,7 @@ if (fnScanned === 0) {
 })();
 
 /* ---------------- 规则 3：helpers 契约（金额族） ---------------- */
-const MONEY_FAMILY = ['money', 'absFmt', 'signed', 'moneyRed'];
+const MONEY_FAMILY = ['money', 'absFmt', 'signed'];
 (function () {
   const hm = /globalThis\.__TY_HELPERS__\s*=\s*\{([\s\S]*?)\n\s*\};/.exec(appSrc);
   if (!hm) { fails.push('js/app.js  找不到 __TY_HELPERS__ 字面量 —— 规则 3 无法执行。'); return; }
@@ -182,7 +182,7 @@ walkJs(PAGES).forEach(function (file) {
     if (line.trim().indexOf('//') === 0) return;
     if (/absFmt\s*\(/.test(line) || /money\s*\(\s*Math\.abs\s*\(/.test(line)) {
       // 上下文取「上方 2 行 + 本行 + 下方 1 行」：
-      // 负号补丁常写在下一行（如 Report.js moneyRed 的 fallback：本行取绝对值、下行按 n<0 补负号）。
+      // 负号补丁常写在下一行（本行取绝对值、下行按 n<0 补负号）。
       const ctx = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 2)).join(' ');
       const guarded = /<\s*0\s*\?/.test(ctx) || /signed\s*\(/.test(ctx);
       warns.push(rel(file) + ':' + (i + 1)
@@ -218,9 +218,9 @@ walkJs(PAGES).forEach(function (file) {
 /* ---------------- 规则 5：报表负号不可隐藏（行为断言 + 静态禁令） ---------------- */
 (function () {
   // 为什么必须用【行为断言】而不是静态找 "< 0 ?"：
-  //   本规则第一版就是这么写的，自测时把 moneyRed 里的 '-' 删掉，它照样 PASS ——
+  //   本规则第一版就是这么写的，自测时把 signed 里的 '-' 删掉，它照样 PASS ——
   //   那个 < 0 判断还在，但函数已经不再输出负号。静态"看起来有补丁"不等于"真的输出了负号"。
-  //   报表的负数出口只有 signed() 与 moneyRed() 两个，直接把它们抓出来实跑即可。
+  //   报表的负数出口已统一为 signed()（moneyRed 于 2026-10-21 删除），抓出来实跑即可。
   const stub = function (n) { return '[' + n + ']'; };   // 桩 money：把入参原样露出（含符号），便于判断 abs 是否被调用
   function load(name) {
     const at = appSrc.indexOf('function ' + name + '(');
@@ -234,14 +234,13 @@ walkJs(PAGES).forEach(function (file) {
     return new Function('money', 'return (' + appSrc.slice(at, end) + ')')(stub);
   }
 
-  // 5a. signed / moneyRed 必须真的把负号输出到结果里（且正数不得出现负号）
-  // ⚠ 找负号必须【先剥掉标签】：moneyRed 的输出里含 class="ty-red" —— 这个 CSS 类名自带连字符，
+  // 5a. signed 必须真的把负号输出到结果里（且正数不得出现负号）
+  // ⚠ 找负号必须【先剥掉标签】：历史上 moneyRed 的输出含 class="ty-red" —— 这个 CSS 类名自带连字符，
   //   直接在原始 HTML 上 indexOf('-') 会命中它，于是"负号被删掉"也照样通过。
-  //   （自测时确实踩了：把 moneyRed 的 '-' 删掉后本检查仍 PASS。
-  //     与规则 4 当年「.ty-red 命中了说明注释」是同一类"检查太松"的坑。）
+  //   （自测时确实踩了：把 moneyRed 的 '-' 删掉后本检查仍 PASS。moneyRed 已于 2026-10-21 删除，
+  //     剥标签保留为防御：将来若再出现 HTML 型金额出口，这条判据仍然有效。）
   const stripTags = function (s) { return String(s).replace(/<[^>]*>/g, ''); };
-  [{ name: 'signed', signs: ['-'], raw: [] },
-   { name: 'moneyRed', signs: ['-'], raw: ['ty-red'] }].forEach(function (spec) {
+  [{ name: 'signed', signs: ['-'], raw: [] }].forEach(function (spec) {
     const fn = load(spec.name);
     if (!fn) { fails.push('js/app.js  找不到 ' + spec.name + '() —— 资产负债表的负数显示契约无法校验。'); return; }
     const negRaw = String(fn(-1234.56));
@@ -274,7 +273,22 @@ walkJs(PAGES).forEach(function (file) {
       if (/\babsFmt\s*\(/.test(line)) {
         fails.push(rel(file) + ':' + (i + 1)
           + '  报表页调用了 absFmt()（专门抹符号）—— 负值会被显示成正数。'
-          + '请改用 money()（保号）或 signed() / moneyRed()（保号 + 标红）。  → '
+          + '请改用 money() 或 signed()（都保号）。  → '
+          + line.trim().slice(0, 80));
+      }
+    });
+  });
+
+  // 5c. 负号字符必须统一为 ASCII 连字符 "-"（U+002D），禁止 U+2212「−」。
+  //     2026-10-21 实测：Home.js 手写 `(val < 0 ? '−' : '') + absFmt(...)`，与全站 signed() 的 "-"
+  //     混用 —— 同一张首页里两种负号字形宽度不同、金额列不对齐，复制出来也是两个不同字符。
+  //     判据只认**带引号的字符串字面量**里的 −：注释里的算术语境（"收入 − 费用"）不带引号，不会误报。
+  walkJs(path.join(ROOT, 'js')).forEach(function (file) {
+    fs.readFileSync(file, 'utf8').split('\n').forEach(function (line, i) {
+      if (/'−'|"−"|`−`/.test(line)) {
+        fails.push(rel(file) + ':' + (i + 1)
+          + '  负号用了 U+2212「−」而不是 ASCII「-」—— 与 signed() 的字形不一致。'
+          + '请改用 signed()，或至少换成 ASCII 连字符。  → '
           + line.trim().slice(0, 80));
       }
     });

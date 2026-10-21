@@ -25,13 +25,34 @@ try { global.Buffer = require('buffer').Buffer; } catch (e) { }
 (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'mdb-reader.js'), 'utf8'));
 const MDBReader = global.MDBReader.default;
 
-const DEFAULT_FILES = [
-  '/Users/chen/Downloads/金蝶账套 ais/添钰来客_2025年_金蝶KIS格式.ais',
-  '/Users/chen/Downloads/金蝶账套 ais/添钰来客_2026年_金蝶KIS格式.ais',
-  '/Users/chen/Downloads/金蝶账套 ais/绅蓝之星_2024年_金蝶KIS格式.ais',
-  '/Users/chen/Downloads/金蝶账套 ais/绅蓝之星_2025年_金蝶KIS格式.ais',
-  '/Users/chen/Desktop/绅蓝之星_2026年_金蝶KIS格式.ais'
+/* 【不要在这里写死单个绝对路径】.ais 会搬家：2026-10-21 实测「绅蓝之星_2026年」已从桌面
+ *   移入「金蝶账套 ais」目录，而当时这里写死 ~/Desktop → 该账套被静默跳过（只打印"文件不存在"，
+ *   退出码仍是 0），利润表口径从此少一个样本、且看不出来。改为与 verify_vs_ais.js 同款：
+ *   目录固定，文件名按「账套名 + 年份」匹配；找不到时明确打印缺失清单。 */
+const AIS_DIRS = ['/Users/chen/Downloads/金蝶账套 ais', '/Users/chen/Desktop', '/Users/chen/Downloads'];
+const WANTED = [
+  ['添钰来客', 2025], ['添钰来客', 2026],
+  ['绅蓝之星', 2024], ['绅蓝之星', 2025], ['绅蓝之星', 2026]
 ];
+function findAis(name, year) {
+  const tag = String(year) + '年';
+  for (const d of AIS_DIRS) {
+    let list = [];
+    try { list = fs.readdirSync(d); } catch (e) { continue; }
+    const hit = list.find(f => /\.ais$/i.test(f) && f.indexOf(name) >= 0 && f.indexOf(tag) >= 0);
+    if (hit) return path.join(d, hit);
+  }
+  return null;
+}
+const DEFAULT_FILES = [];
+const MISSING = [];
+WANTED.forEach(function (w) {
+  const p = findAis(w[0], w[1]);
+  if (p) DEFAULT_FILES.push(p); else MISSING.push(w[0] + ' ' + w[1] + '年');
+});
+if (MISSING.length) {
+  console.log('[注意] 未找到 .ais：' + MISSING.join('、') + '（已检查 ' + AIS_DIRS.join(' / ') + '）');
+}
 const FILES = process.argv.length > 2 ? process.argv.slice(2) : DEFAULT_FILES;
 
 const R = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };

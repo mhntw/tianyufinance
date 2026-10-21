@@ -68,12 +68,23 @@ function compare(newBook, oldBook) {
     const tb = b === null ? 'null' : Array.isArray(b) ? 'array' : typeof b;
     if (ta !== tb) { res.bad.push(p + ' 类型不同：' + ta + ' vs ' + tb); return; }
     if (ta === 'array') {
-      if (a.length !== b.length) { res.bad.push(p + ' 长度不同：' + a.length + ' vs ' + b.length); return; }
+      if (a.length !== b.length) {
+        // 放行④（2026-10-21）：结账模板定义改为随账套存储（原在 localStorage['settle_templates_v1']），
+        //   迁移会把旧键里的定义并进 v6 账套，故 v5 基线该数组为 0 条属**预期新增**，不是迁移破坏。
+        //   只在「基线为空」时放行；两边都有内容时仍严格比长度。
+        if (p === 'settleTemplates' && b.length === 0) return;
+        res.bad.push(p + ' 长度不同：' + a.length + ' vs ' + b.length); return;
+      }
       for (let i = 0; i < a.length; i++) walk(a[i], b[i], p + '[' + i + ']');
       return;
     }
     if (ta === 'object') {
-      const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
+      // 放行③（2026-10-21）：`_` 前缀一律视为内部标记位（如 _settleTplMigrated = 结账模板已迁移），
+      //   不参与键集合与逐字比较 —— 它是运行期状态，不是账套业务字段。
+      //   【为什么是"先剔除再比"而不是"键集合不同就 return"】后者会跳过整棵子树的深度比较，
+      //   等于把该对象的迁移保真检查整段废掉（同层真正的业务键差异会被一并放过）。
+      const ka = Object.keys(a).filter(k => k.charAt(0) !== '_').sort();
+      const kb = Object.keys(b).filter(k => k.charAt(0) !== '_').sort();
       if (ka.join(',') !== kb.join(',')) {
         // 放行①：运行期懒初始化给老账套加的空 cashFlowOpening 键（store.getCashFlowOpening
         //   原先会就地塞 {} 并写盘）。这是迁移后用户操作的副作用，非迁移破坏了结构；
@@ -84,6 +95,19 @@ function compare(newBook, oldBook) {
         // 放行②：整个 param 子树是用户运行期可改参数（bookHideZero / thousand …），
         //   对照「迁移前的 v5 备份」必然包含用户后续操作，属对照法假阳性，非迁移破坏。
         if (p === 'param') return;
+        /* 放行⑤（2026-10-22）：凭证的 kind（期末业务类型）由 store.normalizeState 里的
+         *   ensureVoucherKinds() 按**科目结构**回填，属**预期新增**字段，不是迁移破坏 ——
+         *   与放行④（结账模板随账套存储）同类：都是"加载/迁移时补出来的元数据"。
+         *   实测背景：修好「未分配利润为明细科目」的年结识别后，绅蓝之星有 2 张导入的年结凭证
+         *   （2024-12 记-150、2025-12 记-67）被补上 kind=carryYE，本脚本因此报「多[kind]」。
+         *   【为什么不干脆全放行】仍要求 ① 只多 kind 这一个键（防止同层其它字段被悄悄增删）；
+         *   ② kind 取值必须在已知枚举内（防止回填逻辑坏掉、写入错值也被放过）。 */
+        var onlyKind = ka.length === kb.length + 1
+          && /^vouchers\[\d+\]$/.test(p)
+          && ka.filter(function (k) { return kb.indexOf(k) < 0; }).join(',') === 'kind'
+          && ['carryPL', 'carryYE', 'depr', 'carryCost', 'payrollAcc', 'payrollPay', 'profitDist']
+            .indexOf(a.kind) >= 0;
+        if (onlyKind) return;
         res.bad.push(p + ' 键集合不同：多[' + ka.filter(k => kb.indexOf(k) < 0) + '] 少[' + kb.filter(k => ka.indexOf(k) < 0) + ']');
         return;
       }

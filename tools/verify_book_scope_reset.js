@@ -170,7 +170,7 @@ global.__TY_HELPERS__ = {
   todayStr: () => '2026-09-26', nowTimeStr: () => '2026-09-26 10:00:00',
   formatPeriod: m => String(m == null ? '' : m), lastClosedPeriod: () => CUR_M,
   absFmt: n => (n == null ? '' : String(n)), signed: n => (n < 0 ? '-' : '') + String(Math.abs(n == null ? 0 : n)),
-  moneyRed: n => String(n), openModal() {}, closeModal() {},
+  openModal() {}, closeModal() {},
   currentPeriod: () => CUR_M, periodRangeValue: () => CUR_M, periodRangeValues: () => ({ start: CUR_M, end: CUR_M }),
   syncAll() {}, S: S, U: U, num: NUM, round2: n => { const v = Number(n) || 0; const r = Math.round(v * 100) / 100; return r === 0 ? 0 : r; },
   // 页面模块取的就是这一个守卫（抽取到的 app.js 真实实现）；

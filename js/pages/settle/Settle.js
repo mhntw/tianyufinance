@@ -513,15 +513,10 @@ function bindSettleCards() {
           if (!t.custom) return showToast('系统模板不可删除', 'warn');
           if (!(await H.confirmAsync('确认删除自定义模板「' + t.name + '」？', { title: '删除模板' }))) return;
           settleTmplList = settleTmplList.filter(function (x) { return x !== t; });
-          // 预置摊销模板删除后记入 dismissed，防止刷新后复活
-          if (t.preset) {
-            try {
-              var DISMISS_KEY = 'settle_preset_dismissed';
-              var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]');
-              if (!Array.isArray(d)) d = [];
-              if (d.indexOf(t.id) < 0) { d.push(t.id); localStorage.setItem(DISMISS_KEY, JSON.stringify(d)); }
-            } catch (e) {}
-          }
+          /* 不再写 localStorage 的 dismissed 列表：模板定义已随账套存放，删除即从账套移除；
+             而且代码里已不存在"重新生成预置模板"的逻辑，删掉不会复活。
+             （旧的 settle_preset_dismissed 键是全局的，id 却是账套内的 → 在 A 账套删掉的预置模板
+              会让 B 账套也不显示，属跨账套串台。该键现已无任何读者，仅历史残留。） */
           persistSettleTemplates();
           // 删除对应 DOM 卡片并重新渲染（自定义卡按 data-id 定位，系统卡无此属性不动）
           if (card.getAttribute('data-custom')) card.remove();
@@ -747,28 +742,36 @@ function renderSettleVchNos(vs, K, kindVs) {
 function renderSettleProfitCard(curEst, curMonth) {
   // 结转损益：已结转 / 未结转 统计（真实值，避免恒显 0.00）
   // 应结转额 = 本期利润表净利润（收入-费用）；已结转额 = 已生成结转损益凭证的净额
+  // 【单位域】这里是 store 内部定点整数（0.0001 元），全程不换算；
+  //   money() 收的也是定点整数。勿在此混入「元」—— 只有 export_statement 出口才做 yuan()。
   var profitDoneEl = $('profitDone'), profitTodoEl = $('profitTodo');
   if (profitDoneEl && profitTodoEl) {
-    var netProfit = U.num(curEst.netProfit) || 0; // 正数=盈利
+    var netProfit = U.num(curEst.netProfit) || 0; // 正数=盈利，负数=亏损
     var carryVch = S.carryForwardStatus(curMonth).vouchers;
+    // 目标科目单点解析（模板显式配置 > 科目角色 > 3103）：用户把本年利润换成别的科目时，
+    // 结转凭证用的是那个科目，统计也必须跟着走，否则卡片会显示「未结转 0 / 已结转全额」。
+    var profitCode = S.settleProfitTargetCode();
     var carried = 0;
     carryVch.forEach(function (v) {
       v.entries.forEach(function (e) {
-        // 本年利润科目（3103）的流入 = 已结转额
-        if (String(e.code) === '3103') {
-          if (e.dr) carried += U.num(e.dr);
-          if (e.cr) carried += U.num(e.cr);
-        }
+        // 已结转额 = 本年利润科目（targetSubj）的**净额**（贷−借），与 carryForwardProfit 的生成口径一致。
+        // 【不能用 |借|+|贷|】separate 模式会生成两张凭证（贷收入 / 借费用），
+        //   绝对值相加 = 收入结转额 + 费用结转额，会计上没有对应科目；且它恒 ≥ |净利润|，
+        //   会让下面的「未结转」永远被截成 0.00（实测添钰 2025-08 显示 1,161,539.86，
+        //   真实净额 525,305.58 —— 2026-10-21 修复）。
+        // 【必须保号】亏损月占真实账套 56%/66%，抹符号会与利润表净利润、
+        //   与结转成功的 toast（money(r.net)）自相矛盾。money() 本身保号（store.js:390）。
+        if (String(e.code) === profitCode) carried += U.num(e.cr) - U.num(e.dr);
       });
     });
-    carried = round2(carried);
-    var todo = round2(Math.abs(netProfit) - carried);
+    carried = Math.round(carried);
+    var todo = Math.round(netProfit - carried);   // 同为定点整数，直接相减；0.005 元 = 50 单位
     profitDoneEl.textContent = money(carried);
-    profitTodoEl.textContent = (todo < 0 ? '0.00' : money(todo));
+    profitTodoEl.textContent = money(todo);
     var card = $('cardProfit');
     if (card) {
-      card.classList.toggle('settle-card-done', Math.abs(todo) < 0.005 && Math.abs(netProfit) > 0.005);
-      card.classList.toggle('settle-card-nothing', Math.abs(netProfit) < 0.005);
+      card.classList.toggle('settle-card-done', Math.abs(todo) < 50 && Math.abs(netProfit) > 50);
+      card.classList.toggle('settle-card-nothing', Math.abs(netProfit) < 50);
     }
   }
 }
@@ -839,6 +842,8 @@ function refreshSettle() {
            置 null 会**拿不回句柄**（详见 Ledger 多栏账处的同名说明）。 */
     newTplRows = []; editingCustomId = null;
   }
+  // 旧版 localStorage 里的模板定义 → 并入账套（一次性、幂等、账套优先）
+  migrateLegacySettleTemplates();
   // 每次刷新都重新加载模板列表（导入账套/切换账套后 settleTemplates 会变）
   settleTmplList = loadSettleTemplates();
   // 模板启用状态以 store 为权威（结账检查清单数据源），进入页面/切换账套时同步
@@ -1062,9 +1067,46 @@ function genOnceVoucher(month, kind, summary, entries, word, date) {
 // 相关 DOM（page-cashier-settle）与 store 出纳方法已同步清理。
 
 /* ============================================================
- * 结账模板（结账设置：凭证模板 7 项 + 启用开关）
+ * 结账模板（结账设置：凭证模板 + 启用开关）
+ *
+ * 【存储口径 2026-10-21 定稿：账套是唯一权威，localStorage 只作一次性迁移源】
+ * 旧实现把「模板完整定义」只写进 localStorage['settle_templates_v1']，账套里只留 {id,enabled}。
+ * 由此产生的确定性丢失（已用真实函数复现）：
+ *   ① 该键是**全局单键**：加载时按当前账套过滤、保存时却把过滤后的子集**整体覆盖**回去 ——
+ *      在账套 B 里点一次「启用」，账套 A 的自定义模板定义就被抹掉；
+ *   ② localStorage 按 WebView 来源隔离，换安装标识 / 换电脑 / 清缓存即"全没了"
+ *      （2026-09-13 提交 3e7dc62 起标识符由 com.chen.xzys 改为 com.chen.ty，
+ *        老机器从 v0.6.0 之前的版本升级后，模板就是这样整体消失的）；
+ *   ③ 换账套 / 重新导入后 bookId 对不上 → 定义成孤儿；账套里残留的 {id,enabled} 又让
+ *      settleTplEnabled 仍然认它 →「卡片没了、结账清单却认」的错位。
+ * 现在：模板（含分录定义）整体写进 state.settleTemplates，随账套备份 / 同步 / 换机走；
+ * 旧键只在首次迁移时读一次（账套优先、只补缺），迁移后打 _settleTplMigrated 标记，
+ * 此后永不读旧键 —— 删除的模板不会被旧数据复活。
+ * ⚠ 兼容性：旧版本（≤ v0.8.4）读取时本来就会合并 custom + template 的账套记录，因此本改动可安全降级。
  * ============================================================ */
-var SETTLE_TMPL_KEY = 'settle_templates_v1';
+var SETTLE_TMPL_KEY = 'settle_templates_v1';   // 旧版遗留键：只读、不删（迁移源 + 降级回滚保险）
+
+/* 写进账套的模板快照：**黑名单式浅拷贝**，只丢函数与 `_` 前缀的 UI 临时态。
+   ⚠ 不要改成字段白名单 —— 曾试过白名单，漏了 costRevSubj / costInvSubj / costProdSubj /
+   costSummary / voucherDate 这五个「模板设置」里可编辑的字段，保存一次就会把它们悄悄丢掉。
+   这里的原则是"宁可多存，不可少存"：未知字段原样带进账套，旧版本读到时也只是忽略。 */
+function snapshotSettleTemplate(t) {
+  var o = {};
+  Object.keys(t || {}).forEach(function (k) {
+    if (k.charAt(0) === '_') return;                 // UI 临时态，不进账套
+    var v = t[k];
+    if (typeof v === 'function' || v === undefined) return;
+    o[k] = v;
+  });
+  o.id = t.id;
+  o.enabled = !!t.enabled;
+  return o;
+}
+function stateSettleTemplates() {
+  if (!S || !S.state) return [];
+  if (!Array.isArray(S.state.settleTemplates)) S.state.settleTemplates = [];
+  return S.state.settleTemplates;
+}
 
 function defaultSettleTemplates() {
   // 系统模板共 3 个（dep / cost / profit）；各自的默认启用状态由 store.settleTplDefaultEnabled 决定，
@@ -1075,11 +1117,13 @@ function defaultSettleTemplates() {
     // 在真实账套里零发生额，自动生成会把成本记歪。由用户在期末处理页显式「启用」并指定科目后再用。
     { id: 'cost', name: '结转销售成本', enabled: false, summary: '按收入比例结转销售成本', template: [], hasEntries: false, costRate: '80', costAmount: '' },
     // vat / surTax / incTax 三个默认模板已下线（2026-09-18），不再预置
-    { id: 'profit', name: '结转损益', enabled: true, summary: '结转损益类科目至本年利润', template: [], hasEntries: false, targetSubj: '3103', summaryText: '结转{month}损益', separate: true }
+    // targetSubj 留空 = 用「本年利润」科目角色（store.settleProfitTargetCode 解析，回退 3103）。
+    // 旧版硬写 '3103'，会把已重映射本年利润科目的账套带偏（模板值优先于角色）。
+    { id: 'profit', name: '结转损益', enabled: true, summary: '结转损益类科目至本年利润', template: [], hasEntries: false, targetSubj: '', summaryText: '结转{month}损益', separate: true }
   ];
 }
 
-// 系统默认模板（6 个，跟账套无关、全局共享）；其余模板一律跟随账套（删除账套时按 bookId 清理）
+// 系统模板（dep/cost/profit 共 3 个，跟账套无关）；其余模板随账套存放（存于 state.settleTemplates，删账套即随之消失）
 function isSystemSettleTmpl(t) {
   return ['dep', 'cost', 'profit'].indexOf(t && t.id) >= 0;
 }
@@ -1088,85 +1132,94 @@ function syncTplEnabledFromStore() {
   if (!S || !S.settleTplEnabled || !settleTmplList) return;
   settleTmplList.forEach(function (t) { t.enabled = !!S.settleTplEnabled(t.id); });
 }
-// 把当前启用状态写回 store（随账套持久化，供结账检查清单读取）
-function syncTplEnabledToStore() {
-  if (!S || !S.state) return;
-  // 过滤已下线的期末调汇（fx）残留记录，避免写入账套后继续占用状态
-  var arr = Array.isArray(S.state.settleTemplates) ? S.state.settleTemplates.slice() : [];
-  arr = arr.filter(function (t) { return t && t.id !== 'fx'; });
-  // 先从 store 里移除已不在 settleTmplList 的模板（删除操作后同步清理）
-  var liveIds = {};
-  settleTmplList.forEach(function (t) { if (t && t.id) liveIds[t.id] = true; });
-  arr = arr.filter(function (t) { return t && liveIds[t.id]; });
-  // 再把当前所有模板的 enabled 状态写回 store
-  settleTmplList.forEach(function (t) {
-    var hit = null;
-    for (var i = 0; i < arr.length; i++) {
-      if (arr[i] && arr[i].id === t.id) { hit = arr[i]; break; }
-    }
-    if (hit) hit.enabled = !!t.enabled;
-    else arr.push({ id: t.id, enabled: !!t.enabled });
-  });
+// 把当前列表整体写回账套（唯一权威）。保留此名字仅为兼容旧调用点。
+function syncTplEnabledToStore() { writeSettleTemplatesToState(); }
+
+/* 一次性迁移：把旧版 localStorage 里的模板定义并入账套（账套优先、只补缺、幂等）。
+   · 必须在账套加载完成后调用（refreshSettle 内）—— 否则 S.bookId 为空，会把别的账套模板并进来；
+   · 只并入「账套里没有该 id」的记录；带 bookId 且不等于当前账套的跳过；
+   · 完成后写 _settleTplMigrated 并落盘，此后不再读旧键 —— 删除的模板不会被旧数据复活。 */
+function migrateLegacySettleTemplates() {
+  if (!S || !S.state || !S.bookId) return;
+  if (S.state._settleTplMigrated) return;
+  var legacy = null;
+  try { legacy = JSON.parse(localStorage.getItem(SETTLE_TMPL_KEY) || 'null'); } catch (e) { legacy = null; }
+  var arr = stateSettleTemplates();
+  var idxOf = function (id) {
+    for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].id === id) return i; }
+    return -1;
+  };
+  if (Array.isArray(legacy) && legacy.length) {
+    legacy.forEach(function (s) {
+      if (!s || !s.id || s.id === 'fx') return;
+      var snap = snapshotSettleTemplate(s);
+      var idx = idxOf(s.id);
+      if (isSystemSettleTmpl(s)) {
+        /* 系统模板：旧值里可能有用户设置（cost 的科目/比例、profit 的结转科目、dep 的摘要）。
+           账套优先、**只补缺**：账套已写过的字段不覆盖，缺的字段从旧值补进来。 */
+        if (idx < 0) { arr.push(snap); return; }
+        Object.keys(snap).forEach(function (k) {
+          if (k === 'enabled' || k === 'id') return;
+          if (arr[idx][k] === undefined) arr[idx][k] = snap[k];
+        });
+        return;
+      }
+      // 非系统模板：旧版 localStorage 是定义的唯一来源。账套里只有「有完整分录」的记录才算已有，
+      // 否则（历史遗留的 {id,enabled} 空壳）必须被旧定义**替换**，不能因为"同名"就跳过。
+      if (!s.bookId || s.bookId === S.bookId) {
+        if (idx >= 0 && arr[idx].template && arr[idx].template.length) return;  // 账套优先
+        if (idx >= 0) arr[idx] = snap; else arr.push(snap);
+      }
+    });
+  }
+  S.state._settleTplMigrated = true;
   S.state.settleTemplates = arr;
   if (S.persist) S.persist();
 }
 
-// 加载模板配置：defaultSettleTemplates（3 个系统模板） + localStorage 本地覆盖 + state.settleTemplates 里的完整自定义模板
+/* 加载模板配置：系统默认 + 账套记录（权威）。旧 localStorage **不参与**读取（只由迁移函数读一次）。 */
 function loadSettleTemplates() {
   var list = defaultSettleTemplates();
-  try {
-    var saved = JSON.parse(localStorage.getItem(SETTLE_TMPL_KEY) || 'null');
-    if (saved && Array.isArray(saved) && saved.length) {
-      var byId = {};
-      list.forEach(function (t) { byId[t.id] = t; });
-      saved.forEach(function (s) {
-        if (!s || !s.id) return;
-        // 已下线的期末调汇（fx）模板历史残留一律丢弃，避免复活
-        if (s.id === 'fx') return;
-        // 除系统默认模板外，其余模板按账套归属过滤：只加载属于当前账套的，删除账套后不再随全局残留串台显示
-        if (!isSystemSettleTmpl(s)) {
-          var curBid = (typeof S !== 'undefined' && S && S.bookId) || '';
-          if (s.bookId && s.bookId !== curBid) return; // 归属其它账套，跳过
-          if (!s.bookId) s.bookId = curBid;            // 旧数据无归属标记：归入当前账套，下次保存即打标
-        }
-        if (byId[s.id]) {
-          // 合并业务配置（摘要/凭证字/分录等），但 enabled 以默认/store 为准，不读本地旧值
-          var keepEnabled = byId[s.id].enabled;
-          Object.assign(byId[s.id], s);
-          byId[s.id].enabled = keepEnabled;
-        } else { byId[s.id] = s; list.push(s); }
-      });
+  var byId = {};
+  list.forEach(function (t) { byId[t.id] = t; });
+  stateSettleTemplates().forEach(function (st) {
+    if (!st || !st.id || st.id === 'fx') return;
+    var cur = byId[st.id];
+    if (cur) {
+      // 系统模板：默认值为骨架，业务参数取账套；enabled 也以账套为准（没写过则保留默认）
+      var keep = (st.enabled === undefined) ? cur.enabled : !!st.enabled;
+      Object.assign(cur, st);
+      cur.enabled = keep;
+      return;
     }
-  } catch (e) {}
-  // 从 store 里的 settleTemplates 合并 custom=true 完整模板（导入账套带进来的期末处理模板）
-  if (typeof S !== 'undefined' && S && S.state && Array.isArray(S.state.settleTemplates)) {
-    var byId2 = {};
-    list.forEach(function (t) { byId2[t.id] = t; });
-    S.state.settleTemplates.forEach(function (st) {
-      if (!st || !st.id) return;
-      // 只合并有完整 template 分录的自定义模板（系统模板已在 defaultSettleTemplates 里）
-      if (st.custom && st.template && st.template.length) {
-        if (!byId2[st.id]) { byId2[st.id] = st; list.push(st); }
-      }
-    });
-  }
+    // 自定义/凭证模板：必须有完整分录定义才进列表
+    // （历史上被剪成 {id,enabled} 的空壳不再渲染成"点不开的死卡片"）
+    if (!(st.template && st.template.length)) return;
+    byId[st.id] = st; list.push(st);
+  });
   // 凭证字规范化：任何模板 word 为空一律默认「记」
   list.forEach(function (t) { if (!t.word) t.word = '记'; });
   return list;
 }
-var settleTmplList = loadSettleTemplates();
-// 首次同步：模板启用状态以 store 为权威（与结账检查清单一致）
-syncTplEnabledFromStore();
+// 列表由 refreshSettle 在账套加载后填充。
+// （此前在模块导入时就 load —— 那时 S.bookId 还没有值，是跨账套串台/丢失的源头之一）
+var settleTmplList = [];
 var settleTmplSelectedId = 'profit';
 
 function getSettleTemplates() { return settleTmplList; }
-function persistSettleTemplates() {
-  // 除系统默认模板外，其余模板归属当前账套：打 bookId 标记，使其跟随账套（删除账套时一并清理，不再跨账套串台）
-  var bid = (typeof S !== 'undefined' && S && S.bookId) || '';
-  settleTmplList.forEach(function (t) { if (!isSystemSettleTmpl(t)) t.bookId = bid; });
-  try { localStorage.setItem(SETTLE_TMPL_KEY, JSON.stringify(settleTmplList)); } catch (e) {}
-  syncTplEnabledToStore();
+
+/* 保存：把当前列表整体写进账套（唯一权威）并落盘。
+   **不再写 localStorage** —— 它是跨账套覆盖 / 换来源丢失的根源；旧键保留不删，
+   只用于"降级回旧版本"与一次性迁移。 */
+function writeSettleTemplatesToState() {
+  if (!S || !S.state) return;
+  S.state.settleTemplates = settleTmplList
+    .filter(function (t) { return t && t.id && t.id !== 'fx'; })
+    .map(snapshotSettleTemplate);
+  S.state._settleTplMigrated = true;
+  if (S.persist) S.persist();
 }
+function persistSettleTemplates() { writeSettleTemplatesToState(); }
 
 // applySettleTemplateStates 已合并进 refreshSettle（此前两处重复控制系统卡 display，refreshSettle 为权威），不再单独存在。
 
@@ -1242,6 +1295,9 @@ function selectSettleTemplate(id, t0) {
     toggle('settleTmplProfitSeparate', !!show.separate);
     // 回填值（科目字段统一用 fillSubjectField 绑定联想选择器）
     fillSubjectField('settleTmplProfitTarget', t.targetSubj || '');
+    // 留空的语义 = 用「本年利润」科目角色；用 placeholder 说清楚默认落到哪个科目
+    var ptEl = $('settleTmplProfitTarget');
+    if (ptEl) ptEl.placeholder = '留空＝' + S.profitYearCode() + '（本年利润）';
     var ps = $('settleTmplProfitSeparateSel'); if (ps) ps.value = (t.separate !== false) ? 'true' : 'false';
   }
 }
@@ -2006,15 +2062,7 @@ if ($('btnSettleTmplDelete')) $('btnSettleTmplDelete').addEventListener('click',
   if (!t.custom && !t.preset) return showToast('系统模板不可删除', 'warn');
   if (!(await H.confirmAsync('确认删除模板「' + t.name + '」？', { title: '删除模板' }))) return;
   settleTmplList = settleTmplList.filter(function (x) { return x !== t; });
-  // 预置摊销模板删除后记入 dismissed，防止刷新后复活（与卡片删除逻辑一致）
-  if (t.preset) {
-    try {
-      var DISMISS_KEY = 'settle_preset_dismissed';
-      var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]');
-      if (!Array.isArray(d)) d = [];
-      if (d.indexOf(t.id) < 0) { d.push(t.id); localStorage.setItem(DISMISS_KEY, JSON.stringify(d)); }
-    } catch (e) {}
-  }
+  // 同上：不再记 dismissed（模板随账套存放，删除即消失，且没有生成器会让它复活）
   persistSettleTemplates();
   // 删除后留在设置弹窗内：刷新左侧列表，并自动选中下一个模板（无则清空表单）
   renderSettleTmplTree();

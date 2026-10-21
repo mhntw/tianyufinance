@@ -22,36 +22,27 @@ const periodRangeValue = H.periodRangeValue;
 const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { subjectFullName } from '../../common/subject-name.js';
+// 金额位格算法（纯函数，无 DOM；由 tools/check_amt_cells.js 断言锁死）
+import { computeAmtCells } from './amt_cells.mjs?v=dev';
 
-/* —— 金额位格 helper（副本，纯函数，逐字自 app.js） —— */
-function amtInnerHtml(value, isNumber, activeIndex, red, hideValueLayer, force2) {
-  var raw = (value === '' || value == null || value === 0) ? '' : value.toString();
-  var t = raw;
-  if (force2 && t && parseFloat(t)) t = parseFloat(t).toFixed(2);
-  // 【负号在这里被剥离，负数只由红色表达（.amt-red）—— 这是刻意的口径，不是丢符号】
-  // 依据：位格是「亿千百十万千百十元角分」共 11 格、没有符号位；红字记账凭证本身就是
-  //   「以红字表示负数、不写减号」的惯例（2026-09-21 实测金蝶红字冲销凭证同样不显示负号）。
-  // ⚠ 所以不要"顺手把负号补回来"：曾按该思路改过一版（把 − 塞进最高有效位左边一格），
-  //   结果被「金额 ≥ 1 亿元时 11 格占满、负号无处可放」逼出一个兜底补丁 ——
-  //   同一个设计要改两次才自洽，说明方向错了，已回退。
-  // 【仅限本处】报表 / 账簿 / 列表走的是普通文本数字，那边【必须带负号】，
-  //   由 tools/check_money_sign.js 的规则 5 守着。
-  t = t.replace('-', '');
-  if (t.length > 12) {
-    return '<div class="amt-bg amt-trillion' + (red ? ' amt-red' : '') + '">' +
-      (parseFloat(t) ? parseFloat(t).toFixed(2) : t) + '</div>';
+/* —— 金额位格 helper（纯函数；这里是全站唯一实现。
+   app.js 侧只保留表头单位格子的最小画法，不再有「剥负号 + 红字」的旧副本（2026-10-21 清理）。 —— */
+function amtInnerHtml(value, isNumber, activeIndex, hideValueLayer, force2) {
+  // 算法（11 格落位、负号借用左侧空位格、≥1 亿负数与 ≥10 亿金额的溢出边界）
+  // 已抽到 amt_cells.mjs，并由 tools/check_amt_cells.js 断言锁死 —— 这里只负责拼 DOM。
+  // 口径：负数显示负号、不着色（红只留给警示语义）；负号占一格不新增格，位格线因此与正数行对齐。
+  var r = computeAmtCells(value, force2);
+  if (r.overflow) {
+    if (r.neg) return '<div class="amt-bg amt-bg-text"><span class="amt-neg-text">-' + r.text + '</span></div>';
+    return '<div class="amt-bg amt-trillion">' + r.text + '</div>';
   }
-  var chars = (Array(12).join('_') + t.replace('.', '')).slice(-11).split('').map(function (e) { return e.replace('_', ''); });
   var cells = '';
-  for (var k = 0; k < 11; k++) {
+  for (var k = 0; k < r.cells.length; k++) {
     var active = (activeIndex === k) ? ' amt-cell-active' : '';
-    // 数字直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
-    cells += '<div class="amt-cell' + active + '">' + chars[k] + '</div>';
+    // 数字（或负号）直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
+    cells += '<div class="amt-cell' + active + '">' + r.cells[k] + '</div>';
   }
-  return '<div class="amt-bg' + (red ? ' amt-red' : '') + '">' + cells + '</div>';
-}
-function isRed(val) {
-  return (val !== '' && val != null && String(val).indexOf('-') >= 0 && !isNaN(parseFloat(val)));
+  return '<div class="amt-bg">' + cells + '</div>';
 }
 // 金额转中文大写（通用财务口径）：壹万捌仟捌佰壹拾伍元整 / 壹佰贰拾叁元肆角伍分
 function numToChinese(n) {
@@ -135,17 +126,17 @@ function highestDigitIndex(rawValue) {
 function amtHeaderHtml(title, activeIndex) {
   return '<div class="amt-header">' +
     '<div class="amt-title">' + title + '</div>' +
-    '<div class="amt-units-wrap">' + amtInnerHtml('亿千百十万千百十元角分', false, (activeIndex == null ? -1 : activeIndex), false) + '</div>' +
+    '<div class="amt-units-wrap">' + amtInnerHtml('亿千百十万千百十元角分', false, (activeIndex == null ? -1 : activeIndex)) + '</div>' +
     '</div>';
 }
 function amtCellHtml(val, cls, i) {
   var field = cls.split(' ')[0];
   var num = parseFloat(val);
-  // 负数（红字）同样要显示：原写法仅 num > 0 才回填，导致聚焦红字金额时输入框是空白，
+  // 负数同样要回填：原写法仅 num > 0 才回填，导致聚焦负数金额时输入框是空白，
   // 用户会以为金额丢了。num 为 0/NaN 时留空（与既有行为一致）。
   var displayVal = (num && !isNaN(num)) ? num.toFixed(2) : '';
   return '<td class="col-amount has-input" data-field="' + field + '" data-i="' + i + '">' +
-    '<div class="amt-bg">' + amtInnerHtml(val, true, -1, isRed(val), true, true) + '</div>' +
+    '<div class="amt-bg">' + amtInnerHtml(val, true, -1, true, true) + '</div>' +
     '<input class="amt-edit-input ' + cls + '" data-i="' + i + '" type="text" ' +
     'inputmode="decimal" value="' + displayVal + '">' +
     '</td>';
@@ -181,8 +172,9 @@ function monthOf(d) { return H.monthOf ? H.monthOf(d) : (d || '').slice(0, 7); }
 let vRows = [];
 let vEditId = null;
 let savingVoucher = false; // 凭证保存防重标志（防止连续点击/网络重发重复生成凭证）
-// 本次编辑已上传的附件：[{name, path, size}]。仅存元信息（路径指向 data/attachments/ 下的实体文件），
-// 不把文件内容塞进账套 JSON，避免账套体积膨胀与备份/迁移变慢。
+// 附件元信息 [{name, path, size}]（实体文件在 <数据目录>/attachments/，不进账套 JSON）。
+// 【2026-10-21 删除「上传附件」功能】本变量现在只做一件事：编辑既有凭证时把原附件记录原样带回，
+// 保存时不丢失历史数据（界面已无上传/移除入口，不再新增附件）。
 let vAttachFiles = [];
 
 function defaultVoucherRow() { return { summary: '', code: '', name: '', dr: 0, cr: 0, cashActivity: '' }; }
@@ -312,7 +304,7 @@ function fillVoucherWord() {
 }
 
 // 新凭证的默认日期：今天落在当前工作期间内 → 今天；否则 → 该期最后一天；且不早于账套启用月。
-// 新增凭证（resetVoucherEdit）与「复制」（copyCurrentVoucher）共用，避免两处各写一遍口径。
+// 新增凭证的默认日期口径（唯一实现）。
 function defaultVoucherDate() {
   var workMonth = currentPeriod();
   var today = H.todayStr ? H.todayStr() : todayStr();
@@ -327,7 +319,7 @@ function resetVoucherEdit() {
   vEditId = null;
   vRows = [defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow(), defaultVoucherRow()];
   // 新增模式：只切「保存并新增 / 保存」这一对按钮。
-  // 删除、红字冲销、复制都需要一张已打开的凭证，它们在「更多」菜单里按 vEditId 显隐（见 bindVchMore）。
+  // 删除、红字冲销都需要一张已打开的凭证，它们在「更多」菜单里按 vEditId 显隐（见 bindVchMore）。
   var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = false;
   fillVoucherWord();
   var w = $('vWord'); if (w) w.value = S.state.param.voucherWord || '记';
@@ -353,123 +345,22 @@ function resetVoucherEdit() {
 
   var at = $('vAttach'); if (at) at.value = 0;
   vAttachFiles = [];
-  renderAttachPanel();
   renderVoucherRows();
-}
-
-/* ===================== 凭证附件上传 ===================== */
-// 点击「上传附件」→ 唤起文件选择 → 逐个以 base64 送 Rust 落盘到 <数据目录>/attachments/
-// → 记录 {name, path, size} 元信息，并回写「附件张数」。
-//
-// 关键：base64 编码必须走 file-save-bridge 暴露的 bytesToBase64（整段拼完再一次性 btoa）。
-// 绝不能分块 btoa 后拼接 —— 那会在串中间产生 padding '='，Rust 端报 Invalid symbol 61。
-function bytesToBase64Safe(u8) {
-  var bridge = window.__fileSaveBridge;
-  if (bridge && typeof bridge.bytesToBase64 === 'function') return bridge.bytesToBase64(u8);
-  var bin = '';
-  var chunk = 0x8000;
-  for (var i = 0; i < u8.length; i += chunk) {
-    bin += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-
-function renderAttachPanel() {
-  var panel = $('vAttachPanel');
-  if (!panel) return;
-  if (!vAttachFiles.length) {
-    panel.hidden = true;
-    panel.innerHTML = '';
-    return;
-  }
-  panel.hidden = false;
-  panel.innerHTML = vAttachFiles.map(function (f, i) {
-    return '<div class="vh-attach-item" title="' + (f.name || '') + '">' +
-      '<span class="vh-attach-name">' + (f.name || '') + '</span>' +
-      '<a href="#" class="vh-attach-del" data-i="' + i + '" title="移除">×</a>' +
-      '</div>';
-  }).join('');
-}
-
-// 附件张数默认跟随实际文件数；用户手工改过则以手工值为准（不再自动覆盖）
-function syncAttachCount() {
-  var at = $('vAttach');
-  if (at) at.value = vAttachFiles.length;
-}
-
-async function uploadAttachFiles(fileList) {
-  var files = Array.prototype.slice.call(fileList || []);
-  if (!files.length) return;
-  var tauri = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core : null;
-  if (!tauri || !tauri.invoke) {
-    showToast('当前环境不支持附件保存，请使用桌面版', 'error');
-    return;
-  }
-  var ok = 0, failMsg = '';
-  for (var i = 0; i < files.length; i++) {
-    var f = files[i];
-    try {
-      var buf = new Uint8Array(await f.arrayBuffer());
-      var path = await tauri.invoke('save_attachment', {
-        name: f.name || ('附件' + (i + 1)),
-        base64: bytesToBase64Safe(buf)
-      });
-      vAttachFiles.push({ name: f.name || '', path: path, size: f.size || 0 });
-      ok++;
-    } catch (e) {
-      failMsg = (f.name || '') + '：' + (e && e.message || e);
-    }
-  }
-  syncAttachCount();
-  renderAttachPanel();
-  if (ok) showToast('已上传 ' + ok + ' 个附件', 'success');
-  if (failMsg) showToast('部分附件上传失败：' + failMsg, 'error');
-}
-
-function bindAttachUpload() {
-  var link = $('vUploadAttach'), input = $('vAttachFile'), panel = $('vAttachPanel');
-  if (link && !link.__attachBound) {
-    link.__attachBound = true;
-    link.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (input) input.click();
-    });
-  }
-  if (input && !input.__attachBound) {
-    input.__attachBound = true;
-    input.addEventListener('change', async function () {
-      await uploadAttachFiles(this.files);
-      this.value = ''; // 清空以便重复选择同一文件也能触发 change
-    });
-  }
-  if (panel && !panel.__attachBound) {
-    panel.__attachBound = true;
-    panel.addEventListener('click', function (e) {
-      var del = e.target.closest('.vh-attach-del');
-      if (!del) return;
-      e.preventDefault();
-      var i = +del.getAttribute('data-i');
-      vAttachFiles.splice(i, 1);
-      syncAttachCount();
-      renderAttachPanel();
-    });
-  }
 }
 
 function updateAmtTotals() {
   var drT = 0, crT = 0;
   vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
   var drTd = $('vDrTotal'), crTd = $('vCrTotal');
-  if (drTd) drTd.innerHTML = amtInnerHtml(drT, false, -1, isRed(drT), false, true);
-  if (crTd) crTd.innerHTML = amtInnerHtml(crT, false, -1, isRed(crT), false, true);
+  if (drTd) drTd.innerHTML = amtInnerHtml(drT, false, -1, false, true);
+  if (crTd) crTd.innerHTML = amtInnerHtml(crT, false, -1, false, true);
   // 大写金额（借贷平衡时取合计，不平衡时取借贷差额）
   var cnTd = $('vTotalCn');
   if (cnTd) {
     var bal = Math.abs(drT - crT) < 0.005 ? drT : Math.abs(drT - crT);
     cnTd.textContent = numToChinese(bal);
-    // 红字（负数）时大写一并标红：与本行金额位格的红色口径保持一致。
-    // numToChinese 已自带「负」字，颜色是额外的一层提示（金蝶红字冲销凭证的合计大写同为红色）。
-    if (bal < 0) cnTd.classList.add('ty-red'); else cnTd.classList.remove('ty-red');
+    // 【2026-10-21】取消负数标红：numToChinese 已自带「负」字，红色是重复强调，按用户要求去掉。
+    cnTd.classList.remove('ty-red');
   }
   var tip = $('vBalanceTip');
   if (vRows.length && Math.abs(drT - crT) >= 0.005) {
@@ -488,7 +379,7 @@ function updateAmtTotals() {
  * 分录区的交互绑定（由 setupVoucher 拆出）
  * ============================================================
  * 【2026-10-04 拆分】原先 255 行全在 setupVoucher 里（10 段事件绑定 + 两个共用内层函数）。
- * 现按"一段绑定一个函数"拆开，setupVoucher 只留：幂等守卫 → 附件上传 → 按序调用下面各 binder。
+ * 现按"一段绑定一个函数"拆开，setupVoucher 只留：幂等守卫 → 按序调用下面各 binder。
  * 属纯搬迁：每个 binder **连内联 handler 一起搬**（只加了 function 包装行），原代码一字未改；
  * 可用"行多重集比对"证明。
  * ⚠ 顺序敏感：同一元素上同类监听（尤其两个 click）的**注册顺序**影响行为，勿调换调用次序。
@@ -538,7 +429,7 @@ function bindVoucherRowsInput() {
       // 数字位灯：输入时高亮当前金额最高有效位（行内位格 + 对应列表头单位行）
       var idx = highestDigitIndex(cleanVal);
       var bg = td && td.querySelector('.amt-bg');
-      if (bg) bg.innerHTML = amtInnerHtml(val, true, idx, isRed(val), true, false);
+      if (bg) bg.innerHTML = amtInnerHtml(val, true, idx, true, false);
       var thEl = $(field === 'v-dr' ? 'vThDr' : 'vThCr');
       if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', idx);
       updateAmtTotals();
@@ -667,7 +558,7 @@ function bindVoucherRowsBlur() {
       t.value = '';
     }
     var bg = t.parentElement.querySelector('.amt-bg');
-    if (bg) bg.innerHTML = amtInnerHtml(val, false, -1, isRed(val), false, true);
+    if (bg) bg.innerHTML = amtInnerHtml(val, false, -1, false, true);
     // 失焦后清除表头单位行高亮
     var thEl = $(field === 'v-dr' ? 'vThDr' : 'vThCr');
     if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', -1);
@@ -787,8 +678,6 @@ function setupVoucher() {
   if (root && root.dataset.ready) return;
   if (root) root.dataset.ready = '1';
 
-  bindAttachUpload();   // 附件上传绑定
-
   // 凭证日期变化 → 科目余额提示换期重算（余额按日期所在期间取）
   // 同时：跨月时凭证号自动取下一月的编号（不跨月不变）
   bindVoucherDate();
@@ -816,7 +705,7 @@ function buildVoucher() {
     attach: U.num($('vAttach').value),
     summary: entries[0].summary,
     entries: entries,
-    // 附件只存元信息（文件名 + 落盘路径），实体文件在 <数据目录>/attachments/
+    // 附件元信息：界面已无上传入口，这里原样带回载入时的记录（历史凭证的附件不丢）
     attachments: vAttachFiles.map(function (f) {
       return { name: f.name, path: f.path, size: f.size };
     })
@@ -1075,7 +964,7 @@ function loadVoucherToEdit(id) {
      同一约定见 Ledger.__dlJumpTo / __glJumpTo、Report.__plJumpToRow（它们一直是这个顺序，从没出过问题）。 */
   openVoucherPage();
   vEditId = v.id;
-  // 编辑模式：隐藏「保存并新增」（删除 / 红字冲销 / 复制在「更多」菜单里自动出现）
+  // 编辑模式：隐藏「保存并新增」（删除 / 红字冲销在「更多」菜单里自动出现）
   var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = true;
   fillVoucherWord(); // 先确保 options 和 disabled 状态正确
   var w = $('vWord'); if (w) w.value = v.word || '记';
@@ -1089,11 +978,10 @@ function loadVoucherToEdit(id) {
     dt.value = v.date || '';
   }
   var at = $('vAttach'); if (at) at.value = v.attach || 0;
-  // 载入该凭证已有的附件元信息（老凭证无此字段时为 []，不影响编辑）
+  // 原样带回该凭证已有的附件元信息（老凭证无此字段时为 []）；界面不再展示，保存时不得丢失
   vAttachFiles = (v.attachments || []).map(function (a) {
     return { name: a.name || '', path: a.path || '', size: a.size || 0 };
   });
-  renderAttachPanel();
   vRows = (v.entries || []).map(function (e) {
     var r = defaultVoucherRow();
     r.summary = e.summary || '';
@@ -1415,20 +1303,6 @@ function reverseConfirmText(v, month, reason) {
   return '确认红字冲销 ' + no + '？\n\n' + info.join('\n');
 }
 
-// 「复制」：把当前打开的凭证内容照抄进一张【新凭证】（含金额）。
-// 用途：重复业务照抄（如每月房租）、红字冲销后重录更正。
-// 与「模板」的分工：模板是主动保存的【结构】（可不含金额，长期复用）；
-// 复制是照抄账上【任意一张已存在的凭证】（含金额，一次性）。
-function copyCurrentVoucher() {
-  if (!vEditId) return showToast('请先打开一张凭证', 'warn');
-  var v = S.getVoucher(vEditId);
-  if (!v) return showToast('凭证不存在', 'error');
-  if (!(v.entries || []).length) return showToast('该凭证没有分录，无法复制', 'warn');
-  copyVoucherToNew(v);
-  showToast('已把「' + (v.word || '记') + '-' + (v.no != null ? v.no : '') + '」的内容复制到新凭证，改好后保存即可',
-    'info', 5000);
-}
-
 async function doReverseVoucher(id) {
   var v = (S.state.vouchers || []).filter(function (x) { return x.id === id; })[0];
   if (!v) return showToast('凭证不存在', 'error');
@@ -1458,44 +1332,10 @@ async function doReverseVoucher(id) {
   var newNo = (created.word || '记') + '-' + created.no;
   refreshQuery();
   if (H.refreshAll) H.refreshAll();
-  // 需要重录时不必在这里一步做完 —— 用户看到红字凭证已生成后，用「更多 → 复制当前凭证」
-  // 即可照抄原凭证（复制是通用能力，不跟红字冲销绑在一起）。
+  // 需要重录时：红字凭证已生成，用户新建一张凭证照原内容重录即可（原「复制当前凭证」已移除）。
   var base = '已红字冲销 ' + no + '，生成 ' + newNo;
   // hint（如「打破已结转的损益，请重新结转」）必须与结果同时呈现，否则用户看不到、账就要分叉。
   showToast(r.hint ? (base + '。' + r.hint) : base, r.hint ? 'warn' : 'success', r.hint ? 8000 : 3000);
-}
-
-// 把某张既有凭证的内容载入编辑器、作为【新凭证】—— 这是「复制」的实现。
-// 刻意不复用 loadVoucherToEdit：那个是「编辑既有凭证」，会把 vEditId 指回原凭证，
-// 保存时变成「修改原凭证」，与「复制一张新的」语义正好相反。
-function copyVoucherToNew(src) {
-  vEditId = null;
-  var bSn = $('btnSaveNewVoucher'); if (bSn) bSn.hidden = false;
-  fillVoucherWord();
-  var w = $('vWord'); if (w && src.word) w.value = src.word;
-  var noInp = $('vNo'); if (noInp) noInp.value = '';   // 留空 → 保存时自动取同月下一个号
-  var dt = $('vDate');
-  if (dt) {
-    var today = H.todayStr ? H.todayStr() : todayStr();
-    var comp = (S.state && S.state.company) || {};
-    dt.min = comp.startMonth ? (comp.startMonth + '-01') : '';
-    dt.max = today;
-    // 复制出来的是【新业务】，日期按当前工作期间 —— 不沿用原凭证日期
-    dt.value = defaultVoucherDate();
-  }
-  var at = $('vAttach'); if (at) at.value = '';
-  vAttachFiles = [];
-  renderAttachPanel();
-  vRows = (src.entries || []).map(function (e) {
-    return {
-      summary: e.summary || '', code: e.code || '', name: e.name || '',
-      // store 内部整数 → 元（表单行口径），见 loadVoucherToEdit 处的说明
-      dr: U.yuan(e.dr) || 0, cr: U.yuan(e.cr) || 0, cashActivity: e.cashActivity || ''
-    };
-  });
-  if (vRows.length < 2) vRows.push(defaultVoucherRow());
-  renderVoucherRows();
-  openVoucherPage();
 }
 
 /* —— 跨页预填凭证分录（模块隔离，须经全局桥接调用） —— */
@@ -1711,7 +1551,6 @@ function applyVchTpl(t) {
   function fill() {
     vEditId = null;
     vAttachFiles = [];
-    if (renderAttachPanel) renderAttachPanel();
     vRows = (t.entries || []).filter(function (e) { return e.code && S.subject(e.code); }).map(function (e) {
       var r = defaultVoucherRow();
       r.summary = e.summary || '';
@@ -1743,20 +1582,22 @@ function applyVchTpl(t) {
       .then(function (ok) { if (ok) fill(); });
   } else fill();
 }
-/* 「更多」下拉：把凭证页所有【次级操作】收在一处 —— 打印两项 / 红字冲销 / 复制 / 模板两项。
+/* 「更多」下拉：把凭证页所有【次级操作】收在一处 —— 打印两项 / 红字冲销 / 模板两项。
  * 为什么收进下拉：凭证页的主动作是「录」，其余都是低频或次级的；平铺会让工具栏被次要按钮占满
  * （历史上曾同时存在 打印、空白凭证、模板、红字冲销、冲销并重录 五个入口，后来「删除」也收了进来）。
+ * 【2026-10-21 移除「复制当前凭证」】—— 与「从模板生成」职责重叠（都属照抄结构），
+ *   且使用频率极低；需要重录时新建一张凭证即可。
  *
  * 【排列顺序按功能分组，不按可用条件】三组，用分隔线隔开：
  *   ① 输出       打印当前凭证 / 打印空白凭证纸               —— 任何时候可用
- *   ② 录入辅助   从模板生成凭证 / 保存为凭证模板 / 复制当前凭证  —— 取用或沉淀可复用的内容
+ *   ② 录入辅助   从模板生成凭证 / 保存为凭证模板              —— 取用或沉淀可复用的内容
  *   ③ 更正与废弃 红字冲销 / 删除凭证                         —— 对【已入账】凭证的处置
  * ③这两项统一染红（.vch-menu-red）：它们会【实际改动已入账的账务】，与①②组
  *   「只读输出 / 录入辅助」性质不同，需要一眼区分。删除排在最后一位，危险项不放手指易扫到的位置。
  *
- * 【显隐】②里的「复制当前凭证」与③整组都需要一张已打开的凭证（vEditId），新增态下无处可用，
+ * 【显隐】③整组都需要一张已打开的凭证（vEditId），新增态下无处可用，
  * 故在开菜单时按状态隐藏；③的分隔线随之一起隐藏，避免新增态下出现两条挨着的线。
- * ②里其余两项与打印两项任何时候都可用（新增态可以打印正在录的这一张）。 */
+ * ②与打印两项任何时候都可用（新增态可以打印正在录的这一张）。 */
 (function bindVchMore() {
   var menu = $('vchMoreMenu');
   var bOpen = $('btnVchMore');
@@ -1767,8 +1608,8 @@ function applyVchTpl(t) {
       // 显隐用 inline style，不用 el.hidden：.vch-menu a 声明了 display:block，
       // 会盖掉 [hidden] 的默认 display:none（与规则 4 那次「选择器压过属性」同类）。
       var has = !!vEditId;
-      // 「复制当前凭证」与「更正/废弃」整组都需要一张已打开的凭证（分组依据见本函数上方注释）
-      ['vchMoreCopy', 'vchMoreReverse', 'vchMoreDelete', 'vchMoreSepAct'].forEach(function (id) {
+      // 「更正/废弃」整组都需要一张已打开的凭证（分组依据见本函数上方注释）
+      ['vchMoreReverse', 'vchMoreDelete', 'vchMoreSepAct'].forEach(function (id) {
         var el = $(id); if (el) el.style.display = has ? '' : 'none';
       });
       menu.hidden = !menu.hidden;
@@ -1816,12 +1657,6 @@ function applyVchTpl(t) {
     syncAll();
     showToast('已删除凭证');
     resetVoucherEdit();
-  });
-  // 复制当前凭证
-  var copyItem = $('vchMoreCopy');
-  if (copyItem) copyItem.addEventListener('click', function (e) {
-    e.preventDefault(); e.stopPropagation(); hideMenu();
-    copyCurrentVoucher();
   });
   // 「保存为模板」面板
   var saveModal = $('vchTplSaveModal');
