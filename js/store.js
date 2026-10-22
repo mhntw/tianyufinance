@@ -2593,7 +2593,10 @@
     runSelfTest: function (month) {
       var self = this;
       var items = [];
-      function push(level, label, detail) { items.push({ level: level, label: label, detail: detail || '' }); }
+      // 第 4 参 key：稳定的机器可读标识。settleChecklist 按 key 而非中文标签反查，
+      // 否则"改了显示文案 → 反查落空 → 结账清单误报通过"（静默放行硬门槛，最危险的一类）。
+      // 见 settleChecklist / tools/check_selftest_keys.js（有负向测试守住这条不变量）。
+      function push(level, label, detail, key) { items.push({ level: level, label: label, detail: detail || '', key: key }); }
       if (!this.state || !this.state.subjects) {
         return { ok: true, items: items, skipped: true };
       }
@@ -2606,7 +2609,7 @@
         opDr += num(o.dr); opCr += num(o.cr);
       });
       if (Math.abs(opDr - opCr) >= 100) {   // 100 个最小单位 = 0.01 元（原硬编码 0.01，单位随之换域）
-        push('error', '期初余额借贷不平', '借方合计 ¥' + yuanFmt(opDr) + '，贷方合计 ¥' + yuanFmt(opCr) + '，差额 ¥' + yuanFmt(Math.abs(opDr - opCr)));
+        push('error', '期初余额借贷不平', '借方合计 ¥' + yuanFmt(opDr) + '，贷方合计 ¥' + yuanFmt(opCr) + '，差额 ¥' + yuanFmt(Math.abs(opDr - opCr)), 'openingBal');
       }
       // 2、每张凭证借贷平衡（防止脏数据绕过 UI 校验进账）
       var badV = 0;
@@ -2637,14 +2640,14 @@
             var residual = Math.abs((net - carried) - diff) < AMT_SCALE;   // 容差 1 元（AMT_SCALE 个最小单位 = 1 元）
             var detail = '资产 ¥' + yuanFmt(bs.totalAsset) + '，负债及权益 ¥' + yuanFmt(bs.totalAll) + '，差额 ¥' + yuanFmt(Math.abs(diff));
             if (residual) {
-              push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡');
+              push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡', 'bsBal');
             } else {
-              push('error', '资产负债表不平衡（非未结转损益导致）', detail + '；差额无法由未结转损益解释，可能源于期初录入不平或科目属性标注问题，建议回到数据源规范后重新导入账套');
+              push('error', '资产负债表不平衡（非未结转损益导致）', detail + '；差额无法由未结转损益解释，可能源于期初录入不平或科目属性标注问题，建议回到数据源规范后重新导入账套', 'bsBal');
             }
           }
         }
       } catch (e) {
-        push('error', '资产负债表计算异常', String(e && e.message || e));
+        push('error', '资产负债表计算异常', String(e && e.message || e), 'bsBal');
       }
       // 4、三表勾稽（**软关系 —— 仅作参考信息，不告警**）
       // 【为什么降级为 info，而不是 warn】
@@ -3513,21 +3516,22 @@
       //   · 资产负债表差额 ≈ 未结转损益净额 → warn（结转损益后自动平衡，由第 4 项 carry 兜底拦截）
       //   · 其余资产负债表不平      → error → fail
       var stt = this.runSelfTest(month);
-      function pickSelfTestItem(match, exclude) {
+      // 按稳定 key 反查（不再按中文标签子串匹配）：标签文案可随意改，key 不动就不会失配；
+      // key 真被改了，tools/check_selftest_keys.js 会红。
+      function pickSelfTestItem(key) {
         var hit = null;
         (stt.items || []).forEach(function (it) {
           if (hit) return;
-          var lb = String(it.label || '');
-          if (lb.indexOf(match) >= 0 && (!exclude || lb.indexOf(exclude) < 0)) hit = it;
+          if (it.key === key) hit = it;
         });
         return hit;
       }
-      var stInit = pickSelfTestItem('期初余额借贷不平');
+      var stInit = pickSelfTestItem('openingBal');
       if (stInit) add('initBal', '财务初始余额试算', 'fail', stInit.detail || '期初余额借贷不平，请核对开账数据');
       else add('initBal', '财务初始余额试算', 'ok', '期初余额借贷平衡');
 
-      // 排除「利润表与资产负债表勾稽偏差」—— 那一项是三表勾稽提示，不属本检查项
-      var stBs = pickSelfTestItem('资产负债表', '利润表');
+      // 三表勾稽提示项 key 为 'plRef'，不会命中本项的 'bsBal' 反查，无需再排除
+      var stBs = pickSelfTestItem('bsBal');
       if (stBs) add('bsBal', '资产负债表平衡', stBs.level === 'error' ? 'fail' : 'warn', stBs.detail || stBs.label);
       else add('bsBal', '资产负债表平衡', 'ok', '资产 = 负债 + 所有者权益，恒等式成立');
 
