@@ -974,18 +974,25 @@
       var needBk = this._bkInFlight || !!this._bkTimer || !!this._bkDirty;
       if (this._bkTimer) { clearTimeout(this._bkTimer); this._bkTimer = null; this._bkWindow = false; this._bkDirty = false; }
       if (!needBook && !needBk) return;
-      var payload = JSON.stringify(this.state);
       // 兜底落真实文件（Storage 引擎：Rust 写 <应用数据目录>/添钰财务/）
       if (typeof window.Storage !== 'undefined') {
         /* 页面关闭兜底：此刻无法再给用户任何 UI 提示（窗口正在销毁），静默是合理的；
-           但仍留一条日志 —— 否则「关页面时最后几笔没落盘」将完全无迹可查。
-           正常路径的失败告警由 _persist 的 __onPersistError 机制承担（见上）。 */
-        if (needBook) window.Storage.saveBook(bid, payload).catch(function (e) {
-          console.warn('[exit-flush] 关闭时主账本兜底写入失败：' + (e && e.message || e));
+           但仍必须留一条日志 ——「关页面时最后几笔没落盘」不能完全无迹可查。
+           ⚠ 关键：Storage.saveBook / saveBackup **内部已 catch、恒 resolve**，写盘失败藏在
+             `r.ok === false` 里。原写法只挂 `.catch(...)`，它收不到 r.ok=false —— 于是连这里
+             承诺的那条日志都不会打，写失败 100% 静默（与注释自相矛盾）。
+           现主账本改走唯一判定点 _saveBookChecked（失败会进 _onSaveFail，窗口未销毁时还能亮红条）；
+           备份没有 checked 版本，就地判 r.ok。 */
+        if (needBook) this._saveBookChecked(bid).then(function (ok) {
+          if (!ok) console.warn('[exit-flush] 关闭时主账本兜底写入失败（已判 r.ok，不是静默）');
         });
-        if (needBk) window.Storage.saveBackup(bid, this.state).catch(function (e) {
-          console.warn('[exit-flush] 关闭时备份兜底写入失败：' + (e && e.message || e));
-        });
+        if (needBk) {
+          Promise.resolve(window.Storage.saveBackup(bid, this.state)).then(function (r) {
+            if (r && r.ok === false) console.warn('[exit-flush] 关闭时备份兜底写入失败：' + ((r && r.error) || '未知原因'));
+          }).catch(function (e) {
+            console.warn('[exit-flush] 关闭时备份兜底写入失败：' + (e && e.message || e));
+          });
+        }
       }
       // 数据真相源在磁盘，无需再写 localStorage 缓存；仅持久化当前账套指针即可。
       setCurBookId(bid);
@@ -4616,21 +4623,31 @@
         }
         add(1, '增值税合计', vatNet + (unpaySub ? flow(unpaySub.code, false).net : 0), vatNetY + (unpaySub ? flow(unpaySub.code, true).net : 0), true);
       }
-      // 其他税种（按名称识别兼容编码差异，顺序按标准模板）
-      // 命名兼容：城市维护建设税/城建税、车船税/车船使用税、地方教育附加/地方教育费附加
+      /* 其他税种（按名称识别兼容编码差异，顺序按标准模板）
+       * 命名兼容：城市维护建设税/城建税、车船税/车船使用税、地方教育附加/地方教育费附加
+       *
+       * 【为什么回退编码写在本行内，而不是另起一个并行数组】
+       *   原实现是 `taxNames[ti]` ↔ `order[ti]` 两个数组靠**下标**硬对齐，错一个字符就能潜伏很久：
+       *   「资源税」的回退码曾写成 222105 —— 那是「待认证进项税额」，一个**增值税**明细。
+       *   后果：名称匹配失败的账套里，「资源税」行会显示待认证进项税额的发生额。
+       *   实测 11/12 项正确、仅此 1 项错，而两本真实账套都因名称含「资源税」直接命中，
+       *   回退路径从未走过，所以一年多没人发现。
+       *   合成一个数组后，编码与税种同处一行，改一处不会漏另一处。
+       *   一致性由 tools/check_tax_codes.js 静态卡口保证：编码唯一、非空、6 位数字，
+       *   且不得落进增值税区间 222101–222110（税种回退码只可能是 222111 起的其他税种）。 */
       var taxNames = [
-        { key: '城市维护建设税', label: '二、城市维护建设税' },
-        { key: '教育费附加', label: '三、教育费附加' },
-        { key: '地方教育附加', label: '四、地方教育附加' },
-        { key: '企业所得税', label: '五、企业所得税' },
-        { key: '个人所得税', label: '六、个人所得税' },
-        { key: '印花税', label: '七、印花税' },
-        { key: '房产税', label: '八、房产税' },
-        { key: '土地使用税', label: '九、土地使用税' },
-        { key: '车船税', label: '十、车船税' },
-        { key: '消费税', label: '十一、消费税' },
-        { key: '资源税', label: '十二、资源税' },
-        { key: '土地增值税', label: '十三、土地增值税' }
+        { key: '城市维护建设税', label: '二、城市维护建设税', code: '222117' },
+        { key: '教育费附加', label: '三、教育费附加', code: '222113' },
+        { key: '地方教育附加', label: '四、地方教育附加', code: '222114' },
+        { key: '企业所得税', label: '五、企业所得税', code: '222111' },
+        { key: '个人所得税', label: '六、个人所得税', code: '222112' },
+        { key: '印花税', label: '七、印花税', code: '222122' },
+        { key: '房产税', label: '八、房产税', code: '222118' },
+        { key: '土地使用税', label: '九、土地使用税', code: '222119' },
+        { key: '车船税', label: '十、车船税', code: '222120' },
+        { key: '消费税', label: '十一、消费税', code: '222121' },
+        { key: '资源税', label: '十二、资源税', code: '222115' },
+        { key: '土地增值税', label: '十三、土地增值税', code: '222116' }
       ];
       function taxMatch(t, s) {
         var n = s.name;
@@ -4639,11 +4656,10 @@
         if (t.key === '车船税') return n.indexOf('车船') >= 0;
         return n.indexOf(t.key) >= 0;
       }
-      // 名称未命中时按标准编码回退（覆盖名称不规范的账套）
-      var order = ['222117','222113','222114','222111','222112','222122','222118','222119','222120','222121','222105','222116'];
-      taxNames.forEach(function (t, ti) {
+      taxNames.forEach(function (t) {
         var s = firstBy(function (x) { return isDirectTaxSub(x) && taxMatch(t, x); });
-        if (!s) s = codeObj(order[ti]);
+        // 名称未命中时按本行自带编码回退（覆盖名称不规范的账套）
+        if (!s) s = codeObj(t.code);
         if (!s) return;
         var f = flow(s.code, false), fy = flow(s.code, true);
         add(0, t.label, f.net, fy.net, true);

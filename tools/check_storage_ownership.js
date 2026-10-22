@@ -120,6 +120,29 @@ for (const abs of files) {
   }
 }
 
+/* ---------- 规则三：关窗兜底必须判 r.ok（2026-10-22） ----------
+ * Storage.saveBook / saveBackup **内部已 catch、恒 resolve**，写盘失败藏在 r.ok === false。
+ * 只挂 `.catch(...)` 收不到它 → 关窗最后一笔写失败完全静默（连日志都不打）。
+ * 因此 store._flushOnExit 的主账本必须走 _saveBookChecked（判成败 + 触发告警），
+ * 不得退回「Storage.saveBook(...).catch(...)」的写法。 */
+{
+  const storeAbs = path.join(JS_DIR, 'store.js');
+  const storeSrc = fs.readFileSync(storeAbs, 'utf8');
+  const m = /_flushOnExit:\s*function\s*\(\)\s*\{([\s\S]*?)\n    \},/.exec(storeSrc);
+  if (!m) {
+    err('js/store.js', 0, '找不到 _flushOnExit —— 若已改名，请同步更新本卡口');
+  } else {
+    const ln = storeSrc.slice(0, storeSrc.indexOf('_flushOnExit')).split('\n').length;
+    if (/Storage\.saveBook\s*\(/.test(m[1])) {
+      err('js/store.js', ln, '_flushOnExit 不得直接调 Storage.saveBook —— saveBook 恒 resolve，'
+        + '写失败藏在 r.ok=false，必须走 _saveBookChecked 判成败');
+    }
+    if (!/_saveBookChecked\s*\(/.test(m[1])) {
+      err('js/store.js', ln, '_flushOnExit 应通过 _saveBookChecked 落主账本（判 r.ok）');
+    }
+  }
+}
+
 if (errors.length) {
   console.log('✗ 存储归属检查未通过（' + errors.length + ' 项）：\n');
   errors.forEach(e => console.log('  ' + e));

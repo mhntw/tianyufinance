@@ -218,7 +218,9 @@ async function onCarryYearEnd() {
     if (!(await H.confirmAsync('确认将本年利润余额结转至「利润分配-未分配利润」？\n结转后本年利润科目清零，跨年资产负债表未分配利润才准确。', { title: '结转本年利润' }))) return;
     var r = S.carryYearEnd(month);
     if (!r.ok) return showToast(r.msg, 'error');
-    showToast('已结转本年利润：' + money(Math.abs(r.bal || 0)), 'success');
+    // 金额字段是 r.amount（store.carryYearEnd 返回 {ok, voucher, amount}）。
+    // 原写 r.bal —— 该字段不存在，`undefined || 0` 恒为 0，导致结转成功却提示「¥0.00」。
+    showToast('已结转本年利润：' + money(Math.abs(r.amount || 0)), 'success');
     refreshSettle(); syncAll();
 }
 

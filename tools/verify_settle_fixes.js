@@ -405,8 +405,30 @@ const plainD = S.addVoucher({ word: '记', date: '2025-06-20', summary: 'x', ent
 S.removeVoucher(plainD.id);
 ck(S.restoreVoucher(plainD.id).ok, '还原普通凭证不受重复结转拦截影响');
 
+/* ============================================================
+ * #13e 年末结转提示金额口径（2026-10-22）
+ *
+ * 【缺陷】Settle.js 结转成功后提示读 `r.bal`，而 store.carryYearEnd 返回的是
+ *   `{ok, voucher, amount}` —— 没有 bal。`Math.abs(undefined || 0)` 恒为 0，
+ *   表现为「结转成功却提示 ¥0.00」，用户会以为没结转成功而重复操作。
+ * 【为什么没被发现】页面层零测试覆盖；两个 Node 测试脚本用的都是 `.amount`（正确），
+ *   唯独 UI 用了错字段，测试照不到。
+ * ============================================================ */
+console.log('\n=== #13e. 年末结转提示金额口径 ===');
+baseState();
+S.addVoucher({ word: '记', date: '2025-12-10', summary: '收入', entries: [{ code: '1002', dr: 8000, cr: 0 }, { code: '6001', dr: 0, cr: 8000 }] });
+S.addVoucher({ word: '记', date: '2025-12-11', summary: '费用', entries: [{ code: '6602', dr: 2000, cr: 0 }, { code: '1002', dr: 0, cr: 2000 }] });
+S.carryForwardProfit('2025-12');
+const rYEBal = S.carryYearEnd('2025-12');
+ck(rYEBal.ok, '年末结转执行成功');
+ck(rYEBal.bal === undefined, '返回对象无 bal 字段（页面不得读 r.bal）');
+ck(rYEBal.amount === 60000000, '返回 amount = 6000 元（定点 ' + rYEBal.amount + '）');
+const settleSrcBal = fs.readFileSync(path.resolve(__dirname, '../js/pages/settle/Settle.js'), 'utf8');
+ck(!/Math\.abs\(\s*r\.bal\b/.test(settleSrcBal), 'Settle.js 不再用 Math.abs(r.bal) 取金额（注释提及不算）');
+ck(/r\.amount/.test(settleSrcBal), 'Settle.js 改读 r.amount');
+
 console.log('\n============================');
 console.log(bad === 0
-  ? '全部通过：#5查重/#8年末结转接入/#9硬性检查展示/#11结转金额口径/#12结转目标科目单点/#13年结识别/#13b利润分配/#13c版式对齐/#13d还原防重复'
+  ? '全部通过：#5查重/#8年末结转接入/#9硬性检查展示/#11结转金额口径/#12结转目标科目单点/#13年结识别/#13b利润分配/#13c版式对齐/#13d还原防重复/#13e年末结转金额口径'
   : '存在 ' + bad + ' 处不符');
 process.exitCode = bad === 0 ? 0 : 1;
