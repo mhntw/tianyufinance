@@ -10,13 +10,20 @@
  *   其保护为：明确确认 → 覆盖前自动留存档 → 恢复 → 告知可撤销。
  *   （外部文件曾短暂支持过"覆盖当前账本"，2026-09-28 按用户要求删除：外部副本只能新增为一本账套。）
  *
- * 【三条分流】（按**文件种类 + 数量**判定，不让用户再选一次"我要哪种导入"）
- *     ① 1 个 .ais  → 解析后**新建**一个独立账套            （action 'new-ais'）
- *     ② ≥2 个 .ais → 逐文件解析后**合并新建**连续多年账套   （action 'merge-ais'）
- *     ③ 1 个 .json → **作为新账套导入**                     （action 'new-json'）
- *   ⚠ ③ 在 2026-09-28 之前是"覆盖当前账套"——那是历史遗留的例外，已按上述不变量改掉。
+ * 【分流】（按**文件种类 + 数量**判定，不让用户再选一次"我要哪种导入"）
+ *     ① ≥1 个 .ais → **不再由本软件解析**，明确指向独立转换工具（action 'error'）
+ *     ② 1 个 .json → **作为新账套导入**                            （action 'new-json'）
+ *   ⚠ ② 在 2026-09-28 之前是"覆盖当前账套"——那是历史遗留的例外，已按上述不变量改掉。
  *
- * 【为什么不做"聪明猜测"】判不出就明确报错（混选 .ais/.json、多个 .json、选了别的类型）。
+ * 【为什么 .ais 被移出（2026-10-22）】金蝶 .ais 解析是一整条独立链路
+ *   （mdb-reader 二进制解析 + kis-import 转换，合计约 2.4 万行，占本项目 JS 的一半），
+ *   而它只在"建账时用一次"，此后长期只读已导入的数据。现已拆到仓库根的
+ *   `ais-tool/`（独立转换页 + 自己的测试），主软件只保留 .json 导入：
+ *     · 主软件安装包不再携带这 2.4 万行；
+ *     · 用户选到 .ais 时得到的不是"不支持"，而是"用哪个工具、转成什么"——这是他能执行的下一句话。
+ *   两侧的契约（转换器产出什么、主软件怎么读）由 tools/verify_import_contract.js 兜住。
+ *
+ * 【为什么不做"聪明猜测"】判不出就明确报错（多个 .json、选了别的类型）。
  *   不猜：猜错的代价不对称 —— 从前猜成"覆盖"会换掉账本，现在猜成"新建"会多出一本。
  *
  * 【为什么单独放一个文件】它是要被测的判据 —— 放在页面模块里就只能靠加载整个页面来测，
@@ -25,11 +32,11 @@
 
 /**
  * @param {ArrayLike<{name?:string}>} list 用户选中的文件（File 或任何带 name 的对象）
- * @returns {{action:'new-ais'|'merge-ais'|'new-json'|'error', files:Array, msg?:string}}
- *   action：new-ais=单本金蝶账套新建 / merge-ais=多年合并新建 / new-json=备份作为新账套导入 /
- *           error=不执行（msg 直接提示用户）
+ * @returns {{action:'new-json'|'error', files:Array, msg?:string}}
+ *   action：new-json=备份作为新账套导入 / error=不执行（msg 直接提示用户）
  *   files ：该动作要处理的文件（error 时保持原列表，仅供提示用）
  *   ⚠ 任何 action 都**不含"覆盖当前账套"** —— 覆盖请走「查看备份」。
+ *   ⚠ 2026-10-22 起不再有 'new-ais' / 'merge-ais'：.ais 一律转 error 并指向 ais-tool/。
  */
 export function importPlanOf(list) {
   const files = [];
@@ -42,17 +49,22 @@ export function importPlanOf(list) {
   const others = files.length - jsons.length - ais.length;
 
   if (others > 0) {
-    return { action: 'error', files: files, msg: '只支持金蝶账套（.ais）与本软件账套备份（.json），请勿选入其它类型文件' };
+    return { action: 'error', files: files, msg: '只支持本软件账套备份（.json），请勿选入其它类型文件' };
   }
-  if (jsons.length && ais.length) {
-    return { action: 'error', files: files, msg: '请勿把账套备份(.json)与金蝶账套(.ais)混在一起导入：一次只做一件事' };
+  /* .ais 不再由本软件解析（2026-10-22 拆至 ais-tool/）。混选也走这条：
+     用户手里有 .ais 时，他最需要的下一句话就是"用哪个工具、转成什么"，
+     而不是一句干巴巴的"不支持该格式"。 */
+  if (ais.length) {
+    return {
+      action: 'error', files: files,
+      msg: '金蝶账套(.ais)需先用独立转换工具 ais-tool/index.html 转成本软件账套(.json)，再在此导入'
+    };
   }
   if (jsons.length > 1) {
     return { action: 'error', files: jsons, msg: '一次只能导入一个 .json 账套备份（多份备份无法合并）' };
   }
-  if (jsons.length === 1) return { action: 'new-json', files: jsons };    // ③ 作为新账套导入
-  if (ais.length === 1) return { action: 'new-ais', files: ais };         // ① 新建账套
-  return { action: 'merge-ais', files: ais };                             // ② 合并新建
+  if (jsons.length === 1) return { action: 'new-json', files: jsons };    // ② 作为新账套导入
+  return { action: 'error', files: files, msg: '未选择可导入的文件' };
 }
 
 /**

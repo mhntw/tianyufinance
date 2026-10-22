@@ -13,7 +13,7 @@
  *     · 误判很可能源于把 GLVch.FSerialNum（**分录**行号，递增且值很大）当成了凭证号。
  *   该重编号曾让添钰来客 2026 年 447 张中 442 张（98.9%）被改号，且原号被覆盖、不可逆。
  *
- * 【本脚本做什么】真的跑一遍导入器（js/kis-import.js），把导入结果与 .ais 的
+ * 【本脚本做什么】真的跑一遍导入器（ais-tool/js/kis-import.js），把导入结果与 .ais 的
  *   (凭证字, 日期, FNum) 逐张对照，确保**没有任何一张被改号**。
  *
  * 用法：node tools/verify_import_vchno.js [.ais 路径…]（缺省时扫描本机常见位置）
@@ -54,9 +54,9 @@ global.document = {
   createElement: function () { return { style: {}, appendChild: function () { } }; },
   addEventListener: function () { }
 };
-(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'mdb-reader.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'mdb-reader.js'), 'utf8'));
 (0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'standards.js'), 'utf8'));
-(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
 
 const READER = global.MDBReader.default;
 function dstr(v) {

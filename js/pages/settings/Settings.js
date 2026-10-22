@@ -4,7 +4,7 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 // H 由 _shared.js 转发自 js/common/helpers.js（引导块的唯一实现）
-import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
+import { H, $, money, esc, escHtml, escAttr, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
 import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
@@ -31,8 +31,8 @@ const refreshAll = H.refreshAll;
       var isDef = (w.name === curDef);
       var refs = refCount[w.name] || 0;
       tr.innerHTML =
-        '<td class="' + (isDef ? 'vw-default' : '') + '">' + w.name + (isDef ? ' <span class="ok-tag">默认</span>' : '') + '</td>' +
-        '<td>' + w.title + '</td>' +
+        '<td class="' + (isDef ? 'vw-default' : '') + '">' + escHtml(w.name) + (isDef ? ' <span class="ok-tag">默认</span>' : '') + '</td>' +
+        '<td>' + escHtml(w.title) + '</td>' +
         '<td class="col-op">' +
           (isDef
             ? '<a class="link-del disabled">—</a>'
@@ -115,6 +115,7 @@ const refreshAll = H.refreshAll;
       var ytdCell = isTitle
         ? '<td class="num"></td>'
         : '<td class="num"><input class="cf-ytd input-sm" data-id="' + it.id + '" value="' + U.yuan(o.ytd || 0) + '"></td>';   // 回填「元」输入框：store 内部为定点整数
+      /* escape-ok: it 来自 store 的 CASH_FLOW_ITEMS 常量表；ytdCell 内是 yuan() 数字与常量 id */
       tr.innerHTML =
         '<td>' + it.name + '</td>' +
         '<td class="mono center">' + (it.rowNum || '') + '</td>' +
@@ -187,20 +188,20 @@ const refreshAll = H.refreshAll;
     S.subjects().forEach(function (s) {
       var isCash = ['1001','1002','1012'].indexOf(s.code) >= 0;
       var m = map[s.code] || { credit: isCash ? 'cf_cash' : '', debit: '' };
-      var opts = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {
-        return '<option value="' + it.id + '"' + (m.credit === it.id ? ' selected' : '') + '>' + it.name + '</option>';
+      var opts = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {   /* escape-ok: id 走 escAttr、name 走 escHtml */
+        return '<option value="' + escAttr(it.id) + '"' + (m.credit === it.id ? ' selected' : '') + '>' + escHtml(it.name) + '</option>';
       }).join('');
-      var opts2 = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {
-        return '<option value="' + it.id + '"' + (m.debit === it.id ? ' selected' : '') + '>' + it.name + '</option>';
+      var opts2 = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {   /* escape-ok: id 走 escAttr、name 走 escHtml */
+        return '<option value="' + escAttr(it.id) + '"' + (m.debit === it.id ? ' selected' : '') + '>' + escHtml(it.name) + '</option>';
       }).join('');
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td class="mono">' + s.code + '</td>' +
-        '<td>' + s.name + '</td>' +
-        '<td>' + ((globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
-        '<td>' + S.dirName(s.normal) + '</td>' +
-        '<td><select class="cf-credit select-sm" data-code="' + s.code + '">' + opts + '</select></td>' +
-        '<td><select class="cf-debit select-sm" data-code="' + s.code + '">' + opts2 + '</select></td>';
+        '<td class="mono">' + escHtml(s.code) + '</td>' +
+        '<td>' + escHtml(s.name) + '</td>' +
+        '<td>' + escHtml((globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
+        '<td>' + escHtml(S.dirName(s.normal)) + '</td>' +
+        '<td><select class="cf-credit select-sm" data-code="' + escAttr(s.code) + '">' + opts + '</select></td>' +
+        '<td><select class="cf-debit select-sm" data-code="' + escAttr(s.code) + '">' + opts2 + '</select></td>';
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.cf-credit, .cf-debit').forEach(function (sel) {
@@ -269,7 +270,7 @@ const refreshAll = H.refreshAll;
       var users = {};
       (S.getLogs() || []).forEach(function (l) { users[l.user || '财务'] = 1; });
       var optUser = Object.keys(users).sort();
-      $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {
+      $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {   /* escape-ok: u 是日志里的 user 名，value 与文本均 esc */
         return '<option value="' + esc(u) + '">' + esc(u) + '</option>';
       }).join('');
       logInitDone = true;
@@ -290,7 +291,7 @@ const refreshAll = H.refreshAll;
         var tr = document.createElement('tr');
         // 反结账行加红标醒目（审计高危标识）
         if (l.action === '反结账') tr.className = 'log-row-reopen';
-        var detailHtml = l.detail || '';
+        var detailHtml = esc(l.detail || '');
         // 反结账：追加 reason 红字显示
         if (l.action === '反结账' && l.reason) {
           detailHtml += '<div class="log-reason">原因：' + esc(l.reason) + '</div>';
@@ -298,7 +299,7 @@ const refreshAll = H.refreshAll;
         // 凭证增删改：有 before/after 时加可展开的审计详情
         if (l.module === '凭证' && (l.before || l.after)) {
           var bid = 'logAudit_' + startIdx + '_' + idx;
-          detailHtml += ' <a class="link-toggle log-audit-toggle" data-target="' + bid + '">查看明细</a>' +
+          detailHtml += ' <a class="link-toggle log-audit-toggle" data-target="' + bid + '">查看明细</a>' +   /* escape-ok: bid 由 'logAudit_' + 分页下标拼成，纯数字 */
             '<div id="' + bid + '" class="log-audit-detail" style="display:none">';
           if (l.before) detailHtml += '<div class="la-section"><span class="la-tag la-before">改前</span><pre class="la-pre">' + esc(_auditFmt(l.before)) + '</pre></div>';
           if (l.after) detailHtml += '<div class="la-section"><span class="la-tag la-after">改后</span><pre class="la-pre">' + esc(_auditFmt(l.after)) + '</pre></div>';
@@ -311,7 +312,7 @@ const refreshAll = H.refreshAll;
           actTag = ' <span class="act-tag ' + tagCls + '">' + esc(ACTION_TYPE_LABELS[l.action_type]) + '</span>';
         }
         tr.innerHTML = '<td class="mono">' + esc(l.time || '') + '</td><td>' + esc(l.user || '') + '</td><td>' +
-          (l.action || '') + actTag + '</td><td>' + (l.module || '设置') + '</td><td>' + detailHtml + '</td>';
+          esc(l.action || '') + actTag + '</td><td>' + esc(l.module || '设置') + '</td><td>' + detailHtml + '</td>';
         tb.appendChild(tr);
       });
       // 绑定凭证审计明细展开/收起
@@ -395,21 +396,19 @@ const refreshAll = H.refreshAll;
     if (globalThis.__renderTools) globalThis.__renderTools();
   }
   /* ============================================================
-   * 【2026-09-28 三合一 + 语义统一】导入账套（唯一入口，原「导入账套 / 多年合并导入 / 导入备份」）
+   * 导入账套（唯一入口，只收 .json）
    *
-   * 三者原先各有一个按钮 + 隐藏 input + 一段处理逻辑。按**文件种类 + 数量**分流即可
-   * （判据是纯函数 importPlanOf，可单独测试）：
-   *     ① 1 个 .ais  → 解析后**新建**一个独立账套
-   *     ② ≥2 个 .ais → 逐文件解析后**合并新建**一个连续多年账套
-   *     ③ 1 个 .json → **作为新账套导入**
+   * 【2026-10-22 拆分】原先是三合一（.ais 单本 / .ais 多年合并 / .json），现在 .ais 已整体
+   *   移出到仓库根的 ais-tool/ 独立转换器，本入口只剩一条：
+   *     ① 1 个 .json → **作为新账套导入**
+   *   选到 .ais 时 importPlanOf 会明确提示"先用 ais-tool/index.html 转换"（见其注释）。
    *
    * 【核心不变量：本入口只做新增，绝不覆盖当前账套】
    *   用户看到"导入"二字时，心里想的是"加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉 ——
    *   名字与行为不符是最坏的一类不一致，因为他不会去细读确认框（他"已经知道"这个按钮干什么了）。
-   *   故 ③ 由原来的"覆盖当前账套"改为"作为新账套导入"。
    *   全应用只有一处能覆盖当前账本：「查看备份 → 恢复」（从应用内快照回滚）。
    *   （外部文件一度支持过"覆盖当前账本"，2026-09-28 按用户要求删除 —— 外部副本只做新增。）
-   *   判不出的情况（混选 .ais/.json、多个 .json、其它类型）明确报错，**不做猜测**。
+   *   判不出的情况（多个 .json、其它类型）明确报错，**不做猜测**。
    * ============================================================ */
   var bmFile = $('bookImportFile');
   if (bmFile) {
@@ -419,9 +418,11 @@ const refreshAll = H.refreshAll;
       // 立刻清空 input：否则"再次选同一个文件"不会触发 change（原先各分支各清一次，容易漏）
       bmFile.value = '';
       if (plan.action === 'error') { showToast(plan.msg, 'error'); return; }
-      if (plan.action === 'new-ais') { handleImportAis(plan.files[0]); return; }        // ①
-      if (plan.action === 'new-json') { importJsonAsNewBook(plan.files[0]); return; }   // ③
-      if (plan.action === 'merge-ais') { handleMultiYearImport(plan.files); return; }   // ②
+      /* 2026-10-22：.ais 的两个分支（new-ais / merge-ais）已随拆分删除 ——
+         金蝶账套改由仓库根的 ais-tool/ 独立转换器处理，主软件只导入 .json。
+         判据本身（importPlanOf）现在会把 .ais 转成 error 并提示去用转换工具，
+         所以这里只需要 new-json 一条。 */
+      if (plan.action === 'new-json') { importJsonAsNewBook(plan.files[0]); return; }   // ② 作为新账套导入
       // 兜底：判据将来新增动作、而这里忘了接时**绝不**落到"按合并处理"（那会静默按错误方式导入）。
       // 宁可报一句看不懂的错，也不要悄悄做错事。
       showToast('导入入口未识别的分流动作：' + plan.action + '（请把这一条反馈给开发）', 'error');
@@ -465,83 +466,6 @@ const refreshAll = H.refreshAll;
     reader.readAsText(f);
   }
 
-  //  多年账套合并导入：按年导出 .ais，本入口把同店多年 .ais 合并为一个连续多年账套。
-  // 流程：选多个 .ais -> parseMulti 合并（基础年完整导入+后续年只取凭证，凭证号跨年连续重排）
-  // -> 跨年一致性校验（上一年期末 vs 下一年期初） -> 本地载入
-  function handleMultiYearImport(files) {
-    if (!files || !files.length) return;
-    if (files.length < 2) {
-      showToast('请选择 2 个或以上的 .ais 文件（同店不同年份）', 'warn');
-      return;
-    }
-    if (!window.KisImport || typeof window.KisImport.parseMulti !== 'function') {
-      showToast('解析模块未加载，请刷新页面后重试', 'error');
-      return;
-    }
-    // 用第一个文件名提取店名（去掉 _YYYY年_ 格式.ais）
-    var firstName = files[0].name || '账套';
-    var defaultName = firstName.replace(/[_\s]*\d{4}\s*年.*$/, '').trim() || '多年合并账套';
-    H.promptAsync('请输入账套名称：', defaultName, { title: '多年合并导入（' + files.length + ' 个 .ais）' })
-      .then(function (bookName) {
-        if (!bookName) return;
-        showToast('正在合并 ' + files.length + ' 个金蝶年度账套…（大文件可能需数十秒）');
-        var t0 = Date.now();
-        window.KisImport.parseMulti(Array.from(files), { baseName: bookName.trim() })
-          .then(function (res) {
-            var book = res && res.ledger;
-            var stats = res && res.stats;
-            if (!book || !Array.isArray(book.subjects) || !book.subjects.length) {
-              showToast('导入中止：合并后账套科目为空或数据异常', 'error'); return;
-            }
-            if (!Array.isArray(book.vouchers)) {
-              showToast('导入中止：合并后凭证数据异常', 'error'); return;
-            }
-            /* 日期用**本地**口径（2026-10-04）：toISOString() 是 UTC，东八区凌晨 00:00–08:00
-               合并导入会让账套 id 带上"前一天"的日期，与界面/其它落点不一致。
-               U.fmtDate 是 store 暴露的本地日期单点（与全站 fmtDate 同源）。 */
-            var bid = safeIdOf(bookName.trim()) + '_合并_' + U.fmtDate(new Date()).replace(/-/g,'') + '_' + Date.now();
-            var cnt = book.subjects.length, vcnt = book.vouchers.length;
-            var years = (stats && stats.years || []).join('、');
-            var tip = '多年合并导入成功：' + bookName + '（' + years + '），' + cnt + ' 科目 / ' + vcnt + ' 凭证';
-            var warns = (res && res.warnings) || [];
-            // 跨年校验结果
-            if (stats && stats.yearBoundaries) {
-              stats.yearBoundaries.forEach(function (b) {
-                if (b.checked > 0) {
-                  warns.push(b.fromYear + '→' + b.toYear + '：' + b.checked + ' 个科目期初与上年期末不一致，最大差异 ¥' + U.yuanFmt(Math.abs(b.maxDiff)));
-                } else {
-                  tip += '；' + b.fromYear + '→' + b.toYear + ' 年结校验通过';
-                }
-              });
-            }
-            // 每年统计
-            if (stats && stats.perYear) {
-              warns.push('每年凭证数：' + stats.perYear.map(function (y) {
-                return y.year + '年(' + y.vouchers + '张)';
-              }).join(' '));
-            }
-            if (warns.length) tip += '；' + warns.join('；');
-            // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
-            // 此时报"合并导入成功"会与红色横幅自相矛盾；校验报告卡片同理只在成功时弹。
-            /* `return` 让它归到外层 .catch（同前一条：不 return 时外层 catch 收不到内层拒绝）。 */
-            return S.importExternalBook(bid, book).then(function (saved) {
-              if (S && S.persist) S.persist();
-              if (saved) {
-                showToast(tip, warns.length ? 'warn' : 'success', 8000);
-                // 合并完成时渲染跨年校验报告到页内卡片
-                if (stats && stats.yearBoundaries && stats.yearBoundaries.length) {
-                  _showYearBoundaryCard(stats.yearBoundaries);
-                }
-              }
-              refreshBookManage();
-              if (window.__refreshAll) window.__refreshAll();
-            });
-          })
-          .catch(function (e) {
-            showToast('合并导入失败：' + importErrText(e), 'error');   // 同一套文案单点（见 importErrText）
-          });
-      });
-  }
 
   /* 跨年校验报告渲染（渲染到传入的 table，不依赖 modal）。
      【唯一实现】它被两处复用：独立的「跨年一致性校验报告」卡片（合并导入后自动弹）
@@ -563,6 +487,7 @@ const refreshAll = H.refreshAll;
       if (!diffs.length) {
         // 文案修正：b.checked 是「有差异科目数」（一致时=0），不能用它冒充核对总数；
         // 用 b.total（参与核对科目数，新导入器已写入），旧存档无 total 时只报「一致」不带数量。
+        /* escape-ok: fromYear / toYear 是年份数字，total 是科目计数 */
         html += '<tr class="ok-row"><td>' + b.fromYear + '→' + b.toYear + '</td><td colspan="5" style="color:var(--ty-green)">校验通过：' +
           (b.total ? (b.total + ' 个科目期初与上年期末一致') : '期初与上年期末核对一致') + '（0 差异）✓</td></tr>';
         return;
@@ -571,18 +496,18 @@ const refreshAll = H.refreshAll;
         var diffRate = d.prevEnd !== 0 ? (Math.abs(d.diff / d.prevEnd) * 100).toFixed(1) + '%' : '—';
         html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
         if (i === 0) {
-          html += '<td rowspan="' + diffs.length + '" class="grp-label">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';
+          html += '<td rowspan="' + diffs.length + '" class="grp-label">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';   /* escape-ok: 年份与差异科目数均为数字 */
         }
         // 差异超阈值 → 科目编码可点，直接穿透到该科目账（与风险检测的 year_jump 同一阈值口径）
         var codeCell = (Math.abs(num(d.diff)) >= U.amt(jumpThreshold))
           ? '<a class="link-jump" data-jump="ledger" data-code="' + esc(d.code) + '"'
             + ' title="差异超 ¥' + jumpThreshold + '，点此查该科目账">' + esc(d.code) + '</a>'
           : esc(d.code);
-        html += '<td class="mono">' + codeCell + (d.name ? ' ' + esc(d.name) : '') + '</td>';
-        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.prevEnd)) + '</td>';
-        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.curOpen)) + '</td>';
-        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + U.yuanFmt(num(d.diff)) + '</td>';
-        html += '<td class="mono ta-r">' + diffRate + '</td>';
+        html += '<td class="mono">' + codeCell + (d.name ? ' ' + esc(d.name) : '') + '</td>';   /* escape-ok: codeCell 内 code 已 esc，name 已 esc */
+        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.prevEnd)) + '</td>';   /* escape-ok: num() + yuanFmt()，纯数字 */
+        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.curOpen)) + '</td>';   /* escape-ok: num() + yuanFmt()，纯数字 */
+        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + U.yuanFmt(num(d.diff)) + '</td>';   /* escape-ok: 只有常量 class 与数字金额 */
+        html += '<td class="mono ta-r">' + diffRate + '</td>';   /* escape-ok: diffRate 是 toFixed(1) + '%' 的数字串 */
         html += '</tr>';
       });
     });
@@ -607,11 +532,13 @@ const refreshAll = H.refreshAll;
     });
   }
 
-  /* 【2026-09-28 三合一】原「多年合并导入」按钮及其 #multiAisFile 的绑定已删除 ——
-     多选 .ais 的合并能力由统一的「导入账套」入口承担（判据 action==='merge' → handleMultiYearImport）。 */
+  /* 【2026-10-22】原「多年合并导入」按钮、#multiAisFile 绑定、以及 .ais 解析函数
+     （handleMultiYearImport / handleImportAis）已全部删除 —— 金蝶 .ais 改由仓库根的
+     ais-tool/ 独立转换器处理（它有自己的页面与测试），主软件只导入转换产出的 .json。
+     跨年一致性校验的能力随转换器一起搬走（ais-tool/js/kis-import.js 的 parseMulti 内含该校验）。 */
   /* 【2026-09-28 合并进「风险检测」，原「查看校验报告」按钮已删除】理由三条：
      · 它只对**多年合并账套**有内容，其它账套点了只弹一句 toast —— 对绝大多数用户是死按钮；
-     · 而目标用户的价值已在**合并导入成功那一刻**自动交付（handleMultiYearImport 会弹卡片）；
+     · 而目标用户的价值已在**合并导入成功那一刻**自动交付（跨年一致性校验卡片）；
      · 跨年数据本来就在风险检测里被检（store.js 的检测 6 = year_jump，读同一份 meta.yearBoundaries）。
      现在跨年**完整表**作为「风险检测」卡片里的一个分区呈现（healthYearSec / healthYearTable），
      差异超风险阈值（默认 ¥10 万）的科目可直接点击穿透到科目账。
@@ -688,7 +615,7 @@ const refreshAll = H.refreshAll;
     r.checks.forEach(function (c) {
       // 等级标签：info 显示「参考」—— 它不是风险，只是提示关注（必然命中的条目不该叫"风险"，
       // 否则用户会对真实告警脱敏；见 store.js 检测 3 的说明）
-      var sev = c.severity === 'high' ? '<span class="tag tag-stop">高危</span>'
+      var sev = c.severity === 'high' ? '<span class="tag tag-stop">高危</span>'   /* escape-ok: 四个分支都是硬编码标签文案 */
         : (c.severity === 'medium' ? '<span class="tag tag-warn">中危</span>'
           : (c.severity === 'info' ? '<span class="tag">参考</span>' : '<span class="tag">低危</span>'));
       var items = c.items || [];
@@ -752,65 +679,8 @@ const refreshAll = H.refreshAll;
   });
   /* 【2026-09-28 三合一】原 #multiAisFile 的 change 绑定已删除（合并进统一的导入入口）。 */
 
-  //  账套 (.ais)：纯前端浏览器解析（零依赖，无需 Python / mdbtools / 服务器）。
-  // 流程：浏览器内用 mdb-reader 直接读取 .ais -> KisImport 转换为账套结构 -> 本地载入。
-  // 普通财务电脑无需安装任何环境，双击打开网页即可导入。
-  function handleImportAis(file) {
-    showToast('正在浏览器内解析金蝶账套…（大文件可能需数秒）');
-    if (!window.KisImport || typeof window.KisImport.parse !== 'function') {
-      showToast('解析模块未加载，请刷新页面后重试', 'error');
-      return;
-    }
-    window.KisImport.parse(file)
-      .then(function (res) {
-        var book = res && res.ledger;
-        var stats = res && res.stats;
-        if (!book || !Array.isArray(book.subjects) || !book.subjects.length) {
-          showToast('导入中止：账套科目为空或文件有问题，未导入', 'error'); return;
-        }
-        if (!Array.isArray(book.vouchers)) {
-          showToast('导入中止：账套凭证数据异常，未导入', 'error'); return;
-        }
-        // 账套 id：文件名去后缀 + 时间戳，避免覆盖同目录同名导入（名称须净化，见 safeIdOf）
-        var base = (file.name || 'kis').replace(/\.[^.]+$/, '');
-        var bid = safeIdOf(base) + '_' + Date.now();
-        var cnt = book.subjects.length, vcnt = book.vouchers.length;
-        var tip = '金蝶账套导入成功：' + ((stats && stats.company) || base) + '，' + cnt + ' 科目 / ' + vcnt + ' 凭证';
-        var warns = [];
-        if (stats && stats.vchRows != null && stats.vchRows > 0) {
-          warns.push('分录源 ' + stats.vchRows + ' 行 → ' + vcnt + ' 张凭证');
-        }
-        if (stats && stats.unbalancedVouchers) {
-          warns.push('借贷不平凭证 ' + stats.unbalancedVouchers + ' 张，请核对源账套');
-        }
-        if (stats && stats.currencyFallback) {
-          warns.push('期初余额按币种 ' + stats.currencyFallback + ' 导入（账套无综合币汇总行）');
-        }
-        if (stats && stats.dupSubjects && stats.dupSubjects.length) {
-          warns.push('已去重 ' + stats.dupSubjects.length + ' 个重复科目');
-        }
-        if (warns.length) tip += '；' + warns.join('；');
-        // saved === false 表示**没写进磁盘**（保存失败告警横幅已同时给出）——
-        // 此时报"导入成功"会与红色横幅自相矛盾，用户不知道信哪个。
-        /* `return` 必须带上（2026-10-04）：这是**第三处**同源写法（单本 .ais 导入）——
-           不 return 时，importExternalBook 的拒绝逃出下面的 .catch（那个 catch 只兜 parse 链），
-           于是既没有错误提示、又留下未处理的 promise 拒绝。 */
-        return S.importExternalBook(bid, book).then(function (saved) {
-          if (S && S.persist) S.persist();
-          if (saved) showToast(tip);
-          refreshBookManage();
-          if (window.__refreshAll) window.__refreshAll();
-        });
-      })
-      .catch(function (e) {
-        // 经 importErrText 翻成人话（原始英文栈对记账的人毫无意义，见其定义处注释）。
-        // ⚠ 这条 catch 曾经是**死代码** —— parse 失败时外层 promise 永不结算，
-        //   用户只看到全局兜底的「系统异常」；修复见 js/kis-import.js 的 parse 注释。
-        showToast('导入失败：' + importErrText(e), 'error');
-      });
-  }
 
-  // 三合一入口：一个按钮 → 一个文件选择器（#bookImportFile，可多选 .ais）
+  // 导入入口：一个按钮 → 一个文件选择器（#bookImportFile，只收 .json）
   $('btnBookImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
 
 /* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */

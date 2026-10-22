@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>金蝶账套转换工具（.ais → .json）</title>
+<style>
+  :root { --bd:#d8dee9; --fg:#2e3440; --mut:#5e6b7e; --acc:#3b6ea5; --ok:#2e7d5b; --err:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 20px; background:#f4f6f9; color:var(--fg);
+         font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 20px; }
+  .card { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:20px; margin-bottom:16px; }
+  .notice { background:#eef5fb; border:1px solid #c5dbf0; border-radius:8px;
+            padding:12px 14px; margin-bottom:16px; font-size:13px; color:#234; }
+  .notice b { color:var(--acc); }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  label small { font-weight:400; color:var(--mut); }
+  input[type=text] { width:100%; padding:8px 10px; border:1px solid var(--bd); border-radius:6px; font-size:14px; }
+  .row { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+  button { padding:9px 18px; border:1px solid var(--bd); border-radius:6px; background:#fff;
+           font-size:14px; cursor:pointer; }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .status { margin-top:14px; padding:10px 12px; border-radius:6px; font-size:13px; white-space:pre-wrap; }
+  .status.info { background:#f0f2f5; color:var(--mut); }
+  .status.ok   { background:#e8f5ee; color:var(--ok); }
+  .status.error{ background:#fdecea; color:var(--err); }
+  .pv { width:100%; border-collapse:collapse; margin-top:6px; font-size:13px; }
+  .pv th { text-align:left; font-weight:600; color:var(--mut); padding:5px 10px 5px 0;
+           white-space:nowrap; vertical-align:top; width:130px; }
+  .pv td { padding:5px 0; }
+  .warnbox { margin-top:12px; padding:10px 12px; background:#fff8e6; border:1px solid #f0dca8;
+             border-radius:6px; font-size:13px; }
+  .warnbox ul { margin:6px 0 0; padding-left:20px; }
+  .steps { color:var(--mut); font-size:13px; margin:0; padding-left:20px; }
+  .steps li { margin:4px 0; }
+  code { background:#eef1f5; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>金蝶账套转换工具</h1>
+  <p class="sub">把金蝶「账套文件 (.ais)」转换成本软件使用的账套 (.json)</p>
+
+  <div class="notice">
+    <b>关于数据安全：</b>本工具完全在你的浏览器里运行 —— .ais 文件只在内存中解析，
+    转换结果通过浏览器下载到本地，<b>不会上传到任何服务器</b>，也不发任何网络请求。
+  </div>
+
+  <div class="card">
+    <label for="aisFile">选择 .ais 文件 <small>（选多个同店不同年份的文件可合并为一个连续多年账套）</small></label>
+    <input type="file" id="aisFile" accept=".ais" multiple>
+
+    <label for="bookName">账套名称 <small>（留空则取文件名；会作为导入后的账套名）</small></label>
+    <input type="text" id="bookName" placeholder="例如：添钰来客">
+
+    <div class="row">
+      <button class="primary" id="btnConvert">开始转换</button>
+      <button id="btnDownload" disabled>下载账套 .json</button>
+    </div>
+
+    <div class="status info" id="status">等待选择文件…</div>
+    <div id="preview"></div>
+  </div>
+
+  <div class="card">
+    <b>转换完之后：</b>
+    <ol class="steps">
+      <li>点「下载账套 .json」，得到一个 <code>.json</code> 文件；</li>
+      <li>打开财务软件 →「设置」→「账套管理」→「导入账套」，选这个文件；</li>
+      <li>导入前请先看上面预览里的提示（例如借贷不平几张），有异常先核对源账套。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ⚠ 这四行 <script> 必须按此顺序保留，且不能改成动态加载：
+     kis-import.js 的 ensureMdbReader() 写死了相对路径 'js/...'，本页在子目录下解析不到；
+     而四个脚本都静态就位时 mdbReady() 为 true，它直接 resolve、根本不会走那条路径。
+     删掉任何一行，本页都会报「解析模块未加载」。 -->
+<script src="js/buffer.js"></script>
+<script src="js/mdb-reader.js"></script>
+<script src="js/standards.js"></script>
+<script src="js/kis-import.js"></script>
+<script src="convert.js"></script>
+</body>
+</html>

@@ -1448,7 +1448,7 @@
               <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
               <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
                    原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->
-              <input type="file" id="bookImportFile" accept=".ais,.json" multiple style="display:none">
+              <input type="file" id="bookImportFile" accept=".json" style="display:none">
               <!-- 注：曾短暂存在一个「从文件恢复…」的选择器（外部 .json 覆盖当前账套），已按用户要求删除；
                    覆盖当前账本现只走「查看备份」里每行的「恢复」（应用内快照）。 -->
 
@@ -1864,10 +1864,11 @@
   <script src="js/echarts.min.js?v=dev"></script>
   <script src="js/ty-io.js?v=dev"></script>
   <script src="js/ty-menu-icons.js?v=dev"></script>
-  <!-- buffer.js / mdb-reader.js 不再于此静态引入：二者合计 769K（703K + 66K），
-       仅「导入金蝶 .ais 账套」时才用得上，每次启动都解析属纯浪费。
-       现改为首次导入前由 kis-import.js 的 ensureMdbReader() 动态加载（先 buffer 后 mdb-reader）。 -->
-  <script src="js/kis-import.js?v=dev"></script>
+  <!-- 金蝶 .ais 导入链路（kis-import.js + mdb-reader.js + buffer.js，合计约 2.4 万行、
+       823K）已于 2026-10-22 整体移出主软件，迁到仓库根的 ais-tool/ 独立转换器。
+       此处不再引入 —— 主软件只导入转换产出的 .json（见 js/pages/settings/Settings.js）。
+       tauri/scripts/build-dist.mjs 的 ENTRY_POINTS 只收 index.html / css / js，
+       故 ais-tool/ 天然不会进入安装包；该链路由 tools/ 下 verify_import_* 系列继续守护。 -->
   <script src="js/dialog-bridge.js?v=dev"></script>
   <script src="js/file-save-bridge.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>

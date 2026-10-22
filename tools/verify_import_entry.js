@@ -44,13 +44,19 @@ function check(cond, label, detail) {
   const F = names => names.map(n => ({ name: n }));
   const act = names => planOf(F(names)).action;
 
-  // 三条分流（全部是"新增"）
-  check(act(['2026年.ais']) === 'new-ais', '1 个 .ais → 新建账套');
-  check(act(['2024年.ais', '2025年.ais']) === 'merge-ais', '2 个 .ais → 合并新建（原「多年合并导入」）');
-  check(act(['2024年.ais', '2025年.ais', '2026年.ais']) === 'merge-ais', '3 个 .ais → 合并新建');
-  check(act(['2024年.ais', '2025年.ais', '2026年.ais', '2027年.ais']) === 'merge-ais', '4 个 .ais → 合并新建');
+  // 分流（2026-10-22 拆分后只剩一条导入路径：.json）
   check(act(['backup.json']) === 'new-json',
     '1 个 .json → **作为新账套导入**（不是覆盖当前账套 —— 见文件头不变量）');
+  /* .ais 一律转 error：主软件不再解析金蝶账套（已移至 ais-tool/ 独立转换器）。
+     这不是"功能退化成报错"，而是把"选错了文件"变成一句能执行的指引。 */
+  ['2026年.ais', '2026年.AIS', '绅蓝之星_2026年.ais'].forEach(function (n) {
+    check(act([n]) === 'error', n + ' → error（.ais 已移至 ais-tool/，主软件不再解析）');
+  });
+  check(act(['2024年.ais', '2025年.ais']) === 'error', '多个 .ais → error（多年合并也随拆分移出）');
+  const aisPlan = planOf(F(['2026年.ais']));
+  check(aisPlan.action === 'error' && /ais-tool/.test(aisPlan.msg || ''),
+    '.ais 的报错必须指向转换工具 ais-tool —— 用户手里只有 .ais 时，这是他能执行的下一句话',
+    aisPlan.msg || '（无 msg）');
 
   // 不变量 A：判据永不产出"覆盖"
   const allActions = [];
@@ -62,23 +68,20 @@ function check(cond, label, detail) {
     '不变量 A：判据源码里不应再出现 overwrite 这一动作名（防止旧语义被改回来）');
 
   // 边界：不猜、明确报错
-  check(act(['a.json', 'b.ais']) === 'error', '备份与金蝶账套混选 → 报错（不猜）');
   check(act(['a.json', 'b.json']) === 'error', '多个 .json → 报错（备份无法合并）');
-  check(act(['note.txt']) === 'error', '选入非 .ais/.json → 报错');
+  check(act(['note.txt']) === 'error', '选入非 .json → 报错');
   check(act(['2026年.ais', 'note.txt']) === 'error', '合法文件里混入其它类型 → 报错');
-  check(act([]) === 'error', '未选文件 → 报错（不误当 merge）');
+  check(act([]) === 'error', '未选文件 → 报错');
   check(planOf(null).action === 'error', 'null 输入不应抛异常（返回 error）');
+  check(act(['a.json', 'b.ais']) === 'error', '.json 与 .ais 混选 → 报错（不猜）');
 
   // 大小写与中文名
   check(act(['备份.JSON']) === 'new-json', '扩展名大小写不敏感（.JSON）');
-  check(act(['2026年.AIS']) === 'new-ais', '扩展名大小写不敏感（.AIS）');
-  check(act(['绅蓝之星_2026年.ais']) === 'new-ais', '中文名 + 下划线文件名照常识别');
   // 报错时必须带可读原因（否则用户只看到"失败"）
   const e1 = planOf(F(['a.json', 'b.ais']));
   check(!!e1.msg && e1.msg.length > 6, '报错应带可读原因（msg）', e1.msg || '（无）');
   // 每个动作的文件列表只能含该动作对应的文件
   check(planOf(F(['x.json'])).files.length === 1, 'new-json 应只返回该 .json 文件');
-  check(planOf(F(['a.ais', 'b.ais'])).files.length === 2, 'merge-ais 应返回全部 .ais 文件');
 
   // 名称净化判据本身是纯函数，逐条断言（含路径分隔符与限长）
   check(/export\s+function\s+safeIdOf/.test(src0), 'js/common/import-classify.js 应导出 safeIdOf');
@@ -122,42 +125,38 @@ function check(cond, label, detail) {
   check(/\$\('bookImportFile'\)/.test(settings), 'Settings.js 应绑定统一选择器 #bookImportFile');
   check(/\$\('btnBookImport'\)/.test(settings), 'Settings.js 应绑定唯一入口按钮 #btnBookImport');
   check(/importPlanOf/.test(settings), 'Settings.js 应取用纯判据 importPlanOf（不得内联一套判据）');
-  ['new-ais', 'merge-ais', 'new-json'].forEach(function (a) {
+  ['new-json'].forEach(function (a) {
     check(new RegExp("action\\s*===\\s*'" + a + "'").test(settings),
       'Settings.js 应显式分派 action === ' + a);
   });
-  check(/handleImportAis\(/.test(settings), 'new-ais 分支应走原有 handleImportAis');
   check(/importJsonAsNewBook\(/.test(settings), 'new-json 分支应走 importJsonAsNewBook');
-  check(/handleMultiYearImport\(/.test(settings), 'merge-ais 分支应走原有 handleMultiYearImport');
+  /* 拆分红线（2026-10-22）：.ais 的两个处理器必须**不存在**于主软件。
+     它们曾在这里，删掉后如果又被加回来（"用户抱怨导不了 .ais"是最常见的回流原因），
+     这条断言就是拦住回流的那道门。 */
+  ['handleImportAis', 'handleMultiYearImport'].forEach(function (fn) {
+    check(settings.indexOf('function ' + fn + '(') < 0 && settings.indexOf(fn + '(') < 0,
+      'Settings.js 不得再出现 ' + fn + '（.ais 解析已移至 ais-tool/ 独立转换器）');
+  });
+  check(settings.indexOf('KisImport') < 0,
+    'Settings.js 不得再引用 KisImport（解析器已随拆分移出主软件）');
 
   // 不变量 A（接线层）：导入入口必须"只新增"，不得触碰覆盖/快照那套
   check(settings.indexOf('restoreBookState') < 0,
     '不变量 A：Settings.js（导入入口）不得调用 restoreBookState —— 导入只做新增，覆盖走「查看备份」');
   check(settings.indexOf('guardBeforeRestore') < 0,
     '不变量 A：Settings.js 不得再引用覆盖前快照守卫（那是"覆盖"专用的保护）');
-  //  .json 作为新账套导入：必须与 .ais 共用同一条建账套路径，并补 .json 特有的数据整理
+  //  .json 作为新账套导入：唯一保留的导入路径
   const iNewJson = settings.indexOf('function importJsonAsNewBook(');
   const njBody = iNewJson < 0 ? '' : settings.slice(iNewJson, iNewJson + 2200);
   check(iNewJson >= 0, 'Settings.js 应有 importJsonAsNewBook（.json 作为新账套导入）');
   check(/reader\.readAsText/.test(njBody), '（判据自检）截取的函数体应完整到结尾', '长度 ' + njBody.length);
   check(/S\.importExternalBook\(/.test(njBody),
-    'importJsonAsNewBook 应走 S.importExternalBook（与 .ais 导入同一条建账套路径）');
+    'importJsonAsNewBook 应走 S.importExternalBook（唯一建账套实现）');
   check(/safeIdOf\(/.test(njBody),
     'importJsonAsNewBook 的账套 id 必须经 safeIdOf 净化（id 会被 Rust 当文件名用，名字里的 / 会让落盘失败）');
   // 成败门控：写盘失败时不得报"导入成功"（否则与保存失败告警横幅自相矛盾）
   check(/\.then\(function \(saved\)/.test(njBody) && /if \(saved\)[^\n]*showToast\(/.test(njBody),
     'importJsonAsNewBook 的"导入成功"提示必须以落盘成功为条件（写盘失败不得谎报成功）');
-  //  .ais 两条路径同样必须门控：它们也曾无条件 showToast("金蝶账套导入成功"/"多年合并导入成功")
-  ['handleImportAis', 'handleMultiYearImport'].forEach(function (fn) {
-    const iFn = settings.indexOf('function ' + fn + '(');
-    const body = iFn < 0 ? '' : settings.slice(iFn, settings.indexOf('\n  }', iFn));
-    check(iFn >= 0, 'Settings.js 应有 ' + fn + '（.ais 导入路径）');
-    check(body.indexOf('safeIdOf(') >= 0, fn + ' 的账套 id 必须经 safeIdOf 净化（id 会被 Rust 当文件名用）');
-    check(/S\.importExternalBook\(/.test(body), fn + ' 应走 S.importExternalBook（唯一建账套实现）');
-    const iSaved = body.indexOf('if (saved)');
-    check(iSaved >= 0 && /showToast\(tip/.test(body.slice(iSaved)),
-      fn + ' 的"导入成功"提示（showToast(tip…) 必须在 if (saved) 之后（写盘失败不得谎报成功）');
-  });
 
   // 不变量 B：「覆盖当前账本」全应用只有 Tools.js 一个文件
   function callersOf(needle, dir, out) {
@@ -276,7 +275,7 @@ function check(cond, label, detail) {
 
 /* ---------- 四、冻结段：金蝶 .ais 导入**只修缺陷，不加功能** ----------
    为什么冻结：它是一次性迁移通道（一本账套导入一次），真正的成本是**逆向知识**
-   （js/kis-import.js 约 22% 的说明是"从真实账套试出来的"），重建远贵于保留 ——
+   （ais-tool/js/kis-import.js 约 22% 的说明是"从真实账套试出来的"），重建远贵于保留 ——
    故不删、不抽成独立程序，但也不再长大。
    ⚠ 把"冻结"写成注释是不够的（三个月后没人记得），故此处把它变成**会咬人的卡口**。
    合法地增行 / 升级第三方库：改下面的基线并**在本段写明理由**（别只改数字）。 */
@@ -284,16 +283,16 @@ function check(cond, label, detail) {
   const crypto = require('crypto');
   const KIS_LINES = 1067;                       // 2026-09-28 冻结时行数（含冻结说明自身）
   const VENDOR = {                              // 第三方库：内容哈希锁定（原地改必红）
-    'js/mdb-reader.js': 'd2004378ef866d0c',
-    'js/buffer.js': 'e7c24f84529843da'
+    'ais-tool/js/mdb-reader.js': 'd2004378ef866d0c',
+    'ais-tool/js/buffer.js': 'e7c24f84529843da'
   };
-  const kis = fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8');
+  const kis = fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8');
   const lines = kis.split('\n').length;
   check(lines <= KIS_LINES,
-    '冻结模块 js/kis-import.js 行数只许减不许增（只修缺陷，不加功能）',
+    '冻结模块 ais-tool/js/kis-import.js 行数只许减不许增（只修缺陷，不加功能）',
     '实测 ' + lines + ' 行 > 基线 ' + KIS_LINES + ' 行');
   check(kis.indexOf('已冻结') >= 0,
-    'js/kis-import.js 头部必须保留"已冻结"声明（否则后人不知道这里的规矩）');
+    'ais-tool/js/kis-import.js 头部必须保留"已冻结"声明（否则后人不知道这里的规矩）');
   Object.keys(VENDOR).forEach(function (f) {
     const p = path.join(ROOT, f);
     const h = fs.existsSync(p)
@@ -301,12 +300,23 @@ function check(cond, label, detail) {
     check(h === VENDOR[f], '第三方库 ' + f + ' 不得原地修改（升级请同步基线并写明理由）',
       '实测 ' + h + ' ≠ 基线 ' + VENDOR[f]);
   });
-  // 界面上"能选 .ais 的入口"也算功能面：入口膨胀正是本次三合一要治的病
+  /* 【2026-10-22 拆分】.ais 导入已从主软件移出到 ais-tool/（独立转换器）。
+     这条卡口的语义随之反转：主软件**一个 .ais 入口都不该有**（那是拆分要保住的成果），
+     而转换器 ais-tool/index.html 必须有（否则转换器自己也退化了）。
+     原来"只许 1 个"是治入口膨胀；现在主软件是 0 个，多一个就说明拆分被回退了。 */
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const aisInputs = (html.match(/<input[^>]*>/g) || []).filter(function (t) { return /accept="[^"]*\.ais/.test(t); });
-  check(aisInputs.length === 1,
-    '界面上接受 .ais 的文件选择器只应有 1 个（维持"一个按钮"的三合一成果）',
-    '实测 ' + aisInputs.length + ' 个');
+  check(aisInputs.length === 0,
+    '主软件界面不得再出现接受 .ais 的文件选择器（.ais 导入已移至 ais-tool/ 独立转换器）',
+    '实测 ' + aisInputs.length + ' 个 —— 拆分被回退了？');
+  const toolHtmlPath = path.join(ROOT, 'ais-tool', 'index.html');
+  if (fs.existsSync(toolHtmlPath)) {
+    const toolHtml = fs.readFileSync(toolHtmlPath, 'utf8');
+    const toolInputs = (toolHtml.match(/<input[^>]*>/g) || []).filter(function (t) { return /accept="[^"]*\.ais/.test(t); });
+    check(toolInputs.length >= 1,
+      '转换器 ais-tool/index.html 必须保留 .ais 文件选择器（这是它的唯一入口）',
+      '实测 ' + toolInputs.length + ' 个');
+  }
 })();
 
 /* ---------- 五、金额精度：导入**不得**把源数据截断到 2 位 ----------
@@ -336,10 +346,10 @@ global.MDBReader = (function () {
   FakeReader.prototype.getTable = function (n) { return { getData: function () { return T[n] || []; } }; };
   return FakeReader;
 })();
-(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
 
 // 静态卡口：金额解析不得再被 Math.round(… × 100) / 100 砍到 2 位
-const KIS_SRC = fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8');
+const KIS_SRC = fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8');
 check(!/F(Debit|Credit|BegBal)[^\n]*\*\s*100\s*\)\s*\/\s*100/.test(KIS_SRC),
   '导入金额不得再截断到 2 位（FDebit / FCredit / FBegBal 不应再出现「×100 后取整再 ÷100」）');
 

@@ -56,7 +56,7 @@ try { global.Buffer = require('buffer').Buffer; } catch (e) {}
 
 // 加载 mdb-reader.js（浏览器 IIFE 打包，var MDBReader 挂到全局）
 // 用 eval(0,0) 在全局作用域执行，使 var 声明挂到 globalThis
-const mdbPath = path.join(__dirname, '..', 'js', 'mdb-reader.js');
+const mdbPath = path.join(__dirname, '..', 'ais-tool', 'js', 'mdb-reader.js');
 const mdbSrc = fs.readFileSync(mdbPath, 'utf8');
 try {
   // (0, eval) 间接调用 eval，在全局作用域执行

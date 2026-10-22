@@ -5,7 +5,7 @@
  *
  * 【为什么有这个脚本】2026-09-28 真机发现：选一个不是金蝶账套的 .ais 时，用户看到的是
  *     `系统异常：Error: Wrong page type. Expected 0 but received 110. @ assertPageType (http…`
- *   而代码里写好的「导入失败：…」**从未执行过**。根因在 js/kis-import.js 的 parse：
+ *   而代码里写好的「导入失败：…」**从未执行过**。根因在 ais-tool/js/kis-import.js 的 parse：
  *       ensureMdbReader().then(function () { resolve(convert(buf, name)); }, reject);
  *   `convert(...)` 在 then 回调里抛错时，抛错变成**内层 promise 的拒绝**，而那条内层链
  *   没有人接 —— 于是外层 promise **永不 settle**：调用方的 .catch 是死代码，
@@ -47,7 +47,7 @@ global.window = global;
 global.STANDARDS = {};
 global.document = { createElement: function () { return { style: {}, appendChild: function () {} }; }, head: {} };
 global.MDBReader = function MDBReader() { throw new Error(REAL_MSG); };
-(0, eval)(fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
 const KI = global.KisImport;
 
 /* 2) 判定"结算与否"：把"卡住不 settle"也判成失败（否则修复前后都是绿的） */
@@ -67,7 +67,7 @@ function fileLike(name) {
 }
 
 (async function main() {
-  check(KI && typeof KI.parse === 'function', '应能加载 js/kis-import.js 并取到 KisImport.parse');
+  check(KI && typeof KI.parse === 'function', '应能加载 ais-tool/js/kis-import.js 并取到 KisImport.parse');
 
   console.log('\n【A】解析失败时必须**结算为 reject**（不允许卡住不 settle）');
   const inputs = [
@@ -114,13 +114,16 @@ function fileLike(name) {
   function stripComments(src) {
     return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ').replace(/\/\/.*$/gm, ' ');
   }
-  const kis = stripComments(fs.readFileSync(path.join(ROOT, 'js', 'kis-import.js'), 'utf8'));
+  const kis = stripComments(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
   check(kis.indexOf('resolve(convert(') < 0,
     'kis-import.js 的**代码**里不得出现 resolve(convert(...)) —— 回调里抛错会变成内层拒绝、外层永不结算');
   const st = stripComments(fs.readFileSync(path.join(ROOT, 'js', 'pages', 'settings', 'Settings.js'), 'utf8'));
   const uses = (st.match(/importErrText\(e\)/g) || []).length;
-  check(uses >= 2,
-    'Settings.js 两处导入 catch（单本 .ais / 多年合并）都应走 importErrText',
+  /* 2026-10-22 拆分后主软件只剩 .json 一条导入路径，catch 也从两处降为一处。
+     判据相应改为"至少一处、且必须走 importErrText"—— 保持"不得把英文栈甩给用户"这条不变量，
+     而不再绑定具体处数（处数会随导入路径增减而变化，绑死它会天天误报）。 */
+  check(uses >= 1,
+    'Settings.js 的导入 catch 必须走 importErrText（不得把英文栈甩给用户）',
     '实测 ' + uses + ' 处');
   check(st.indexOf("showToast('导入失败：' + (e && e.message") < 0
     && st.indexOf("showToast('合并导入失败：' + (e && e.message") < 0,

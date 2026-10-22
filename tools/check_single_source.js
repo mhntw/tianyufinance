@@ -36,7 +36,7 @@ const SKIP = [/xlsx\.full\.min\.js$/, /[\\/]mdb-reader\.js$/, /[\\/]buffer\.js$/
 //   · standards.js   —— 会计科目表等标准数据
 //   · kis-import.js  —— 金蝶数据转换层：把 GLBal 的带符号期初拆成借贷两列属于**数据形态转换**，
 //                       不是显示换算，故允许在此持有（它不渲染任何界面）
-const ALLOW = ['js/store.js', 'js/standards.js', 'js/kis-import.js'];
+const ALLOW = ['js/store.js', 'js/standards.js', 'ais-tool/js/kis-import.js'];
 
 const RULES = [
   {

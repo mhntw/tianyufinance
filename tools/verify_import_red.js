@@ -41,12 +41,12 @@ if (!AIS || !fs.existsSync(AIS)) {
 /* ---------- 加载依赖（与 contrast_pl_ais.js 同口径） ---------- */
 global.window = global;
 try { global.Buffer = require('buffer').Buffer; } catch (e) { }
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'mdb-reader.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'ais-tool', 'js', 'mdb-reader.js'), 'utf8'));
 global.MDBReader = global.MDBReader.default || global.MDBReader;
 try {
   (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'standards.js'), 'utf8'));
 } catch (e) { /* 标准表可选 */ }
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
 
 const R = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
 let pass = 0, fail = 0;

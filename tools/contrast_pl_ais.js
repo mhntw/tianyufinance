@@ -22,7 +22,7 @@ const fs = require('fs'), path = require('path');
 
 global.window = global;
 try { global.Buffer = require('buffer').Buffer; } catch (e) { }
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'mdb-reader.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'ais-tool', 'js', 'mdb-reader.js'), 'utf8'));
 const MDBReader = global.MDBReader.default;
 
 /* 【不要在这里写死单个绝对路径】.ais 会搬家：2026-10-21 实测「绅蓝之星_2026年」已从桌面
@@ -59,7 +59,7 @@ const R = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
 const num = function (v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 // 【必须做这一步，否则对比毫无意义】金蝶在 .ais 里用「负数借方」表示红冲，
 //   此时「只取借方」天然等于净额 —— 两种口径看不出差别。
-//   而 ty 导入时会把红字规范化（见 js/kis-import.js：负借=贷方、负贷=借方、双负=双正），
+//   而 ty 导入时会把红字规范化（见 ais-tool/js/kis-import.js：负借=贷方、负贷=借方、双负=双正），
 //   规范化之后红冲变成「反方向正数」，单边口径就会漏掉它。
 //   故此处必须复刻同一规范化，才能模拟 ty 的真实数据模型。
 const norm = function (e) {

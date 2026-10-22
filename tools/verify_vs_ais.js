@@ -266,7 +266,7 @@ const EPS = 0.01;
 /* ---------- 1. 读金蝶 GLBal ---------- */
 global.window = global;
 try { global.Buffer = require('buffer').Buffer; } catch (e) { }
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'js', 'mdb-reader.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'ais-tool', 'js', 'mdb-reader.js'), 'utf8'));
 const MDBReader = global.MDBReader.default;
 
 const RAW_BOOK = fs.readFileSync(BOOK, 'utf8');
@@ -439,7 +439,7 @@ console.log('账套期间覆盖：共 ' + bookMonths.length + ' 期，本次比�
 console.log('软删除凭证影响：' + (delTotalAmt ? (R(delTotalAmt) + '（元·借贷合计，期间 ' + Object.keys(delImpact).join(',') + '）') : '无'));
 
 // 【旧版导入账套 → 发生额列不参与比对】
-// 旧版导入把金蝶红字「借 -1,724.85」改写成「贷 +1,724.85」（见 js/kis-import.js 历史实现），
+// 旧版导入把金蝶红字「借 -1,724.85」改写成「贷 +1,724.85」（见 ais-tool/js/kis-import.js 历史实现），
 // 于是「本期/本年累计发生额」按**借贷双方合计**列示，而金蝶 GLBal 是**净额**（红字抵减借方），
 // 两者必然不等 —— 实测各月差 -1,724.85 / -162 / -14.27，恰为各笔红冲金额，与此前利润表
 // 口径问题同源。该改写是**信息破坏性**的，已无法从账套内还原（红冲与真实反方向业务无法区分），
