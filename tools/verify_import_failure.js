@@ -25,6 +25,9 @@
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+// 转换器 ais-tool 现已迁出为 ty 的同级独立仓库（财务软件/ais-tool）。
+// 用 AIS_TOOL_DIR 环境变量可覆盖其位置（默认 ../ais-tool，即 ty 的同级目录）。
+const AIS_TOOL = process.env.AIS_TOOL_DIR || path.join(ROOT, '..', 'ais-tool');
 
 let pass = 0, fail = 0;
 function check(cond, label, actual) {
@@ -47,7 +50,7 @@ global.window = global;
 global.STANDARDS = {};
 global.document = { createElement: function () { return { style: {}, appendChild: function () {} }; }, head: {} };
 global.MDBReader = function MDBReader() { throw new Error(REAL_MSG); };
-(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(AIS_TOOL, 'js', 'kis-import.js'), 'utf8'));
 const KI = global.KisImport;
 
 /* 2) 判定"结算与否"：把"卡住不 settle"也判成失败（否则修复前后都是绿的） */
@@ -114,7 +117,7 @@ function fileLike(name) {
   function stripComments(src) {
     return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ').replace(/\/\/.*$/gm, ' ');
   }
-  const kis = stripComments(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
+  const kis = stripComments(fs.readFileSync(path.join(AIS_TOOL, 'js', 'kis-import.js'), 'utf8'));
   check(kis.indexOf('resolve(convert(') < 0,
     'kis-import.js 的**代码**里不得出现 resolve(convert(...)) —— 回调里抛错会变成内层拒绝、外层永不结算');
   const st = stripComments(fs.readFileSync(path.join(ROOT, 'js', 'pages', 'settings', 'Settings.js'), 'utf8'));

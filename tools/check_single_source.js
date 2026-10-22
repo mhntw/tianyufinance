@@ -34,9 +34,9 @@ const SKIP = [/xlsx\.full\.min\.js$/, /[\\/]mdb-reader\.js$/, /[\\/]buffer\.js$/
 // 允许持有口径的**唯一**位置：取数/数据转换层（页面只能消费）
 //   · store.js       —— 取数与显示口径的唯一实现（displayBalance / splitBalance / dirName …）
 //   · standards.js   —— 会计科目表等标准数据
-//   · kis-import.js  —— 金蝶数据转换层：把 GLBal 的带符号期初拆成借贷两列属于**数据形态转换**，
-//                       不是显示换算，故允许在此持有（它不渲染任何界面）
-const ALLOW = ['js/store.js', 'js/standards.js', 'ais-tool/js/kis-import.js'];
+//   · （kis-import.js 原在此 ALLOW：它是金蝶数据转换层。2026-10-22 起转换器 ais-tool 已迁出为
+//      独立仓库，不再位于本仓库内，故移出 ALLOW；其口径实现由 ais-tool 自己的测试守护。）
+const ALLOW = ['js/store.js', 'js/standards.js'];
 
 const RULES = [
   {

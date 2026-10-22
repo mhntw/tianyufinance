@@ -33,7 +33,10 @@ const path = require('path');
 const os = require('os');
 
 const ROOT = path.resolve(__dirname, '..');
-const TOOL = path.join(ROOT, 'ais-tool', 'js');
+// 转换器 ais-tool 现已迁出为 ty 的同级独立仓库（财务软件/ais-tool）。
+// 用 AIS_TOOL_DIR 环境变量可覆盖其位置（默认 ../ais-tool，即 ty 的同级目录）。
+const AIS_TOOL = process.env.AIS_TOOL_DIR || path.join(ROOT, '..', 'ais-tool');
+const TOOL = path.join(AIS_TOOL, 'js');
 let bad = 0;
 const ck = (c, m, d) => { if (c) console.log('  ✓ ' + m); else { console.log('  ✗ ' + m + (d ? '  → ' + d : '')); bad++; } };
 

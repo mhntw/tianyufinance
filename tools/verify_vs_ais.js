@@ -28,6 +28,9 @@
  * 用法：node tools/verify_vs_ais.js [.ais路径] [账套JSON路径]
  * ============================================================ */
 const fs = require('fs'), os = require('os'), path = require('path');
+// 转换器 ais-tool 现已迁出为 ty 的同级独立仓库（财务软件/ais-tool）。
+// 用 AIS_TOOL_DIR 环境变量可覆盖其位置（默认 ../ais-tool，即 ty 的同级目录）。
+const AIS_TOOL = process.env.AIS_TOOL_DIR || path.join(__dirname, '..', '..', 'ais-tool');
 
 /* ---------- 解析参数 ---------- */
 // 【血泪教训】本机可能存在同一账套的多份 .ais 副本（如 Desktop 与 Downloads），
@@ -266,7 +269,7 @@ const EPS = 0.01;
 /* ---------- 1. 读金蝶 GLBal ---------- */
 global.window = global;
 try { global.Buffer = require('buffer').Buffer; } catch (e) { }
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'ais-tool', 'js', 'mdb-reader.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(AIS_TOOL, 'js', 'mdb-reader.js'), 'utf8'));
 const MDBReader = global.MDBReader.default;
 
 const RAW_BOOK = fs.readFileSync(BOOK, 'utf8');

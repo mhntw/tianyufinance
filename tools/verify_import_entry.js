@@ -23,6 +23,9 @@
  * ============================================================ */
 const fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+// 转换器 ais-tool 现已迁出为 ty 的同级独立仓库（财务软件/ais-tool）。
+// 用 AIS_TOOL_DIR 环境变量可覆盖其位置（默认 ../ais-tool，即 ty 的同级目录）。
+const AIS_TOOL = process.env.AIS_TOOL_DIR || path.join(ROOT, '..', 'ais-tool');
 let pass = 0, fail = 0;
 const fails = [];
 function check(cond, label, detail) {
@@ -213,7 +216,13 @@ function check(cond, label, detail) {
   const storeSrc = fs.readFileSync(path.join(ROOT, 'js', 'store.js'), 'utf8');
   const bodyOf = function (name) {
     const i = storeSrc.indexOf(name + ': function');
-    return i < 0 ? '' : storeSrc.slice(i, i + 900);
+    if (i < 0) return '';
+    /* 【2026-10-22 修】原先取固定 900 字符：只要函数体里的注释/代码多出十几字节，末尾的
+       ensureCashFlowFields() 就会被截断成 ensureCashFlowFields（少一对括号）而误报"缺失"。
+       改成"到下一个同级方法为止"的自限窗口 —— 窗口长度随函数真实长度走，不再靠人猜。 */
+    const rest = storeSrc.slice(i + 1);
+    const j = rest.search(/\n\s{2,8}[A-Za-z_$][\w$]*\s*:\s*function\b/);
+    return storeSrc.slice(i, j < 0 ? i + 4000 : i + 1 + j);
   };
   const rbs = bodyOf('restoreBookState'), rfd = bodyOf('restoreFromData');
   // 导入账套（.json / .ais 共用）的数据整理必须在 store 一处实现：
@@ -286,7 +295,7 @@ function check(cond, label, detail) {
     'ais-tool/js/mdb-reader.js': 'd2004378ef866d0c',
     'ais-tool/js/buffer.js': 'e7c24f84529843da'
   };
-  const kis = fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8');
+  const kis = fs.readFileSync(path.join(AIS_TOOL, 'js', 'kis-import.js'), 'utf8');
   const lines = kis.split('\n').length;
   check(lines <= KIS_LINES,
     '冻结模块 ais-tool/js/kis-import.js 行数只许减不许增（只修缺陷，不加功能）',
@@ -294,7 +303,7 @@ function check(cond, label, detail) {
   check(kis.indexOf('已冻结') >= 0,
     'ais-tool/js/kis-import.js 头部必须保留"已冻结"声明（否则后人不知道这里的规矩）');
   Object.keys(VENDOR).forEach(function (f) {
-    const p = path.join(ROOT, f);
+    const p = path.join(AIS_TOOL, f.replace(/^ais-tool\//, ''));
     const h = fs.existsSync(p)
       ? crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 16) : '(文件缺失)';
     check(h === VENDOR[f], '第三方库 ' + f + ' 不得原地修改（升级请同步基线并写明理由）',
@@ -309,7 +318,7 @@ function check(cond, label, detail) {
   check(aisInputs.length === 0,
     '主软件界面不得再出现接受 .ais 的文件选择器（.ais 导入已移至 ais-tool/ 独立转换器）',
     '实测 ' + aisInputs.length + ' 个 —— 拆分被回退了？');
-  const toolHtmlPath = path.join(ROOT, 'ais-tool', 'index.html');
+  const toolHtmlPath = path.join(AIS_TOOL, 'index.html');
   if (fs.existsSync(toolHtmlPath)) {
     const toolHtml = fs.readFileSync(toolHtmlPath, 'utf8');
     const toolInputs = (toolHtml.match(/<input[^>]*>/g) || []).filter(function (t) { return /accept="[^"]*\.ais/.test(t); });
@@ -346,10 +355,10 @@ global.MDBReader = (function () {
   FakeReader.prototype.getTable = function (n) { return { getData: function () { return T[n] || []; } }; };
   return FakeReader;
 })();
-(0, eval)(fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(AIS_TOOL, 'js', 'kis-import.js'), 'utf8'));
 
 // 静态卡口：金额解析不得再被 Math.round(… × 100) / 100 砍到 2 位
-const KIS_SRC = fs.readFileSync(path.join(ROOT, 'ais-tool', 'js', 'kis-import.js'), 'utf8');
+const KIS_SRC = fs.readFileSync(path.join(AIS_TOOL, 'js', 'kis-import.js'), 'utf8');
 check(!/F(Debit|Credit|BegBal)[^\n]*\*\s*100\s*\)\s*\/\s*100/.test(KIS_SRC),
   '导入金额不得再截断到 2 位（FDebit / FCredit / FBegBal 不应再出现「×100 后取整再 ÷100」）');
 

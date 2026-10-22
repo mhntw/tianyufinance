@@ -57,7 +57,7 @@ export function importPlanOf(list) {
   if (ais.length) {
     return {
       action: 'error', files: files,
-      msg: '金蝶账套(.ais)需先用独立转换工具 ais-tool/index.html 转成本软件账套(.json)，再在此导入'
+      msg: '金蝶账套(.ais)需先用独立的「ais-tool 账套转换工具」转成本软件账套(.json)，再在此导入'
     };
   }
   if (jsons.length > 1) {
