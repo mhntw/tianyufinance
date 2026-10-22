@@ -43,12 +43,20 @@ const mem = {};
 global.localStorage = { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: k => { delete mem[k]; } };
 const CACHE = {};
 function el(id) {
-  return { _id: id, innerHTML: '', textContent: '', value: '', checked: false, hidden: false,
+  // innerHTML 必须像真实 DOM 一样把赋值强制转成字符串：页面已改用 html``（返回 RawHtml 对象），
+  // 若 mock 原样存对象，测试里拿到的就不是字符串（.replace/正则全废），测的也不是浏览器行为。
+  const o = { _id: id, _html: '', textContent: '', value: '', checked: false, hidden: false,
     style: {}, className: '', title: '',
     classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
     appendChild() {}, removeChild() {}, insertBefore() {}, setAttribute() {}, getAttribute() { return null; },
     addEventListener() {}, removeEventListener() {}, querySelector: () => el('q'), querySelectorAll: () => [],
     closest() { return null; }, focus() {}, click() {}, scrollIntoView() {} };
+  Object.defineProperty(o, 'innerHTML', {
+    get() { return o._html; },
+    set(v) { o._html = String(v == null ? '' : v); },
+    configurable: true
+  });
+  return o;
 }
 function getEl(id) { if (!CACHE[id]) CACHE[id] = el(id); return CACHE[id]; }
 global.document = { getElementById: getEl, querySelector: () => el('q'), querySelectorAll: () => [],

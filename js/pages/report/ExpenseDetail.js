@@ -1,6 +1,7 @@
 // 自 report/Extra.js 拆分（B 方案第 2 批试点）：费用明细表。只挪窝不改写。
-import { H, $, S, money, yuan, absFmt, goPage, currentPeriod, esc, showToast, nowTimeStr, round2,
+import { H, $, S, money, yuan, absFmt, goPage, currentPeriod, esc, escAttr, showToast, nowTimeStr, round2,
   monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter, U } from './_shared.js';
+import { html, raw } from '../../common/html.js?v=dev';
 const edState = {
   page: 1,
   pageSize: 500,
@@ -113,23 +114,19 @@ function edPopRenderTree(pop, roots, expanded) {
     const hasChildren = n.children && n.children.length;
     const isExpanded = expanded.has(n.code) || !hasChildren;
     const toggleCls = hasChildren ? (isExpanded ? 'expanded' : '') : 'empty';
-    const childrenHtml = hasChildren && isExpanded ? `<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
-    return `<div class="ed-subj-node" data-code="${n.code}">
+    const childrenHtml = hasChildren && isExpanded ? html`<div class="ed-subj-children indent-2">${walk(n.children)}</div>` : '';
+    return html`<div class="ed-subj-node" data-code="${n.code}">
       <div class="ed-subj-row">
-        <span class="ed-subj-toggle ${toggleCls}"${hasChildren ? ` tabindex="0" role="button" aria-expanded="${isExpanded ? 'true' : 'false'}"` : ''}></span>
+        <span class="ed-subj-toggle ${toggleCls}"${hasChildren ? raw(html` tabindex="0" role="button" aria-expanded="${isExpanded ? 'true' : 'false'}"`) : ''}></span>
         <input type="checkbox" value="${n.code}" id="ed-subj-${n.code}" data-subj="1">
-        <label for="ed-subj-${n.code}">${n.code} ${esc(edFullName(n))}</label>
+        <label for="ed-subj-${n.code}">${n.code} ${edFullName(n)}</label>
       </div>
       ${childrenHtml}
     </div>`;
   }).join('');
   const allCbs = () => Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
   const allChecked = () => allCbs().every(i => i.checked);
-  pop.innerHTML = '<div class="ed-subj-tree">' + walk(roots) + '</div>' +
-    '<div class="ed-subj-foot">' +
-    '<label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label>' +
-    '<span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span>' +
-    '</div>';
+  pop.innerHTML = html`<div class="ed-subj-tree">${raw(walk(roots))}</div><div class="ed-subj-foot"><label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label><span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span></div>`;   /* escape-ok: html`` 自动转义；walk() 产物本身也是 html`` 生成，故用 raw() 放行 */
   // 全选 checkbox 默认按当前状态同步（render 可能由展开/折叠触发，此时无 checked 变化）
   const allBox = $('edSubjSelectAll');
   if (allBox) allBox.checked = allChecked();
@@ -157,9 +154,10 @@ function edPopSync(pop, roots, getTree, renderTags) {
     });
   };
   down(roots);
-  // 同步 checkbox DOM
+  // 同步 checkbox DOM（按 value 比对，不把科目编码拼进 CSS 选择器 —— 编码含引号会让 querySelector 抛错）
   Object.values(map).forEach(n => {
-    const cb = pop.querySelector(`input[value="${n.code}"]`);
+    const cb = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'))
+      .filter(el => el.value === n.code)[0];
     if (cb) cb.checked = n._checked;
   });
   // renderTags 即 edPopRenderTags(pop, tagsBox, getTree)：2026-10-04 抽出时漏传参，
@@ -185,8 +183,8 @@ function edPopRenderTags(pop, tagsBox, getTree) {
     } else {
       const n = map[top[0]];
       const more = top.length > 1 ? `<span class="ed-subj-more">+${top.length - 1}</span>` : '';
-      tagsBox.innerHTML =
-        `<span class="ed-subj-tag" data-code="${n.code}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${n.code}" tabindex="0" role="button" aria-label="移除">×</span></span>${more}`;
+      tagsBox.innerHTML =   /* escape-ok: n.code/n.name 走 escAttr|esc，more 内只有 +数字 */
+        `<span class="ed-subj-tag" data-code="${escAttr(n.code)}">${esc(n.code)} ${esc(n.name)}<span class="ed-subj-tag-close" data-code="${escAttr(n.code)}" tabindex="0" role="button" aria-label="移除">×</span></span>${more}`;
     }
   }
   const cnt = $('edSubjectCount');
@@ -228,7 +226,8 @@ function buildEDSubjectPop() {
   const getTree = () => edSubjectTree();
 
   const removeTag = code => {
-    const cb = pop.querySelector(`input[value="${code}"]`);
+    const cb = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'))
+      .filter(el => el.value === code)[0];
     if (cb) { cb.checked = false; edPopSync(pop, roots, getTree, edPopRenderTags); }
   };
 
@@ -243,7 +242,8 @@ function buildEDSubjectPop() {
   const _edMap = edSubjectTree().map;
   ['5601', '5602', '5603'].forEach(code => {
     if (_edMap[code]) {
-      const cb = pop.querySelector(`input[value="${code}"]`);
+      const cb = Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'))
+        .filter(el => el.value === code)[0];
       if (cb) cb.checked = true;
     }
   });
@@ -558,7 +558,7 @@ function renderEDGrid(months, roots, totals, opts) {
       const arrow = (globalThis.S && globalThis.S.subjectArrowHTML)
         ? globalThis.S.subjectArrowHTML(n.code, !!hasChildren, expanded, 'ed-tree-arrow')
         : (hasChildren
-            ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${n.code}">${expanded ? '▼' : '▶'}</span>`
+            ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${escAttr(n.code)}">${expanded ? '▼' : '▶'}</span>`
             : '<span class="ed-tree-spacer"></span>');
       const name = n.name;
       // 用节点自带的 level（store 已预计算），统一走 subjectIndentHTML
@@ -578,18 +578,18 @@ function renderEDGrid(months, roots, totals, opts) {
         ratioCells = `<td class="col-amt">${mom}</td><td class="col-amt">${yoy}</td>`;
       }
       rows.push(`<tr class="ed-tree-row" data-level="${n.level}">
-        <td class="col-code">${arrow}${n.code ? `<a href="#" class="link-gl-subject" data-code="${n.code}">${n.code}</a>` : ''}</td>
-        <td class="col-name">${indent}<span class="ed-tree-text">${name}</span></td>
+        <td class="col-code">${arrow}${n.code ? `<a href="#" class="link-gl-subject" data-code="${escAttr(n.code)}">${esc(n.code)}</a>` : ''}</td>
+        <td class="col-name">${indent}<span class="ed-tree-text">${esc(name)}</span></td>
         ${amountCells}${yearCell}${ratioCells}
       </tr>`);
       if (expanded && hasChildren) pushRows(n.children, depth + 1);
     });
   };
   pushRows(roots);
-  body.innerHTML = rows.join('') || `<tr><td colspan="${colCount}" class="text-center">无数据</td></tr>`;
+  body.innerHTML = rows.join('') || `<tr><td colspan="${colCount}" class="text-center">无数据</td></tr>`;   /* escape-ok: 每行片段内 code/name 已 esc|escAttr；colCount 是列数 */
 
   // 表尾合计（同步去掉「操作」列）
-  let footHtml = '<tr class="ed-foot-row"><td class="col-code"></td><td class="col-name">合计</td>' +
+  let footHtml = '<tr class="ed-foot-row"><td class="col-code"></td><td class="col-name">合计</td>' +   /* escape-ok: 本行只有常量文案与 money() 数字 */
     totals.months.map(v => `<td class="col-amt">${money(v)}</td>`).join('');
   if (opts.showYearTotal) footHtml += `<td class="col-amt">${money(totals.yearTotal)}</td>`;
   if (opts.showRatio) footHtml += '<td class="col-amt"></td><td class="col-amt"></td>';

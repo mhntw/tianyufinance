@@ -9,7 +9,8 @@
 
 // 引导块（H / EX / $ / S / U / money / esc / currentPeriod）已收口到 common/helpers.js。
 // 转义提醒：报表行名/标签可能来自用户编辑的科目表或导入账套 —— 是真实注入面（本页曾 0 处转义，已补齐）。
-import { H, EX, $, S, U, money, esc, currentPeriod } from '../../common/helpers.js?v=dev';
+import { H, EX, $, S, U, money, currentPeriod } from '../../common/helpers.js?v=dev';
+import { html } from '../../common/html.js?v=dev';
 
 /* 负数金额只带负号、不染红（2026-10-21 取消 moneyRed：它返回 HTML 片段，
    与 money/signed 这类纯文本格式化函数不同型，且负号逻辑与 signed 重复写了一遍）。 */
@@ -30,10 +31,7 @@ globalThis.setRptHead = function (rowId, title, cols, month, periodText) {
        → 输出「2026年07期」（与全站现口径同形，但仍是**第四份**实现，改口径必漏），故一并委托 ——
        这是 2026-10-04 把契约卡口的扫描面从"手写 3 个文件"扩到"整个 pages/components"后才发现的第 5 处。 */
     : (month ? U.periodText(month) : '');
-  el.innerHTML = '<th colspan="' + (cols > 1 ? cols : 1) + '">'
-    + '<div class="rpt-title">' + title + '</div>'
-    + (period ? '<div class="rpt-period">' + period + '</div>' : '')
-    + '</th>';
+  el.innerHTML = html`<th colspan="${cols > 1 ? cols : 1}"><div class="rpt-title">${title}</div>${period ? html`<div class="rpt-period">${period}</div>` : ''}</th>`;
   // 打印专用抬头（表名 + 编制单位/报表日期/单位：元）。屏幕态隐藏，仅打印时显示。
   // 抬头块挂在表格容器的表格之前，由本函数统一注入，覆盖所有走 setRptHead 的报表/账簿。
   // 内容一律取自 app.js 的唯一来源 H.rptHeadPartsHtml（与 stdRptHeadHtml 同源，禁止在此另拼格式）。
@@ -48,15 +46,15 @@ globalThis.setRptHead = function (rowId, title, cols, month, periodText) {
   }
   var comp = (typeof S !== 'undefined' && S.state && S.state.company && S.state.company.name) ? S.state.company.name : '';
   var parts = H.rptHeadPartsHtml ? H.rptHeadPartsHtml(title, comp, period)
-    : '<div class="rph-title">' + title + '</div>'; // 兜底（仅在桥接缺失的迁移期出现）
-  head.innerHTML = parts;
+    : html`<div class="rph-title">${title}</div>`; // 兜底（仅在桥接缺失的迁移期出现）
+  head.innerHTML = parts;   /* escape-ok: 两支都已转义 —— 正支 rptHeadPartsHtml 内部 esc，兜底支本行已改 html`` 自动转义 */
 };
 
 // 报表行尾「编辑公式」悬浮入口（严谨：仅展示，点击提示公式管理在设置）
 // 金额单元格：按标准，金额列用普通无衬线字体（与正文同字体），右对齐，不做等宽
 function amtCell(v, extra) {
   var cls = 'ta-r' + (extra ? ' ' + extra : '');
-  return '<td class="' + cls + '">' + signed(v) + '</td>';
+  return html`<td class="${cls}">${signed(v)}</td>`;
 }
 
 /* ===================== 资产负债表 ===================== */
@@ -105,8 +103,7 @@ function renderBs(month) {
   function bsEndCell(row) {
     var codes = [].concat(row.codes || [], row.minus || []);
     if (!codes.length || Math.abs(row.end) < 0.005) return amtCell(row.end);
-    return '<td class="ta-r"><a href="#" class="bs-amt-link" data-codes="' + codes.join(',') + '">' +
-           signed(row.end) + '</a></td>';
+    return html`<td class="ta-r"><a href="#" class="bs-amt-link" data-codes="${codes.join(',')}">${signed(row.end)}</a></td>`;
   }
   var max = Math.max(aRows.length, lRows.length);
   // 行次（资产负债表：资产侧 1..N、负债及所有者权益侧 N+1.. 整体连续编号）
@@ -116,19 +113,19 @@ function renderBs(month) {
     var tr = document.createElement('tr');
     if (a && a.grp !== undefined) {
       noA += 1;
-      tr.innerHTML = '<td class="grp-label">' + esc(a.grp) + '</td><td>' + noA + '</td>' + amtCell(a.end, 'grp-amt') + amtCell(a.year, 'grp-amt');
+      tr.innerHTML = html`<td class="grp-label">${a.grp}</td><td>${noA}</td>${amtCell(a.end, 'grp-amt')}${amtCell(a.year, 'grp-amt')}`;
     } else if (a) {
       noA += 1;
-      tr.innerHTML = '<td class="bs-name">' + esc(a.label) + '</td><td>' + noA + '</td>' + bsEndCell(a) + amtCell(a.year);
+      tr.innerHTML = html`<td class="bs-name">${a.label}</td><td>${noA}</td>${bsEndCell(a)}${amtCell(a.year)}`;
     } else {
       tr.innerHTML = '<td></td><td></td><td></td><td></td>';
     }
     if (l && l.grp !== undefined) {
       noL += 1;
-      tr.innerHTML += '<td class="grp-label">' + l.grp + '</td><td>' + noL + '</td>' + amtCell(l.end, 'grp-amt') + amtCell(l.year, 'grp-amt');
+      tr.innerHTML += html`<td class="grp-label">${l.grp}</td><td>${noL}</td>${amtCell(l.end, 'grp-amt')}${amtCell(l.year, 'grp-amt')}`;
     } else if (l) {
       noL += 1;
-      tr.innerHTML += '<td class="bs-name">' + l.label + '</td><td>' + noL + '</td>' + bsEndCell(l) + amtCell(l.year);
+      tr.innerHTML += html`<td class="bs-name">${l.label}</td><td>${noL}</td>${bsEndCell(l)}${amtCell(l.year)}`;
     } else {
       tr.innerHTML += '<td></td><td></td><td></td><td></td>';
     }
@@ -136,8 +133,7 @@ function renderBs(month) {
   }
   var totals = document.createElement('tr');
   totals.className = 'grp-row';
-  totals.innerHTML = '<td>资产总计</td><td>' + (noA + 1) + '</td>' + amtCell(bs.totalAsset) + '<td></td>' +
-                     '<td>负债和所有者权益总计</td><td>' + (noL + 1) + '</td>' + amtCell(bs.totalAll) + '<td></td>';
+  totals.innerHTML = html`<td>资产总计</td><td>${noA + 1}</td>${amtCell(bs.totalAsset)}<td></td><td>负债和所有者权益总计</td><td>${noL + 1}</td>${amtCell(bs.totalAll)}<td></td>`;
   tb.appendChild(totals);
 
   // 恒等式差额提示：资产 ≠ 负债+权益 时说明原因（数据如实呈现，不掩盖）
@@ -263,13 +259,10 @@ function renderPl(month) {
     var fmtCodes = (r.codes || []).join(',');
     function plAmt(v) {
       return clickable
-        ? '<a href="#" class="pl-amt-link" data-codes="' + fmtCodes + '">' + signed(v) + '</a>'
+        ? html`<a href="#" class="pl-amt-link" data-codes="${fmtCodes}">${signed(v)}</a>`
         : signed(v);
     }
-    tr.innerHTML = '<td class="' + (r.isGrp ? 'grp-label' : 'pl-name') + '">' + esc(r.label) +
-                   '</td><td>' + no + '</td>' +
-                   '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.cur) + '</td>' +
-                   '<td class="ta-r' + (r.isGrp ? ' grp-amt' : '') + '">' + plAmt(r.ytd) + '</td>';
+    tr.innerHTML = html`<td class="${r.isGrp ? 'grp-label' : 'pl-name'}">${r.label}</td><td>${no}</td><td class="ta-r${r.isGrp ? ' grp-amt' : ''}">${plAmt(r.cur)}</td><td class="ta-r${r.isGrp ? ' grp-amt' : ''}">${plAmt(r.ytd)}</td>`;
     tb.appendChild(tr);
   });
 }
@@ -398,10 +391,8 @@ function renderCf(month) {
     // 不再标红 —— 红字在财务界面只留给"警示/危险"语义，负数本身不是异常。
     var amtCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '');
     var yCls = 'ta-r mono ' + (bold ? 'grp-amt ' : '');
-    tr.innerHTML = '<td' + (cls === 'grp-row' ? ' class="grp-label"' : '') + '>' + esc(name) + '</td>' +
-      '<td>' + (num === '' ? '' : num) + '</td>' +
-      '<td class="' + amtCls + '">' + money(amt) + '</td>' +
-      '<td class="' + yCls + '">' + money(y) + '</td>';
+    var nameTd = cls === 'grp-row' ? html`<td class="grp-label">${name}</td>` : html`<td>${name}</td>`;
+    tr.innerHTML = html`${nameTd}<td>${num === '' ? '' : num}</td><td class="${amtCls}">${money(amt)}</td><td class="${yCls}">${money(y)}</td>`;
     tb.appendChild(tr);
   }
   function subsSum(ids, bucket) {
@@ -413,7 +404,7 @@ function renderCf(month) {
     // 大类标题行（无行次、无金额）
     var grp = document.createElement('tr');
     grp.className = 'grp-row';
-    grp.innerHTML = '<td class="grp-label">' + esc(g.title) + '</td><td></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>';
+    grp.innerHTML = html`<td class="grp-label">${g.title}</td><td></td><td class="ta-r mono grp-amt"></td><td class="ta-r mono grp-amt"></td>`;
     tb.appendChild(grp);
     // 流入明细
     g.subs.forEach(function (id) {
@@ -507,10 +498,7 @@ function renderTx(month) {
     // 用色约定（2026-10-21 起全站统一）：金额一律默认色，负数靠 money() 带出的负号表达，不再标红
     var amtCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '');
     var yCls = 'ta-r mono ' + (r.bold ? 'grp-amt ' : '');
-    tr.innerHTML = '<td class="' + nameCls + '">' + esc(r.name) + '</td>' +
-      '<td>' + (r.level === 2 ? r.rowNum : '') + '</td>' +
-      '<td class="' + amtCls + '">' + money(r.cur) + '</td>' +
-      '<td class="' + yCls + '">' + money(r.ytd) + '</td>';
+    tr.innerHTML = html`<td class="${nameCls}">${r.name}</td><td>${r.level === 2 ? r.rowNum : ''}</td><td class="${amtCls}">${money(r.cur)}</td><td class="${yCls}">${money(r.ytd)}</td>`;
     tb.appendChild(tr);
   });
 }

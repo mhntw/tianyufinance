@@ -28,14 +28,17 @@ function generatePeriodRanges() {
     var startId = id + 'PeriodStart';
     var endId = id + 'PeriodEnd';
 
+    /* 属性值逐个转义：目前 data-* 全部来自 index.html 的开发者手写标记（不含用户输入），
+       但这是 outerHTML 注入面，不能靠"现在没有用户输入"长期成立。esc 对字母数字是恒等变换，
+       现有标记展开结果逐字不变。 */
     host.outerHTML =
-      '<div class="ty-period-range" data-period="' + id + '" data-start-id="' + startId + '" data-end-id="' + endId + '" data-on-change="' + onChange + '" data-default="' + def + '"' + (range ? ' data-range="' + range + '"' : '') + '>' +
-      '  <div class="ty-period-trigger" id="' + id + 'Trigger" tabindex="0" role="button" aria-haspopup="true">' +
+      '<div class="ty-period-range" data-period="' + esc(id) + '" data-start-id="' + esc(startId) + '" data-end-id="' + esc(endId) + '" data-on-change="' + esc(onChange) + '" data-default="' + esc(def) + '"' + (range ? ' data-range="' + esc(range) + '"' : '') + '>' +
+      '  <div class="ty-period-trigger" id="' + esc(id) + 'Trigger" tabindex="0" role="button" aria-haspopup="true">' +
       '    <span class="ty-period-trigger-label">期间</span>' +
-      '    <span class="ty-period-trigger-text is-placeholder" id="' + id + 'Text">请选择期间</span>' +
+      '    <span class="ty-period-trigger-text is-placeholder" id="' + esc(id) + 'Text">请选择期间</span>' +
       '  </div>' +
-      '  <input type="hidden" id="' + startId + '" />' +
-      '  <input type="hidden" id="' + endId + '" />' +
+      '  <input type="hidden" id="' + esc(startId) + '" />' +
+      '  <input type="hidden" id="' + esc(endId) + '" />' +
       '</div>';
   });
 }
@@ -44,7 +47,7 @@ function generatePeriodRanges() {
 
 /* 引导块（H / U / $）已收口到 common/helpers.js（见其头部差异表）。
    本文件原自带 `var $ = globalThis.$ || …` 与函数内的 `var H = …`，属又一份重复引导。 */
-import { H, U, $ } from '../common/helpers.js?v=dev';
+import { H, U, $, esc } from '../common/helpers.js?v=dev';
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 

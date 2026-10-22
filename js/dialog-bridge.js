@@ -52,7 +52,7 @@ function renderDialogBody(msg) {
   if (!blocks.length) return '';
   return blocks.map(function (b, i) {
     var last = (i === blocks.length - 1);
-    var html = b.lines.join('<br>');
+    var html = b.lines.join('<br>');   /* escape-ok: lines 来自第 40 行 esc1(msg) 之后的切分，整段文本已转义 */
     if (b.type === 'list') {
       // 列表项：在正文缩进之上再挂一级（符号凸出、文字对齐、多项成列）
       return '<p style="' + (last ? 'margin:0;' : 'margin:0 0 4px;') +
@@ -79,7 +79,7 @@ function showDialog(opts) {
     var overlay = document.createElement('div');
     overlay.className = 'modal';            // 复用 .modal / .modal-box / .modal-actions
     overlay.style.zIndex = '2147483647';    // 必须盖住任何已打开的业务模态
-    overlay.innerHTML =
+    overlay.innerHTML =   /* escape-ok: safeTitle 走 esc()，正文走 renderDialogBody()（内部 esc1），输入值 esc(..., true) */
       '<div class="modal-box" style="width:460px">' +
         '<div class="modal-title">' + safeTitle + '</div>' +
         // 正文整体左缩进：层次 =「标题顶格 ↔ 正文缩进」，一次设置覆盖所有内容，不必逐段判断

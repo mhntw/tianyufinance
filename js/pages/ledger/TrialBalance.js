@@ -16,10 +16,12 @@ function getUtil() {
 
 // 桥接层（H / $ / esc 别名）已收口到 common/helpers.js；periodRangeValue 是本页专属。
 // 注：上面 getStore/getUtil 是"不 import store.js、从 __TY_EXPORT__ 取单例"的既有设计，保留不动。
-import { H, $, escHtml, escAttr } from '../../common/helpers.js?v=dev';
+import { H, $ } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板：本页已整体迁移 —— 插值默认转义，可信片段必须显式 raw()。
+import { html, raw } from '../../common/html.js?v=dev';
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = H.periodRangeValue;
-// 科目名来自用户录入，渲染进 HTML / 属性前必须转义，避免破坏结构（escHtml/escAttr 由单点提供）。
+// 科目名来自用户录入：本页统一用 html`` 渲染，插值默认转义（不再手工 escHtml/escAttr）。
 
 /* ===== 科目余额表树形折叠（与科目页同款交互） =====
  * tbExpanded: Set() = 已展开的科目编码（祖先级联：祖先不在 Set 中 → 子级隐藏）
@@ -127,21 +129,14 @@ function renderTb(month) {
   const indent = S.subjectIndentHTML(tbDepth(pm, code));
   const tr = document.createElement('tr');
   // title 承载完整科目名：列宽有限时单元格以省略号截断，悬停仍可看到全名
-  tr.innerHTML = '<td class="mono">' + arrow + '<a href="#" class="link-gl-subject" data-code="' + escAttr(code) + '">' + escHtml(code) + '</a></td><td class="tb-name" title="' + escAttr(r.name) + '">' + indent + escHtml(r.name) +
-      '</td><td class="ta-r mono">' + U.money(obD) + '</td><td class="ta-r mono">' + U.money(obC) +
-      '</td><td class="ta-r mono">' + U.money(r.periodDr) + '</td><td class="ta-r mono">' + U.money(r.periodCr) +
-      '</td><td class="ta-r mono">' + U.money(r.ytdDr) + '</td><td class="ta-r mono">' + U.money(r.ytdCr) +
-      '</td><td class="ta-r mono">' + U.money(eD) + '</td><td class="ta-r mono">' + U.money(eC) + '</td>';
+  // 插值默认转义（含属性上下文）；arrow / indent 是 store 生成的 HTML 片段，显式 raw() 放行。
+  tr.innerHTML = html`<td class="mono">${raw(arrow)}<a href="#" class="link-gl-subject" data-code="${code}">${code}</a></td><td class="tb-name" title="${r.name}">${raw(indent)}${r.name}</td><td class="ta-r mono">${U.money(obD)}</td><td class="ta-r mono">${U.money(obC)}</td><td class="ta-r mono">${U.money(r.periodDr)}</td><td class="ta-r mono">${U.money(r.periodCr)}</td><td class="ta-r mono">${U.money(r.ytdDr)}</td><td class="ta-r mono">${U.money(r.ytdCr)}</td><td class="ta-r mono">${U.money(eD)}</td><td class="ta-r mono">${U.money(eC)}</td>`;
     tb.appendChild(tr);
   });
   // 合计行
   const tr = document.createElement('tr');
   tr.className = 'tb-total';
-  tr.innerHTML = '<td></td><td>合计</td>' +
-    '<td class="ta-r mono">' + U.money(sum.obD) + '</td><td class="ta-r mono">' + U.money(sum.obC) +
-    '</td><td class="ta-r mono">' + U.money(sum.pD) + '</td><td class="ta-r mono">' + U.money(sum.pC) +
-    '</td><td class="ta-r mono">' + U.money(sum.yD) + '</td><td class="ta-r mono">' + U.money(sum.yC) +
-    '</td><td class="ta-r mono">' + U.money(sum.eD) + '</td><td class="ta-r mono">' + U.money(sum.eC) + '</td>';
+  tr.innerHTML = html`<td></td><td>合计</td><td class="ta-r mono">${U.money(sum.obD)}</td><td class="ta-r mono">${U.money(sum.obC)}</td><td class="ta-r mono">${U.money(sum.pD)}</td><td class="ta-r mono">${U.money(sum.pC)}</td><td class="ta-r mono">${U.money(sum.yD)}</td><td class="ta-r mono">${U.money(sum.yC)}</td><td class="ta-r mono">${U.money(sum.eD)}</td><td class="ta-r mono">${U.money(sum.eC)}</td>`;
     tb.appendChild(tr);
 
     // 发生额口径说明：仅对「旧版导入」的账套提示。

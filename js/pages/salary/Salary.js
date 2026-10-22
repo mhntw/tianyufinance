@@ -4,7 +4,8 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 // 引导块（H / EX / $ / S / U / money / esc / num / showToast / currentPeriod）已收口到 common/helpers.js。
-import { H, EX, $, S, U, money, esc, num, showToast, currentPeriod } from '../../common/helpers.js?v=dev';
+import { H, EX, $, S, U, money, num, showToast, currentPeriod } from '../../common/helpers.js?v=dev';
+import { html } from '../../common/html.js?v=dev';
 
 const syncAll = H.syncAll;
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
@@ -23,7 +24,7 @@ const periodRangeValue = H.periodRangeValue;
     var tb = $('salBody'); tb.innerHTML = '';
     S.state.payrolls.filter(function (p) { return !month || p.month === month; }).forEach(function (p) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + esc(p.month) + '</td><td>' + esc(p.name) + '</td><td>' + esc(p.category || '全部') + '</td><td class="ta-r mono">' + money(p.should) + '</td><td class="ta-r mono">' + money(p.real) + '</td><td><a class="link-del" data-id="' + esc(p.id) + '">删除</a></td>';
+      tr.innerHTML = html`<td>${p.month}</td><td>${p.name}</td><td>${p.category || '全部'}</td><td class="ta-r mono">${money(p.should)}</td><td class="ta-r mono">${money(p.real)}</td><td><a class="link-del" data-id="${p.id}">删除</a></td>`;
       tb.appendChild(tr);
     });
   }
@@ -82,9 +83,7 @@ const periodRangeValue = H.periodRangeValue;
     if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-hint">暂无工资数据</td></tr>'; return; }
     list.forEach(function (r) {
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>' + r.month + '</td><td>' + r.cat + '</td><td>' + r.n + '</td>' +
-        '<td class="ta-r mono">' + money(r.should) + '</td><td class="ta-r mono">' + money(r.real) + '</td>';
+      tr.innerHTML = html`<td>${r.month}</td><td>${r.cat}</td><td>${r.n}</td><td class="ta-r mono">${money(r.should)}</td><td class="ta-r mono">${money(r.real)}</td>`;
       tb.appendChild(tr);
     });
   }
@@ -103,14 +102,12 @@ const periodRangeValue = H.periodRangeValue;
     S.state.payrolls.forEach(function (p) { staff[p.name] = true; });
     depts.forEach(function (d, i) {
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="mono">' + d.code + '</td><td>' + d.name + '</td><td>' + d.type + '</td>' +
-        '<td>' + (d.parent || '—') + '</td><td><a class="link-edit" data-edit-dept="' + i + '">编辑</a> <a class="link-toggle" data-i="' + i + '">' + (d.enabled === false ? '启用' : '停用') + '</a></td>';
+      tr.innerHTML = html`<td class="mono">${d.code}</td><td>${d.name}</td><td>${d.type}</td><td>${d.parent || '—'}</td><td><a class="link-edit" data-edit-dept="${i}">编辑</a> <a class="link-toggle" data-i="${i}">${d.enabled === false ? '启用' : '停用'}</a></td>`;
       tb.appendChild(tr);
     });
     Object.keys(staff).forEach(function (nm, i) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td class="mono">E' + (i + 1) + '</td><td>' + esc(nm) + '</td><td>职员</td><td>—</td><td><a class="link-del disabled">—</a></td>';
+      tr.innerHTML = html`<td class="mono">E${i + 1}</td><td>${nm}</td><td>职员</td><td>—</td><td><a class="link-del disabled">—</a></td>`;
       tb.appendChild(tr);
     });
     if (!depts.length && !Object.keys(staff).length) {
@@ -170,26 +167,15 @@ const periodRangeValue = H.periodRangeValue;
     if (!tb) return;
     var list = S.salaryVchTpls();
     var words = (S.state.voucherWords && S.state.voucherWords.length) ? S.state.voucherWords.filter(function (w) { return w.enabled !== false; }) : [{ name: '记' }];
-    var wordOpts = words.map(function (w) {
-      return '<option value="' + esc(w.name) + '">' + esc(w.name) + '</option>';
-    }).join('');
     tb.innerHTML = '';
     list.forEach(function (t, i) {
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        // 列宽走全站标准：单元格内输入框一律撑满所在列（宽度由表格自动分配）
-        '<td><input class="inp" data-id="' + t.id + '" data-f="name" value="' + esc(t.name) + '"/></td>' +
-        '<td><select class="inp" data-id="' + t.id + '" data-f="vchType">' +
-          '<option value="计提工资"' + (t.vchType === '计提工资' ? ' selected' : '') + '>计提工资</option>' +
-          '<option value="发放工资"' + (t.vchType === '发放工资' ? ' selected' : '') + '>发放工资</option>' +
-        '</select></td>' +
-        '<td><input class="inp" data-id="' + t.id + '" data-f="category" value="' + esc(t.category) + '"/></td>' +
-        '<td><select class="inp" data-id="' + t.id + '" data-f="word">' +
-          wordOpts.replace('value="' + esc(t.word) + '"', 'value="' + esc(t.word) + '" selected') +
-        '</select></td>' +
-        '<td><input type="checkbox" data-id="' + t.id + '" data-f="enabled"' + (t.enabled ? ' checked' : '') + '/></td>' +
-        '<td><input class="inp" data-id="' + t.id + '" data-f="memo" value="' + esc(t.memo || '') + '"/></td>' +
-        '<td><a class="link-del" data-id="' + t.id + '">删除</a></td>';
+      // 凭证字名是用户可编辑字段：html`` 插值默认转义（属性上下文同样安全），选中项按当前值标注
+      var wordOpts = words.map(function (w) {
+        return html`<option value="${w.name}"${w.name === t.word ? ' selected' : ''}>${w.name}</option>`;
+      });
+      // 列宽走全站标准：单元格内输入框一律撑满所在列（宽度由表格自动分配）
+      tr.innerHTML = html`<td><input class="inp" data-id="${t.id}" data-f="name" value="${t.name}"/></td><td><select class="inp" data-id="${t.id}" data-f="vchType"><option value="计提工资"${t.vchType === '计提工资' ? ' selected' : ''}>计提工资</option><option value="发放工资"${t.vchType === '发放工资' ? ' selected' : ''}>发放工资</option></select></td><td><input class="inp" data-id="${t.id}" data-f="category" value="${t.category}"/></td><td><select class="inp" data-id="${t.id}" data-f="word">${wordOpts}</select></td><td><input type="checkbox" data-id="${t.id}" data-f="enabled"${t.enabled ? ' checked' : ''}/></td><td><input class="inp" data-id="${t.id}" data-f="memo" value="${t.memo || ''}"/></td><td><a class="link-del" data-id="${t.id}">删除</a></td>`;
       tb.appendChild(tr);
     });
     if (!list.length) tb.innerHTML = '<tr><td colspan="7" class="empty-hint">暂无凭证模板</td></tr>';

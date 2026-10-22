@@ -3,8 +3,9 @@
  */
 // 引导块（H / $ / S / U / money / showToast / currentPeriod / round2 / esc）已收口到 common/helpers.js
 // （esc 的兜底在那里是**真转义**，与本文件旧兜底等价）。
-import { H, $, S, U, money, showToast, currentPeriod, round2, esc } from '../../common/helpers.js?v=dev';
+import { H, $, S, U, money, showToast, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
+import { html } from '../../common/html.js?v=dev';
 
 const syncAll = H.syncAll;
 const openModal = H.openModal;
@@ -74,12 +75,12 @@ function renderYearPickerGrid() {
   if (curYr < yearPickerBase) yearPickerBase = Math.max(2000, Math.floor(curYr / 15) * 15);
   if (curYr >= yearPickerBase + 15) yearPickerBase = Math.floor(curYr / 15) * 15;
   if (rangeEl) rangeEl.textContent = yearPickerBase + ' - ' + (yearPickerBase + 14);
-  var html = '';
+  var out = '';
   for (var y = yearPickerBase; y < yearPickerBase + 15; y++) {
     var active = y === curYr ? ' active' : '';
-    html += '<div class="settle-year-picker-item' + active + '" data-y="' + y + '">' + y + '</div>';
+    out += html`<div class="settle-year-picker-item${active}" data-y="${y}">${y}</div>`;
   }
-  grid.innerHTML = html;
+  grid.innerHTML = out;
   grid.querySelectorAll('.settle-year-picker-item').forEach(function (el) {
     el.addEventListener('click', function () {
       var ny = +this.getAttribute('data-y');
@@ -575,40 +576,38 @@ function renderCustomCards(procList, profitCard) {
     // 已生成时只显示凭证字号本身（可点击蓝色链接，与系统卡片同一套 .link-voucher 机制 → 点击打开该凭证编辑）
     var vchTxt = done.length
       ? (done[0].id
-          ? '<a href="#" class="link-voucher" data-id="' + esc(done[0].id) + '">' + esc((done[0].word || '记') + '-' + done[0].no) + '</a>'
-          : esc((done[0].word || '记') + '-' + done[0].no))
+          ? html`<a href="#" class="link-voucher" data-id="${done[0].id}">${(done[0].word || '记') + '-' + done[0].no}</a>`
+          : html`${(done[0].word || '记') + '-' + done[0].no}`)
       : (totalDr > 0 ? '未结转' : '未设置分录金额');
     var cardBodyHtml;
     if (done.length || totalDr > 0) {
       // 有金额/已生成：显示已结转/未结转 两行统计
-      cardBodyHtml =
-        '<div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val">' + money(carried) + '</span></div>' +
-        '<div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val">' + money(todo) + '</span></div>';
+      cardBodyHtml = html`<div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val">${money(carried)}</span></div><div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val">${money(todo)}</span></div>`;
     } else {
       // 空模板：提示语
-      cardBodyHtml = '<div class="settle-card-sub" style="color:var(--ty-text-3)">' + esc(t.summary || t.name) + '（请设置分录金额）</div>';
+      cardBodyHtml = html`<div class="settle-card-sub" style="color:var(--ty-text-3)">${t.summary || t.name}（请设置分录金额）</div>`;
     }
     var card = document.createElement('div');
     card.className = 'settle-card' + (enabled ? '' : ' settle-card-disabled');
     card.setAttribute('data-custom', '1');
     card.setAttribute('data-id', t.id);
-    var presetTag = t.preset ? '<span class="settle-card-preset-tag">预置</span>' : '';
+    var presetTag = t.preset ? html`<span class="settle-card-preset-tag">预置</span>` : '';
     card.innerHTML =
-      '<div class="settle-card-head">' +
-        '<label class="settle-card-check"><input type="checkbox" /></label>' +
-        '<span class="settle-card-name">' + esc(t.name) + '</span>' + presetTag +
-        '<i class="settle-card-help" title="' + esc(t.summary || t.name) + '">?</i>' +
-        '<span class="settle-card-op">' +
-          '<a class="settle-link" data-act="disable">' + (enabled ? '禁用' : '启用') + '</a>' +
-          '<a class="settle-link" data-act="setting">设置</a>' +
-          '<a class="settle-link btn-link-danger" data-act="delete">删除</a>' +
-        '</span>' +
-      '</div>' +
-      '<div class="settle-card-body">' + cardBodyHtml + '</div>' +
-      '<div class="settle-card-foot">' +
-        '<span class="settle-vch">' + vchTxt + '</span>' +
-        '<button class="btn btn-sm btn-ghost" data-act="gen">生成凭证</button>' +
-      '</div>';
+      html`<div class="settle-card-head">` +
+        html`<label class="settle-card-check"><input type="checkbox" /></label>` +
+        html`<span class="settle-card-name">${t.name}</span>${presetTag}` +
+        html`<i class="settle-card-help" title="${t.summary || t.name}">?</i>` +
+        html`<span class="settle-card-op">` +
+          html`<a class="settle-link" data-act="disable">${enabled ? '禁用' : '启用'}</a>` +
+          html`<a class="settle-link" data-act="setting">设置</a>` +
+          html`<a class="settle-link btn-link-danger" data-act="delete">删除</a>` +
+        html`</span>` +
+      html`</div>` +
+      html`<div class="settle-card-body">${cardBodyHtml}</div>` +
+      html`<div class="settle-card-foot">` +
+        html`<span class="settle-vch">${vchTxt}</span>` +
+        html`<button class="btn btn-sm btn-ghost" data-act="gen">生成凭证</button>` +
+      html`</div>`;
     if (insertAnchor && insertAnchor.nextSibling) procList.insertBefore(card, insertAnchor.nextSibling);
     else procList.appendChild(card);
     insertAnchor = card;
@@ -682,7 +681,7 @@ function renderSettleChecklist(month, K, curDoneCount) {
       { k: 'cost', name: '结转销售成本', kind: K.CARRY_COST, hint: '销售成本结转' },
       { k: 'profit', name: '结转损益', kind: K.CARRY_PL, hint: '损益类科目结转' }
     ].filter(function (r) { return S.settleTplEnabled(r.k); });
-    var html = '';
+    var out = '';
     // 系统模板项：已生成 → 打勾（绿）；未生成 → 叹号（黄）提醒
     // 类名必须与 css/style.css 的 .settle-check-item.is-ok / .is-warn / .is-fail 及
     // .settle-check-icon / .settle-check-label / .settle-check-tip 一致，
@@ -691,11 +690,7 @@ function renderSettleChecklist(month, K, curDoneCount) {
     rows.forEach(function (r) {
       var cnt = curDoneCount(r.kind);
       var done = cnt > 0;
-      html += '<div class="settle-check-item ' + (done ? 'is-ok' : 'is-warn') + '" data-k="' + r.k + '">' +
-        '<span class="settle-check-icon">' + (done ? '✓' : '!') + '</span>' +
-        '<span class="settle-check-label">' + esc(r.name) + '</span>' +
-        '<span class="settle-check-tip">' + esc(done ? ('已生成 ' + cnt + ' 张') : r.hint) + '</span>' +
-        '</div>';
+      out += html`<div class="settle-check-item ${done ? 'is-ok' : 'is-warn'}" data-k="${r.k}"><span class="settle-check-icon">${done ? '✓' : '!'}</span><span class="settle-check-label">${r.name}</span><span class="settle-check-tip">${done ? ('已生成 ' + cnt + ' 张') : r.hint}</span></div>`;
     });
     // store 硬性检查项：全部展示（含 ok —— 通过项打勾绿色，一眼能看出「已核过」）。
     // ok=✓绿；warn=!黄（仅提醒）；fail=!红（会阻止结账，故与提醒区分开）。
@@ -704,14 +699,10 @@ function renderSettleChecklist(month, K, curDoneCount) {
       chk.forEach(function (c) {
         var st = c.status;
         var cls = st === 'ok' ? 'is-ok' : (st === 'fail' ? 'is-fail' : 'is-warn');
-        html += '<div class="settle-check-item ' + cls + '" data-k="' + esc(c.key) + '">' +
-          '<span class="settle-check-icon">' + (st === 'ok' ? '✓' : '!') + '</span>' +
-          '<span class="settle-check-label">' + esc(c.label || '') + '</span>' +
-          '<span class="settle-check-tip">' + esc(c.tip || '') + '</span>' +
-          '</div>';
+        out += html`<div class="settle-check-item ${cls}" data-k="${c.key}"><span class="settle-check-icon">${st === 'ok' ? '✓' : '!'}</span><span class="settle-check-label">${c.label || ''}</span><span class="settle-check-tip">${c.tip || ''}</span></div>`;
       });
     } catch (e) { /* 检查项渲染失败不阻断页面 */ }
-    cl.innerHTML = html;
+    cl.innerHTML = out;
   }
 }
 
@@ -727,9 +718,9 @@ function renderSettleVchNos(vs, K, kindVs) {
     var list = kindVs(vs, kind);
     if (!list.length) { el.textContent = ''; return; }
     el.innerHTML = list.map(function (v) {
-      var no = esc((v.word || '记') + '-' + v.no);
-      if (!v.id) return no;
-      return '<a href="#" class="link-voucher" data-id="' + esc(v.id) + '">' + no + '</a>';
+      var no = (v.word || '记') + '-' + v.no;
+      if (!v.id) return html`${no}`;
+      return html`<a href="#" class="link-voucher" data-id="${v.id}">${no}</a>`;
     }).join('、');
   };
   // id 必须与 index.html 完全一致（曾用 depVoucherNo / costVoucherNo / profitVoucherNo，
@@ -902,17 +893,11 @@ function renderVatEdit() {
   var b = $('vatEditBody');
   if (!b) return;
   var rows = currentVat.entries;
-  var html = '';
+  var out = '';
   rows.forEach(function (e, idx) {
-    html += '<div class="vat-edit-row" data-idx="' + idx + '">' +
-      '<input class="vet-code" type="text" value="' + (e.code || '') + '" placeholder="科目编码">' +
-      '<input class="vet-name" type="text" value="' + (e.name || '') + '" placeholder="科目名称">' +
-      '<span class="vet-arrow">→</span>' +
-      '<input class="vet-target" type="text" value="' + (e.target || '') + '" placeholder="目标科目">' +
-      '<button class="vet-del" data-idx="' + idx + '">删除</button>' +
-      '</div>';
+    out += html`<div class="vat-edit-row" data-idx="${idx}"><input class="vet-code" type="text" value="${e.code || ''}" placeholder="科目编码"><input class="vet-name" type="text" value="${e.name || ''}" placeholder="科目名称"><span class="vet-arrow">→</span><input class="vet-target" type="text" value="${e.target || ''}" placeholder="目标科目"><button class="vet-del" data-idx="${idx}">删除</button></div>`;
   });
-  b.innerHTML = html;
+  b.innerHTML = out;
   b.querySelectorAll('.vet-del').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var i = +this.getAttribute('data-idx');
@@ -950,7 +935,7 @@ function renderSettleMonthNav() {
   var yr = selMonth.slice(0, 4);
   var yv = $('settleYearVal');
   if (yv) yv.textContent = yr + '年';
-  var html = '';
+  var out = '';
   for (var i = 1; i <= 12; i++) {
     var mm = (i < 10 ? '0' + i : '' + i);
     var per = yr + '-' + mm;
@@ -960,17 +945,11 @@ function renderSettleMonthNav() {
     if (closed) cls += ' checked';
     if (isCur) cls += ' current';
     if (per === selMonth) cls += ' select';
-    html += '<div class="' + cls + '" data-per="' + per + '">'
-      + '<div class="settle-month-head">' + i + '月</div>'
-      + '<div class="settle-month-body">'
-      + '<span class="settle-month-num">' + i + '</span>'
-      + (closed ? '<span class="settle-month-gou">✓</span>' : '')
-      + (closed ? '<span class="settle-month-tag">已结账</span>' : (isCur ? '<span class="settle-month-tag cur">当前期</span>' : ''))
-      + '</div></div>';
+    out += html`<div class="${cls}" data-per="${per}"><div class="settle-month-head">${i}月</div><div class="settle-month-body"><span class="settle-month-num">${i}</span>${closed ? html`<span class="settle-month-gou">✓</span>` : ''}${closed ? html`<span class="settle-month-tag">已结账</span>` : (isCur ? html`<span class="settle-month-tag cur">当前期</span>` : '')}</div></div>`;
   }
 
   // 直接渲染月份方块网格（结账页月份导航，仅含 12 个月方块，不混入全局侧栏结构）
-  nav.innerHTML = html;
+  nav.innerHTML = out;
   // 绑定点击：选中期，刷新结账面板
   Array.prototype.forEach.call(nav.querySelectorAll('.settle-month'), function (el) {
     el.addEventListener('click', function () {
@@ -987,7 +966,7 @@ function renderReopenMonthNav() {
   var yr = selReopenMonth.slice(0, 4);
   var yv = $('reopenYearVal');
   if (yv) yv.textContent = yr + '年';
-  var html = '';
+  var out = '';
   for (var i = 1; i <= 12; i++) {
     var mm = (i < 10 ? '0' + i : '' + i);
     var per = yr + '-' + mm;
@@ -997,17 +976,12 @@ function renderReopenMonthNav() {
     if (closed) cls += ' checked';
     if (disabled) cls += ' disabled';
     if (per === selReopenMonth) cls += ' select';
-    html += '<div class="' + cls + '" data-per="' + per + '"' + (disabled ? ' data-disabled="1"' : '') + '>'
-      + '<div class="settle-month-head">' + i + '月</div>'
-      + '<div class="settle-month-body">'
-      + '<span class="settle-month-num">' + i + '</span>'
-      + (closed ? '<span class="settle-month-gou">✓</span>' : '')
-      + (closed ? '<span class="settle-month-tag">已结账</span>' : '')
-      + '</div></div>';
+    var disAttr = disabled ? html` data-disabled="1"` : '';
+    out += html`<div class="${cls}" data-per="${per}"${disAttr}><div class="settle-month-head">${i}月</div><div class="settle-month-body"><span class="settle-month-num">${i}</span>${closed ? html`<span class="settle-month-gou">✓</span>` : ''}${closed ? html`<span class="settle-month-tag">已结账</span>` : ''}</div></div>`;
   }
 
   // 直接渲染月份方块网格（反结账页月份导航，仅含 12 个月方块，未结账月置灰不可点）
-  nav.innerHTML = html;
+  nav.innerHTML = out;
   Array.prototype.forEach.call(nav.querySelectorAll('.settle-month'), function (el) {
     if (el.getAttribute('data-disabled')) return; // 未结账月不可点
     el.addEventListener('click', function () {
@@ -1236,19 +1210,18 @@ function findSettleTemplate(id) {
 // 模板面板：左侧列表（启用 / 凭证 / 禁用 三个分组）
 function renderSettleTmplTree() {
   var enUl = $('settleTmplEnabled'), vchUl = $('settleTmplVch'), disUl = $('settleTmplDisabled');
-  var enHtml = '', vchHtml = '', disHtml = '';
+  var enHtml = [], vchHtml = [], disHtml = [];
   settleTmplList.forEach(function (t) {
     var cls = 'stm-item' + (t.id === settleTmplSelectedId ? ' select' : '') + (t.custom ? ' stm-custom' : '');
-    var li = '<li class="' + cls + '" data-id="' + t.id + '">' +
-      '<span class="stm-check">' + (t.enabled ? '✓' : '') + '</span>' +
-      '<span class="stm-name">' + t.name + '</span></li>';
-    if (t.fromVchTpl) vchHtml += li;       // 录凭证页保存的模板 → 独立分组
-    else if (t.enabled) enHtml += li;      // 启用
-    else disHtml += li;                     // 禁用
+    var li = html`<li class="${cls}" data-id="${t.id}"><span class="stm-check">${t.enabled ? '✓' : ''}</span><span class="stm-name">${t.name}</span></li>`;
+    if (t.fromVchTpl) vchHtml.push(li);    // 录凭证页保存的模板 → 独立分组
+    else if (t.enabled) enHtml.push(li);   // 启用
+    else disHtml.push(li);                  // 禁用
   });
-  if (enUl) { enUl.innerHTML = enHtml || '<li class="stm-empty">暂无启用的模板</li>'; bindTmplTreeItems(enUl); }
-  if (vchUl) { vchUl.innerHTML = vchHtml || '<li class="stm-empty">暂无凭证模板</li>'; bindTmplTreeItems(vchUl); }
-  if (disUl) { disUl.innerHTML = disHtml || '<li class="stm-empty">暂无禁用的模板</li>'; bindTmplTreeItems(disUl); }
+  // 三个分组都是 html`` 片段数组，空组改用常量占位项
+  if (enUl) { enUl.innerHTML = html`${enHtml.length ? enHtml : html`<li class="stm-empty">暂无启用的模板</li>`}`; bindTmplTreeItems(enUl); }
+  if (vchUl) { vchUl.innerHTML = html`${vchHtml.length ? vchHtml : html`<li class="stm-empty">暂无凭证模板</li>`}`; bindTmplTreeItems(vchUl); }
+  if (disUl) { disUl.innerHTML = html`${disHtml.length ? disHtml : html`<li class="stm-empty">暂无禁用的模板</li>`}`; bindTmplTreeItems(disUl); }
 }
 
 function bindTmplTreeItems(ul) {
@@ -1377,9 +1350,9 @@ function fillSettleTmplForm(t) {
 function fillWordOptions(sel) {
   if (!sel) return;
   var words = (S.state.voucherWords && S.state.voucherWords.length) ? S.state.voucherWords.filter(function (w) { return w.enabled !== false; }) : [{ name: '记', title: '记账凭证' }];
-  var html = '';
-  words.forEach(function (w) { html += '<option value="' + (w.name || w.code) + '">' + (w.name || w.code) + '</option>'; });
-  sel.innerHTML = html;
+  var out = '';
+  words.forEach(function (w) { out += html`<option value="${w.name || w.code}">${w.name || w.code}</option>`; });
+  sel.innerHTML = out;
   // 默认选中账套默认凭证字（param.voucherWord，通常为"记"）；无匹配则选第一个
   var def = (S.state.param && S.state.param.voucherWord) || (words.length ? (words[0].name || words[0].code) : '记');
   sel.value = (words.some(function (w) { return (w.name || w.code) === def; })) ? def : (words.length ? (words[0].name || words[0].code) : '记');
@@ -1491,7 +1464,7 @@ function renderNewTplRows() {
   // 预查科目名称表
   var subjMap = {};
   try { (S.subjects ? S.subjects() : []).forEach(function (s) { subjMap[String(s.code)] = s.name; }); } catch(e) {}
-  var html = '';
+  var out = '';
   newTplRows.forEach(function (r, i) {
     var name = subjMap[String(r.code || '')];
     var codeText = r.code ? (name ? r.code + ' ' + name : r.code) : '';
@@ -1500,25 +1473,14 @@ function renderNewTplRows() {
     if (ruleType === 'manual' || ruleType === 'subject') {
       // 分摊规则：显示比例输入框（百分比）
       var pctVal = r.ratio != null ? (round2(r.ratio * 100)) : '';
-      amtCell = '<div class="tmpl-amount-wrap">'
-        + '<input class="tmpl-cell-inp" data-f="ratio" value="' + pctVal + '" placeholder="0">%'
-        + '</div>';
+      amtCell = html`<div class="tmpl-amount-wrap"><input class="tmpl-cell-inp" data-f="ratio" value="${pctVal}" placeholder="0">%</div>`;
     } else {
       // 不设置取数 / 逐行指定：金额输入框（金额在模板里手填，生成时带出）
-      amtCell = '<input class="tmpl-cell-inp" data-f="amount" value="' + _tmplAmt(r.amount) + '" placeholder="0.00">';
+      amtCell = html`<input class="tmpl-cell-inp" data-f="amount" value="${_tmplAmt(r.amount)}" placeholder="0.00">`;
     }
-    html += '<tr data-idx="' + i + '">'
-      + '<td class="col-op">'
-      +   '<span class="tmpl-op tmpl-op-add" data-op="add" title="在下方插入一行"></span>'
-      +   '<span class="tmpl-op tmpl-op-del" data-op="del" title="删除本行"></span>'
-      + '</td>'
-      + '<td><input class="tmpl-cell-inp" data-f="summary" value="' + esc(r.summary) + '" placeholder="摘要"></td>'
-      + '<td><span class="tmpl-subj-wrap"><input class="tmpl-cell-inp" data-f="code" value="' + esc(codeText) + '" placeholder="输入科目编码或名称"><span class="tmpl-subj-bal" data-i="' + i + '"></span></span></td>'
-      + '<td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="' + r.dc + '">' + S.dirName(r.dc) + '</span></td>'
-      + '<td class="col-amount">' + amtCell + '</td>'
-      + '</tr>';
+    out += html`<tr data-idx="${i}"><td class="col-op"><span class="tmpl-op tmpl-op-add" data-op="add" title="在下方插入一行"></span><span class="tmpl-op tmpl-op-del" data-op="del" title="删除本行"></span></td><td><input class="tmpl-cell-inp" data-f="summary" value="${r.summary}" placeholder="摘要"></td><td><span class="tmpl-subj-wrap"><input class="tmpl-cell-inp" data-f="code" value="${codeText}" placeholder="输入科目编码或名称"><span class="tmpl-subj-bal" data-i="${i}"></span></span></td><td class="col-dc"><span class="tmpl-dc-toggle" data-f="dc" data-dc="${r.dc}">${S.dirName(r.dc)}</span></td><td class="col-amount">${amtCell}</td></tr>`;
   });
-  tb.innerHTML = html;
+  tb.innerHTML = out;
   tb.querySelectorAll('input[data-f="code"]').forEach(function (inp) {
     bindSubjectPicker(inp, { onPick: function (code, s) {
       inp.value = s && s.name ? (code + ' ' + s.name) : code;
@@ -1663,10 +1625,9 @@ function updateNewTplTotal() {
   if (ruleType === 'manual' || ruleType === 'subject') {
     // 分摊规则：显示比例合计
     var ratioSum = round2(newTplRows.reduce(function (s, r) { return s + U.num(r.ratio); }, 0));
-    out.innerHTML = '比例合计 <b>' + round2(ratioSum * 100) + '%</b>　';
-    out.innerHTML += Math.abs(ratioSum - 1) < 0.005
-      ? '<span style="color:var(--ty-green)">分摊完整 ✓</span>'
-      : '<span style="color:var(--ty-red)">合计 ≠ 100%，请检查分摊比例</span>';
+    out.innerHTML = html`比例合计 <b>${round2(ratioSum * 100)}%</b>　${Math.abs(ratioSum - 1) < 0.005
+      ? html`<span style="color:var(--ty-green)">分摊完整 ✓</span>`
+      : html`<span style="color:var(--ty-red)">合计 ≠ 100%，请检查分摊比例</span>`}`;
     return;
   }
   // 不设置取数 / 逐行指定：借贷平衡（金额在模板里手填）
@@ -1675,12 +1636,11 @@ function updateNewTplTotal() {
   newTplRows.forEach(function (r) { var a = U.num(r.amount); if (r.dc === 'C') cr += a; else dr += a; });
   dr = round2(dr); cr = round2(cr);
   var diff = round2(dr - cr);
-  out.innerHTML = '借方合计 <b>' + tmplMoney(dr) + '</b>　贷方合计 <b>' + tmplMoney(cr) + '</b>　';
-  out.innerHTML += Math.abs(diff) < 0.005
-    /* 【2026-10-04 去硬编码色】原 #16a34a 是调色板外的绿（--ty-green 是 #0d7a3e），
-       同屏另一处却用 var(--ty-green) —— 同一语义两种绿，统一走令牌。 */
-    ? '<span style="color:var(--ty-green)">借贷平衡 ✓</span>'
-    : '<span style="color:var(--ty-red)">差额 ' + tmplMoney(Math.abs(diff)) + ' ' + (diff > 0 ? '（贷方少 ' : '（借方少 ') + tmplMoney(Math.abs(diff)) + '）</span>';
+  /* 【2026-10-04 去硬编码色】原 #16a34a 是调色板外的绿（--ty-green 是 #0d7a3e），
+     同屏另一处却用 var(--ty-green) —— 同一语义两种绿，统一走令牌。 */
+  out.innerHTML = html`借方合计 <b>${tmplMoney(dr)}</b>　贷方合计 <b>${tmplMoney(cr)}</b>　${Math.abs(diff) < 0.005
+    ? html`<span style="color:var(--ty-green)">借贷平衡 ✓</span>`
+    : html`<span style="color:var(--ty-red)">差额 ${tmplMoney(Math.abs(diff))} ${diff > 0 ? '（贷方少 ' : '（借方少 '}${tmplMoney(Math.abs(diff))}）</span>`}`;
 }
 
 // ─── 方向 popover（点击「借/贷」弹出） ───────────────────────────────
@@ -1721,17 +1681,7 @@ function openTplRulePopover(anchor) {
 
   var pop = document.createElement('div');
   pop.className = 'tmpl-setting-popover';
-  pop.innerHTML =
-    '<div class="tmpl-setting-row">'
-    + '<span class="tmpl-setting-label">取数规则：</span>'
-    + '<select class="tmpl-setting-sel" id="tmplPopRule">'
-    +   RULE_OPTIONS.map(function (o) { return '<option value="' + o.key + '"' + (curRule === o.key ? ' selected' : '') + '>' + esc(o.label) + '</option>'; }).join('')
-    + '</select></div>'
-    + '<div id="tmplPopExtra"></div>'
-    + '<div class="tmpl-setting-actions">'
-    +   '<button class="btn btn-sm" id="tmplPopCancel">取消</button>'
-    +   '<button class="btn btn-sm btn-primary" id="tmplPopOk">确定</button>'
-    + '</div>';
+  pop.innerHTML = html`<div class="tmpl-setting-row"><span class="tmpl-setting-label">取数规则：</span><select class="tmpl-setting-sel" id="tmplPopRule">${RULE_OPTIONS.map(function (o) { return html`<option value="${o.key}"${curRule === o.key ? ' selected' : ''}>${o.label}</option>`; })}</select></div><div id="tmplPopExtra"></div><div class="tmpl-setting-actions"><button class="btn btn-sm" id="tmplPopCancel">取消</button><button class="btn btn-sm btn-primary" id="tmplPopOk">确定</button></div>`;
   document.body.appendChild(pop);
 
   // 动态渲染 extra 区域
@@ -1741,30 +1691,17 @@ function openTplRulePopover(anchor) {
     var h = '';
     if (rule === 'manual') {
       var ta = U.num(tpl.totalAmount);
-      h += '<div class="tmpl-setting-row">'
-        + '<span class="tmpl-setting-label">统一金额：</span>'
-        + '<input class="tmpl-setting-inp" id="tmplPopTotal" value="' + (ta ? tmplMoney(ta) : '') + '" placeholder="如 5000.00" style="width:140px"></div>'
-        + '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>';
+      h += html`<div class="tmpl-setting-row"><span class="tmpl-setting-label">统一金额：</span><input class="tmpl-setting-inp" id="tmplPopTotal" value="${ta ? tmplMoney(ta) : ''}" placeholder="如 5000.00" style="width:140px"></div><div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊此金额</div>`;
     } else if (rule === 'subject') {
       var sc = tpl.sourceSubject || '';
       var subjMap = {};
       try { (S.subjects ? S.subjects() : []).forEach(function (s) { subjMap[String(s.code)] = s; }); } catch(e) {}
       var sn = sc && subjMap[sc] ? (sc + ' ' + subjMap[sc].name) : sc;
-      h += '<div class="tmpl-setting-row">'
-        + '<span class="tmpl-setting-label">取金额科目：</span>'
-        + '<input class="tmpl-setting-inp" id="tmplPopSubj" value="' + esc(sn) + '" placeholder="输入科目编码或名称" style="width:180px"></div>'
-        + '<div class="tmpl-setting-row">'
-        + '<span class="tmpl-setting-label">取数方式：</span>'
-        + '<select class="tmpl-setting-sel" id="tmplPopDir" style="width:140px">'
-        +   '<option value="end_balance"' + (!tpl.sourceDirection || tpl.sourceDirection === 'end_balance' ? ' selected' : '') + '>期末余额</option>'
-        +   '<option value="period_dr"' + (tpl.sourceDirection === 'period_dr' ? ' selected' : '') + '>本期借方发生额</option>'
-        +   '<option value="period_cr"' + (tpl.sourceDirection === 'period_cr' ? ' selected' : '') + '>本期贷方发生额</option>'
-        + '</select></div>'
-        + '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊该科目金额</div>';
+      h += html`<div class="tmpl-setting-row"><span class="tmpl-setting-label">取金额科目：</span><input class="tmpl-setting-inp" id="tmplPopSubj" value="${sn}" placeholder="输入科目编码或名称" style="width:180px"></div><div class="tmpl-setting-row"><span class="tmpl-setting-label">取数方式：</span><select class="tmpl-setting-sel" id="tmplPopDir" style="width:140px"><option value="end_balance"${!tpl.sourceDirection || tpl.sourceDirection === 'end_balance' ? ' selected' : ''}>期末余额</option><option value="period_dr"${tpl.sourceDirection === 'period_dr' ? ' selected' : ''}>本期借方发生额</option><option value="period_cr"${tpl.sourceDirection === 'period_cr' ? ' selected' : ''}>本期贷方发生额</option></select></div><div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3)">将按下方各行比例分摊该科目金额</div>`;
     } else if (rule === 'per_row') {
-      h += '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">在下方表格每行独立填写金额</div>';
+      h += html`<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">在下方表格每行独立填写金额</div>`;
     } else { // none
-      h += '<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">金额在下方表格每行手填，生成凭证时直接带出（适用于每月固定计提，如电话费 500）</div>';
+      h += html`<div class="tmpl-setting-hint" style="font-size:var(--fs-xs);color:var(--ty-text-3);margin:4px 0 8px">金额在下方表格每行手填，生成凭证时直接带出（适用于每月固定计提，如电话费 500）</div>`;
     }
     box.innerHTML = h;
     // subject 规则：绑定 SubjectPicker
@@ -2016,18 +1953,14 @@ function openSettleCheckModal() {
   if (!body) return;
   var all = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
   var ov = (S.state.param && S.state.param.checkOverrides) || {};
-  var html = '<div class="scc-head">根据业务需求选择，选择「仅提醒」后该项不再拦截结账。</div>';
-  if (!all.length) html += '<div class="scc-empty">本期无检查项</div>';
+  var out = html`<div class="scc-head">根据业务需求选择，选择「仅提醒」后该项不再拦截结账。</div>`;
+  if (!all.length) out += html`<div class="scc-empty">本期无检查项</div>`;
   all.forEach(function (c) {
     var cur = ov[c.key] || (c.status === 'warn' ? 'warn' : 'block');
     if (cur === 'off') cur = 'block';
-    html += '<div class="scc-row"><span class="scc-name">' + esc(c.label) + '</span>' +
-      '<select class="scc-sel" data-key="' + c.key + '">' +
-      '<option value="block"' + (cur === 'block' ? ' selected' : '') + '>未通过则拦截</option>' +
-      '<option value="warn"' + (cur === 'warn' ? ' selected' : '') + '>仅提醒</option>' +
-      '</select></div>';
+    out += html`<div class="scc-row"><span class="scc-name">${c.label}</span><select class="scc-sel" data-key="${c.key}"><option value="block"${cur === 'block' ? ' selected' : ''}>未通过则拦截</option><option value="warn"${cur === 'warn' ? ' selected' : ''}>仅提醒</option></select></div>`;
   });
-  body.innerHTML = html;
+  body.innerHTML = out;
   body.querySelectorAll('.scc-sel').forEach(function (sel) {
     sel.addEventListener('change', function () {
       S.state.param = S.state.param || {};

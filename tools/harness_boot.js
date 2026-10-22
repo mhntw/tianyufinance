@@ -51,6 +51,21 @@ function installBootImports(globalObj, rootDir) {
   } catch (e) { /* 模块不存在时保持旧行为（只影响用到它的页面装载） */ }
 
   g.__XP_IMPORTS__ = Object.assign(g.__XP_IMPORTS__ || {}, boot, amount);
+
+  /* 自动转义标签模板（js/common/html.js）：页面迁移后 import { html, raw }，
+     壳若不喂就会 `html is not a function`。和 helpers 一样求值**真实现**，
+     避免测试壳里再抄一份转义逻辑（抄的那份一旦和实现不一致，测试就是自证）。 */
+  try {
+    const htmlSrc = fs.readFileSync(path.join(root, 'js', 'common', 'html.js'), 'utf8')
+      // html.js 只有 `import { esc } from './helpers.js'` + export：前者剥掉、esc 由参数传入
+      .replace(/^\s*import\s+[^;]*?from\s*['"][^'"]*['"];?[ \t]*$/gm, '')
+      .replace(/^\s*export\s*\{[\s\S]*?\};?[ \t]*$/gm, '')
+      .replace(/^\s*export\s+(?=(const|function|let|var)\b)/gm, '');
+    const tag = (0, eval)('(function (esc) {\n' + htmlSrc +
+      '\nreturn { html: html, raw: raw };\n})')(g.__XP_IMPORTS__.esc);
+    g.__XP_IMPORTS__ = Object.assign(g.__XP_IMPORTS__, tag);
+  } catch (e) { /* 文件不存在时保持旧行为（只影响已迁移的页面） */ }
+
   return boot;
 }
 

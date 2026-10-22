@@ -53,6 +53,33 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   await wait(300);
   assert(S.state && S.state.company, '首屏已加载 default 账套');
 
+  console.log('\n=== 形状不对的账套：必须拒收，且不能破坏当前账套 ===');
+  /* 【为什么要有这一组】importExternalBook 原先第一行就是 `this.state = book`，之后才做
+     normalize/ensure。形状不对的文件（subjects 写成对象、vouchers 写成字符串…）会在中途抛
+     TypeError —— 导入报错了，但**当前账套在内存里已经被换成坏数据**，页面全部读取失败。
+     现在的口径：先验形状再动 state；不合法就返回 false、当前账套原样保留。 */
+  const badShapes = [
+    ['subjects 是对象', { company: { name: 'x', startMonth: '2026-01' }, subjects: {}, vouchers: [] }],
+    ['vouchers 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: 'oops' }],
+    ['subjects 含空元素', { company: { name: 'x', startMonth: '2026-01' }, subjects: [null, 'abc', { code: null }], vouchers: [] }],
+    ['entries 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [{ id: 'v1', entries: 'oops' }] }],
+    ['voucherWords 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], voucherWords: '记' }],
+    ['fixedAssets 是对象', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], fixedAssets: {} }],
+    ['openingBalances 是数组', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], openingBalances: [] }],
+    ['param 是数组', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], param: [] }],
+    ['company 是字符串', { company: 'x', subjects: [], vouchers: [] }]
+  ];
+  for (const [label, bad] of badShapes) {
+    const before = S.state.company.name;
+    let threw = null, ok = null;
+    try { ok = await S.importExternalBook('bad_' + label.replace(/[^\w]/g, ''), JSON.parse(JSON.stringify(bad))); }
+    catch (e) { threw = e; }
+    assert(!threw, '[' + label + '] 导入不抛错（' + (threw && threw.message) + '）');
+    assert(ok === false, '[' + label + '] 拒收并返回 false');
+    assert(S.state.company.name === before, '[' + label + '] 当前账套未被替换');
+    try { S.subjects(); } catch (e) { assert(false, '[' + label + '] 拒收后 subjects() 仍可用：' + e.message); }
+  }
+
   console.log('\n=== 导入账套 .json（跑**真实实现** S.importExternalBook） ===');
   /* 2026-09-29 起改为直接调用真实实现。旧写法是"手抄一份 loadServerBookIntoLocal 的逻辑"
      （自己 bookId=/state=/ensureCashFlowMap/saveBook），于是 normalizeState / ensureVoucherIds /
@@ -123,6 +150,19 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
   assert(reloaded.company.name === '从备份恢复的账套', '导入备份已覆盖当前 default 账套（存储与内存一致）');
   assert(S.state.company.name === '从备份恢复的账套', '内存 state 同步为备份内容');
   assert(mem['kis_books'] === undefined, '导入备份过程未写 kis_books 缓存');
+
+  console.log('\n=== 恶意账套：顶层 __proto__ 不得改变 state 的原型 ===');
+  // JSON.parse 把 "__proto__" 建成自有属性；Object.assign 走 [[Set]] 会触发原型 setter。
+  // 若不剥掉：state 自身没有的字段会从攻击者给的原型上取值（账套没写的东西却生效）。
+  const evil = JSON.parse('{"company":{"name":"原型注入账套","startMonth":"2026-01"},' +
+    '"subjects":[],"vouchers":[],' +
+    '"__proto__":{"pollutedFlag":1,"hiddenSubjects":[{"code":"9999"}]}}');
+  const evilOk = S.restoreBookState(evil);
+  assert(evilOk === true, '带 __proto__ 的账套仍能正常恢复（不崩溃）');
+  assert(S.state.pollutedFlag === undefined, '__proto__ 的 pollutedFlag 未污染 state');
+  assert(S.state.hiddenSubjects === undefined, '__proto__ 的 hiddenSubjects 未污染 state');
+  assert(Object.getPrototypeOf(S.state) === Object.prototype, 'state 的原型仍是 Object.prototype');
+  assert(S.state.company.name === '原型注入账套', '正常业务字段照常合并（剥离不影响导入）');
 
   console.log('\n=== 从备份恢复：写盘失败必须被识别（不得静默） ===');
   // restoreBookState 原先直接调 Storage.saveBook(...).catch(...) —— saveBook 内部已 catch、

@@ -6,6 +6,12 @@
 (function () {
   'use strict';
 
+  /* escHtml / escAttr 与 esc 是同一实现（helpers.js 亦为别名）。本文件是传统脚本、不能用 import，
+     而 P1 转义收口后直接引用了这两个名字 —— 不声明就是 ReferenceError（启动自检横幅 / 搜索弹窗会当场崩）。
+     用函数声明而非 var，靠提升保证任何调用时机都可用。 */
+  function escHtml(s) { return esc(s); }
+  function escAttr(s) { return esc(s); }
+
   var U = window.util;
   var S = window.S;
   if (!S || !S.init) {
@@ -223,7 +229,7 @@
     banner.className = 'selftest-banner st-level-' + (hasError ? 'error' : 'warn');
     var html = '<div class="st-item"><b>运行期自检' + (hasError ? '发现异常（务必核查账套）' : '提示') + '：</b></div>';
     shown.forEach(function (it) {
-      html += '<div class="st-item">· <b>' + (it.label || '') + '</b>' + (it.detail ? '：' + it.detail : '') + '</div>';
+      html += '<div class="st-item">· <b>' + escHtml(it.label || '') + '</b>' + (it.detail ? '：' + escHtml(it.detail) : '') + '</div>';
     });
     banner.innerHTML = html;
     banner.hidden = false;
@@ -266,7 +272,7 @@
       }
       _persistBanner.innerHTML = '数据保存失败（第 ' + count + ' 次）：账套未能写入磁盘，继续操作可能导致数据丢失。' +
         '请立即到「设置 → 数据与安全」导出备份，并检查磁盘空间与文件权限。' +
-        (err ? '<div style="opacity:.85;font-size:var(--fs-xs);margin-top:2px">错误信息：' + String(err).slice(0, 200) + '</div>' : '');
+        (err ? '<div style="opacity:.85;font-size:var(--fs-xs);margin-top:2px">错误信息：' + escHtml(String(err).slice(0, 200)) + '</div>' : '');
       if (typeof showToast === 'function') showToast('数据保存失败，请立即导出备份！', 'error', 6000);
     } catch (e) {
       console.error('[persist] 告警横幅渲染失败：' + (e && e.message || e));
@@ -320,9 +326,10 @@
     var data = group.__navData;
     if (!data) return;
     var pop = ensureNavPop();
-    var itemsHtml = (data.items || []).map(function (it) {
+    var itemsHtml = (data.items || []).map(function (it) {   /* escape-ok: QUICK_MENU_ITEMS 常量表，page/name 全为硬编码 */
       return '<a class="nav-pop-item" data-page="' + it.page + '" tabindex="0" role="menuitem">' + it.name + '</a>';
     }).join('');
+    /* escape-ok: data / items / it.page / it.name 全部来自 QUICK_MENU_ITEMS 常量表（本文件内硬编码） */
     pop.innerHTML = '<div class="nav-pop-grid"><div class="nav-pop-col">' +
       '<div class="nav-pop-title" style="display:none">' + data.group + '</div>' + itemsHtml + '</div></div>';
     // 定位（右侧 + 视口下边界夹取）
@@ -906,7 +913,7 @@
       var injectedHead = null;
       if (scope && !scope.querySelector('.rpt-print-head')) {
         var holder = document.createElement('div');
-        holder.innerHTML = stdHeadHtml;
+        holder.innerHTML = stdHeadHtml;   /* escape-ok: rptHeadPartsHtml 内对 reportName/bookName/periodText 逐个 esc */
         injectedHead = holder.firstChild;
         var hostTbl = scope.querySelector('.table-wrap, .rpt-table, table');
         if (hostTbl && injectedHead) hostTbl.parentNode.insertBefore(injectedHead, hostTbl);
@@ -1227,7 +1234,7 @@
     var html = '<div class="qs-tip">「录凭证」为固定功能，默认勾选且不可取消；其余功能可自由勾选（最多 15 个）。</div>';
     QUICK_MENU_ITEMS.forEach(function (group) {
       html += '<div class="qs-group">';
-      html += '<div class="qs-group-title">' + group.group + '</div>';
+      html += '<div class="qs-group-title">' + group.group + '</div>';   /* escape-ok: QUICK_MENU_ITEMS 常量表的分组名 */
       html += '<div class="qs-items">';
       group.items.forEach(function (item) {
         var fixed = item.key === FIXED_QUICK_KEY;
@@ -1373,8 +1380,8 @@
       var icoHtml = navIconHtml(group.group, gi);
       // 结账等 direct 分组：直接点击进入页面，无子菜单弹出
       if (group.direct) {
-        html += '<div class="nav-group nav-group-direct" data-page="' + group.page + '">';
-        html += '<div class="nav-group-title nav-direct-title" tabindex="0" role="button">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
+        html += '<div class="nav-group nav-group-direct" data-page="' + group.page + '">';   /* escape-ok: 常量分组（page 为固定页面标识） */
+        html += '<div class="nav-group-title nav-direct-title" tabindex="0" role="button">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';   /* escape-ok: icoHtml 由 TY_MENU_ICON 常量路径生成，group 名是常量 */
         html += '</div>';
         return;
       }
@@ -1382,7 +1389,7 @@
       // 不再为每个组各生成一个 .nav-pop（避免多节点残留重叠）。
       // tabindex/role：键盘可聚焦并用 Enter/Space/→ 展开（见下方 sidenav keydown）
       html += '<div class="nav-group">';
-      html += '<div class="nav-group-title" tabindex="0" role="button" aria-haspopup="true">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';
+      html += '<div class="nav-group-title" tabindex="0" role="button" aria-haspopup="true">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';   /* escape-ok: 同上，icoHtml 与分组名均为常量 */
       html += '</div>';
     });
     // 菜单区包进滚动容器（.sidebarMenuWrapper--1lMd-：flex:1; overflow-y:auto），
@@ -1499,8 +1506,8 @@
     });
     // 录凭证表头金额单位行（复用 Pd 组件，单位与数字位格严格对齐）
     var thDr = $('vThDr'), thCr = $('vThCr');
-    if (thDr) thDr.innerHTML = amtHeaderHtml('借方金额');
-    if (thCr) thCr.innerHTML = amtHeaderHtml('贷方金额');
+    if (thDr) thDr.innerHTML = amtHeaderHtml('借方金额');   /* escape-ok: 入参是硬编码常量 */
+    if (thCr) thCr.innerHTML = amtHeaderHtml('贷方金额');   /* escape-ok: 入参是硬编码常量 */
 
     // 首页域逻辑已迁移至 js/pages/home/Home.js（globalThis.__HOME__），此处委托。
     var hm = globalThis.__HOME__ || {};
@@ -1648,7 +1655,7 @@
       bookDropdown.innerHTML = '<div class="book-empty">暂无账套，请到「设置-账套管理」新建或导入</div>';
       return;
     }
-    var html = books.map(function (b) {
+    var html = books.map(function (b) {   /* escape-ok: id / name 均在模板内 esc；其余是常量文案与布尔分支 */
       var id = String(b.id || '');
       var name = String(b.name || id || '未命名账套');
       var isCur = id === cur;
@@ -1891,25 +1898,25 @@
     if (res.voucher.length) {
       html += '<div class="search-group-title">凭证</div>';
       res.voucher.forEach(function (v) {
-        html += '<div class="search-item" data-go="voucher" data-id="' + v.id + '">' +
-          '<div class="si-main"><span class="si-title">' + v.no + ' ' + v.summary + '</span>' +
+        html += '<div class="search-item" data-go="voucher" data-id="' + escAttr(v.id) + '">' +
+          '<div class="si-main"><span class="si-title">' + escHtml(v.no) + ' ' + escHtml(v.summary) + '</span>' +
           (v.amount ? '<span class="si-amt">' + money(v.amount) + '</span>' : '') + '</div>' +
-          '<div class="si-sub">' + v.date + (v.amount ? ' · 含金额 ' + money(v.amount) : '') + '</div></div>';
+          '<div class="si-sub">' + escHtml(v.date) + (v.amount ? ' · 含金额 ' + money(v.amount) : '') + '</div></div>';
       });
     }
     if (res.subject.length) {
       html += '<div class="search-group-title">科目</div>';
       res.subject.forEach(function (s) {
-        html += '<div class="search-item" data-go="subject" data-code="' + s.code + '">' +
-          '<div class="si-main"><span class="si-title">' + s.code + ' ' + subjFullName(s) + '</span></div>' +
-          '<div class="si-sub">' + s.cls + '</div></div>';
+        html += '<div class="search-item" data-go="subject" data-code="' + escAttr(s.code) + '">' +
+          '<div class="si-main"><span class="si-title">' + escHtml(s.code) + ' ' + escHtml(subjFullName(s)) + '</span></div>' +
+          '<div class="si-sub">' + escHtml(s.cls) + '</div></div>';
       });
     }
     if (res.ledger.length) {
       html += '<div class="search-group-title">账簿</div>';
       res.ledger.forEach(function (s) {
-        html += '<div class="search-item" data-go="ledger" data-code="' + s.code + '">' +
-          '<div class="si-main"><span class="si-title">' + s.code + ' ' + subjFullName(s) + '</span></div>' +
+        html += '<div class="search-item" data-go="ledger" data-code="' + escAttr(s.code) + '">' +
+          '<div class="si-main"><span class="si-title">' + escHtml(s.code) + ' ' + escHtml(subjFullName(s)) + '</span></div>' +
           '<div class="si-sub">科目余额表 / 总账 / 明细账</div></div>';
       });
     }
@@ -2122,7 +2129,7 @@
       tab.setAttribute('tabindex', '0');
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', t.page === activePage ? 'true' : 'false');
-      tab.innerHTML = '<span>' + t.name + '</span>';
+      tab.innerHTML = '<span>' + t.name + '</span>';   /* escape-ok: t.name 来自 PAGE_NAMES 常量表，不含用户输入 */
       tab.innerHTML += '<span class="tab-close" role="button" tabindex="0" data-close="' + t.page + '">×</span>';
       bar.appendChild(tab);
     });
@@ -2155,7 +2162,7 @@
     var cells = '';
     for (var k = 0; k < 11; k++) {
       var active = (activeIndex === k) ? ' amt-cell-active' : '';
-      cells += '<div class="amt-cell' + active + '">' + unit.charAt(k) + '</div>';
+      cells += '<div class="amt-cell' + active + '">' + unit.charAt(k) + '</div>';   /* escape-ok: unit 是硬编码字符串，active 是三元常量，k 是循环下标 */
     }
     return '<div class="amt-bg">' + cells + '</div>';
   }

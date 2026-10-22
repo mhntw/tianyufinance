@@ -4,6 +4,8 @@
 
 // 引导块（H / $ / S / showToast）已收口到 common/helpers.js；refreshAll 是本页专属（仍从桥接取）。
 import { H, $, S, showToast } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板（js/common/html.js）：本页插值默认转义，属性上下文同样安全。
+import { html } from '../../common/html.js?v=dev';
 const refreshAll = H.refreshAll;
 // 备份列表的分类判据（纯函数；命名规则与 Rust 的 backup_kind_of 同一条，见模块头说明）
 import { backupKindOf, backupLabelOf, pickVisibleBackups } from '../../common/backup-classify.js?v=dev';
@@ -90,22 +92,21 @@ function refreshTools() {
     var isCur = b.id === cur;
     var enabled = S.isBookEnabled(b.id);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + esc(b.name) + '</td><td class="mono">' + esc(b.period) + '</td><td>' + b.vouchers + '</td>'
-      + '<td>' + (isCur ? '<span class="tag tag-current">当前</span>' : (enabled ? '<span class="tag">启用</span>' : '<span class="tag tag-stop">停用</span>')) + '</td>'
-      + '<td class="book-ops">'
-      + '<button class="btn-link" data-rename="' + b.id + '" title="修改账套显示名称">重命名</button>'
+    // 账套名 / 启用期间是用户可编辑字段，id 来自磁盘文件名：全部走 html`` 插值自动转义
+    var tag = isCur ? html`<span class="tag tag-current">当前</span>`
+      : (enabled ? html`<span class="tag">启用</span>` : html`<span class="tag tag-stop">停用</span>`);
+    tr.innerHTML = html`<td>${b.name}</td><td class="mono">${b.period}</td><td>${b.vouchers}</td><td>${tag}</td><td class="book-ops">`
+      + html`<button class="btn-link" data-rename="${b.id}" title="修改账套显示名称">重命名</button>`
       // 「切换 / 停用」对当前账套无意义（切到自己、停用自己），故只在非当前账套显示。
       + (isCur ? ''
-          : '<button class="btn-link" data-switch="' + b.id + '">切换</button>'
-          + '<button class="btn-link" data-enable="' + b.id + '" data-on="' + (enabled ? 0 : 1) + '">' + (enabled ? '停用' : '启用') + '</button>')
+          : html`<button class="btn-link" data-switch="${b.id}">切换</button>`
+          + html`<button class="btn-link" data-enable="${b.id}" data-on="${enabled ? 0 : 1}">${enabled ? '停用' : '启用'}</button>`)
       // 「删除」对**当前账套同样要能点**：store.removeBook 已支持（删除 = 移入回收站，
       //   7 天内可还原；删完自动切到其它账套，若是最后一个则回到「新建 / 导入账套」引导）。
       // 【历史缺陷】原实现把删除按钮一并塞进上面 `isCur ? '' : …` 的 else 分支，
       //   于是当前账套那一行只剩「重命名」—— store 放开了限制，UI 却没有入口，
       //   表现为"当前账套（如测试账套）删不掉"。按钮可见性与 store 能力必须一致。
-      + '<button class="btn-link btn-link-danger" data-del="' + b.id + '"'
-      + (isCur ? ' title="这是当前账套：删除后自动切换到其它账套；若为最后一个，则回到新建/导入引导"' : '')
-      + '>删除</button>'
+      + html`<button class="btn-link btn-link-danger" data-del="${b.id}"${isCur ? html` title="这是当前账套：删除后自动切换到其它账套；若为最后一个，则回到新建/导入引导"` : ''}>删除</button>`
       + '</td>';
     tb.appendChild(tr);
   });
@@ -271,10 +272,11 @@ function daysAgo(ts) {
 // 硬盘一坏两者一起没。所以这里额外盯住「最后一次导出到本机之外」的时间。
 function renderBackupHealth(st, hasCloud) {
   if (!st) return '';
-  var html = '<div class="backup-health">';
+  var out = html`<div class="backup-health">`;
   var bits = [(st.count + (st.snapshot_count || 0)) + ' 份备份', '占用 ' + fmtSize(st.total_bytes)];
   if (st.last_ts) bits.push('最近 ' + fmtTs(st.last_ts));
-  html += '<div class="muted">' + bits.join('　·　') + '</div>';
+  // bits 只由备份份数 / fmtSize / fmtTs 的数字与日期串组成，插值默认转义即可
+  out = html`${out}<div class="muted">${bits.join('　·　')}</div>`;
 
   // 落盘备份挡不住硬盘损坏，超过 7 天没导出就提醒做本机外副本。
   // 已配置云备份时不再催（云端副本已满足"本机外"），本地备份仅作近时救援。
@@ -285,13 +287,13 @@ function renderBackupHealth(st, hasCloud) {
        用户照着做会以为已经做了本机外副本，实际还差"拷贝"这一步（"说了做不到"）。
        现按实际步骤写：先导出成文件，再把它拷到 U 盘 / 网盘。 */
     if (st.last_export_ts === 0) {
-      html += '<div class="health-warn">尚未导出过账套副本。建议点「导出账套」生成一份副本文件，再把它拷到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>';
+      out = html`${out}<div class="health-warn">尚未导出过账套副本。建议点「导出账套」生成一份副本文件，再把它拷到 U 盘或网盘——自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失。</div>`;
     } else if (d !== null && d > 7) {
-      html += '<div class="health-warn">已 ' + d + ' 天未导出账套副本（上次导出：' + fmtTs(st.last_export_ts) + '）。建议点「导出账套」生成一份副本，再把它拷到 U 盘或网盘。</div>';
+      out = html`${out}<div class="health-warn">已 ${d} 天未导出账套副本（上次导出：${fmtTs(st.last_export_ts)}）。建议点「导出账套」生成一份副本，再把它拷到 U 盘或网盘。</div>`;   // d 是天数，fmtTs 输出日期串
     }
   }
-  html += '</div>';
-  return html;
+  out = html`${out}</div>`;
+  return out;
 }
 
 function listBackups() {
@@ -325,29 +327,26 @@ function renderBackupRows() {
   var show = pickVisibleBackups(disk, box._bAll);
   // 面板工具栏只保留「刷新列表」：曾经短暂存在的「从文件恢复…」（外部 .json 覆盖）已按用户要求删除，
   // 详见本文件下方该处的说明 —— 覆盖当前账本只走本列表里每行的「恢复」。
-  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted">共 ' +
-    disk.length + ' 份备份</span></div>';
-  html += renderBackupHealth(stats, box._bCloud);
+  var out = html`<div class="backup-toolbar"><a class="tool-link" id="btnRefreshBk">刷新列表</a><span class="muted">共 ${disk.length} 份备份</span></div>`;
+  out = html`${out}${renderBackupHealth(stats, box._bCloud)}`;
   if (disk.length) {
-    html += '<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>';
-    html += '<p class="set-hint">标「覆盖前存档」的那份是导入 / 恢复之前自动留的，用来撤销那次操作；其余是自动存档。</p>';
+    out = html`${out}<p class="backup-sec-title">备份（自动留存，用于文件意外找回）</p>`;
+    out = html`${out}<p class="set-hint">标「覆盖前存档」的那份是导入 / 恢复之前自动留的，用来撤销那次操作；其余是自动存档。</p>`;
     show.forEach(function (b) {
       // 「覆盖前存档」加粗突出：它是用来撤销危险操作的那一条，不该与普通自动存档长得一样
-      var txt = esc(b.label || '');
-      html += '<div class="backup-item"><span>' + (b.kind === 'pre' ? '<b>' + txt + '</b>' : txt) + '</span>' +
-        '<button class="btn btn-xs" data-file="' + esc(b.file) + '">恢复</button></div>';
+      // 文案与文件名（data-file）均来自磁盘，可由外部文件影响：插值默认转义
+      out = html`${out}<div class="backup-item"><span>${b.kind === 'pre' ? html`<b>${b.label || ''}</b>` : (b.label || '')}</span><button class="btn btn-xs" data-file="${b.file}">恢复</button></div>`;
     });
     if (disk.length > show.length) {
       // 「还有 N 份」按**实际被折叠的条数**算：覆盖前存档始终显示，不算进隐藏数（原写死 -1 会算错）
-      html += '<div style="margin:6px 16px"><a class="tool-link" id="btnBkToggle">' +
-        (box._bAll ? '收起' : '还有 ' + (disk.length - show.length) + ' 份 · 显示全部') + '</a></div>';
+      out = html`${out}<div style="margin:6px 16px"><a class="tool-link" id="btnBkToggle">${box._bAll ? '收起' : '还有 ' + (disk.length - show.length) + ' 份 · 显示全部'}</a></div>`;
     }
   } else {
     // 【2026-09-28】原提示写「点击『立即备份』创建」—— 与按钮名「手动备份」不一致，且按钮已删除。
     // 现在备份**只由系统自动留存**（改动落盘/关窗/高风险操作前），故如实这么写。
-    html += '<p class="muted">暂无备份（保存数据后会自动留存，用于文件意外找回）</p>';
+    out = html`${out}<p class="muted">暂无备份（保存数据后会自动留存，用于文件意外找回）</p>`;
   }
-  box.innerHTML = html;
+  box.innerHTML = out;
 }
 
 /* ============================================================
@@ -370,7 +369,7 @@ function renderTrash() {
     box._trashAll = false;
     renderTrashRows();
   }).catch(function (e) {
-    box.innerHTML = '<p class="muted">读取回收站失败：' + esc((e && e.message) || e) + '</p>';
+    box.innerHTML = html`<p class="muted">读取回收站失败：${(e && e.message) || e}</p>`;
   });
 }
 
@@ -379,31 +378,22 @@ function renderTrashRows() {
   var box = $('trashPanel'); if (!box) return;
   var items = box._trashItems || [];
   var show = box._trashAll ? items : items.slice(0, 5);
-  var html = '<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a>'
-    + '<span class="muted">共 ' + items.length + ' 项（保留 7 天，过期自动清理）</span>'
-    + (items.length ? '<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>' : '')
-    + '</div>';
+  var out = html`<div class="backup-toolbar"><a class="tool-link" id="btnRefreshTrash">刷新</a><span class="muted">共 ${items.length} 项（保留 7 天，过期自动清理）</span>${items.length ? html`<a class="tool-link" id="btnEmptyTrash" style="margin-left:12px">清空回收站</a>` : ''}</div>`;
   if (!items.length) {
-    html += '<p class="muted">回收站为空</p>';
+    out = html`${out}<p class="muted">回收站为空</p>`;
   } else {
     show.forEach(function (it) {
       var left = 7 - (daysAgo(it.ts) || 0);
       var expire = left <= 0 ? '即将清理' : ('还剩 ' + left + ' 天');
-      html += '<div class="backup-item"><span>' + esc(it.name) + '（删除于 ' + fmtTs(it.ts) + '，' + expire + '）</span>'
-        + '<button class="btn btn-xs" data-trash-restore="' + esc(it.file) + '">还原</button></div>';
+      // 回收站里的账套名 / 文件名取自 JSON 内容（用户可控）：插值默认转义
+      out = html`${out}<div class="backup-item"><span>${it.name}（删除于 ${fmtTs(it.ts)}，${expire}）</span><button class="btn btn-xs" data-trash-restore="${it.file}">还原</button></div>`;
     });
     if (items.length > 5) {
-      html += '<div style="margin:6px 16px"><a class="tool-link" id="btnTrashToggle">' +
-        (box._trashAll ? '收起' : '还有 ' + (items.length - 5) + ' 项 · 显示全部') + '</a></div>';
+      // 两个分支都是常量文案与 items.length 数字
+      out = html`${out}<div style="margin:6px 16px"><a class="tool-link" id="btnTrashToggle">${box._trashAll ? '收起' : '还有 ' + (items.length - 5) + ' 项 · 显示全部'}</a></div>`;
     }
   }
-  box.innerHTML = html;
-}
-// 回收站里的账套名取自 JSON 内容，属于用户可控数据，插入 HTML 前必须转义
-function esc(s) {
-  return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
+  box.innerHTML = out;
 }
 // 回收站 DOM 是本次新增的：若 index.html 尚未同步（如 dist 未重建），
 // 直接 addEventListener 会在模块加载期抛错并带崩整个页面，故先判空再绑定。

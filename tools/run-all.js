@@ -16,6 +16,8 @@
  * 刻意**不**收录：
  *   _diag_*.js     诊断脚本，需按场景手工传参（且已被 .gitignore 忽略）
  *   audit_*.js     审计报告类，面向具体账套数据，输出非 pass/fail
+ *                  （例外：audit_escape_gaps / audit_tauri_paths 判据明确且已收敛，
+ *                   2026-10-22 起以 --gate 纳入，见下方 GATE_AUDITS）
  *   export_*.js    导出工具，有副作用
  *
  * 【sim_*.js 为什么可以进 CI】它们依赖本机存在账套，但脚本内已做
@@ -49,8 +51,15 @@ const ROOT = path.resolve(__dirname, '..');
 const QUIET = process.argv.includes('--quiet');
 const QUICK = process.argv.includes('--quick');   // 跳过深度层（sim_*），见头部说明
 
+/* 【2026-10-22 纳入对抗性审计】这两支脚本默认只出清单（exit 0），加 --gate 后才有判据：
+     audit_escape_gaps.js  逐值转义审计 —— 高危（用户可编辑/可导入字段裸插 innerHTML）> 0 即失败；
+     audit_tauri_paths.js  Tauri 路径参数审计 —— 路径参数无守卫且参与文件操作 > 0 即失败。
+   纳入的理由：它们是「同类问题反复出现」的那两条主线的唯一守门人；不进门禁就仍靠人记得跑。
+   其余的 audit_*.js 面向具体账套数据、输出非 pass/fail，仍不收录。 */
+const GATE_AUDITS = ['audit_escape_gaps.js', 'audit_tauri_paths.js'];
+
 const ALL = fs.readdirSync(__dirname)
-  .filter(n => /^(test|verify|check|sim)_.*\.js$/.test(n))
+  .filter(n => /^(test|verify|check|sim)_.*\.js$/.test(n) || GATE_AUDITS.includes(n))
   .sort();
 // 深度层 = sim_*：在真实账套副本上模拟记账，最全面也最慢（约 47s）
 const scripts = QUICK ? ALL.filter(n => !/^sim_/.test(n)) : ALL;
@@ -77,7 +86,8 @@ scripts.forEach(name => {
   const started = Date.now();
   let ok = true, out = '';
   try {
-    out = execFileSync(process.execPath, [full], {
+    const args = GATE_AUDITS.includes(name) ? [full, '--gate'] : [full];
+    out = execFileSync(process.execPath, args, {
       cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 120000,   // 单个脚本最多 2 分钟，避免 CI 里卡死
     });

@@ -15,6 +15,8 @@
 // H.money、再试 U.money（真实单点）、最后 String(n)，与 helpers 的 money 在真机等价，
 // 但保留可避免与导入名重名，改动面最小。
 import { H, S, U, round2, $ } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板：本页已迁移 —— 插值默认转义，可信片段必须显式 raw()。
+import { html, raw } from '../../common/html.js?v=dev';
 // 起止期间取值：统一走 app.js 的单点实现（含默认值兜底），页面不再各自决定默认期间
 const periodRangeValue = H.periodRangeValue;
 // 账套作用域守卫（单点实现，见 app.js 的 bookScopeChanged）：换账套时复位本页模块级状态。
@@ -33,14 +35,16 @@ function amtInnerHtml(value, isNumber, activeIndex, hideValueLayer, force2) {
   // 口径：负数显示负号、不着色（红只留给警示语义）；负号占一格不新增格，位格线因此与正数行对齐。
   var r = computeAmtCells(value, force2);
   if (r.overflow) {
-    if (r.neg) return '<div class="amt-bg amt-bg-text"><span class="amt-neg-text">-' + r.text + '</span></div>';
-    return '<div class="amt-bg amt-trillion">' + r.text + '</div>';
+    /* r.text 在「装不进 11 格」时可能是**原始输入串**（parseFloat 失败则原样带出，见 amt_cells.mjs 第 41 行）——
+       导入账套里的金额字段不受输入框限制，不转义就是一条注入路径。这里必须 esc。 */
+    if (r.neg) return '<div class="amt-bg amt-bg-text"><span class="amt-neg-text">-' + escHtml(r.text) + '</span></div>';
+    return '<div class="amt-bg amt-trillion">' + escHtml(r.text) + '</div>';
   }
   var cells = '';
   for (var k = 0; k < r.cells.length; k++) {
     var active = (activeIndex === k) ? ' amt-cell-active' : '';
     // 数字（或负号）直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
-    cells += '<div class="amt-cell' + active + '">' + r.cells[k] + '</div>';
+    cells += '<div class="amt-cell' + active + '">' + r.cells[k] + '</div>';   /* escape-ok: r.cells 是单个数字/负号字符，active 是三元常量 */
   }
   return '<div class="amt-bg">' + cells + '</div>';
 }
@@ -151,7 +155,6 @@ function money(n) { return H.money ? H.money(n) : (U ? U.money(n) : String(n)); 
 // 用户自由录入文本渲染进 HTML / 属性前转义，避免破坏单元格结构
 // HTML 转义统一走 H.esc（单点实现）。
 const escHtml = H.esc;
-const escAttr = escHtml;
 // 金额解析：先剥离千分位逗号（半角,、全角，、顿号、）与货币符号/空格，并把全角小数点．归一为 .，
 // 避免中文输入法打出的 "1，23" / "1，0352.25" 被裸 parseFloat 在逗号处截断成 1。
 // 优先走桥接 H.num（与 store.num 口径一致），缺失时 fallback 也基于已清洗的字符串解析。
@@ -188,24 +191,10 @@ function renderVoucherRows() {
   tb.innerHTML = '';
   vRows.forEach(function (r, i) {
     var tr = document.createElement('tr');
-    var ops = '<span class="row-ops">'
-      + '<button class="btn-row-op" data-act="add" data-i="' + i + '" title="增加分录">＋</button>'
-      + '<button class="btn-row-op btn-row-del" data-act="del" data-i="' + i + '" title="删除此行">－</button>'
-      + '</span>';
-    tr.innerHTML =
-      '<td class="col-num ta-c"><span class="row-num">' + (i + 1) + '</span>' + ops + '</td>' +
-      '<td><input class="v-summary" data-i="' + i + '" value="' + (r.summary || '') + '"></td>' +
-      // 科目列：编码输入框 + 右侧科目名称（形态：一眼看到「1001 库存现金」）
-      // 名称仅作展示、不进输入框，避免 value 混入名称后被当成编码写回。
-      '<td class="col-subj">'
-      + '<div class="v-subj-main">'
-      + '<input class="inp v-code" data-i="' + i + '" value="' + escAttr(r.code || '') + '" size="' + (r.code ? Math.max(5, String(r.code).length + 1) : 12) + '" placeholder="科目编码/名称" autocomplete="off">'
-      + '<span class="v-subj-name" data-i="' + i + '">' + escHtml(vchSubjNameOf(r)) + '</span>'
-      + '</div>'
-      + '<div class="v-subj-bal" data-i="' + i + '"></div>'
-      + '</td>' +
-      amtCellHtml(r.dr, 'v-dr', i) +
-      amtCellHtml(r.cr, 'v-cr', i) + '</tr>';
+    var ops = html`<span class="row-ops"><button class="btn-row-op" data-act="add" data-i="${i}" title="增加分录">＋</button><button class="btn-row-op btn-row-del" data-act="del" data-i="${i}" title="删除此行">－</button></span>`;
+    // 科目列：编码输入框 + 右侧科目名称（形态：一眼看到「1001 库存现金」）
+    // 名称仅作展示、不进输入框，避免 value 混入名称后被当成编码写回。
+    tr.innerHTML = html`<td class="col-num ta-c"><span class="row-num">${i + 1}</span>${ops}</td><td><input class="v-summary" data-i="${i}" value="${r.summary || ''}"></td><td class="col-subj"><div class="v-subj-main"><input class="inp v-code" data-i="${i}" value="${r.code || ''}" size="${r.code ? Math.max(5, String(r.code).length + 1) : 12}" placeholder="科目编码/名称" autocomplete="off"><span class="v-subj-name" data-i="${i}">${vchSubjNameOf(r)}</span></div><div class="v-subj-bal" data-i="${i}"></div></td>${raw(amtCellHtml(r.dr, 'v-dr', i))}${raw(amtCellHtml(r.cr, 'v-cr', i))}`;   /* raw: amtCellHtml 为金额位格 helper 产出（内部已 escHtml / 纯数值），语义由金额位格测试锁定 */
     tb.appendChild(tr);
     // 初始渲染：金额列 td 默认加 amt-blur，隐藏 input、只显示位格 cells（否则 input.value 和 cells 两层叠一起重叠）
     tr.querySelectorAll('.col-amount.has-input').forEach(function (td) { td.classList.add('amt-blur'); });
@@ -298,7 +287,7 @@ function fillVoucherWord() {
     ? S.state.voucherWords.filter(function (x) { return x.enabled !== false; })
     : [{ name: '记' }];
   var cur = w.value || S.state.param.voucherWord || '记';
-  w.innerHTML = words.map(function (x) { return '<option value="' + escHtml(x.name || x.code) + '">' + escHtml(x.name || x.code) + '</option>'; }).join('');
+  w.innerHTML = html`${words.map(function (x) { return html`<option value="${x.name || x.code}">${x.name || x.code}</option>`; })}`;
   if (words.some(function (x) { return (x.name || x.code) === cur; })) w.value = cur;
   else w.value = words[0] ? (words[0].name || words[0].code) : '记';
 }
@@ -352,8 +341,8 @@ function updateAmtTotals() {
   var drT = 0, crT = 0;
   vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
   var drTd = $('vDrTotal'), crTd = $('vCrTotal');
-  if (drTd) drTd.innerHTML = amtInnerHtml(drT, false, -1, false, true);
-  if (crTd) crTd.innerHTML = amtInnerHtml(crT, false, -1, false, true);
+  if (drTd) drTd.innerHTML = amtInnerHtml(drT, false, -1, false, true);   /* escape-ok: amtInnerHtml 内位格字符与溢出文本均已 escHtml */
+  if (crTd) crTd.innerHTML = amtInnerHtml(crT, false, -1, false, true);   /* escape-ok: amtInnerHtml 内位格字符与溢出文本均已 escHtml */
   // 大写金额（借贷平衡时取合计，不平衡时取借贷差额）
   var cnTd = $('vTotalCn');
   if (cnTd) {
@@ -429,9 +418,9 @@ function bindVoucherRowsInput() {
       // 数字位灯：输入时高亮当前金额最高有效位（行内位格 + 对应列表头单位行）
       var idx = highestDigitIndex(cleanVal);
       var bg = td && td.querySelector('.amt-bg');
-      if (bg) bg.innerHTML = amtInnerHtml(val, true, idx, true, false);
+      if (bg) bg.innerHTML = amtInnerHtml(val, true, idx, true, false);   /* escape-ok: amtInnerHtml 内位格字符与溢出文本均已 escHtml */
       var thEl = $(field === 'v-dr' ? 'vThDr' : 'vThCr');
-      if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', idx);
+      if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', idx);   /* escape-ok: 两个分支都是硬编码文案，idx 是数字 */
       updateAmtTotals();
       return;
     }
@@ -558,10 +547,10 @@ function bindVoucherRowsBlur() {
       t.value = '';
     }
     var bg = t.parentElement.querySelector('.amt-bg');
-    if (bg) bg.innerHTML = amtInnerHtml(val, false, -1, false, true);
+    if (bg) bg.innerHTML = amtInnerHtml(val, false, -1, false, true);   /* escape-ok: amtInnerHtml 内位格字符与溢出文本均已 escHtml */
     // 失焦后清除表头单位行高亮
     var thEl = $(field === 'v-dr' ? 'vThDr' : 'vThCr');
-    if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', -1);
+    if (thEl) thEl.innerHTML = amtHeaderHtml(field === 'v-dr' ? '借方金额' : '贷方金额', -1);   /* escape-ok: 两个分支都是硬编码文案，-1 是常量 */
     if (td) td.classList.add('amt-blur');
   }, true);
 }
@@ -750,7 +739,7 @@ function renderVoucherSheetHtml() {
   var drT = 0, crT = 0;
   rows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
 
-  var trs = rows.map(function (r) {
+  var trs = rows.map(function (r) {   /* escape-ok: summary/code/name 走 voucherSheetEsc，金额走 voucherSheetMoney */
     return '<tr><td class="c-sum">' + voucherSheetEsc(r.summary) + '</td>'
       + '<td class="c-sub"><span class="sub-code">' + voucherSheetEsc(r.code) + '</span>' + voucherSheetEsc(r.name) + '</td>'
       + '<td class="c-amt">' + (U.num(r.dr) ? voucherSheetMoney(r.dr) : '') + '</td>'
@@ -846,10 +835,10 @@ function printCurrentVoucher() {
 function renderBlankVoucherHtml() {
   var trs = '';
   for (var i = 0; i < 5; i++) {
-    trs += '<tr class="vblank"><td></td><td></td><td class="c-amt"></td><td class="c-amt"></td></tr>';
+    trs += '<tr class="vblank"><td></td><td></td><td class="c-amt"></td><td class="c-amt"></td></tr>';   /* escape-ok: 空白凭证纸，全常量 */
   }
-  var u = function (w) { return '<span class="u" style="width:' + w + 'px"></span>'; };
-  var sign = function (label) { return '<span>' + label + '：' + u(58) + '</span>'; };
+  var u = function (w) { return '<span class="u" style="width:' + w + 'px"></span>'; };   /* escape-ok: w 是调用处硬编码像素数字 */
+  var sign = function (label) { return '<span>' + label + '：' + u(58) + '</span>'; };   /* escape-ok: label 调用处仅 '记账' / '审核' */
   return '<div class="wrap">'
     + '<div class="c-name">记 账 凭 证</div>'
     + '<div class="bl-meta">'
@@ -1044,7 +1033,7 @@ function renderSum(start, end) {
     var tr = document.createElement('tr');
     // 末列 col-spacer：本表只有「科目名称」一个长文本列，若让它吸收剩余会被撑得极宽；
     // 改为让数据列全部保持内容宽、由表尾空白列吃掉剩余宽度（表头同样有这一列，见 index.html sumGrid）。
-    tr.innerHTML = '<td><a href="#" class="link-gl-subject" data-code="' + escAttr(s.code) + '">' + escHtml(s.code) + '</a></td><td>' + s.name + '</td><td class="ta-r mono">' + money(m.dr) + '</td><td class="ta-r mono">' + money(m.cr) + '</td><td class="col-spacer"></td>';
+    tr.innerHTML = html`<td><a href="#" class="link-gl-subject" data-code="${s.code}">${s.code}</a></td><td>${s.name}</td><td class="ta-r mono">${money(m.dr)}</td><td class="ta-r mono">${money(m.cr)}</td><td class="col-spacer"></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1210,21 +1199,13 @@ function renderQuery(start, end) {
       if (!matchSubjectCode(sc.codes, e.code)) { first = false; return; }
       var tr = document.createElement('tr');
       tr.setAttribute('data-vid', v.id);
-      var dateCell = first ? v.date : '';
-      var noCell = first ? ('<a class="link-voucher" href="#" data-id="' + v.id + '">' + v.word + '-' + v.no + '</a>' + queryFlags(v, revOf, reversedSet)) : '';
+      var dateCell = first ? html`${v.date}` : '';
+      var noCell = first ? html`<a class="link-voucher" href="#" data-id="${v.id}">${v.word}-${v.no}</a>${queryFlags(v, revOf, reversedSet)}` : '';
       // 制单人来自账套数据（可能源自导入文件），必须转义后再拼进 HTML
-      var makerCell = first ? escHtml(makerOf(v)) : '';
+      var makerCell = first ? html`${makerOf(v)}` : '';
+      // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
       tr.innerHTML =
-        '<td>' + dateCell + '</td>' +
-        '<td>' + noCell + '</td>' +
-        // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
-        '<td class="cell-ellipsis" title="' + escAttr(e.summary || v.summary || '') + '">' + escHtml(e.summary || v.summary || '') + '</td>' +
-        '<td class="cell-ellipsis" title="' + escAttr(e.code + ' ' + (subjName[e.code] || e.name || '')) + '">' + (e.code ? '<a href="#" class="link-gl-subject" data-code="' + escAttr(e.code) + '">' + escHtml(e.code) + '</a> ' : '') + escHtml(subjName[e.code] || e.name || '') + '</td>' +
-        '<td class="ta-r mono">' + (U.num(e.dr) ? money(e.dr) : '') + '</td>' +
-        '<td class="ta-r mono">' + (U.num(e.cr) ? money(e.cr) : '') + '</td>' +
-        '<td>' + (first ? (v.attach || '') : '') + '</td>' +
-        '<td>' + (first ? (v.sourceNo || '') : '') + '</td>' +
-        '<td>' + makerCell + '</td>';
+        html`<td>${dateCell}</td><td>${noCell}</td><td class="cell-ellipsis" title="${e.summary || v.summary || ''}">${e.summary || v.summary || ''}</td><td class="cell-ellipsis" title="${e.code + ' ' + (subjName[e.code] || e.name || '')}">${e.code ? html`<a href="#" class="link-gl-subject" data-code="${e.code}">${e.code}</a> ` : ''}${subjName[e.code] || e.name || ''}</td><td class="ta-r mono">${U.num(e.dr) ? money(e.dr) : ''}</td><td class="ta-r mono">${U.num(e.cr) ? money(e.cr) : ''}</td><td>${first ? (v.attach || '') : ''}</td><td>${first ? (v.sourceNo || '') : ''}</td><td>${makerCell}</td>`;
       tb.appendChild(tr);
       first = false;
     });
@@ -1233,13 +1214,10 @@ function renderQuery(start, end) {
   vs.forEach(function (v) { v.entries.forEach(function (e) { sumDr += U.num(e.dr); sumCr += U.num(e.cr); }); });
   var trt = document.createElement('tr');
   trt.className = 'grp-row';
-  trt.innerHTML = '<td colspan="4" class="ta-r">合 计</td>' +
-    '<td class="ta-r mono grp-amt">' + money(sumDr) + '</td>' +
-    '<td class="ta-r mono grp-amt">' + money(sumCr) + '</td>' +
-    // 末尾补空列：表头 10 列，本行 = 1(空) + 4(合计) + 2(借贷) + 3(补空) = 10。
-    // ⚠ 此前是 colspan="4"（合计 11 列）—— 那是「还有操作列」时的旧值，
-    //   移除操作列后表头变 10 列却漏改此处，表格被撑成 11 列、表头与内容错位。
-    '<td colspan="3"></td>';
+  // 末尾补空列：表头 10 列，本行 = 1(空) + 4(合计) + 2(借贷) + 3(补空) = 10。
+  // ⚠ 此前是 colspan="4"（合计 11 列）—— 那是「还有操作列」时的旧值，
+  //   移除操作列后表头变 10 列却漏改此处，表格被撑成 11 列、表头与内容错位。
+  trt.innerHTML = html`<td colspan="4" class="ta-r">合 计</td><td class="ta-r mono grp-amt">${money(sumDr)}</td><td class="ta-r mono grp-amt">${money(sumCr)}</td><td colspan="3"></td>`;
   tb.appendChild(trt);
 }
 
@@ -1251,17 +1229,16 @@ function renderQuery(start, end) {
 
 // 凭证列表的关联标记（仅在凭证首行渲染）。
 function queryFlags(v, revOf, reversedSet) {
-  var out = '';
+  var out = html``;
   var rev = revOf[v.id];
   if (rev) {
-    out += '<span class="vq-flag" title="已被 ' + escAttr((rev.word || '记') + '-' + rev.no) + ' 红字冲销">已冲</span>';
+    out = html`${out}<span class="vq-flag" title="已被 ${(rev.word || '记') + '-' + rev.no} 红字冲销">已冲</span>`;
   }
   if (reversedSet[v.id]) {
-    out += '<span class="vq-flag vq-flag-rev" title="本凭证是红字冲销凭证'
-      + (v.reverseReason ? '：' + escAttr(v.reverseReason) : '') + '">红字冲销</span>';
+    out = html`${out}<span class="vq-flag vq-flag-rev" title="本凭证是红字冲销凭证${v.reverseReason ? '：' + v.reverseReason : ''}">红字冲销</span>`;
   }
   if (v.kind) {
-    out += '<span class="vq-flag vq-flag-kind" title="由「期末处理」自动生成，不走手工红字冲销">期末</span>';
+    out = html`${out}<span class="vq-flag vq-flag-kind" title="由「期末处理」自动生成，不走手工红字冲销">期末</span>`;
   }
   return out;
 }
@@ -1369,16 +1346,9 @@ function refreshRecycleBin() {
   list.forEach(function (v) {
     var tr = document.createElement('tr');
     var drSum = (v.entries || []).reduce(function (s, e) { return s + (e.dr || 0); }, 0);
-    tr.innerHTML =
-      '<td>' + escHtml(v.date || '') + '</td>' +
-      '<td>' + escHtml((v.word || '记') + '-' + (v.no != null ? v.no : '')) + '</td>' +
-      '<td>' + U.yuanFmt(drSum) + '</td>' +   // drSum 来自 store 凭证分录（定点整数）→ 换回元
-      '<td>' + escHtml(v.deletedAt || '') + '</td>' +
-      '<td>' + escHtml(v.deletedBy || '') + '</td>' +
-      // 删除原因：deleteReason 为新增字段，老账套里已删除的凭证没有此字段，
-      // 用 '—' 占位而非留空，避免与「填了空」混淆。
-      '<td>' + escHtml(v.deleteReason || '—') + '</td>' +
-      '<td><a class="link-toggle" data-act="restore" data-id="' + v.id + '">还原</a></td>';
+    // 删除原因：deleteReason 为新增字段，老账套里已删除的凭证没有此字段，
+    // 用 '—' 占位而非留空，避免与「填了空」混淆。
+    tr.innerHTML = html`<td>${v.date || ''}</td><td>${(v.word || '记') + '-' + (v.no != null ? v.no : '')}</td><td>${U.yuanFmt(drSum)}</td><td>${v.deletedAt || ''}</td><td>${v.deletedBy || ''}</td><td>${v.deleteReason || '—'}</td><td><a class="link-toggle" data-act="restore" data-id="${v.id}">还原</a></td>`;   /* drSum 来自 store 凭证分录（定点整数）→ U.yuanFmt 换回元 */
     tb.appendChild(tr);
   });
   tb.querySelectorAll('[data-act="restore"]').forEach(function (a) {
@@ -1502,43 +1472,30 @@ function renderVchTplList() {
   var pass = function (t) { return !q || String(t.name || '').toLowerCase().indexOf(q) >= 0; };
   var sysF = sys.filter(pass), mineF = mine.filter(pass);
   function tplRow(t, builtin) {
-    var segs = (t.entries || []).map(function (e) {
-      return '<span class="vch-tpl-seg"><i class="vch-tpl-drc">' + S.dirName(tplSideOf(e)) + '</i>'
-        + '<em class="muted">' + escHtml(e.code || '') + '</em> ' + escHtml(e.name || '')
-        + (e.summary ? '<span class="muted vch-tpl-sum"> · ' + escHtml(e.summary) + '</span>' : '') + '</span>';
-    }).join('<span class="vch-tpl-sep">／</span>');
+    var segs = [];
+    (t.entries || []).forEach(function (e, i) {
+      if (i) segs.push(html`<span class="vch-tpl-sep">／</span>`);
+      segs.push(html`<span class="vch-tpl-seg"><i class="vch-tpl-drc">${S.dirName(tplSideOf(e))}</i><em class="muted">${e.code || ''}</em> ${e.name || ''}${e.summary ? html`<span class="muted vch-tpl-sum"> · ${e.summary}</span>` : ''}</span>`);
+    });
     var miss = (t.missing && t.missing.length)
-      ? '<div class="vch-tpl-miss">缺少 ' + t.missing.length + ' 个科目：'
-        + t.missing.map(function (m) { return escHtml(m.code + ' ' + m.name); }).join('、')
-        + '，已跳过，套用后请补录</div>' : '';
+      ? html`<div class="vch-tpl-miss">缺少 ${t.missing.length} 个科目：${t.missing.map(function (m) { return m.code + ' ' + m.name; }).join('、')}，已跳过，套用后请补录</div>` : '';
     var use = t.entries.length
-      ? '<button type="button" class="btn btn-xs btn-primary vch-tpl-use" data-id="' + escAttr(t.id) + '">使用</button>'
-      : '<span class="muted">不可用</span>';
-    return '<div class="vch-tpl-row">'
-      + '<div class="vch-tpl-main">'
-      + '<div class="vch-tpl-name"><span class="vch-tpl-word">' + escHtml(t.word || '记') + '</span><b>' + escHtml(t.name) + '</b>'
-      + (builtin ? '<span class="vch-tpl-tag">内置</span>' : '') + '</div>'
-      + (segs ? '<div class="vch-tpl-preview">' + segs + '</div>' : '') + miss
-      + '</div>'
-      + '<div class="vch-tpl-ops">' + use
-      + (builtin ? '' : '<button type="button" class="btn btn-danger btn-xs vch-tpl-del" data-id="' + escAttr(t.id) + '">删除</button>')
-      + '</div>'
-      + '</div>';
+      ? html`<button type="button" class="btn btn-xs btn-primary vch-tpl-use" data-id="${t.id}">使用</button>`
+      : html`<span class="muted">不可用</span>`;
+    return html`<div class="vch-tpl-row"><div class="vch-tpl-main"><div class="vch-tpl-name"><span class="vch-tpl-word">${t.word || '记'}</span><b>${t.name}</b>${builtin ? html`<span class="vch-tpl-tag">内置</span>` : ''}</div>${segs.length ? html`<div class="vch-tpl-preview">${segs}</div>` : ''}${miss}</div><div class="vch-tpl-ops">${use}${builtin ? '' : html`<button type="button" class="btn btn-danger btn-xs vch-tpl-del" data-id="${t.id}">删除</button>`}</div></div>`;
   }
   function sec(title, count) {
-    return '<div class="vch-tpl-sec"><span class="vch-tpl-sec-name">' + title + '</span>'
-      + '<span class="vch-tpl-cnt">' + count + ' 个</span></div>';
+    return html`<div class="vch-tpl-sec"><span class="vch-tpl-sec-name">${title}</span><span class="vch-tpl-cnt">${count} 个</span></div>`;
   }
-  var html = '';
-  if (mineF.length) html += sec('我的模板', mine.length) + mineF.map(function (t) { return tplRow(t, false); }).join('');
-  if (sysF.length) html += sec('系统模板', sys.length) + sysF.map(function (t) { return tplRow(t, true); }).join('');
-  if (!html) {
-    html = '<div class="empty-hint">'   /* 【2026-10-04】原先内联补 padding/居中/字色，因为空态规则只覆盖 td；现规则已覆盖 div，去掉内联（与 Asset.js 的空态写法一致） */
-      + (q ? '没有找到名称含「' + escHtml(q) + '」的模板' : '暂无可用模板') + '</div>';
+  var out = html``;
+  if (mineF.length) out = html`${out}${sec('我的模板', mine.length)}${mineF.map(function (t) { return tplRow(t, false); })}`;
+  if (sysF.length) out = html`${out}${sec('系统模板', sys.length)}${sysF.map(function (t) { return tplRow(t, true); })}`;
+  if (!mineF.length && !sysF.length) {
+    out = html`<div class="empty-hint">${q ? '没有找到名称含「' + q + '」的模板' : '暂无可用模板'}</div>`;   /* 【2026-10-04】原先内联补 padding/居中/字色，因为空态规则只覆盖 td；现规则已覆盖 div，去掉内联（与 Asset.js 的空态写法一致） */
   } else if (!mine.length && !q) {
-    html += '<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>';
+    out = html`${out}<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>`;
   }
-  box.innerHTML = html;
+  box.innerHTML = out;
 }
 function saveCurrentAsTpl() {
   openVchTplSave();

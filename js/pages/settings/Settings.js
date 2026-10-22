@@ -4,8 +4,10 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 
 // H 由 _shared.js 转发自 js/common/helpers.js（引导块的唯一实现）
-import { H, $, money, esc, escHtml, escAttr, showToast, fmtDate, currentPeriod, S, U, num,
+import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
+// 自动转义标签模板（js/common/html.js）：本页含用户可编辑文本的行已迁移，插值默认转义。
+import { html, raw } from '../../common/html.js?v=dev';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
 import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
 
@@ -30,20 +32,14 @@ const refreshAll = H.refreshAll;
       var tr = document.createElement('tr');
       var isDef = (w.name === curDef);
       var refs = refCount[w.name] || 0;
-      tr.innerHTML =
-        '<td class="' + (isDef ? 'vw-default' : '') + '">' + escHtml(w.name) + (isDef ? ' <span class="ok-tag">默认</span>' : '') + '</td>' +
-        '<td>' + escHtml(w.title) + '</td>' +
-        '<td class="col-op">' +
-          (isDef
-            ? '<a class="link-del disabled">—</a>'
-            : '<a class="link-make-def" data-i="' + i + '">设为默认</a>') +
-          (isDef
+      // 凭证字名/标题是用户可编辑字段：html`` 插值默认转义（属性上下文同样安全）
+      tr.innerHTML = html`<td class="${isDef ? 'vw-default' : ''}">${w.name}${isDef ? html` <span class="ok-tag">默认</span>` : ''}</td><td>${w.title}</td><td class="col-op">${isDef
+            ? html`<a class="link-del disabled">—</a>`
+            : html`<a class="link-make-def" data-i="${i}">设为默认</a>`}${isDef
             ? ''
-            : '<a class="link-toggle" data-i="' + i + '">' + (w.enabled === false ? '启用' : '停用') + '</a>') +
-          (isDef || refs > 0
+            : html`<a class="link-toggle" data-i="${i}">${w.enabled === false ? '启用' : '停用'}</a>`}${isDef || refs > 0
             ? ''
-            : '<a class="link-del link-vw-del" data-i="' + i + '">删除</a>') +
-        '</td>';
+            : html`<a class="link-del link-vw-del" data-i="${i}">删除</a>`}</td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.link-make-def').forEach(function (a) {
@@ -113,14 +109,9 @@ const refreshAll = H.refreshAll;
       var tr = document.createElement('tr');
       if (isTitle) tr.className = 'cf-title-row';
       var ytdCell = isTitle
-        ? '<td class="num"></td>'
-        : '<td class="num"><input class="cf-ytd input-sm" data-id="' + it.id + '" value="' + U.yuan(o.ytd || 0) + '"></td>';   // 回填「元」输入框：store 内部为定点整数
-      /* escape-ok: it 来自 store 的 CASH_FLOW_ITEMS 常量表；ytdCell 内是 yuan() 数字与常量 id */
-      tr.innerHTML =
-        '<td>' + it.name + '</td>' +
-        '<td class="mono center">' + (it.rowNum || '') + '</td>' +
-        ytdCell +
-        '<td></td>';
+        ? html`<td class="num"></td>`
+        : html`<td class="num"><input class="cf-ytd input-sm" data-id="${it.id}" value="${U.yuan(o.ytd || 0)}"></td>`;   // 回填「元」输入框：store 内部为定点整数
+      tr.innerHTML = html`<td>${it.name}</td><td class="mono center">${it.rowNum || ''}</td>${ytdCell}<td></td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.cf-ytd').forEach(function (inp) {
@@ -188,20 +179,15 @@ const refreshAll = H.refreshAll;
     S.subjects().forEach(function (s) {
       var isCash = ['1001','1002','1012'].indexOf(s.code) >= 0;
       var m = map[s.code] || { credit: isCash ? 'cf_cash' : '', debit: '' };
-      var opts = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {   /* escape-ok: id 走 escAttr、name 走 escHtml */
-        return '<option value="' + escAttr(it.id) + '"' + (m.credit === it.id ? ' selected' : '') + '>' + escHtml(it.name) + '</option>';
-      }).join('');
-      var opts2 = '<option value="">（未指定）</option>' + S.state.cashFlowItems.map(function (it) {   /* escape-ok: id 走 escAttr、name 走 escHtml */
-        return '<option value="' + escAttr(it.id) + '"' + (m.debit === it.id ? ' selected' : '') + '>' + escHtml(it.name) + '</option>';
-      }).join('');
+      // 选项串由 html`` 生成：数组插值会逐项转义，未选中的分支给空串（不会出现 "null"）
+      var opts = html`<option value="">（未指定）</option>${S.state.cashFlowItems.map(function (it) {
+        return html`<option value="${it.id}"${m.credit === it.id ? html` selected` : ''}>${it.name}</option>`;
+      })}`;
+      var opts2 = html`<option value="">（未指定）</option>${S.state.cashFlowItems.map(function (it) {
+        return html`<option value="${it.id}"${m.debit === it.id ? html` selected` : ''}>${it.name}</option>`;
+      })}`;
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="mono">' + escHtml(s.code) + '</td>' +
-        '<td>' + escHtml(s.name) + '</td>' +
-        '<td>' + escHtml((globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls) + '</td>' +
-        '<td>' + escHtml(S.dirName(s.normal)) + '</td>' +
-        '<td><select class="cf-credit select-sm" data-code="' + escAttr(s.code) + '">' + opts + '</select></td>' +
-        '<td><select class="cf-debit select-sm" data-code="' + escAttr(s.code) + '">' + opts2 + '</select></td>';
+      tr.innerHTML = html`<td class="mono">${s.code}</td><td>${s.name}</td><td>${(globalThis.__TY_CLS_NAME__ || {})[s.cls] || s.cls}</td><td>${S.dirName(s.normal)}</td><td><select class="cf-credit select-sm" data-code="${s.code}">${opts}</select></td><td><select class="cf-debit select-sm" data-code="${s.code}">${opts2}</select></td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.cf-credit, .cf-debit').forEach(function (sel) {
@@ -270,9 +256,9 @@ const refreshAll = H.refreshAll;
       var users = {};
       (S.getLogs() || []).forEach(function (l) { users[l.user || '财务'] = 1; });
       var optUser = Object.keys(users).sort();
-      $('logUser').innerHTML = '<option value="">全部</option>' + optUser.map(function (u) {   /* escape-ok: u 是日志里的 user 名，value 与文本均 esc */
-        return '<option value="' + esc(u) + '">' + esc(u) + '</option>';
-      }).join('');
+      $('logUser').innerHTML = html`<option value="">全部</option>${optUser.map(function (u) {
+        return html`<option value="${u}">${u}</option>`;   // 操作人名来自日志（可导入）
+      })}`;
       logInitDone = true;
     }
     var filtered = logFilter();
@@ -311,8 +297,8 @@ const refreshAll = H.refreshAll;
           var tagCls = 'act-tag-' + l.action_type;
           actTag = ' <span class="act-tag ' + tagCls + '">' + esc(ACTION_TYPE_LABELS[l.action_type]) + '</span>';
         }
-        tr.innerHTML = '<td class="mono">' + esc(l.time || '') + '</td><td>' + esc(l.user || '') + '</td><td>' +
-          esc(l.action || '') + actTag + '</td><td>' + esc(l.module || '设置') + '</td><td>' + detailHtml + '</td>';
+        // detailHtml / actTag 都是上游已逐项 esc 过的 HTML 片段 → 显式 raw() 放行（不能再转义一次）
+        tr.innerHTML = html`<td class="mono">${l.time || ''}</td><td>${l.user || ''}</td><td>${l.action || ''}${raw(actTag)}</td><td>${l.module || '设置'}</td><td>${raw(detailHtml)}</td>`;
         tb.appendChild(tr);
       });
       // 绑定凭证审计明细展开/收起
@@ -376,9 +362,8 @@ const refreshAll = H.refreshAll;
       list.slice(0, 200).forEach(function (l) {
         var tr = document.createElement('tr');
         var t = (l.time || '').replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
-        tr.innerHTML = '<td class="mono">' + esc(t || '') + '</td><td>' + esc(l.user || '—') + '</td>' +
-          '<td>' + esc(l.action || '') + '</td><td>' + esc(l.module || '账套') + '</td>' +
-          '<td>' + esc(l.detail || '') + '</td>';
+        // 系统事件的 user/action/module/detail 均来自引擎（可被外部数据影响）：统一默认转义
+        tr.innerHTML = html`<td class="mono">${t || ''}</td><td>${l.user || '—'}</td><td>${l.action || ''}</td><td>${l.module || '账套'}</td><td>${l.detail || ''}</td>`;
         tb.appendChild(tr);
       });
     }).catch(function () {
@@ -399,7 +384,7 @@ const refreshAll = H.refreshAll;
    * 导入账套（唯一入口，只收 .json）
    *
    * 【2026-10-22 拆分】原先是三合一（.ais 单本 / .ais 多年合并 / .json），现在 .ais 已整体
-   *   移出到仓库根的 ais-tool/ 独立转换器，本入口只剩一条：
+   *   移出到独立的 ais-tool/ 转换器（现已从仓库迁出，位于 ty 的同级目录），本入口只剩一条：
    *     ① 1 个 .json → **作为新账套导入**
    *   选到 .ais 时 importPlanOf 会明确提示"先用 ais-tool/index.html 转换"（见其注释）。
    *
@@ -419,7 +404,7 @@ const refreshAll = H.refreshAll;
       bmFile.value = '';
       if (plan.action === 'error') { showToast(plan.msg, 'error'); return; }
       /* 2026-10-22：.ais 的两个分支（new-ais / merge-ais）已随拆分删除 ——
-         金蝶账套改由仓库根的 ais-tool/ 独立转换器处理，主软件只导入 .json。
+         金蝶账套改由独立的 ais-tool/ 转换器处理（现已迁出仓库，位于 ty 同级），主软件只导入 .json。
          判据本身（importPlanOf）现在会把 .ais 转成 error 并提示去用转换工具，
          所以这里只需要 new-json 一条。 */
       if (plan.action === 'new-json') { importJsonAsNewBook(plan.files[0]); return; }   // ② 作为新账套导入
@@ -481,38 +466,29 @@ const refreshAll = H.refreshAll;
       return;
     }
     // 列宽走全站标准（原表头内联 width:16%/22%/18%… 已删除，改由内容自动 + 按比例补空白）
-    var html = '<thead><tr><th>年份</th><th>科目编码</th><th class="ta-r">上年期末</th><th class="ta-r">本年期初</th><th class="ta-r">差异</th><th class="ta-r">差异率</th></tr></thead><tbody>';
+    var out = html`<thead><tr><th>年份</th><th>科目编码</th><th class="ta-r">上年期末</th><th class="ta-r">本年期初</th><th class="ta-r">差异</th><th class="ta-r">差异率</th></tr></thead><tbody>`;
     yearBoundaries.forEach(function (b) {
       var diffs = b.allDiffs || b.samples || [];
       if (!diffs.length) {
         // 文案修正：b.checked 是「有差异科目数」（一致时=0），不能用它冒充核对总数；
         // 用 b.total（参与核对科目数，新导入器已写入），旧存档无 total 时只报「一致」不带数量。
-        /* escape-ok: fromYear / toYear 是年份数字，total 是科目计数 */
-        html += '<tr class="ok-row"><td>' + b.fromYear + '→' + b.toYear + '</td><td colspan="5" style="color:var(--ty-green)">校验通过：' +
-          (b.total ? (b.total + ' 个科目期初与上年期末一致') : '期初与上年期末核对一致') + '（0 差异）✓</td></tr>';
+        out = html`${out}<tr class="ok-row"><td>${b.fromYear}→${b.toYear}</td><td colspan="5" style="color:var(--ty-green)">校验通过：${b.total ? (b.total + ' 个科目期初与上年期末一致') : '期初与上年期末核对一致'}（0 差异）✓</td></tr>`;
         return;
       }
       diffs.forEach(function (d, i) {
         var diffRate = d.prevEnd !== 0 ? (Math.abs(d.diff / d.prevEnd) * 100).toFixed(1) + '%' : '—';
-        html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
-        if (i === 0) {
-          html += '<td rowspan="' + diffs.length + '" class="grp-label">' + b.fromYear + '→' + b.toYear + '<br><span class="muted">(' + b.checked + ' 科目差异)</span></td>';   /* escape-ok: 年份与差异科目数均为数字 */
-        }
         // 差异超阈值 → 科目编码可点，直接穿透到该科目账（与风险检测的 year_jump 同一阈值口径）
         var codeCell = (Math.abs(num(d.diff)) >= U.amt(jumpThreshold))
-          ? '<a class="link-jump" data-jump="ledger" data-code="' + esc(d.code) + '"'
-            + ' title="差异超 ¥' + jumpThreshold + '，点此查该科目账">' + esc(d.code) + '</a>'
-          : esc(d.code);
-        html += '<td class="mono">' + codeCell + (d.name ? ' ' + esc(d.name) : '') + '</td>';   /* escape-ok: codeCell 内 code 已 esc，name 已 esc */
-        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.prevEnd)) + '</td>';   /* escape-ok: num() + yuanFmt()，纯数字 */
-        html += '<td class="mono ta-r">' + U.yuanFmt(num(d.curOpen)) + '</td>';   /* escape-ok: num() + yuanFmt()，纯数字 */
-        html += '<td class="mono ta-r ' + (Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : '') + '">' + (d.diff > 0 ? '+' : '') + U.yuanFmt(num(d.diff)) + '</td>';   /* escape-ok: 只有常量 class 与数字金额 */
-        html += '<td class="mono ta-r">' + diffRate + '</td>';   /* escape-ok: diffRate 是 toFixed(1) + '%' 的数字串 */
-        html += '</tr>';
+          ? html`<a class="link-jump" data-jump="ledger" data-code="${d.code}" title="差异超 ¥${jumpThreshold}，点此查该科目账">${d.code}</a>`
+          : html`${d.code}`;
+        // 整行一次成型：年份/科目数/金额全是数字，code/name 由插值转义，不再逐段拼串
+        out = html`${out}<tr${i === 0 ? html` class="grp-row"` : ''}>${i === 0
+            ? html`<td rowspan="${diffs.length}" class="grp-label">${b.fromYear}→${b.toYear}<br><span class="muted">(${b.checked} 科目差异)</span></td>`
+            : ''}<td class="mono">${codeCell}${d.name ? ' ' + d.name : ''}</td><td class="mono ta-r">${U.yuanFmt(num(d.prevEnd))}</td><td class="mono ta-r">${U.yuanFmt(num(d.curOpen))}</td><td class="mono ta-r ${Math.abs(d.diff) > U.AMT_SCALE ? 'ty-red' : ''}">${(d.diff > 0 ? '+' : '') + U.yuanFmt(num(d.diff))}</td><td class="mono ta-r">${diffRate}</td></tr>`;
       });
     });
-    html += '</tbody>';
-    tbEl.innerHTML = html;
+    out = html`${out}</tbody>`;
+    tbEl.innerHTML = out;
   }
   // 显示跨年校验卡片到页内
   function _showYearBoundaryCard(yearBoundaries) {
@@ -533,8 +509,8 @@ const refreshAll = H.refreshAll;
   }
 
   /* 【2026-10-22】原「多年合并导入」按钮、#multiAisFile 绑定、以及 .ais 解析函数
-     （handleMultiYearImport / handleImportAis）已全部删除 —— 金蝶 .ais 改由仓库根的
-     ais-tool/ 独立转换器处理（它有自己的页面与测试），主软件只导入转换产出的 .json。
+     （handleMultiYearImport / handleImportAis）已全部删除 —— 金蝶 .ais 改由
+     独立的 ais-tool/ 转换器处理（现已迁出仓库，位于 ty 同级；它有自己的页面与测试），主软件只导入转换产出的 .json。
      跨年一致性校验的能力随转换器一起搬走（ais-tool/js/kis-import.js 的 parseMulti 内含该校验）。 */
   /* 【2026-09-28 合并进「风险检测」，原「查看校验报告」按钮已删除】理由三条：
      · 它只对**多年合并账套**有内容，其它账套点了只弹一句 toast —— 对绝大多数用户是死按钮；
@@ -598,12 +574,8 @@ const refreshAll = H.refreshAll;
     if (smEl) {
       var cls = r.summary.high ? 'health-summary-high' : (r.summary.medium ? 'health-summary-medium' : 'health-summary-ok');
       smEl.className = 'health-summary ' + cls;
-      smEl.innerHTML = '<span class="hs-period">检测期间：' + esc(r.period) + '</span>'
-        + '<span class="hs-total">风险点：<b>' + r.summary.total + '</b></span>'
-        + '<span class="hs-high">高危：<b>' + r.summary.high + '</b></span>'
-        + '<span class="hs-medium">中危：<b>' + r.summary.medium + '</b></span>'
-        // 参考项只在存在时显示：否则"风险点 0"配着表格里一条参考信息会让人困惑
-        + (r.summary.info ? '<span>参考：<b>' + r.summary.info + '</b></span>' : '');
+      smEl.innerHTML = html`<span class="hs-period">检测期间：${r.period}</span><span class="hs-total">风险点：<b>${r.summary.total}</b></span><span class="hs-high">高危：<b>${r.summary.high}</b></span><span class="hs-medium">中危：<b>${r.summary.medium}</b></span>${r.summary.info ? html`<span>参考：<b>${r.summary.info}</b></span>` : ''}`;
+      // 参考项只在存在时显示：否则"风险点 0"配着表格里一条参考信息会让人困惑
     }
     if (!tbEl) return;
     if (!r.checks || !r.checks.length) {
@@ -611,52 +583,47 @@ const refreshAll = H.refreshAll;
       return;
     }
     // 列宽走全站标准（原表头内联 width:18%/8%/30%/34%/10% 已删除）
-    var html = '<thead><tr><th>检测项</th><th>等级</th><th>明细</th><th>说明</th><th>操作</th></tr></thead><tbody>';
+    var out = html`<thead><tr><th>检测项</th><th>等级</th><th>明细</th><th>说明</th><th>操作</th></tr></thead><tbody>`;
     r.checks.forEach(function (c) {
       // 等级标签：info 显示「参考」—— 它不是风险，只是提示关注（必然命中的条目不该叫"风险"，
       // 否则用户会对真实告警脱敏；见 store.js 检测 3 的说明）
-      var sev = c.severity === 'high' ? '<span class="tag tag-stop">高危</span>'   /* escape-ok: 四个分支都是硬编码标签文案 */
-        : (c.severity === 'medium' ? '<span class="tag tag-warn">中危</span>'
-          : (c.severity === 'info' ? '<span class="tag">参考</span>' : '<span class="tag">低危</span>'));
+      var sev = c.severity === 'high' ? html`<span class="tag tag-stop">高危</span>`
+        : (c.severity === 'medium' ? html`<span class="tag tag-warn">中危</span>`
+          : (c.severity === 'info' ? html`<span class="tag">参考</span>` : html`<span class="tag">低危</span>`));
       var items = c.items || [];
       items.forEach(function (it, i) {
-        html += '<tr' + (i === 0 ? ' class="grp-row"' : '') + '>';
-        if (i === 0) {
-          html += '<td rowspan="' + items.length + '" class="grp-label">' + esc(c.title) + '<br><span class="muted">(' + items.length + ' 项)</span></td>';
-          html += '<td rowspan="' + items.length + '">' + sev + '</td>';
-        }
-        var detail = '';
-        var jump = '';
+        var detail = html``;
+        var jump = html``;
         if (c.type === 'direction_anomaly') {
-          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance)) + '（' + esc(it.dir) + '）';
-          jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
+          detail = html`<b>${it.code} ${it.name}</b><br>余额 ¥${U.yuanFmt(num(it.balance))}（${it.dir}）`;
+          jump = html`<a class="link-jump" data-jump="ledger" data-code="${it.code}">查科目账</a>`;
         } else if (c.type === 'key_subject_large') {
-          detail = '<b>' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance));
+          detail = html`<b>${it.name}</b><br>余额 ¥${U.yuanFmt(num(it.balance))}`;
           var firstCode = (it.codes || '').split('/')[0];
-          jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(firstCode) + '">查科目账</a>';
+          jump = html`<a class="link-jump" data-jump="ledger" data-code="${firstCode}">查科目账</a>`;
         } else if (c.type === 'large_voucher') {
-          detail = '<b>' + esc(it.date) + ' ' + esc(it.word || '记') + '-' + esc(it.no) + '</b><br>¥' + U.yuanFmt(num(it.amount)) + ' ' + esc(it.summary || '');
-          jump = '<a class="link-jump" data-jump="voucher" data-vid="' + esc(it.id) + '">查凭证</a>';
+          detail = html`<b>${it.date} ${it.word || '记'}-${it.no}</b><br>¥${U.yuanFmt(num(it.amount))} ${it.summary || ''}`;
+          jump = html`<a class="link-jump" data-jump="voucher" data-vid="${it.id}">查凭证</a>`;
         } else if (c.type === 'unclosed_pl') {
-          detail = '<b>' + esc(it.code) + ' ' + esc(it.name) + '</b><br>余额 ¥' + U.yuanFmt(num(it.balance)) + '（' + esc(it.dir) + '）';
-          jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
+          detail = html`<b>${it.code} ${it.name}</b><br>余额 ¥${U.yuanFmt(num(it.balance))}（${it.dir}）`;
+          jump = html`<a class="link-jump" data-jump="ledger" data-code="${it.code}">查科目账</a>`;
         } else if (c.type === 'bs_unbalanced') {
-          detail = '资产 ¥' + U.yuanFmt(num(it.totalAsset)) + ' / 负债权益 ¥' + U.yuanFmt(num(it.totalAll)) + '<br>差额 ¥' + U.yuanFmt(num(Math.abs(it.diff)));
-          jump = '<a class="link-jump" data-jump="report">看资产负债表</a>';
+          detail = html`资产 ¥${U.yuanFmt(num(it.totalAsset))} / 负债权益 ¥${U.yuanFmt(num(it.totalAll))}<br>差额 ¥${U.yuanFmt(num(Math.abs(it.diff)))}`;
+          jump = html`<a class="link-jump" data-jump="report">看资产负债表</a>`;
         } else if (c.type === 'year_jump') {
-          detail = '<b>' + it.fromYear + '→' + it.toYear + ' 科目 ' + esc(it.code) + '</b><br>上年期末 ¥' + U.yuanFmt(num(it.prevEnd)) + ' → 本年期初 ¥' + U.yuanFmt(num(it.curOpen));
-          jump = '<a class="link-jump" data-jump="ledger" data-code="' + esc(it.code) + '">查科目账</a>';
+          detail = html`<b>${it.fromYear}→${it.toYear} 科目 ${it.code}</b><br>上年期末 ¥${U.yuanFmt(num(it.prevEnd))} → 本年期初 ¥${U.yuanFmt(num(it.curOpen))}`;
+          jump = html`<a class="link-jump" data-jump="ledger" data-code="${it.code}">查科目账</a>`;
         } else {
-          detail = esc(JSON.stringify(it).slice(0, 100));
+          detail = html`${JSON.stringify(it).slice(0, 100)}`;
         }
-        html += '<td>' + detail + '</td>';
-        html += '<td class="issue-text">' + esc(it.issue || '') + '</td>';
-        html += '<td>' + jump + '</td>';
-        html += '</tr>';
+        // 整行一次成型：detail / jump 本身已是 html`` 产物（RawHtml），不会被二次转义
+        out = html`${out}<tr${i === 0 ? html` class="grp-row"` : ''}>${i === 0
+            ? html`<td rowspan="${items.length}" class="grp-label">${c.title}<br><span class="muted">(${items.length} 项)</span></td><td rowspan="${items.length}">${sev}</td>`
+            : ''}<td>${detail}</td><td class="issue-text">${it.issue || ''}</td><td>${jump}</td></tr>`;
       });
     });
-    html += '</tbody>';
-    tbEl.innerHTML = html;
+    out = html`${out}</tbody>`;
+    tbEl.innerHTML = out;
   }
   // 穿透链接：全局事件委托，处理风险检测卡片与跨年校验卡片内的 .link-jump
   document.addEventListener('click', function (e) {

@@ -4,7 +4,7 @@
    （goPage / absFmt / lastClosedPeriod / nowTimeStr / 月历 / 科目工具）。
    收口前这 20 行引导在本族两个文件 + 15 个页面里各写一遍，且写法互不相同
    （详见 common/helpers.js 头部那张差异表；其中 3 处 esc 兜底甚至是"不转义"的）。 */
-import { H, $, S, U, money, esc, num, showToast, currentPeriod, round2, yuan } from '../../common/helpers.js?v=dev';
+import { H, $, S, U, money, esc, escHtml, escAttr, num, showToast, currentPeriod, round2, yuan } from '../../common/helpers.js?v=dev';
 
 const absFmt = H.absFmt || (v => v == null ? '' : String(v));
 const goPage = H.goPage || (p => { if (window.goPage) window.goPage(p); });
@@ -58,5 +58,5 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { H, $, S, U, money, esc, num, showToast, currentPeriod, round2, yuan,
+export { H, $, S, U, money, esc, escHtml, escAttr, num, showToast, currentPeriod, round2, yuan,
   absFmt, goPage, lastClosedPeriod, nowTimeStr, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };

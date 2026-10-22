@@ -11,6 +11,8 @@
 
 // 引导块（H / EX / $ / S / U / money / num / showToast / currentPeriod）已收口到 common/helpers.js。
 import { H, EX, $, S, U, money, num, showToast, currentPeriod } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板（js/common/html.js）：本页含用户可编辑文本的渲染已迁移，插值默认转义。
+import { html, raw } from '../../common/html.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 import { exportTable } from '../settings/_shared.js';
 // 全局常量（store.js 挂在 global 上的 ACCOUNT_CLASSES 等）
@@ -120,15 +122,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 删除入口：仅「未使用」的科目给删除（已有凭证/期初的科目删除会断账，故不给入口，
       // 免得用户点了才报错）。_subjectUsed 按前缀已涵盖整棵子树，判断一次即可。
       var opDel = S._subjectUsed(s.code) ? ''
-        : ' <a class="link-del" data-code="' + s.code + '">删除</a>';
-      tr.innerHTML =
-        // 三角放在【科目编码列】的编码前（与科目余额表一致）；名称列只留缩进 + 名称
-        '<td class="mono">' + arrow + s.code + '</td>' +
-        '<td class="col-name">' + indent + '<span class="subj-name">' + s.name + '</span></td>' +
-        '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name + '</td>' +
-        '<td>' + (ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side + '</td>' +
-        '<td>' + (cashCodes.indexOf(s.code) >= 0 ? '✓' : '—') + '</td>' +
-        '<td class="col-op"><a class="link-edit" data-code="' + s.code + '">编辑</a>' + opDel + '</td>';
+        : html` <a class="link-del" data-code="${s.code}">删除</a>`;
+      // 三角放在【科目编码列】的编码前（与科目余额表一致）；名称列只留缩进 + 名称
+      // 插值默认转义（含属性上下文）；arrow / indent 是 store 生成的 HTML 片段，显式 raw() 放行。
+      tr.innerHTML = html`<td class="mono">${raw(arrow)}${s.code}</td><td class="col-name">${raw(indent)}<span class="subj-name">${s.name}</span></td><td>${(ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name}</td><td>${(ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side}</td><td>${cashCodes.indexOf(s.code) >= 0 ? '✓' : '—'}</td><td class="col-op"><a class="link-edit" data-code="${s.code}">编辑</a>${opDel}</td>`;
       tb.appendChild(tr);
     });
     if (!list.length) {

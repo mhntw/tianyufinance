@@ -95,7 +95,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
       active = -1;
       return;
     }
-    list.innerHTML = rows.map(function (s) {
+    list.innerHTML = rows.map(function (s) {   /* escape-ok: 片段内 code 与 subjectFullName 均逐个 esc */
       return '<div class="subj-range-row" data-code="' + esc(s.code) + '" style="padding:6px 10px;cursor:pointer;'
         + 'display:flex;gap:8px;line-height:1.6">'
         + '<span style="color:var(--ty-text-3);font-variant-numeric:tabular-nums">' + esc(s.code) + '</span>'

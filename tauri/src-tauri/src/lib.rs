@@ -185,6 +185,10 @@ fn save_book(id: String, json: String) -> Result<(), String> {
     if id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
     }
+    // Path::join 遇到绝对路径会丢弃前缀：不拦住就等于允许前端写任意位置的 .json
+    if !is_plain_filename(&id) {
+        return Err("账套 id 非法".to_string());
+    }
     let path = books_dir()?.join(format!("{id}.json"));
     // 原子写（.tmp → rename）已保证真源不被写坏；
     // 撤销/回滚走「自动存档 / 覆盖前存档」，不再做写前 .bak 滚动（高 I/O 且价值低）。
@@ -193,7 +197,7 @@ fn save_book(id: String, json: String) -> Result<(), String> {
 
 #[tauri::command]
 fn load_book(id: String) -> Result<Option<String>, String> {
-    if id.trim().is_empty() {
+    if id.trim().is_empty() || !is_plain_filename(&id) {
         return Ok(None);
     }
     let path = books_dir()?.join(format!("{id}.json"));
@@ -222,6 +226,9 @@ fn list_books() -> Result<Vec<String>, String> {
 fn delete_book(id: String) -> Result<(), String> {
     if id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
+    }
+    if !is_plain_filename(&id) {
+        return Err("账套 id 非法".to_string());
     }
     let path = books_dir()?.join(format!("{id}.json"));
     if path.exists() {
@@ -453,6 +460,9 @@ fn save_backup(book_id: String, json: String) -> Result<String, String> {
     if book_id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
     }
+    if !is_plain_filename(&book_id) {
+        return Err("账套 id 非法".to_string());
+    }
     let ts = now_ts();
     let fname = format!("{book_id}_{ts}.json");
     let path = backups_dir()?.join(&fname);
@@ -548,6 +558,9 @@ fn is_plain_filename(name: &str) -> bool {
 fn trash_book(id: String) -> Result<String, String> {
     if id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
+    }
+    if !is_plain_filename(&id) {
+        return Err("账套 id 非法".to_string());
     }
     let src = books_dir()?.join(format!("{id}.json"));
     if !src.exists() {
@@ -683,6 +696,9 @@ fn save_restore_snapshot(book_id: String, json: String) -> Result<String, String
     if book_id.trim().is_empty() {
         return Err("账套 id 不能为空".to_string());
     }
+    if !is_plain_filename(&book_id) {
+        return Err("账套 id 非法".to_string());
+    }
     let fname = format!("{book_id}_pre_restore_{}.json", now_ts());
     let path = backups_dir()?.join(&fname);
     atomic_write(&path, &json)?;
@@ -714,6 +730,9 @@ fn list_backups(book_id: Option<String>) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn load_backup(filename: String) -> Result<Option<String>, String> {
+    if !is_plain_filename(&filename) {
+        return Ok(None);
+    }
     let path = backups_dir()?.join(&filename);
     if path.exists() {
         Ok(Some(fs::read_to_string(&path).map_err(|e| e.to_string())?))

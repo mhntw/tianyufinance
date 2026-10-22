@@ -4,8 +4,9 @@
 // 设计原则：不依赖账套 cls 字段，避免导出标错导致数据失真。
 
 // 引导块已收口到 common/helpers.js（原先 17 处写法互不相同，其中 esc 的兜底甚至有 3 处"不转义"✗）。
-// 科目名称来自导入账套，可能含 < & " 等字符，拼进 innerHTML 前必须转义 —— esc 现在一律真转义。
-import { H, $, S, U, esc, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
+// 科目名称来自导入账套，可能含 < & " 等字符 —— 本页已整体迁移到 html`` 自动转义（插值默认转义，属性上下文同样安全）。
+import { H, $, S, U, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
+import { html } from '../../common/html.js?v=dev';
 const absFmt = H.absFmt;
 const signed = H.signed;
 
@@ -346,7 +347,8 @@ function fillMetrics() {
   // 可点行照旧带 amt-link + data-pl-rows（点进去高亮利润表对应行）。
   var formulaEl = $('feeFormula');
   if (formulaEl && plFee.expense.formula && plFee.expense.formula.length) {
-    formulaEl.innerHTML = plFee.expense.formula.map(function (f) {
+    // 行 label 来自利润表规则行（用户可编辑）：html`` 插值默认转义（属性上下文同样安全）
+    formulaEl.innerHTML = html`${plFee.expense.formula.map(function (f) {
       var val = round2(plIsYearFee ? f.ytd : f.cur);
       // 负号统一走 signed()：原先手写 U+2212（−）+ absFmt(Math.abs()) 双重取绝对值，
       // 与同页指标卡（setSigned → signed，ASCII 连字符）字形宽度不同、金额列不对齐。
@@ -354,13 +356,10 @@ function fillMetrics() {
       var cls = f.ids && f.ids.length ? 'fv2 amt-link' : 'fv2';
       // 可点行同步键盘语义（Enter/Space → click，见 app.js 的 TYKeyboard 全局激活委托）
       var attrs = f.ids && f.ids.length
-        ? ' data-pl-rows="' + f.ids.join(',') + '" tabindex="0" role="button" data-kb-activate'
+        ? html` data-pl-rows="${f.ids.join(',')}" tabindex="0" role="button" data-kb-activate`
         : '';
-      return '<div class="' + cls + '"' + attrs + '>'
-           + '<div class="fv2-f">' + esc(f.label) + '</div>'
-           + '<div class="fv2-v">' + amtHtml + '</div>'
-           + '</div>';
-    }).join('');
+      return html`<div class="${cls}"${attrs}><div class="fv2-f">${f.label}</div><div class="fv2-v">${amtHtml}</div></div>`;
+    })}`;
   } else if (formulaEl) {
     formulaEl.innerHTML = '';
   }
@@ -578,14 +577,12 @@ function renderArapItems(month, code, itemsBox, totalId, label) {
   // 【2026-10-05】修复：应付原 signed(x.v) 显负号+红字，与同文件行250"取反后为正显示"及同页 mAvailAp 矛盾；
   //   仅翻转显示符号，不动取数(subjectEndBalance 带符号底座)、不聚合、不写回。
   var isLiability = (label === '应付');
-  var html = '';
-  children.forEach(function (x) {
+  // 科目名 / 科目编码来自导入账套（用户可编辑）：html`` 插值默认转义（属性上下文同样安全）
+  var out = html`${children.map(function (x) {
     var disp = isLiability ? -x.v : x.v;
-    html += '<div class="arap-item"><span class="ai-name">' + esc(x.name) +
-            '</span><span class="ai-val amt-link" data-codes="' + esc(x.code) + '" tabindex="0" role="button" data-kb-activate>' +
-            signed(disp) + '</span></div>';
-  });
-  box.innerHTML = html;
+    return html`<div class="arap-item"><span class="ai-name">${x.name}</span><span class="ai-val amt-link" data-codes="${x.code}" tabindex="0" role="button" data-kb-activate>${signed(disp)}</span></div>`;
+  })}`;
+  box.innerHTML = out;
   // 合计 = 父科目余额（父行已含全部下级）；显示符号同明细：负债取反为正（与 mAvailAp 一致）
   var total = round2(subjectBalance(code, month));
   setSigned(totalId, isLiability ? -total : total);
@@ -729,9 +726,10 @@ function bindCardPeriodSelects() {
   cfg.forEach(function(c){
     var el = document.getElementById(c.sel);
     if (!el) return;
-    el.innerHTML = PERIOD_MODES.map(function (m) {
-      return '<option value="' + m.value + '">' + m.label + '</option>';
-    }).join('');
+    // 期间档位文案是本文件内置常量表；html`` 仍按默认转义输出，结构/顺序与原拼接一致
+    el.innerHTML = html`${PERIOD_MODES.map(function (m) {
+      return html`<option value="${m.value}">${m.label}</option>`;
+    })}`;
   });
   if (globalThis.__cardPeriodsBound) return;
   globalThis.__cardPeriodsBound = true;

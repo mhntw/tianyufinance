@@ -174,6 +174,12 @@
     var txt = String(rawVal == null ? '' : rawVal);
     var v = cleanNum(txt);
     if (!v) return 0;
+    /* 【负值必须先归零】文件里写 "-5"（常见于导出的占位/错误值）时，下面三步一步也不会改它：
+       月口径 ÷12 得 -0.4167，既不在 [0.5,50] 兜底区间、也不会被 assetMonthlyDepr 的
+       `life <= 0 → 0` 之外的任何判据发现（-0.4167 是真值），于是卡片月折旧静默为 0，
+       而「导入体检」的 `!num(fa.life)` 也判不出来（负数 truthy）。
+       归 0 后：assetMonthlyDepr 仍返回 0（行为不变），但体检会明确提示「缺预计使用期限」。 */
+    if (v < 0) return 0;
     var monthBase = (txt.indexOf('年') < 0) && lifeIsMonthAlias(alias);
     var y = monthBase ? v / 12 : v;
     if (y > 50 || y < 0.5) {

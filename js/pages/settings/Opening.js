@@ -6,7 +6,9 @@
 // 引导块（H / EX / $ / S / U / money / esc / showToast）已收口到 common/helpers.js。
 // 本页拼接的科目编码/名称可由用户编辑、也可能来自导入账套 —— 是真实注入面；
 // 单点的 esc 兜底是**真转义**（本页旧兜底 `String(s)` 是空操作，属补齐而非收紧）。
-import { H, EX, $, S, U, money, esc, showToast } from '../../common/helpers.js?v=dev';
+import { H, EX, $, S, U, money, showToast } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板（js/common/html.js）：本页含用户可编辑文本的行已迁移，插值默认转义。
+import { html } from '../../common/html.js?v=dev';
 import { exportTable } from './_shared.js'; // 修复：此前 H.exportTable 未挂全局，期初导出是 undefined 会抛错
 const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES);
 
@@ -25,13 +27,9 @@ function renderOpening() {
   S.subjects().forEach(function (s) {
     var o = S.opening(s.code);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + esc(s.code) + '</td><td>' + esc(s.name) + '</td><td>' + ACCOUNT_CLASSES[s.cls].side + '</td>' +
-      // 回填「元」输入框：store.opening 返回内部定点整数（0.0001 元），录入/显示口径为元，须经 U.yuan 换算
-      '<td><input class="inp open-yb num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.yb) + '"></td>' +
-      '<td><input class="inp open-ytddr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.ytdDr) + '"></td>' +
-      '<td><input class="inp open-ytdcr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.ytdCr) + '"></td>' +
-      '<td><input class="inp open-dr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.dr) + '"></td>' +
-      '<td><input class="inp open-cr num" data-code="' + s.code + '" type="number" step="0.01" value="' + U.yuan(o.cr) + '"></td>';
+    // 科目编码/名称是用户可编辑字段：html`` 插值默认转义（属性上下文同样安全）
+    // 回填「元」输入框：store.opening 返回内部定点整数（0.0001 元），录入/显示口径为元，须经 U.yuan 换算
+    tr.innerHTML = html`<td>${s.code}</td><td>${s.name}</td><td>${ACCOUNT_CLASSES[s.cls].side}</td><td><input class="inp open-yb num" data-code="${s.code}" type="number" step="0.01" value="${U.yuan(o.yb)}"></td><td><input class="inp open-ytddr num" data-code="${s.code}" type="number" step="0.01" value="${U.yuan(o.ytdDr)}"></td><td><input class="inp open-ytdcr num" data-code="${s.code}" type="number" step="0.01" value="${U.yuan(o.ytdCr)}"></td><td><input class="inp open-dr num" data-code="${s.code}" type="number" step="0.01" value="${U.yuan(o.dr)}"></td><td><input class="inp open-cr num" data-code="${s.code}" type="number" step="0.01" value="${U.yuan(o.cr)}"></td>`;
     tb.appendChild(tr);
   });
   renderOpenCheck();
@@ -93,8 +91,8 @@ function bindOpeningEvents() {
 function renderOpenCheck() {
   var c = S.openingBalanceCheck();
   var el = $('openCheck');
-  if (c.balanced) { el.innerHTML = '借贷平衡：借 ' + money(c.dr) + ' = 贷 ' + money(c.cr); el.className = 'open-check ok'; }
-  else { el.innerHTML = '借贷不平衡：借 ' + money(c.dr) + ' ≠ 贷 ' + money(c.cr) + '（差 ' + money(Math.abs(c.dr - c.cr)) + '）'; el.className = 'open-check warn'; }
+  if (c.balanced) { el.innerHTML = html`借贷平衡：借 ${money(c.dr)} = 贷 ${money(c.cr)}`; el.className = 'open-check ok'; }
+  else { el.innerHTML = html`借贷不平衡：借 ${money(c.dr)} ≠ 贷 ${money(c.cr)}（差 ${money(Math.abs(c.dr - c.cr))}）`; el.className = 'open-check warn'; }
 }
 
 // 入口：每次打开期初余额页均重绑一次（按钮用 onBtn 幂等，openBody 仅绑一次）

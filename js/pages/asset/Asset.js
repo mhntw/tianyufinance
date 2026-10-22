@@ -4,7 +4,9 @@
 // 模块不 import store.js（避免 IIFE 双执行），统一从全局取已加载单例。
 // 引导块（H / EX / $ / S / U / money / esc / num / showToast / currentPeriod / round2）
 // 已收口到 common/helpers.js —— 含 -0 归一的 round2 也在那里委托 store 单点。
-import { H, EX, $, S, U, money, esc, num, showToast, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
+import { H, EX, $, S, U, money, num, showToast, currentPeriod, round2 } from '../../common/helpers.js?v=dev';
+// 自动转义标签模板（js/common/html.js）：本页所有含用户可编辑文本的渲染已迁移，插值默认转义。
+import { html } from '../../common/html.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
 
 // 起止期间取值统一走 app.js 单点实现（含默认值兜底）。
@@ -50,14 +52,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     // 原 <span class="tree-arrow"></span> 是空标签：画三角的 CSS 选择器为
     // .orig-tree .tree-parent .tree-arrow，而本树 li 的类名是 orig-tree-parent
     // （不是 tree-parent）→ 选择器从不匹配，既无字符也无 CSS 三角，纯废弃标记。
-    li.innerHTML = esc(name);
+    li.innerHTML = html`${name}`;
     li.addEventListener('click', function () { onPick(''); });
     return li;
   }
   function _assetTreeLeaf(name, selected, onPick, code) {
     var li = _kbTreeItem(document.createElement('li'), selected);
     li.className = 'orig-tree-child' + (selected ? ' selected' : '');
-    li.innerHTML = esc(name);
+    li.innerHTML = html`${name}`;
     li.addEventListener('click', function () { onPick(code); });
     return li;
   }
@@ -145,9 +147,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 只有显示值（如 Excel 导入自带的「新增资产凭证」列）而没有 id 时，退化为纯文本。
   function _addVoucherCell(fa) {
     if (!fa.addVoucher) return '';
-    var text = esc(fa.addVoucher);
-    if (!fa.addVoucherId) return text;
-    return '<a href="#" class="link-voucher" data-id="' + esc(fa.addVoucherId) + '">' + text + '</a>';
+    // 显示值与 data-id 都由 html`` 插值转义（属性上下文同样安全）
+    if (!fa.addVoucherId) return html`${fa.addVoucher}`;
+    return html`<a href="#" class="link-voucher" data-id="${fa.addVoucherId}">${fa.addVoucher}</a>`;
   }
   /* ============ 累计折旧的期间滚动【唯一实现】 ============
    * 卡片上的「期初累计折旧」不是"永远等于期末"，它只是【截至某个锚点月末】的余额：
@@ -200,36 +202,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var accumEnd = _accumDeprAt(fa, pEnd, md);
     var netBegin = Math.max(0, num(fa.original) - accumBegin - num(fa.impairment));
     var netEnd = Math.max(0, num(fa.original) - accumEnd - num(fa.impairment));
-    return (
-      '<td class="mono">' + (fa.code || '') + '</td>' +
-      '<td>' + (fa.name || '') + '</td>' +
-      '<td>' + _catName(fa.category) + '</td>' +
-      '<td>' + (fa.dept || '') + '</td>' +
-      '<td>' + (fa.acqDate || '') + '</td>' +
-      '<td class="ta-r mono">' + money(fa.original) + '</td>' +
-      '<td class="ta-r mono">' + money(accumBegin) + '</td>' +
-      '<td class="ta-r mono">' + money(accumEnd) + '</td>' +
-      '<td class="ta-r mono">' + money(md) + '</td>' +
-      '<td>' + (fa.life ? fa.life + '年' : '') + '</td>' +
-      '<td>' + (fa.periodUsed || '') + '</td>' +
-      '<td class="ta-r mono">' + money(fa.salvage) + '</td>' +
-      '<td class="ta-r mono">' + num(fa.salvageRate).toFixed(2) + '</td>' +
-      '<td class="ta-r mono">' + money(fa.impairment) + '</td>' +
-      '<td class="ta-r mono">' + money(netBegin) + '</td>' +
-      '<td class="ta-r mono">' + money(netEnd) + '</td>' +
-      '<td>' + (fa.method || '') + '</td>' +
-      '<td>' + (fa.status || '正常') + '</td>' +
-      '<td class="ta-r">' + (fa.qty || '') + '</td>' +
-      '<td>' + (fa.spec || '') + '</td>' +
-      '<td>' + (fa.location || '') + '</td>' +
-      '<td>' + (fa.user || '') + '</td>' +
-      '<td>' + (fa.cleanPeriod || '') + '</td>' +
-      '<td class="mono">' + _addVoucherCell(fa) + '</td>' +
-      '<td class="mono">' + (fa.cleanVoucher || '') + '</td>' +
-      '<td class="mono">' + (fa.impairVoucher || '') + '</td>' +
-      '<td class="mono">' + (fa.otherVoucher || '') + '</td>' +
-      '<td>' + (fa.memo || '') + '</td>'
-    );
+    return html`<td class="mono">${fa.code || ''}</td><td>${fa.name || ''}</td><td>${_catName(fa.category)}</td><td>${fa.dept || ''}</td><td>${fa.acqDate || ''}</td><td class="ta-r mono">${money(fa.original)}</td><td class="ta-r mono">${money(accumBegin)}</td><td class="ta-r mono">${money(accumEnd)}</td><td class="ta-r mono">${money(md)}</td><td>${fa.life ? fa.life + '年' : ''}</td><td>${fa.periodUsed || ''}</td><td class="ta-r mono">${money(fa.salvage)}</td><td class="ta-r mono">${num(fa.salvageRate).toFixed(2)}</td><td class="ta-r mono">${money(fa.impairment)}</td><td class="ta-r mono">${money(netBegin)}</td><td class="ta-r mono">${money(netEnd)}</td><td>${fa.method || ''}</td><td>${fa.status || '正常'}</td><td class="ta-r">${fa.qty || ''}</td><td>${fa.spec || ''}</td><td>${fa.location || ''}</td><td>${fa.user || ''}</td><td>${fa.cleanPeriod || ''}</td><td class="mono">${_addVoucherCell(fa)}</td><td class="mono">${fa.cleanVoucher || ''}</td><td class="mono">${fa.impairVoucher || ''}</td><td class="mono">${fa.otherVoucher || ''}</td><td>${fa.memo || ''}</td>`;
   }
   function renderAssets() {
     _assetFiltered = _assetFilterList();
@@ -246,13 +219,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 2026-09-18 修复：此前「删除」「清理 / 取消清理」的**渲染**被误删（点击处理一直都在），
       // 行内只剩「编辑」—— 其中「取消清理」在其它任何入口都不存在，清理过的卡片无从撤销。
       // 现按卡片状态二选一恢复；「复制」仍保持移除（那是有意精简，非误删）。
-      tr.innerHTML =
-        '<td class="col-check"><input type="checkbox" class="aChk" data-id="' + fa.id + '"></td>' +
-        '<td class="asset-ops"><a class="link-edit" data-asset-edit="' + fa.id + '">编辑</a>' +
-        (fa.status === '清理'
-          ? '<a class="link-unclean" data-unclean="' + fa.id + '">取消清理</a>'
-          : '<a class="link-clean" data-clean="' + fa.id + '">清理</a>') + '</td>' +
-        _assetRowCells(fa);
+      tr.innerHTML = html`<td class="col-check"><input type="checkbox" class="aChk" data-id="${fa.id}"></td><td class="asset-ops"><a class="link-edit" data-asset-edit="${fa.id}">编辑</a>${fa.status === '清理'
+          ? html`<a class="link-unclean" data-unclean="${fa.id}">取消清理</a>`
+          : html`<a class="link-clean" data-clean="${fa.id}">清理</a>`}</td>${_assetRowCells(fa)}`;
       tb.appendChild(tr);
     });
     // 合计行
@@ -275,18 +244,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 前置列 = 勾选(1) + 操作「合计」(2) + 编码/名称/类别/部门/开始使用日期(5) = 7 列
       // 2026-09-23 修复：此前 colspan="6" 是「录入期间」列还在时的写法，
       // 该列于 f2f460dd 删除后本行未同步，合计行比表头多 1 列 → 所有金额右移一列。
-      trf.innerHTML = '<td></td><td>合计</td><td colspan="5"></td>' +
-        '<td class="ta-r mono">' + money(sOrig) + '</td>' +
-        '<td class="ta-r mono">' + money(sB) + '</td>' +
-        '<td class="ta-r mono">' + money(sE) + '</td>' +
-        '<td class="ta-r mono">' + money(sM) + '</td>' +
-        '<td></td><td></td>' +
-        '<td class="ta-r mono">' + money(sS) + '</td>' +
-        '<td></td>' +
-        '<td class="ta-r mono">' + money(sI) + '</td>' +
-        '<td class="ta-r mono">' + money(sNB) + '</td>' +
-        '<td class="ta-r mono">' + money(sNE) + '</td>' +
-        '<td colspan="12"></td>';
+      trf.innerHTML = html`<td></td><td>合计</td><td colspan="5"></td><td class="ta-r mono">${money(sOrig)}</td><td class="ta-r mono">${money(sB)}</td><td class="ta-r mono">${money(sE)}</td><td class="ta-r mono">${money(sM)}</td><td></td><td></td><td class="ta-r mono">${money(sS)}</td><td></td><td class="ta-r mono">${money(sI)}</td><td class="ta-r mono">${money(sNB)}</td><td class="ta-r mono">${money(sNE)}</td><td colspan="12"></td>`;
       foot.appendChild(trf);
     }
     $('assetCount').textContent = '共 ' + total + ' 条';
@@ -352,13 +310,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function renderAssetImportCheck(warns, addedCount, dupCount) {
     var el = $('assetImportCheck');
     if (!el) return;
-    var close = ' <a href="#" class="gl-filter-clear" id="assetImportCheckClose">关闭</a>';
+    var close = html` <a href="#" class="gl-filter-clear" id="assetImportCheckClose">关闭</a>`;
     if (warns && warns.length) {
       el.className = 'open-check warn';
       el.hidden = false;
-      el.innerHTML = '导入体检：' + warns.length + ' 张卡片有需核对项（不影响导入）—— ' +
-        warns.slice(0, 6).map(function (w) { return esc(w.code + ' ' + w.name + '：' + w.msg); }).join('；') +
-        (warns.length > 6 ? '；…等共 ' + warns.length + ' 张' : '') + close;
+      var shown = warns.slice(0, 6);
+      // 提示条只列前 6 条；条目之间用「；」分隔（html`` 逐项转义，不再手工 esc 拼串）
+      el.innerHTML = html`导入体检：${warns.length} 张卡片有需核对项（不影响导入）—— ${shown.map(function (w, i) { return html`${i ? '；' : ''}${w.code} ${w.name}：${w.msg}`; })}${warns.length > 6 ? '；…等共 ' + warns.length + ' 张' : ''}${close}`;
       // 明细同时写操作日志，便于事后回查（提示条只显示前 6 条）
       if (S.addLog) {
         S.addLog('固定资产导入体检', warns.map(function (w) { return w.code + ' ' + w.name + '：' + w.msg; }).join(' | '), '固定资产');
@@ -368,7 +326,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (dupCount) {
       el.className = 'open-check ok';
       el.hidden = false;
-      el.innerHTML = '导入完成：新增 ' + addedCount + ' 张，按编码跳过重复 ' + dupCount + ' 张。' + close;
+      el.innerHTML = html`导入完成：新增 ${addedCount} 张，按编码跳过重复 ${dupCount} 张。${close}`;
       return;
     }
     el.hidden = true;
@@ -575,14 +533,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     // ② 原值（先讲这条 —— 它指向"有资产没建卡片"这类结构性缺失，比折旧的偶发差异更要紧）
     if (rc.orig && !rc.orig.ok) {
       var worst = (rc.orig.detail || [])[0];
-      parts.push('<b>原值与总账不符</b>：卡片 <b>' + money(rc.orig.cardTotal) + '</b> / 账上 <b>' +
-        money(rc.orig.ledgerTotal) + '</b>，差额 <b>' + money(rc.orig.diff) + '</b>' +
-        (worst ? '；最大差异科目 <b>' + esc(worst.code) + '</b>' + (worst.name ? ' ' + esc(worst.name) : '') +
-          '（卡片 ' + money(worst.card) + ' / 账上 ' + money(worst.ledger) + '）' : ''));
-      more.push('<b>原值差额口径</b>：负数为「账上有这笔资产、但没有对应的卡片」，正数为「有卡片而账上没有」。');
+      parts.push(html`<b>原值与总账不符</b>：卡片 <b>${money(rc.orig.cardTotal)}</b> / 账上 <b>${money(rc.orig.ledgerTotal)}</b>，差额 <b>${money(rc.orig.diff)}</b>${worst ? html`；最大差异科目 <b>${worst.code}</b>${worst.name ? ' ' + worst.name : ''}（卡片 ${money(worst.card)} / 账上 ${money(worst.ledger)}）` : ''}`);
+      more.push(html`<b>原值差额口径</b>：负数为「账上有这笔资产、但没有对应的卡片」，正数为「有卡片而账上没有」。`);
       if (rc.orig.orphan && rc.orig.orphan.count) {
-        more.push('另有 ' + rc.orig.orphan.count + ' 张卡片未指定固定资产科目（原值合计 ' +
-          money(rc.orig.orphan.amount) + '），无法参与核对，请先在卡片上补选科目。');
+        more.push(html`另有 ${rc.orig.orphan.count} 张卡片未指定固定资产科目（原值合计 ${money(rc.orig.orphan.amount)}），无法参与核对，请先在卡片上补选科目。`);
       }
       // 【2026-09-22】把差额落到具体凭证 / 具体卡片 —— 从「有个差额」变成「该处理哪几笔」。
       // 口径局限如实写明（账卡无关联字段，是按金额推断），避免用户把推断当成账表关联结果。
@@ -598,54 +552,45 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         co.forEach(function (c) { coSum += c.amt; });
         unSum = round2(unSum );
         coSum = round2(coSum );
-        lines.push('按金额逐笔配对（账、卡之间没有关联字段，以下为<b>按金额推断</b>，请对照实物/原始凭证确认）：');
+        lines.push(html`按金额逐笔配对（账、卡之间没有关联字段，以下为<b>按金额推断</b>，请对照实物/原始凭证确认）：`);
         if (un.length) {
-          lines.push('· 账上有、卡片中找不到对应：<b>' + un.length + ' 笔</b>，合计 <b>' + money(unSum) + '</b>');
+          lines.push(html`· 账上有、卡片中找不到对应：<b>${un.length} 笔</b>，合计 <b>${money(unSum)}</b>`);
           un.slice().sort(function (a, b) { return String(a.date) < String(b.date) ? -1 : 1; })
             .slice(0, 8).forEach(function (e) {
-              lines.push('　　' + esc(e.date) + '　' + esc(e.vch) + '　' + money(e.amt) +
-                '　' + esc(String(e.sum).slice(0, 20)));
+              lines.push(html`　　${e.date}　${e.vch}　${money(e.amt)}　${String(e.sum).slice(0, 20)}`);
             });
-          if (un.length > 8) lines.push('　　…另有 ' + (un.length - 8) + ' 笔');
+          if (un.length > 8) lines.push(html`　　…另有 ${un.length - 8} 笔`);
           badge.push('账上有卡无 ' + un.length + ' 笔');
         }
         if (co.length) {
-          lines.push('· 卡片有、账上找不到对应：<b>' + co.length + ' 张</b>，合计 <b>' + money(coSum) + '</b>　' +
-            co.slice(0, 4).map(function (c) { return esc(c.label) + ' ' + money(c.amt); }).join('；') +
-            (co.length > 4 ? ' …' : ''));
+          lines.push(html`· 卡片有、账上找不到对应：<b>${co.length} 张</b>，合计 <b>${money(coSum)}</b>　${co.slice(0, 4).map(function (c, i) { return html`${i ? '；' : ''}${c.label} ${money(c.amt)}`; })}${co.length > 4 ? ' …' : ''}`);
           badge.push('卡有账上无 ' + co.length + ' 张');
         }
         if (pairs) {
-          lines.push('（另有 ' + pairs + ' 组金额相同、方向相反的分录已先行对冲，多为重复记账后冲销，不计入上列）');
+          lines.push(html`（另有 ${pairs} 组金额相同、方向相反的分录已先行对冲，多为重复记账后冲销，不计入上列）`);
           badge.push('已对冲 ' + pairs + ' 组');
         }
         // 两侧相抵应与所报差额吻合；不吻合说明还有期初余额等落不到凭证的部分
         var net = round2(unSum - coSum);
         if (Math.abs(net + rc.orig.diff) < U.AMT_SCALE / 100) {   // 1 分（整数域）
-          lines.push('核对：账上多出 ' + money(unSum) + ' － 卡片多出 ' + money(coSum) + ' ＝ ' +
-            money(net) + '，与所报差额 ' + money(rc.orig.diff) + ' 金额一致（方向相反）✓');
+          lines.push(html`核对：账上多出 ${money(unSum)} － 卡片多出 ${money(coSum)} ＝ ${money(net)}，与所报差额 ${money(rc.orig.diff)} 金额一致（方向相反）✓`);
         } else {
-          lines.push('⚠ 上列合计 ' + money(net) + ' 与差额 ' + money(-rc.orig.diff) + ' 相差 ' +
-            money(round2(net + rc.orig.diff)) +
-            '，可能还有一部分差额来自期初余额录入（无凭证可定位）。');
+          lines.push(html`⚠ 上列合计 ${money(net)} 与差额 ${money(-rc.orig.diff)} 相差 ${money(round2(net + rc.orig.diff))}，可能还有一部分差额来自期初余额录入（无凭证可定位）。`);
         }
-        more.push(lines.join('<br>'));
+        more.push(html`${lines.map(function (x, i) { return html`${i ? html`<br>` : ''}${x}`; })}`);
       } else if (Math.abs(rc.orig.diff) > U.AMT_SCALE / 100) {   // 1 分（整数域）
         // 有差额但一笔都对不上（例如全部来自期初余额录入）—— 也要说清，别让人以为定位失效
-        more.push('按金额逐笔配对：账上该科目的凭证分录与卡片金额均能对应，差额可能全部来自期初余额录入（无凭证可定位）。');
+        more.push(html`按金额逐笔配对：账上该科目的凭证分录与卡片金额均能对应，差额可能全部来自期初余额录入（无凭证可定位）。`);
       }
     }
     // ① 累计折旧
     if (rc.depr && !rc.depr.ok) {
-      parts.push('<b>期末累计折旧与总账不符</b>：卡片 <b>' + money(rc.depr.cardTotal) + '</b> / 科目「' +
-        esc(rc.depr.subject.code + ' ' + rc.depr.subject.name) + '」期末 <b>' + money(rc.depr.ledgerTotal) +
-        '</b>，差额 <b>' + money(rc.depr.diff) + '</b>');
-      more.push('<b>累计折旧差额口径</b>：容差 ' + money(rc.depr.tolerance) +
-        '，已按卡片张数计入逐张舍入的累计误差。');
+      parts.push(html`<b>期末累计折旧与总账不符</b>：卡片 <b>${money(rc.depr.cardTotal)}</b> / 科目「${rc.depr.subject.code} ${rc.depr.subject.name}」期末 <b>${money(rc.depr.ledgerTotal)}</b>，差额 <b>${money(rc.depr.diff)}</b>`);
+      more.push(html`<b>累计折旧差额口径</b>：容差 ${money(rc.depr.tolerance)}，已按卡片张数计入逐张舍入的累计误差。`);
     }
     if (!parts.length) { el.hidden = true; el.innerHTML = ''; return; }
-    more.unshift(badge.length ? '<b>线索</b>：' + badge.join(' · ') : null);   // null 由下方 filter 清掉
-    more.push('常见原因：有资产未建卡片、期初余额未拆成明细资产、资产已处置但卡片未标「清理」、卡片被手工改过或计提未落账。');
+    more.unshift(badge.length ? html`<b>线索</b>：${badge.join(' · ')}` : null);   // null 由下方 filter 清掉
+    more.push(html`常见原因：有资产未建卡片、期初余额未拆成明细资产、资产已处置但卡片未标「清理」、卡片被手工改过或计提未落账。`);
     // 【一行摘要，2026-09-22 二次反馈"还是太占空间"】这个提示挂在卡片清单**上方**，
     //   常驻内容多一行，就实打实少看一行卡片。故常驻只留**恰好一行**：
     //   一句结论 +「各差额」，原来的详细摘要行（含最大差异科目、卡片/账上双侧金额）
@@ -654,8 +599,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (rc.orig && !rc.orig.ok) diffs.push('原值差 ' + money(rc.orig.diff));
     if (rc.depr && !rc.depr.ok) diffs.push('累计折旧差 ' + money(rc.depr.diff));
     var tip = '卡片与总账有 ' + diffs.length + ' 项不符：' + diffs.join('、');
-    var detail = parts.map(function (x) { return '<div class="rc-line">' + x + '</div>'; }).join('') +
-      '<div class="rc-line">' + more.filter(Boolean).join('<br>') + '</div>';
+    var detail = html`${parts.map(function (x) { return html`<div class="rc-line">${x}</div>`; })}<div class="rc-line">${more.filter(Boolean).map(function (x, i) { return html`${i ? html`<br>` : ''}${x}`; })}</div>`;
     el.className = 'open-check warn';
     el.hidden = false;
     // ⚠ 折叠入口与明细**必须在同一个父元素下做兄弟节点**（点击处理要按父元素找 .rc-detail）。
@@ -664,11 +608,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     //   表现为「点『查看差额明细』没反应」。所以两者固定放在**同一个** .rc-line 里。
     //   入口内是「结论 + 查看明细」两个 span：.rc-tip 用 ellipsis 保证**永远只占一行**，
     //   .rc-hint 固定在右端不被挤掉。
-    el.innerHTML = '<div class="rc-line">' +
-      '<a class="rc-toggle" href="#" title="' + esc(tip) + '">' +
-      '<span class="rc-tip">' + esc(tip) + '</span>' +
-      '<span class="rc-hint">查看明细</span></a>' +
-      '<div class="rc-detail" hidden>' + detail + '</div></div>';
+    el.innerHTML = html`<div class="rc-line"><a class="rc-toggle" href="#" title="${tip}"><span class="rc-tip">${tip}</span><span class="rc-hint">查看明细</span></a><div class="rc-detail" hidden>${detail}</div></div>`;
   }
   // 「查看差额明细」折叠开关（一次性委托：innerHTML 每次渲染都重建，不能用直接绑定）
   if (!globalThis.__assetReconcileToggleBound) {
@@ -1254,17 +1194,17 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var all = [];
     groups.forEach(function (g) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + esc(g.key) + '</td>' + DEPR_AMT_COLS.map(function (c) {
-        return '<td class="ta-r mono">' + money(deprSum(g.rows, c.k)) + '</td>';
-      }).join('');
+      tr.innerHTML = html`<td>${g.key}</td>${DEPR_AMT_COLS.map(function (c) {
+        return html`<td class="ta-r mono">${money(deprSum(g.rows, c.k))}</td>`;
+      })}`;
       tb.appendChild(tr);
       all = all.concat(g.rows);
     });
     var foot = $('dasFoot'); foot.innerHTML = '';
     var trf = document.createElement('tr');
-    trf.innerHTML = '<td>合计</td>' + DEPR_AMT_COLS.map(function (c) {
-      return '<td class="ta-r mono">' + money(deprSum(all, c.k)) + '</td>';
-    }).join('');
+    trf.innerHTML = html`<td>合计</td>${DEPR_AMT_COLS.map(function (c) {
+      return html`<td class="ta-r mono">${money(deprSum(all, c.k))}</td>`;
+    })}`;
     foot.appendChild(trf);
   }
   function refreshDad() {
@@ -1299,14 +1239,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       g.rows.forEach(function (r) {
         var tr = document.createElement('tr');
         // 逐资产明细行：4 个文本列 + 共用金额列。
-        // （原实现这 4 列未转义，资产名称/部门里出现 < & " 会破坏单元格结构，现与汇总表一致走 esc）
-        tr.innerHTML = '<td>' + esc(r.catName) + '</td>'
-          + '<td class="mono">' + esc(r.code) + '</td>'
-          + '<td>' + esc(r.name) + '</td>'
-          + '<td>' + esc(r.dept) + '</td>'
-          + DEPR_AMT_COLS.map(function (c) {
-            return '<td class="ta-r mono">' + money(deprVal(r, c.k)) + '</td>';
-          }).join('');
+        // （原实现这 4 列未转义，资产名称/部门里出现 < & " 会破坏单元格结构，现与汇总表一致走 html`` 转义）
+        tr.innerHTML = html`<td>${r.catName}</td><td class="mono">${r.code}</td><td>${r.name}</td><td>${r.dept}</td>${DEPR_AMT_COLS.map(function (c) {
+          return html`<td class="ta-r mono">${money(deprVal(r, c.k))}</td>`;
+        })}`;
         tb.appendChild(tr);
       });
       all = all.concat(g.rows);
@@ -1315,18 +1251,16 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 7 个键里 6 个取不到值（0 + undefined = NaN），合计行只有「原值」列是对的。
       var lab = document.createElement('tr');
       lab.className = 'subtotal-row';
-      lab.innerHTML = '<td></td><td></td><td>' + esc(g.key) + ' 小计</td><td></td>'
-        + DEPR_AMT_COLS.map(function (c) {
-          return '<td class="ta-r mono">' + money(deprSum(g.rows, c.k)) + '</td>';
-        }).join('');
+      lab.innerHTML = html`<td></td><td></td><td>${g.key} 小计</td><td></td>${DEPR_AMT_COLS.map(function (c) {
+        return html`<td class="ta-r mono">${money(deprSum(g.rows, c.k))}</td>`;
+      })}`;
       tb.appendChild(lab);
     });
     var foot = $('dadFoot'); foot.innerHTML = '';
     var trf = document.createElement('tr');
-    trf.innerHTML = '<td colspan="4">合计</td>'
-      + DEPR_AMT_COLS.map(function (c) {
-        return '<td class="ta-r mono">' + money(deprSum(all, c.k)) + '</td>';
-      }).join('');
+    trf.innerHTML = html`<td colspan="4">合计</td>${DEPR_AMT_COLS.map(function (c) {
+      return html`<td class="ta-r mono">${money(deprSum(all, c.k))}</td>`;
+    })}`;
     foot.appendChild(trf);
   }
 
@@ -1338,17 +1272,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var tb = $('catBody'); tb.innerHTML = '';
     assetCats().forEach(function (c, i) {
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="col-check"><input type="checkbox" class="catChk" data-i="' + i + '"></td>' +
-        '<td><a class="link-edit" data-cat="' + i + '">编辑</a> <a class="link-toggle" data-catdel="' + i + '">' + (c.enabled === false ? '启用' : '停用') + '</a></td>' +
-        '<td class="mono">' + c.code + '</td>' +
-        '<td>' + c.name + (c.enabled === false ? ' <span class="tag-disabled">停用</span>' : '') + '</td>' +
-        '<td>' + c.method + '</td>' +
-        '<td class="ta-r">' + c.life + ' 年</td>' +
-        '<td class="ta-r">' + c.salvage + '%</td>' +
-        '<td class="mono">' + c.asset + '</td>' +
-        '<td class="mono">' + c.depr + '</td>' +
-        '<td>' + c.memo + '</td>';
+      tr.innerHTML = html`<td class="col-check"><input type="checkbox" class="catChk" data-i="${i}"></td><td><a class="link-edit" data-cat="${i}">编辑</a> <a class="link-toggle" data-catdel="${i}">${c.enabled === false ? '启用' : '停用'}</a></td><td class="mono">${c.code}</td><td>${c.name}${c.enabled === false ? html` <span class="tag-disabled">停用</span>` : ''}</td><td>${c.method}</td><td class="ta-r">${c.life} 年</td><td class="ta-r">${c.salvage}%</td><td class="mono">${c.asset}</td><td class="mono">${c.depr}</td><td>${c.memo}</td>`;
       tb.appendChild(tr);
     });
   }
@@ -1454,41 +1378,26 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!body) return;
     title.textContent = '全部固定资产变动记录（' + all.length + ' 条）';
     if (!all.length) {
-      body.innerHTML = '<div class="empty-hint">暂无变动记录<br><br>卡片的新增、编辑、清理操作都会自动记录在这里</div>';
+      body.innerHTML = html`<div class="empty-hint">暂无变动记录<br><br>卡片的新增、编辑、清理操作都会自动记录在这里</div>`;
     } else {
       var labels = S._assetHistoryLabels();
-      var html = '';
+      // 局部变量名不能用 html（会遮蔽标签模板），改叫 out 逐段累积
+      var out = html``;
       all.forEach(function (entry) {
         var fa = entry.fa, h = entry.h;
-        html += '<div class="history-item">';
-        html += '<div class="history-head">';
-        html += '<span class="history-op">' + h.op + '</span>';
-        html += '<span class="history-fa">' + (fa.name || '') + '</span>';
-        if (fa.code) html += '<span class="history-code mono">' + fa.code + '</span>';
-        html += '<span class="history-time">' + h.time + '</span>';
-        html += '</div>';
         var keys = Object.keys(h.fields || {});
-        if (!keys.length) {
-          html += '<div class="history-detail">—</div>';
-        } else {
-          html += '<table class="history-table">';
-          keys.forEach(function (k) {
-            var label = labels[k] || k;
-            var val = h.fields[k];
-            if (Array.isArray(val)) {
-              html += '<tr><td class="h-label">' + label + '</td>';
-              html += '<td class="h-before">' + val[0] + '</td>';
-              html += '<td class="h-arrow">→</td>';
-              html += '<td class="h-after">' + val[1] + '</td></tr>';
-            } else {
-              html += '<tr><td class="h-label">' + label + '</td><td colspan="3">' + val + '</td></tr>';
-            }
-          });
-          html += '</table>';
-        }
-        html += '</div>';
+        var fieldsHtml = !keys.length
+          ? html`<div class="history-detail">—</div>`
+          : html`<table class="history-table">${keys.map(function (k) {
+              var label = labels[k] || k;
+              var val = h.fields[k];
+              return Array.isArray(val)
+                ? html`<tr><td class="h-label">${label}</td><td class="h-before">${val[0]}</td><td class="h-arrow">→</td><td class="h-after">${val[1]}</td></tr>`
+                : html`<tr><td class="h-label">${label}</td><td colspan="3">${val}</td></tr>`;
+            })}</table>`;
+        out = html`${out}<div class="history-item"><div class="history-head"><span class="history-op">${h.op}</span><span class="history-fa">${fa.name || ''}</span>${fa.code ? html`<span class="history-code mono">${fa.code}</span>` : ''}<span class="history-time">${h.time}</span></div>${fieldsHtml}</div>`;
       });
-      body.innerHTML = html;
+      body.innerHTML = out;
     }
     openModal('assetHistoryModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }

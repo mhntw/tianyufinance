@@ -511,6 +511,71 @@
    * reportRules: 该账套的报表规则快照（balanceSheet + incomeStatement），深拷贝自
    *              STANDARDS[key].reportRules，拷入后即与准则模板解耦，可逐账套独立编辑
    */
+  /* ---------- 导入边界：剥掉原型相关键 ----------
+   * 【为什么必须剥】账套 .json 是外部输入。JSON.parse 会把顶层 "__proto__" 建成**自有属性**，
+   *   而 Object.assign 走 [[Set]] —— 目标对象上的 `__proto__` setter 会直接改掉原型：
+   *     Object.assign({}, emptyState(), JSON.parse('{"__proto__":{"subjects":[{"code":"9999"}]}}'))
+   *   实测结果：合并后的对象自身没有 subjects，但 `merged.subjects` 能拿到攻击者给的数组。
+   *   emptyState() 有的字段会被自有属性盖住，缺的字段则会从这条"原型"上取值 —— 账套里没写的东西
+   *   却按外部内容生效，属于典型的对象注入。剥掉即可，不含任何合法账套字段（三键都不是业务字段）。
+   * 只处理顶层：嵌套对象是交给 JSON.parse 的，JSON.parse 用 DefineProperty 建属性，不会改原型。 */
+  /* 注意：这里不能写成对象字面量 { __proto__: 1 } —— 那在语法层就是"设置原型"，不会建出自有键。 */
+  var PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
+  function stripProtoKeys(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    var out = {};
+    Object.keys(obj).forEach(function (k) {
+      if (PROTO_KEYS.indexOf(k) >= 0) return;
+      out[k] = obj[k];
+    });
+    return out;
+  }
+
+  /* ---------- 导入边界：账套形状校验 ----------
+   * 【为什么必须校验】账套 .json 是外部输入，而 store 的读取路径大量假设"字段是数组/对象"：
+   *   实测把 subjects 写成 {}、vouchers 写成字符串，导入会直接抛 TypeError；
+   *   更糟的是 importExternalBook 先 `this.state = book` 再做整理 —— 一旦中途抛错，
+   *   当前账套在内存里已经被换成一堆坏数据（页面全部读取失败），只能重启恢复。
+   *
+   * 【口径：类型不对一律拒收，不猜、不静默修补】
+   *   与 importPlanOf 的"判不出就明确报错"一致。理由：把 subjects:{} 猜成 [] 会让用户以为
+   *   导入成功、打开却是空账；把缺 code 的科目丢掉则是静默改账 —— 都比"拒绝导入并说明原因"坏。
+   * 只校验**已声明的字段**（以 emptyState 为白名单），未知字段原样保留（将来加字段不会被误杀）。
+   * 返回 '' 表示通过；否则返回一句人能看懂的原因（最多列 3 条）。 */
+  function checkBookShape(book) {
+    if (!book || typeof book !== 'object' || Array.isArray(book)) return '内容不是对象（可能选错了文件）';
+    var def = emptyState();
+    var problems = [];
+    Object.keys(def).forEach(function (k) {
+      var v = book[k];
+      if (v === undefined) return;             // 缺失合法（由 emptyState 兜底）
+      if (Array.isArray(def[k])) {
+        if (!Array.isArray(v)) { problems.push(k + ' 应为数组'); return; }
+        for (var i = 0; i < v.length; i++) {
+          var x = v[i];
+          var at = k + '[' + i + ']';
+          if (x == null) { problems.push(at + ' 为空'); continue; }
+          if (k === 'closedPeriods') {
+            if (typeof x !== 'string') problems.push(at + ' 应为期间字符串');
+            continue;
+          }
+          if (typeof x !== 'object') { problems.push(at + ' 应为对象'); continue; }
+          if (k === 'subjects' && (typeof x.code !== 'string' || !x.code)) problems.push(at + ' 缺少科目编码 code');
+          if (k === 'vouchers' && x.entries != null) {
+            if (!Array.isArray(x.entries)) problems.push(at + '.entries 应为数组');
+            else for (var j = 0; j < x.entries.length; j++) {
+              if (!x.entries[j] || typeof x.entries[j] !== 'object') { problems.push(at + '.entries[' + j + '] 应为对象'); break; }
+            }
+          }
+        }
+      } else if (def[k] && typeof def[k] === 'object') {
+        if (!v || typeof v !== 'object' || Array.isArray(v)) problems.push(k + ' 应为对象');
+      }
+    });
+    if (!problems.length) return '';
+    return problems.slice(0, 3).join('；') + (problems.length > 3 ? ' 等 ' + problems.length + ' 处' : '');
+  }
+
   function emptyState(standardKey) {
     var stdKey = standardKey && global.STANDARDS && global.STANDARDS[standardKey] ? standardKey : 'small2013';
     var snap = global.cloneStandard ? global.cloneStandard(stdKey) : null;
@@ -914,6 +979,9 @@
       }).catch(function (err) {
         console.error('[Store] 加载账套「' + self.bookId + '」失败：' + ((err && err.message) || err));
         self.state = emptyState(); self.normalizeState();
+        // 与「刷新重载」路径（loadCurrentBookFromDisk）同一口径：损坏必须让用户看见，
+        // 否则下次 persist 会把空账套写回原文件，用户以为账套被"清空"。
+        self._reportBookBroken(self.bookId);
       });
     },
 
@@ -1266,6 +1334,15 @@
      *   挪进来后这条路径可被真实跑通，落盘失败也有反例可测。 */
     importExternalBook: function (id, book) {
       var self = this;
+      /* 先验形状、再动 state：下面几行会直接把 this.state 换成 book，
+         若等到 normalize/ensure 时才因类型不对抛错，当前账套（内存里）已经废了。
+         校验不过就保持原账套不动，并把原因写进操作日志（页面对 false 已有失败提示）。 */
+      var shapeErr = checkBookShape(book);
+      if (shapeErr) {
+        console.warn('[importExternalBook] 账套数据格式不正确，已拒绝导入：' + shapeErr);
+        if (this.state && this.addLog) this.addLog('导入失败', '账套 ' + id + ' 未导入：' + shapeErr, '账套');
+        return Promise.resolve(false);
+      }
       this.bookId = id; this.state = book;
       // 金额单位分流：只有 v6（内部定点整数）可直接用；其余（v5 / 旧 .json 无版本号 / 金蝶 .ais 导入产物）
       // 一律按「元」迁移到 v6 —— v6 是本程序才引入的唯一整数格式，历史落盘与全部导入产物都是「元」。
@@ -1328,13 +1405,20 @@
     restoreBookState: function (st, opts) {
       opts = opts || {};
       if (!st || (!st.company && !st.subjects)) { console.warn('[restoreBookState] 无效备份数据'); return false; }
+      // 备份也是外部输入：同样的形状校验（见 checkBookShape）。不过就**不动**当前账套 ——
+      // 原先是先 Object.assign 覆盖、再靠 normalize 兜，坏数据已经进了 state。
+      var shapeErr = checkBookShape(st);
+      if (shapeErr) {
+        console.warn('[restoreBookState] 备份数据格式不正确，已拒绝恢复：' + shapeErr);
+        return false;
+      }
       // 备份可能是旧格式（v5/无版本，金额为「元」）→ 按需迁移（自带幂等门，见 migrateAmountsToV6）。
       // ⚠ 必须在合并进空状态**之前**迁：emptyState() 自带 schemaVersion=6，合并后判据会被抹平。
       // 克隆后再迁，不改动调用方手里的备份对象。
       var inbound = st.schemaVersion !== SCHEMA_VERSION
         ? (function () { var c = JSON.parse(JSON.stringify(st)); migrateAmountsToV6(c); return c; })()
         : st;
-      this.state = Object.assign({}, emptyState(), inbound);   // 合并进空状态：旧备份缺字段时不至于渲染崩掉
+      this.state = Object.assign({}, emptyState(), stripProtoKeys(inbound));   // 合并进空状态：旧备份缺字段时不至于渲染崩掉
       this.state.schemaVersion = SCHEMA_VERSION;
       // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
       // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
@@ -1516,7 +1600,9 @@
           var meta = self._lastMeta || { last_book: null, disabled: {} };
           meta.last_book = null;
           self._lastMeta = meta;
-          window.Storage.writeMeta(meta).catch(function () { });
+          // writeMeta 内部已 catch、恒 resolved 为 {ok:false}，所以必须判返回值；
+          // 原来的 .catch 是死代码（永远不触发），指针写失败会完全无声。
+          window.Storage.writeMeta(meta).then(function (r) { metaWriteWarn(r, '账套指针'); });
         }
       } catch (e) { }
       if (typeof window.__refreshAll === 'function') window.__refreshAll();
