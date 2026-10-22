@@ -1,0 +1,45 @@
+# 本地专用 / 不部署到云端
+node_modules/
+.cloudfunctions/
+cloudfunctions/
+.DS_Store
+*.log
+.server_port
+
+# 开发工具与 AI 元数据（绝不进静态托管：含会话记忆/内部路径等开发信息）
+.codebuddy/
+.workbuddy/
+
+# 仅在本地运行，不参与静态托管
+serve.py
+启动.command
+启动.bat
+
+# 部署/自检脚本：只在本地跑，公网无需暴露（deploy.sh 含环境 ID，cleanup 脚本含环境操作逻辑）
+deploy.sh
+tools/
+
+# 依赖清单：本站为纯静态托管，无需暴露依赖树与脚本入口
+package.json
+package-lock.json
+
+# 文档：含产品内部信息与部署路径，不对外公开
+*.md
+
+# 数据红线：账套/备份/导出等数据文件绝不进入静态托管
+#   （真相源在本机 data/ 与 CloudBase 数据库 finance_data，二者都不属于静态托管）
+data/
+books/
+backups/
+imports/
+*.ais
+*.xlsx
+*.json.bak
+
+# 探针/临时脚本：只按明确前缀忽略，切勿写 "_*" 或 "_*/" ——
+# CloudBase 的忽略匹配会连带命中业务文件 js/pages/report/_shared.js、
+# js/pages/settings/_shared.js（上线后被当残留删掉，导致多个页面 import 404）。
+_diag_*.js
+_diag_*/
+_probe_*.js
+_tmp_*/
