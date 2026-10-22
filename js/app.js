@@ -2130,7 +2130,7 @@
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', t.page === activePage ? 'true' : 'false');
       tab.innerHTML = '<span>' + t.name + '</span>';   /* escape-ok: t.name 来自 PAGE_NAMES 常量表，不含用户输入 */
-      tab.innerHTML += '<span class="tab-close" role="button" tabindex="0" data-close="' + t.page + '">×</span>';
+      tab.innerHTML += '<span class="tab-close" role="button" tabindex="0" data-close="' + esc(t.page) + '">×</span>';
       bar.appendChild(tab);
     });
     // 激活的是最后一个标签（新打开/切到最后一个/关闭后）→ 滚到最右让新标签必见；
