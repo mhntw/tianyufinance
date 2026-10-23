@@ -5813,6 +5813,8 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
 .set-row .set-value { font-size: var(--fs-sm); color: var(--ty-text); display: flex; align-items: center; gap: 8px; }
 .set-chk { display: flex; align-items: center; gap: 6px; padding: 12px 0 0; font-size: var(--fs-sm); color: var(--ty-text-2); cursor: pointer; }
 .set-chk input { accent-color: var(--ty-btn); margin: 0; }
+/* 设置页子区块标题（如「安全设置」卡片下的「闲置锁屏」），用令牌色，不与卡片主标题抢视觉 */
+.set-sec { margin: 18px 0 6px; padding-top: 14px; border-top: 1px solid var(--ty-border); font-size: var(--fs-sm); font-weight: 600; color: var(--ty-text-2); }
 .set-input { height: 28px; padding: 0 8px; border: 1px solid var(--ty-border-2); border-radius: 3px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); outline: none; width: 240px; }
 .set-input:focus { border-color: var(--ty-blue); }
 /* 账套管理卡工具条：蓝色文字链接，项间 16px 间距 */

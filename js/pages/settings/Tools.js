@@ -493,7 +493,9 @@ async function restoreFromBackup(file) {
   storageLoadBackup(S.currentBookId(), file)
     .then(function (st) {
       if (!st) throw new Error('读取备份失败');
-      S.restoreBookState(st);
+      // restoreBookState 在备份形状校验不过时返回 false 且不动当前账套：
+      // 必须判返回值，否则会一边拒绝恢复、一边提示"已恢复备份"并写恢复日志。
+      if (S.restoreBookState(st) === false) throw new Error('备份数据格式不正确，未恢复');
       // 恢复是整本覆盖：账内日志会回到快照时刻，必须补一条「本次恢复」的续写日志，
       // 让账内审计在恢复点后无缝衔接（全局操作流水同步留痕，不受覆盖影响）
       try { S.addLog('恢复备份', '从备份列表恢复当前账本（' + (file || '') + '）', '账套'); } catch (e) {}

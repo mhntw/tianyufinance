@@ -210,6 +210,12 @@ const amtHtml = (function () { try { return V.amtInnerHtml(P_IMG, true, -1, true
 check(amtHtml && amtHtml.indexOf(P_IMG) < 0, '金额位格溢出：payload 未原样输出', String(amtHtml).slice(0, 120));
 check(/&lt;img/i.test(amtHtml), '金额位格溢出：payload 被转义成文本', String(amtHtml).slice(0, 120));
 
+/* 位格分支（未溢出的短串）：computeAmtCells 会按字符塞进位格，这里同样不能原样输出。
+   '</div><b>' 共 9 字符 < 11，走位格而不是溢出分支 —— 是 raw(amtCellHtml) 的安全前提。 */
+const cellHtml = (function () { try { return V.amtInnerHtml('</div><b>', false, -1, true, true); } catch (e) { return ''; } })();
+check(cellHtml && cellHtml.indexOf('</div><b>') < 0, '金额位格：短串里的标签未原样输出', String(cellHtml).slice(0, 160));
+check(/&lt;/.test(cellHtml) && /&gt;/.test(cellHtml), '金额位格：位格内字符被转义', String(cellHtml).slice(0, 160));
+
 /* ============================================================
  * B. 设置页凭证字 / 科目表
  * ============================================================ */
@@ -264,7 +270,7 @@ sawEscapedPayload('固定资产变动历史');
  * D. 费用明细科目树（模板串 + 属性插值，2026-10-22 实测漏检点）
  * ============================================================ */
 const ED = loadPage('js/pages/report/ExpenseDetail.js',
-  'globalThis.__PAGE_HOOK__ = { renderExpenseDetail: renderExpenseDetail };');
+  'globalThis.__PAGE_HOOK__ = { renderExpenseDetail: renderExpenseDetail, edPopRenderTree: edPopRenderTree };');
 installEvilBook();
 /* 费用明细按期间控件取值（空值会直接早退，什么也不渲染 → 变成"假绿"） */
 getEl('edPeriodStart').value = '2024-01';
@@ -276,6 +282,25 @@ CAPTURED.length = 0;
 try { ED.renderExpenseDetail(); } catch (e) { check(false, 'ExpenseDetail.renderExpenseDetail 可执行', String((e && e.stack) || e)); }
 assertNoPayload('费用明细');
 sawEscapedPayload('费用明细');
+
+/* 展开子级：walk 的递归结果必须是 RawHtml，否则子节点会被当成文本再转义一次
+   （表现为子级 checkbox 消失、变成一行字面 <div...>，冒烟测试不易发现）。 */
+const popMock = getEl('edPopMock');
+CAPTURED.length = 0;
+// 测试壳里的 subjectFullName 桩只回编码，payload 进不了标签；这里换成真实语义（编码 + 名称）
+const prevSfn = globalThis.subjectFullName;
+globalThis.subjectFullName = (code, name) => String(code) + ' ' + String(name == null ? '' : name);
+try {
+  ED.edPopRenderTree(popMock, [{ code: '6602', name: P_TAG, children: [{ code: '660201', name: P_IMG, children: [] }] }], new Set(['6602']));
+} catch (e) { check(false, 'edPopRenderTree 可执行', String((e && e.stack) || e)); }
+globalThis.subjectFullName = prevSfn;
+const treeHtml = popMock.innerHTML;
+check((treeHtml.match(/class="ed-subj-node"/g) || []).length === 2,
+  '费用明细树：父/子两级都渲染为真实节点', '子级被二次转义成文本：' + treeHtml.slice(0, 200));
+check(treeHtml.indexOf('&lt;div class=&quot;ed-subj-node') < 0,
+  '费用明细树：子级未以字面标签输出', treeHtml.slice(0, 200));
+assertNoPayload('费用明细树');
+sawEscapedPayload('费用明细树');
 
 /* ============================================================
  * E. 科目余额表（科目名 / 穿透链接属性 / 折叠箭头）

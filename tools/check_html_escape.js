@@ -54,6 +54,36 @@ function walk(dir, out) {
   return out;
 }
 
+/* 把 html`...` 模板整体替换成 ''（只留下模板**外**的拼接）。
+   原先是"整行含 html` 就跳过"，于是 `html`...` + x.name` 这种混合拼贴完全看不见；
+   改成掩掉模板后，剩余部分照常走逐值检查，纯 html`` 赋值则自然落空、不会误报。 */
+function maskHtmlTemplates(src) {
+  const re = /\bhtml\s*`/g;
+  let out = '', i = 0, m;
+  while ((m = re.exec(src))) {
+    out += src.slice(i, m.index) + "''";
+    let j = m.index + m[0].length, depth = 0, quote = '';
+    while (j < src.length) {
+      const c = src[j];
+      if (quote) {
+        if (c === '\\') { j += 2; continue; }
+        if (c === quote) quote = '';
+        j++; continue;
+      }
+      if (c === "'" || c === '"') { quote = c; j++; continue; }
+      if (c === '`' && depth === 0) { j++; break; }
+      if (c === '$' && src[j + 1] === '{') { depth++; j += 2; continue; }
+      if (depth > 0) {
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+      }
+      j++;
+    }
+    i = j; re.lastIndex = j;
+  }
+  return out + src.slice(i);
+}
+
 const problems = [];
 const waived = [];
 let checked = 0;
@@ -72,12 +102,12 @@ walk(JS_DIR, []).forEach(file => {
     checked++;
 
     /* html`` 标签模板（js/common/html.js）：插值默认转义、可信片段须显式 raw()。
-       整个赋值交给标签函数处理，这里不再按"手工拼接"逐值检查 ——
-       否则会把 `= html` 里的标签名当成裸变量，或逼人写成 esc() 造成双重转义。 */
-    if (/\bhtml\s*`/.test(rhs)) return;
+       只掩掉模板本身，**模板外**的 `+` 拼接仍按下面的规则逐值检查 ——
+       否则 `html`...` + x.name` 这类混合写法会被整行豁免。 */
+    const scanRhs = /\bhtml\s*`/.test(rhs) ? maskHtmlTemplates(rhs) : rhs;
 
     // 空赋值 / 纯字面量：无数据插入
-    const stripped = rhs.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '').replace(/`[^`]*`/g, '');
+    const stripped = scanRhs.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '').replace(/`[^`]*`/g, '');
     if (!/[A-Za-z_$]/.test(stripped)) return;
 
     /* 只检查「字面量与变量混拼」的情况 —— 那才是**在本行手工拼 HTML 模板**，
@@ -97,7 +127,9 @@ walk(JS_DIR, []).forEach(file => {
          相邻的未转义行静默通过（Settle.js:1250 实测被这样蒙过去）。故先剥注释再判。
        （`//` 仅在不紧邻冒号时剥，避免把 'http://' 里的斜杠当注释起点） */
     const nearCode = near
-      .replace(/\/\*.*?\*\//g, '')
+      // 块注释必须跨行匹配：`/* 说明\n 逐项 esc(x.name) */` 里的 esc 文本若留在窗口里，
+      // 会让相邻的未转义行被误判为"已转义"（单行正则 .*? 不跨行，等于没剥）。
+      .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1');
     if (/esc(Html|Attr)?\(|escapeHtml\(/.test(nearCode)) return;
 

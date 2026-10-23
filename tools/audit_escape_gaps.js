@@ -364,8 +364,11 @@ function classifyOne(rawExpr, htmlVars) {
     /* 明确是数字的字段：no 在凭证里被用作字号（schema 上是字符串），仍按复核处理 */
     if (rf.obj && NUMERIC_FIELDS.has(rf.field)) return { status: 'review', values: [expr] };
     if (rf.field === 'length' || rf.field === 'count') return { status: 'safe', values: [] };
-    /* 裸标识符：无法确定来源（可能是上游拼好的 HTML），按复核处理，不直接判漏洞 */
-    if (!rf.obj) return { status: 'review', values: [expr] };
+    /* 裸标识符：无法确定来源（可能是上游拼好的 HTML），按复核处理；
+       但若标识符名本身命中用户可编辑字段（name/title/summary/…），
+       它就是"用户文本被直接插进 innerHTML"，必须算高危 —— 否则
+       `var li='<td>'+user.name+'</td>'; el.innerHTML=li;` 这类拼接洗白可整体逃逸门禁。 */
+    if (!rf.obj) return { status: USER_TEXT_FIELDS.has(rf.field) ? 'unsafe' : 'review', values: [expr] };
     return { status: 'unsafe', values: [expr] };
   }
 

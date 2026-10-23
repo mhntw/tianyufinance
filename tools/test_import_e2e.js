@@ -63,6 +63,9 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
     ['vouchers 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: 'oops' }],
     ['subjects 含空元素', { company: { name: 'x', startMonth: '2026-01' }, subjects: [null, 'abc', { code: null }], vouchers: [] }],
     ['entries 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [{ id: 'v1', entries: 'oops' }] }],
+    // deprReverted 会被 migrateAmountsToV6 直接 .forEach —— 非数组必须在形状校验阶段就拒收
+    ['deprReverted 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [{ id: 'v1', entries: [], deprReverted: 'oops' }] }],
+    ['meta.yearBoundaries 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], meta: { yearBoundaries: 'oops' } }],
     ['voucherWords 是字符串', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], voucherWords: '记' }],
     ['fixedAssets 是对象', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], fixedAssets: {} }],
     ['openingBalances 是数组', { company: { name: 'x', startMonth: '2026-01' }, subjects: [], vouchers: [], openingBalances: [] }],
@@ -79,6 +82,16 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
     assert(S.state.company.name === before, '[' + label + '] 当前账套未被替换');
     try { S.subjects(); } catch (e) { assert(false, '[' + label + '] 拒收后 subjects() 仍可用：' + e.message); }
   }
+
+  /* 备份恢复走的是同一条形状校验：坏备份必须返回 false（Tools 页据此提示失败），
+     且不能把当前账套换掉。 */
+  const nameBeforeBadRestore = S.state.company.name;
+  const rBadRestore = S.restoreBookState({
+    company: { name: '坏备份', startMonth: '2026-01' }, subjects: [],
+    vouchers: [{ id: 'v1', entries: [], deprReverted: 'oops' }]
+  });
+  assert(rBadRestore === false, 'restoreBookState 对 deprReverted 非数组的备份返回 false');
+  assert(S.state.company.name === nameBeforeBadRestore, '坏备份恢复失败后当前账套未被替换');
 
   console.log('\n=== 导入账套 .json（跑**真实实现** S.importExternalBook） ===');
   /* 2026-09-29 起改为直接调用真实实现。旧写法是"手抄一份 loadServerBookIntoLocal 的逻辑"

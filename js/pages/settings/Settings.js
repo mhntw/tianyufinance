@@ -754,6 +754,28 @@ function bindOpPasswordBtn() {
   });
 }
 
+/* 锁屏设置：启用开关 + 超时分钟 + 立即锁定按钮；复用操作密码解锁，与财务引擎解耦 */
+function bindLockSettings() {
+  var en = $('lockEnabled'), to = $('lockTimeout'), hint = $('lockHint'), now = $('btnLockNow');
+  if (!en) return;
+  var stg = S.settings || {};
+  en.checked = !!stg.screenLockEnabled;
+  to.value = parseInt(stg.screenLockTimeout, 10) > 0 ? stg.screenLockTimeout : '5';
+  if (hint) hint.style.display = (stg.opOverridden) ? 'none' : '';
+  function persist() {
+    if (typeof S.saveSettings === 'function') S.saveSettings();
+    else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
+  }
+  en.addEventListener('change', function () { stg.screenLockEnabled = en.checked; persist(); });
+  to.addEventListener('change', function () {
+    var v = parseInt(to.value, 10); if (!(v > 0)) v = 5; to.value = v;
+    stg.screenLockTimeout = String(v); persist();
+  });
+  if (now) now.addEventListener('click', function () {
+    if (globalThis.__LOCK__) globalThis.__LOCK__.manualLock();
+  });
+}
+
 
 // —— 系统设置聚合页（系统参数 + 凭证模板 + 操作日志 三 Tab 合一）——
 function refreshParam() {
@@ -791,6 +813,7 @@ function refreshParam() {
     bindEditPeriodBtn();
     bindAboutCard();
     bindOpPasswordBtn();
+    bindLockSettings();
     // 【2026-10-04 删除】此处原有第二处 `globalThis.__paramBound = true;` —— 与 if 开头那处重复
     //   （此时必然已为 true），属死存储，删掉不留"同一标记写两遍"的疑点。
   }

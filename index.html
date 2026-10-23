@@ -1404,8 +1404,8 @@
           </div>
         </div>
 
-        <div class="card" id="cardOpProtect">
-          <div class="card-head"><span>操作保护</span></div>
+        <div class="card" id="cardSecurity">
+          <div class="card-head"><span>安全设置</span></div>
           <p class="set-hint" id="opPwHint">默认操作密码 <code>admin</code>，用于清空回收站等不可逆高危操作验证。建议修改并牢记。</p>
           <div class="set-row">
             <label>当前密码</label>
@@ -1416,6 +1416,17 @@
             <input id="opPwInput" class="set-input" type="password" placeholder="4 位以上新密码（留空 = 恢复默认密码）">
           </div>
           <div class="page-actions"><button class="btn btn-primary" id="btnSaveOpPw">保存</button></div>
+
+          <div class="set-sec">闲置锁屏（防顺手误点）</div>
+          <label class="set-chk"><input type="checkbox" id="lockEnabled"> 启用闲置锁屏</label>
+          <div class="set-row">
+            <label>自动锁定超时（分钟）</label>
+            <input id="lockTimeout" type="number" min="1" max="180" value="5" class="set-input">
+          </div>
+          <div class="set-row">
+            <button class="btn" id="btnLockNow">立即锁定屏幕（Ctrl/⌘ + L）</button>
+          </div>
+          <p class="set-hint" id="lockHint">锁屏使用上方操作密码解锁，建议先修改默认密码 admin。</p>
         </div>
 
         <!-- ========== 账套与数据（原「数据与安全」页并入） ========== -->
@@ -1865,7 +1876,7 @@
   <script src="js/ty-io.js?v=dev"></script>
   <script src="js/ty-menu-icons.js?v=dev"></script>
   <!-- 金蝶 .ais 导入链路（kis-import.js + mdb-reader.js + buffer.js，合计约 2.4 万行、
-       823K）已于 2026-10-22 整体移出主软件，迁到仓库根的 ais-tool/ 独立转换器。
+       823K）已于 2026-10-22 整体移出主软件，迁到独立的 ais-tool/ 转换器（现已从仓库迁出，位于 ty 同级目录）。
        此处不再引入 —— 主软件只导入转换产出的 .json（见 js/pages/settings/Settings.js）。
        tauri/scripts/build-dist.mjs 的 ENTRY_POINTS 只收 index.html / css / js，
        故 ais-tool/ 天然不会进入安装包；该链路由 tools/ 下 verify_import_* 系列继续守护。 -->
@@ -1875,6 +1886,7 @@
   <script src="js/command-palette.js?v=dev"></script>
   <script src="js/update.js?v=dev"></script>
   <script type="module" src="js/main.js?v=dev"></script>
+  <script src="js/lock-screen.js?v=dev"></script>
 
   <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
     <div class="quick-settings-modal" id="quickSettingsModal">

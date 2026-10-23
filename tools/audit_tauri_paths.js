@@ -29,7 +29,9 @@ const GUARDS = [
   'canonicalize', 'starts_with', 'components()', 'file_name()',
 ];
 /* 真正的文件操作：参数沾上这些才算"能落到磁盘上" */
-const FILE_OPS = ['join(', 'Path::new(', 'File::open', 'File::create', 'fs::read', 'fs::write', 'remove_file', 'rename(', 'create_dir'];
+const FILE_OPS = ['join(', 'Path::new(', 'PathBuf::from', 'File::open', 'File::create', 'OpenOptions',
+  'fs::read', 'fs::read_dir', 'fs::metadata', 'fs::write', 'remove_file', 'fs::remove_dir_all',
+  'rename(', 'create_dir'];
 
 function stripComments(src) {
   let out = '';
@@ -117,12 +119,20 @@ fs.readdirSync(SRC_DIR).filter(n => n.endsWith('.rs')).forEach(n => {
         const gre = new RegExp(g.replace(/[()]/g, '\\$&') + '[\\s\\S]{0,60}?' + p.name + '\\b');
         return gre.test(c.body) || new RegExp(p.name + '\\b[\\s\\S]{0,60}?' + g.replace(/[()]/g, '\\$&')).test(c.body);
       });
-      // 一层调用收敛：参数交给了某个 helper，而该 helper 内部做了文件名净化
+      // 一层调用收敛：参数交给了某个 helper，而该 helper 内部做了文件名净化。
+      // 必须确认**这个参数真的作为实参传给了该 helper** —— 否则同文件里任意一个
+      // 带守卫的 helper 调用都会把无关路径参数"洗白"（如 sync_set_config(dir) 借 remote_base 放行）。
       let viaHelper = false;
       let helperName = '';
       if (!directGuard) {
         Object.keys(helpers).some(hn => {
-          if (!new RegExp('\\b' + hn + '\\s*\\(').test(c.body)) return false;
+          const callRe = new RegExp('\\b' + hn + '\\s*\\(((?:[^()]|\\([^()]*\\))*)\\)', 'g');
+          const paramRe = new RegExp('\\b' + p.name.replace(/[$]/g, '\\$') + '\\b');
+          let cm, passed = false;
+          while ((cm = callRe.exec(c.body))) {
+            if (paramRe.test(cm[1])) { passed = true; break; }
+          }
+          if (!passed) return false;
           if (GUARDS.some(g => helpers[hn].includes(g))) { viaHelper = true; helperName = hn; return true; }
           return false;
         });

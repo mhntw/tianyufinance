@@ -44,7 +44,9 @@ function amtInnerHtml(value, isNumber, activeIndex, hideValueLayer, force2) {
   for (var k = 0; k < r.cells.length; k++) {
     var active = (activeIndex === k) ? ' amt-cell-active' : '';
     // 数字（或负号）直接落进各自位格（flex 居中），不依赖 letter-spacing，换字体也不错位
-    cells += '<div class="amt-cell' + active + '">' + r.cells[k] + '</div>';   /* escape-ok: r.cells 是单个数字/负号字符，active 是三元常量 */
+    // 位格内容理论上是单个数字/负号，但 computeAmtCells 对 parseFloat 失败的短串会**按字符**塞满位格，
+    // 导入账套的 dr/cr 可以带 < > 等字符 —— 这里必须转义（数字与负号转义前后完全等价）。
+    cells += '<div class="amt-cell' + active + '">' + escHtml(r.cells[k]) + '</div>';
   }
   return '<div class="amt-bg">' + cells + '</div>';
 }

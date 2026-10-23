@@ -110,7 +110,9 @@ const edFullName = n => (globalThis.subjectFullName ? globalThis.subjectFullName
 
 /* 由 buildEDSubjectPop 抽出（2026-10-04 纯搬迁）：参数名与原局部变量同名，函数体逐字未改。 */
 function edPopRenderTree(pop, roots, expanded) {
-  const walk = nodes => nodes.map(n => {
+  /* walk 必须返回 RawHtml 而不是 join('') 的普通字符串：
+     子级递归结果若以 string 嵌回 html``，会被当成文本再转义一次（展开后子节点变成字面标签）。 */
+  const walk = nodes => html`${nodes.map(n => {
     const hasChildren = n.children && n.children.length;
     const isExpanded = expanded.has(n.code) || !hasChildren;
     const toggleCls = hasChildren ? (isExpanded ? 'expanded' : '') : 'empty';
@@ -123,10 +125,10 @@ function edPopRenderTree(pop, roots, expanded) {
       </div>
       ${childrenHtml}
     </div>`;
-  }).join('');
+  })}`;
   const allCbs = () => Array.from(pop.querySelectorAll('input[type=checkbox][data-subj]'));
   const allChecked = () => allCbs().every(i => i.checked);
-  pop.innerHTML = html`<div class="ed-subj-tree">${raw(walk(roots))}</div><div class="ed-subj-foot"><label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label><span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span></div>`;   /* escape-ok: html`` 自动转义；walk() 产物本身也是 html`` 生成，故用 raw() 放行 */
+  pop.innerHTML = html`<div class="ed-subj-tree">${walk(roots)}</div><div class="ed-subj-foot"><label><input type="checkbox" id="edSubjSelectAll" data-act="all"> 全选</label><span class="ed-subj-count" id="edSubjCount">已选 <strong>0</strong> 项</span></div>`;
   // 全选 checkbox 默认按当前状态同步（render 可能由展开/折叠触发，此时无 checked 变化）
   const allBox = $('edSubjSelectAll');
   if (allBox) allBox.checked = allChecked();

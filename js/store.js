@@ -567,11 +567,19 @@
               if (!x.entries[j] || typeof x.entries[j] !== 'object') { problems.push(at + '.entries[' + j + '] 应为对象'); break; }
             }
           }
+          // 折旧回滚快照在 migrateAmountsToV6 里直接 .forEach —— 非数组会让迁移中途抛错
+          if (k === 'vouchers' && x.deprReverted != null && !Array.isArray(x.deprReverted)) {
+            problems.push(at + '.deprReverted 应为数组');
+          }
         }
       } else if (def[k] && typeof def[k] === 'object') {
         if (!v || typeof v !== 'object' || Array.isArray(v)) problems.push(k + ' 应为对象');
       }
     });
+    // meta 不在 emptyState 白名单里，但迁移会遍历 meta.yearBoundaries（跨年校验报告）
+    if (book.meta && book.meta.yearBoundaries != null && !Array.isArray(book.meta.yearBoundaries)) {
+      problems.push('meta.yearBoundaries 应为数组');
+    }
     if (!problems.length) return '';
     return problems.slice(0, 3).join('；') + (problems.length > 3 ? ' 等 ' + problems.length + ' 处' : '');
   }
@@ -1343,13 +1351,15 @@
         if (this.state && this.addLog) this.addLog('导入失败', '账套 ' + id + ' 未导入：' + shapeErr, '账套');
         return Promise.resolve(false);
       }
-      this.bookId = id; this.state = book;
+      /* 迁移在赋值**之前**做：migrateAmountsToV6 直接改 book，若它抛错（例如备份里的
+         vouchers[].deprReverted 类型不对），当前账套还保持原样，不会被换成半成品。 */
       // 金额单位分流：只有 v6（内部定点整数）可直接用；其余（v5 / 旧 .json 无版本号 / 金蝶 .ais 导入产物）
       // 一律按「元」迁移到 v6 —— v6 是本程序才引入的唯一整数格式，历史落盘与全部导入产物都是「元」。
       // ⚠ kis-import **有意不**自行定点化、也**不打 schemaVersion**（见 js/kis-import.js：它输出的是
       //   保留 4 位精度的「元」）。换算只此一处 —— 若哪天有人在转换器里补上 schemaVersion:6，
       //   这里就会跳过迁移、金额被少乘 10000 倍；反之若转换器自己乘了 10000，这里会再多乘一次。
       if (book.schemaVersion !== SCHEMA_VERSION) migrateAmountsToV6(book);
+      this.bookId = id; this.state = book;
       if (this.state.schemaVersion == null) this.state.schemaVersion = SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
       // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目自动判定，
       // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。

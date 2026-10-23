@@ -227,7 +227,8 @@ function check(cond, label, detail) {
   const rbs = bodyOf('restoreBookState'), rfd = bodyOf('restoreFromData');
   // 导入账套（.json / .ais 共用）的数据整理必须在 store 一处实现：
   // 原先它是 Settings.js 里的 loadServerBookIntoLocal，Node 测不到 —— 于是测试只能"手抄一份逻辑"假装覆盖。
-  const ieb = storeSrc.slice(storeSrc.indexOf('importExternalBook: function'), storeSrc.indexOf('importExternalBook: function') + 2000);
+  // 窗口随函数真实长度走：原先固定 2000 字符，注释一多就会把末尾的 _saveBookChecked 截掉误报
+  const ieb = bodyOf('importExternalBook');
   check(/importExternalBook: function/.test(storeSrc), 'store.js 应有 importExternalBook（导入账套的唯一建账套实现）');
   check(/normalizeState\(\)/.test(ieb), 'importExternalBook 应补 normalizeState（旧备份缺字段会让页面渲染崩）');
   check(/ensureVoucherIds\(\)/.test(ieb),
