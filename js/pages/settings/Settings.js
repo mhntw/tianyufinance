@@ -756,17 +756,17 @@ function bindOpPasswordBtn() {
 
 /* 锁屏设置：启用开关 + 超时分钟 + 立即锁定按钮；复用操作密码解锁，与财务引擎解耦 */
 function bindLockSettings() {
-  var en = $('lockEnabled'), to = $('lockTimeout'), hint = $('lockHint'), now = $('btnLockNow');
+  var en = $('lockEnabled'), to = $('lockTimeout'), now = $('btnLockNow');
   if (!en) return;
   var stg = S.settings || {};
   en.checked = !!stg.screenLockEnabled;
   to.value = parseInt(stg.screenLockTimeout, 10) > 0 ? stg.screenLockTimeout : '5';
-  if (hint) hint.style.display = (stg.opOverridden) ? 'none' : '';
+  to.disabled = !en.checked;
   function persist() {
     if (typeof S.saveSettings === 'function') S.saveSettings();
     else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
   }
-  en.addEventListener('change', function () { stg.screenLockEnabled = en.checked; persist(); });
+  en.addEventListener('change', function () { stg.screenLockEnabled = en.checked; to.disabled = !en.checked; persist(); });
   to.addEventListener('change', function () {
     var v = parseInt(to.value, 10); if (!(v > 0)) v = 5; to.value = v;
     stg.screenLockTimeout = String(v); persist();

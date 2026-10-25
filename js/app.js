@@ -815,7 +815,7 @@
    */
   // 克隆得到的数据表内部不允许出现的 UI（允许它存在 = 纸面必带残件，必须当场暴露）
   var PRINT_TABLE_UI_BLOCK = '.page-actions, .ty-period-range, .topbar, ' +
-    '.content-toolbar, .voucher-toolbar, select, textarea, input';
+    '.content-toolbar, select, textarea, input';
 
   // 打印主体收集：唯一且稳定的取数点（打印按钮、直印、自检三路共用）。
   function collectPrintBody(scope) {

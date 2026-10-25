@@ -348,7 +348,7 @@ function voucherLinkCell(r, vm) {
     ? html`<a href="#" class="link-voucher" data-id="${vId}">${r.word}-${r.no}</a>`
     : html`${r.word}-${r.no}`;
 }
-function renderDlSegment(tb, code, range, vmap) {
+function renderDlSegment(tb, code, range, vmap, showHead) {
   var d;
   if (range && range.start && range.end && range.start !== range.end && typeof S.detailLedgerRange === 'function') {
     d = S.detailLedgerRange(code, range.start, range.end);
@@ -388,11 +388,16 @@ function renderDlSegment(tb, code, range, vmap) {
     var e = ec ? S.subject(ec) : null;
     return html`<td class="mono">${e ? e.code : s.code}</td><td>${e ? e.name : s.name}</td>`;
   }
-  // 科目分组行：单科目模式下一眼看不出在看哪个科目，"全部"模式下更是必需
-  var th = document.createElement('tr');
-  th.className = 'dl-subj-head';
-  th.innerHTML = html`<td class="mono">${s.code}</td><td colspan="8">${s.name}</td>`;
-  tb.appendChild(th);
+  // 科目分组行：仅在「全部科目」模式下渲染 —— 它作为多科目分组的视觉分隔标题。
+  // 单选科目时（右侧科目树点选 / 从总账跳转进来）只剩一个分组，段内期初/合计/累计行
+  // 本身已带科目编码与名称（见 subjCells），再渲染此标题行会与「期初余额」行重复显示
+  // 同一科目编号与名称（用户 2026-10-25 报障）。故 showHead 仅在全部模式为真。
+  if (showHead) {
+    var th = document.createElement('tr');
+    th.className = 'dl-subj-head';
+    th.innerHTML = html`<td class="mono">${s.code}</td><td colspan="8">${s.name}</td>`;
+    tb.appendChild(th);
+  }
   var tro = document.createElement('tr');
   tro.className = 'dl-seg';
   // 期初行：借贷方列强制空，只在方向+余额列显示净额（列序与金蝶一致：方向在前、余额在后）
@@ -432,9 +437,11 @@ function renderDl(range) {
     : S.subjects().map(function (s) { return s.code; });
   // date|word-no → voucher.id，供明细行凭证字号跳转
   var vmap = voucherVmap();
+  // 全部科目模式（sc.codes 为 null）渲染分组标题行；单选科目不再重复显示科目名称
+  var showHead = !sc.codes;
   var shown = 0;
   codes.forEach(function (c) {
-    if (renderDlSegment(tb, c, range, vmap)) shown++;
+    if (renderDlSegment(tb, c, range, vmap, showHead)) shown++;
   });
   if (!shown) {
     var emptyText = (range.start && range.end && range.start !== range.end)

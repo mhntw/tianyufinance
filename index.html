@@ -132,7 +132,7 @@
 
             <button type="button" class="qk-newvoucher" data-page="voucher">
               <div class="qk-new-ico">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#2f95ff" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </div>
               <div class="qk-new-text">
                 <div class="qk-new-title">新增凭证</div>
@@ -306,24 +306,6 @@
 
         <div id="vEditView" data-unsaved-scope="voucher" style="display:none;">
 
-          <div class="voucher-toolbar">
-            <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
-            <button class="btn" id="btnSaveVoucher">保存</button>
-            <div class="vch-menu-wrap">
-              <button class="btn ty-dropdown" id="btnVchMore" title="更多凭证操作">更多</button>
-              <div class="vch-menu" id="vchMoreMenu" hidden>
-                <a href="#" id="vchMorePrintCurrent">打印当前凭证</a>
-                <a href="#" id="vchMorePrintBlank">打印空白凭证纸</a>
-                <div class="vch-menu-sep"></div>
-                <a href="#" id="vchMoreTplUse">从模板生成凭证</a>
-                <a href="#" id="vchMoreTplSave">保存为凭证模板</a>
-                <div class="vch-menu-sep" id="vchMoreSepAct"></div>
-                <a href="#" id="vchMoreReverse" class="vch-menu-red">红字冲销</a>
-                <a href="#" id="vchMoreDelete" class="vch-menu-red">删除凭证</a>
-              </div>
-            </div>
-          </div>
-
           <div class="voucher-head-row">
             <div class="vh-left">
               <span>凭证字</span>
@@ -351,9 +333,9 @@
             </div>
           </div>
 
-          <!-- scroll-area：与全站统一的冻结结构 —— 工具栏与凭证抬头固定不动，
-               只让分录表格区滚动，表头吸在表格区顶部（此前本页无滚动区，整页滚动，
-               导致工具栏/抬头随页面滚走，与其他页行为不一致）。 -->
+          <!-- scroll-area：与全站统一的冻结结构 —— 凭证抬头固定不动，
+               只让分录表格区滚动，表头吸在表格区顶部（此前本页无滚动区、整页滚动，
+               导致抬头随页面滚走，与其他页行为不一致）。 -->
           <div class="voucher-grid-wrap scroll-area">
           <table class="grid voucher-grid" id="vGrid">
             <thead>
@@ -377,13 +359,30 @@
               </tr>
             </tfoot>
           </table>
-          </div>
           <div class="voucher-balance" id="vBalanceTip"></div>
 
           <div class="voucher-footer">
             <div class="vf-left">
               <span class="vf-maker">制单人：<span id="vMakerName">会计</span></span>
             </div>
+            <div class="vf-right">
+              <button class="btn btn-primary" id="btnSaveNewVoucher">保存并新增</button>
+              <button class="btn" id="btnSaveVoucher">保存</button>
+              <div class="vch-menu-wrap up">
+                <button class="btn ty-dropdown" id="btnVchMore" title="更多凭证操作">更多</button>
+                <div class="vch-menu" id="vchMoreMenu" hidden>
+                  <a href="#" id="vchMorePrintCurrent">打印当前凭证</a>
+                  <a href="#" id="vchMorePrintBlank">打印空白凭证纸</a>
+                  <div class="vch-menu-sep"></div>
+                  <a href="#" id="vchMoreTplUse">从模板生成凭证</a>
+                  <a href="#" id="vchMoreTplSave">保存为凭证模板</a>
+                  <div class="vch-menu-sep" id="vchMoreSepAct"></div>
+                  <a href="#" id="vchMoreReverse" class="vch-menu-red">红字冲销</a>
+                  <a href="#" id="vchMoreDelete" class="vch-menu-red">删除凭证</a>
+                </div>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </section>
@@ -1009,7 +1008,6 @@
               <button class="btn btn-ghost" id="btnSettleCheck"><i class="ico ico-setting">&#9881;</i> 检查项设置</button>
             </div>
             <div class="settle-check-wrap" id="closeChecklist"></div>
-            <p class="settle-close-notice" id="closeNotice"></p>
           </div>
         </div>
 
@@ -1406,7 +1404,18 @@
 
         <div class="card" id="cardSecurity">
           <div class="card-head"><span>安全设置</span></div>
-          <p class="set-hint" id="opPwHint">默认操作密码 <code>admin</code>，用于清空回收站等不可逆高危操作验证。建议修改并牢记。</p>
+
+          <div class="set-sec">闲置锁屏（防顺手误点）</div>
+          <div class="set-row">
+            <label><input type="checkbox" id="lockEnabled"> 启用闲置锁屏</label>
+            <span class="lock-timeout"><label>自动锁定超时（分钟）</label><input id="lockTimeout" type="number" min="1" max="180" value="5" class="set-input"></span>
+          </div>
+          <div class="set-row">
+            <button class="btn" id="btnLockNow">立即锁定屏幕（Ctrl/⌘ + L）</button>
+          </div>
+
+          <div class="set-sec">操作密码</div>
+          <p class="set-hint" id="opPwHint">操作密码默认 <code>admin</code>，用于清空回收站等不可逆操作验证与锁屏解锁，建议尽快修改并牢记。</p>
           <div class="set-row">
             <label>当前密码</label>
             <input id="opPwCur" class="set-input" type="password" placeholder="输入当前操作密码">
@@ -1416,17 +1425,6 @@
             <input id="opPwInput" class="set-input" type="password" placeholder="4 位以上新密码（留空 = 恢复默认密码）">
           </div>
           <div class="page-actions"><button class="btn btn-primary" id="btnSaveOpPw">保存</button></div>
-
-          <div class="set-sec">闲置锁屏（防顺手误点）</div>
-          <label class="set-chk"><input type="checkbox" id="lockEnabled"> 启用闲置锁屏</label>
-          <div class="set-row">
-            <label>自动锁定超时（分钟）</label>
-            <input id="lockTimeout" type="number" min="1" max="180" value="5" class="set-input">
-          </div>
-          <div class="set-row">
-            <button class="btn" id="btnLockNow">立即锁定屏幕（Ctrl/⌘ + L）</button>
-          </div>
-          <p class="set-hint" id="lockHint">锁屏使用上方操作密码解锁，建议先修改默认密码 admin。</p>
         </div>
 
         <!-- ========== 账套与数据（原「数据与安全」页并入） ========== -->

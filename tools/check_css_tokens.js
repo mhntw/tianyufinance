@@ -141,7 +141,7 @@ const asText = new Map();   // var名 -> { disabled, hidden, ui }
     asText.set(v, rec);
   }
 }
-const BGS = { '白': '#ffffff', '浅蓝底': '#e8f1ff', '浅灰底': '#f0f0f0' };
+const BGS = { '白': '#ffffff', '蓝画布': '#f4f9ff', '蓝面': '#f1f7fe', '蓝高亮': '#dfeafc' };
 const low = [], waived = [];
 asText.forEach((flags, v) => {
   const val = defined.get(v);

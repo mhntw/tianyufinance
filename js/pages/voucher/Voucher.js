@@ -37,7 +37,7 @@ function amtInnerHtml(value, isNumber, activeIndex, hideValueLayer, force2) {
   if (r.overflow) {
     /* r.text 在「装不进 11 格」时可能是**原始输入串**（parseFloat 失败则原样带出，见 amt_cells.mjs 第 41 行）——
        导入账套里的金额字段不受输入框限制，不转义就是一条注入路径。这里必须 esc。 */
-    if (r.neg) return '<div class="amt-bg amt-bg-text"><span class="amt-neg-text">-' + escHtml(r.text) + '</span></div>';
+    if (r.neg) return '<div class="amt-bg"><span class="amt-neg-text">-' + escHtml(r.text) + '</span></div>';
     return '<div class="amt-bg amt-trillion">' + escHtml(r.text) + '</div>';
   }
   var cells = '';
