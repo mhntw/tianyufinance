@@ -26,6 +26,15 @@ const ROOT = path.resolve(__dirname, '..');
 // 转换器 ais-tool 现已迁出为 ty 的同级独立仓库（财务软件/ais-tool）。
 // 用 AIS_TOOL_DIR 环境变量可覆盖其位置（默认 ../ais-tool，即 ty 的同级目录）。
 const AIS_TOOL = process.env.AIS_TOOL_DIR || path.join(ROOT, '..', 'ais-tool');
+/* CI / 干净检出环境没有同级仓库 ais-tool（转换器已独立成仓，2026-10-22）：
+   四段冻结卡口与五段金额精度都以转换器源码为前提，缺它无从校验。
+   按本项目「无样本即跳过」的惯例**如实标注跳过并 exit 0**（run-all 会记为"跳过"而非"通过"），
+   而不是抛 ENOENT 把整条发布门禁判红。本地有 ais-tool 时照常全跑。 */
+const AIS_TOOL_KIS = path.join(AIS_TOOL, 'js', 'kis-import.js');
+if (!fs.existsSync(AIS_TOOL_KIS)) {
+  console.log('跳过：找不到 ' + AIS_TOOL_KIS + '（需要 ty 的同级仓库 ais-tool，或用 AIS_TOOL_DIR 指定其位置）');
+  process.exit(0);
+}
 let pass = 0, fail = 0;
 const fails = [];
 function check(cond, label, detail) {
