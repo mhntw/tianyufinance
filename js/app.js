@@ -1,6 +1,6 @@
 /* ============================================================
  * js/app.js — 渲染与交互层
- * 菜单结构：凭证 / 账簿 / 报表 / 固定资产 / 工资 / 结账 / 设置
+ * 菜单结构：凭证 / 账簿 / 报表 / 固定资产 / 结账 / 设置（工资组 2026-10-27 随模块下线移除）
  * 依赖：store.js（全局 S）、util
  * ============================================================ */
 (function () {
@@ -627,6 +627,18 @@
   }
   globalThis.openModal = openModal;
   globalThis.closeModal = closeModal;
+  /* 弹窗右上角 × 的统一关闭入口（2026-10-27）：
+     全站 16 个弹窗现在都带 ×，但只有一个入口需要写代码 —— 标记 data-modal-close 的按钮，
+     点击即关掉它所在的弹窗。此前每个 × 都要在各自页面里写一段
+     `$('btnXxxClose').addEventListener('click', () => closeModal('xxxModal'))`，
+     漏写就会出现「有 × 但点了没反应」（本项目确实出现过），补弹窗时也容易再漏。
+     已有 id 的老 × 保留各自绑定：closeModal 幂等，重复调用无副作用。 */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.modal-x[data-modal-close]');
+    if (!btn) return;
+    var m = btn.closest('.modal');
+    if (m && m.id) closeModal(m.id);
+  });
   // 模态框 Tab 焦点陷阱（Esc 已由 TYKeyboard 的全局 Esc 栈统一处理，见上）。
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Tab') return;
@@ -1184,10 +1196,8 @@
       { key: 'asset-depr-sum',      name: '折旧汇总表',   page: 'asset-depr-sum',  icon: 'zichan4' },
       { key: 'asset-depr-detail',   name: '折旧明细表',   page: 'asset-depr-detail',icon: 'biandong' },
     ]},
-    { group: '工资', items: [
-      { key: 'salary-table', name: '工资',   page: 'salary', icon: 'gongzi3' },
-      { key: 'salary-statistics', name: '工资统计', page: 'salary-statistics', icon: 'gongzi4' },
-    ]},
+    /* 【2026-10-27】「工资」菜单组整体移除：模块已下线（两本真实账套 payrolls 均为 0 条，
+       工资业务一直走普通凭证）。数据字段 payrolls / salaryVchTpls 保留不读不写，见 store.js emptyState。 */
     { group: '设置', items: [
       { key: 'account-setup',       name: '科目',             page: 'subject',          icon: 'jichuziliao2' },
       { key: 'init-balance',        name: '期初余额',     page: 'opening',          icon: 'shezhi2' },
@@ -2041,8 +2051,11 @@
     if (_assetDeprPageAlias[page]) page = _assetDeprPageAlias[page];
     // 资产类别：收敛为固定资产卡片工具条弹窗，旧直达落到卡片页
     else if (page === 'asset-category') { page = 'asset-card'; }
-    // 工资收敛：部门职员 / 凭证模板 / 新手导航 已并入工资表页（弹窗），旧直达落工资表
-    else if (page === 'department-staff' || page === 'salary-tpl' || page === 'salary-guide') { page = 'salary'; }
+    /* 部门档案：2026-10-27 从工资页迁到「系统设置」卡片，旧直达改落设置页 */
+    else if (page === 'department-staff') { page = 'system-settings'; }
+    /* 工资模块 2026-10-27 整体下线：页面、弹窗与渲染函数都已移除，旧直达链接统一落首页，
+       避免书签/外部链接打到不存在的 page 上出现空白。 */
+    else if (page === 'salary' || page === 'salary-statistics' || page === 'salary-tpl' || page === 'salary-guide') { page = 'home'; }
     /* 结账：settle-close 映射到已有 page-settle */
     if (page === 'settle-close') page = 'settle';
     var sec = document.getElementById('page-' + page);
@@ -2089,8 +2102,7 @@
     'asset-depr-detail': '折旧明细表',
     'cashflow-init': '现金流量初始余额', 'cashflow-project': '科目现金流量项目',
     'backup-restore': '数据与安全', 'system-settings': '系统设置', 'operation-logs': '操作日志',
-    'salary-statistics': '工资统计',
-    'salary': '工资', 'settle': '结账', 'subject': '科目', 'opening': '期初余额',
+    'settle': '结账', 'subject': '科目', 'opening': '期初余额',
     'param': '账套参数',
     /* 凭证/报表补充子页 */
     'expense-detail': '费用明细表',
@@ -2316,11 +2328,10 @@
     'asset-depr-voucher': renderVia('Assets'),
     'asset-depr-sum': renderVia('Das'),
     'asset-depr-detail': renderVia('Dad'),
-    'salary': renderVia('Salary'), 'settle': refreshSettle, 'subject': renderVia('Subjects'),
+    'settle': refreshSettle, 'subject': renderVia('Subjects'),
     'opening': refreshOpening, 'param': renderVia('SystemSettings'),
-    'salary-statistics': renderVia('SalaryStats'),
-    /* 工资收敛：部门职员/凭证模板已并回工资页弹窗，旧键保持可用（渲染到弹窗内表体） */
-    'department-staff': renderVia('DeptStaff'), 'salary-tpl': renderVia('SalaryTpl'), 'salary-guide': renderVia('Salary'),
+    /* 工资域三个键（salary / salary-statistics / salary-tpl / salary-guide）2026-10-27 随模块下线删除；
+       旧 hash 由 goPage 的归一化逻辑落到首页。部门档案同日迁到系统设置页卡片。 */
     'cashflow-init': renderVia('CashflowInit'), 'cashflow-project': renderVia('CashflowProject'),
     /* 【2026-09-26】费用明细表：把**真实的键**补上。
        原先这里写的是 `'report-expense-detail': renderVia('ExpenseDetail')` —— 属**死映射**：

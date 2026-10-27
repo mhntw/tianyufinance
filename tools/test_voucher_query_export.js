@@ -116,6 +116,9 @@ function makeEnv(periodVouchers) {
     // 只提取后两者时，调用 qSubjectCodes 会解析到沙箱全局而报「is not defined」。
     extract('qSubjectCodes') + '\n' +
     extractFrom(pickerSrc, 'matchSubjectCode') + '\n' +   // 来自 SubjectPicker.js（ESM import）
+    /* makerOf：2026-10-27 起「制单人」由模块级单点提供（屏幕与导出共用，导出不再写死 '本账套'），
+       故与 qSubjectCodes 同理必须一并装载，否则沙箱里 exportQuery 报 makerOf is not defined。 */
+    extract('makerOf') + '\n' +
     extract('queryVouchers') + '\n' + extract('exportQuery') + '\n' +
     'globalThis.queryVouchers = queryVouchers; globalThis.exportQuery = exportQuery;',
     sandbox
@@ -215,6 +218,29 @@ function v(id, word, no, date, entries) {
     assert.strictEqual(rows[3][0], '', '非首行日期应留空');
     assert.strictEqual(rows[3][1], '', '非首行字号应留空');
     assert.strictEqual(rows[3][3], '6001 主营业务收入');
+  });
+
+  /* 2026-10-27 新增：制单人列口径。原先导出写死 '本账套' —— 每张凭证同一署名，
+     看着像信息其实是伪数据（审计/交接时比留空更糟）。现与屏幕共用 store.voucherMaker。 */
+  await step('导出制单人取真实值，缺值时留空（不再写死「本账套」）', function () {
+    const withMaker = {
+      '2026-01': [{
+        id: 'm', word: '记', no: 1, date: '2026-01-05', maker: '张三',
+        entries: [{ code: '1001', name: '库存现金', dr: 1000000, cr: 0 }]
+      }],
+      '2026-02': [{
+        id: 'p', word: '记', no: 2, date: '2026-02-06', preparer: '李四',   // 金蝶导入落在 preparer
+        entries: [{ code: '1001', name: '库存现金', dr: 1000000, cr: 0 }]
+      }]
+    };
+    const { sandbox, captured } = makeEnv(withMaker);
+    sandbox.exportQuery();
+    const rows = captured.sheets.ws.__rows;
+    assert.strictEqual(rows[1][7], '张三', 'ty 录入的凭证取 maker');
+    assert.strictEqual(rows[2][7], '李四', '外部账套导入的凭证取 preparer');
+    const e = makeEnv({ '2026-01': [{ id: 'n', word: '记', no: 1, date: '2026-01-05', entries: [{ code: '1001', name: '库存现金', dr: 1000000, cr: 0 }] }] });
+    e.sandbox.exportQuery();
+    assert.strictEqual(e.captured.sheets.ws.__rows[1][7], '', '无制单人时应留空，而不是「本账套」');
   });
 
   await step('导出金额为数值型，非格式化字符串', function () {

@@ -27,6 +27,16 @@ import { subjectFullName } from '../../common/subject-name.js';
 // 金额位格算法（纯函数，无 DOM；由 tools/check_amt_cells.js 断言锁死）
 import { computeAmtCells } from './amt_cells.mjs?v=dev';
 
+/* —— 制单人：屏幕「制单人」列与「导出凭证列表」的唯一取值口径 ——
+ * 真实值 = 本系统录入时的 maker，外部账套（金蝶）导入时落在 preparer —— 两者都由
+ * store.voucherMaker 单点归口，这里只做 S 未就绪时的兜底。
+ * ⚠️ 导出口径曾经写死 '本账套'：每张凭证同一署名，看着像信息、其实是伪数据，
+ *    审计/交接时比留空更糟。缺值一律留空（屏幕上的「—」是占位符，导出件留空才便于筛选）。 */
+function makerOf(v) {
+  if (!v) return '';
+  return (S && S.voucherMaker) ? S.voucherMaker(v) : String(v.maker || v.preparer || '').trim();
+}
+
 /* —— 金额位格 helper（纯函数；这里是全站唯一实现。
    app.js 侧只保留表头单位格子的最小画法，不再有「剥负号 + 红字」的旧副本（2026-10-21 清理）。 —— */
 function amtInnerHtml(value, isNumber, activeIndex, hideValueLayer, force2) {
@@ -1142,7 +1152,8 @@ function exportQuery() {
 
   // 导出到 Excel：en.dr/cr 是 store 内部定点整数（0.0001 元），必须换回「元」，否则金额放大 10000 倍
   function amt(n) { var x = U.yuan(n); return x ? x : ''; }
-  var rows = [['日期', '凭证字号', '摘要', '科目', '借方金额', '贷方金额', '附件', '原单据编号', '制单人']];
+  // 列序与筛查表 qGrid 一致（2026-10-27 删掉「原单据编号」后 8 列）：导出表头 / 数据行 / cols 列宽必须同改。
+  var rows = [['日期', '凭证字号', '摘要', '科目', '借方金额', '贷方金额', '附件', '制单人']];
   vs.forEach(function (v) {
     var first = true;
     v.entries.forEach(function (en) {
@@ -1155,8 +1166,7 @@ function exportQuery() {
         amt(en.dr),
         amt(en.cr),
         first ? (v.attach || '') : '',
-        first ? (v.sourceNo || '') : '',
-        first ? '本账套' : ''
+        first ? makerOf(v) : ''
       ]);
       first = false;
     });
@@ -1164,7 +1174,7 @@ function exportQuery() {
 
   var wb = TyIo.buildSheetWorkbook({
     sheet: '凭证列表', rows: rows,
-    cols: [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 10 }]
+    cols: [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 10 }]
   });
   var fname = '凭证列表_' + (start === end ? start : start + '至' + end);
   __safeExportExcel(wb, fname);
@@ -1176,14 +1186,13 @@ function renderQuery(start, end) {
   var sc = qSubjectCodes();
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
-  // colspan 随表头列数（10：复选/日期/字号/摘要/科目/借/贷/附件/原单据编号/制单人）。
-  // 旧值 12 是「含操作列」时留下的，移除操作列后应同步为 10。
-  if (!vs.length) { tb.innerHTML = '<tr><td colspan="10" class="empty-hint">本期无凭证</td></tr>'; return; }
+  // colspan 随表头列数（8：日期/字号/摘要/科目/借/贷/附件/制单人）。
+  // 历史：12 是「含操作列」时的旧值；删「原单据编号」前一直是 10 —— 比表头多 1（表头从来只有 9 列，
+  // 从未有过勾选列），本次一并纠正为与表头严格相等的 8。
+  if (!vs.length) { tb.innerHTML = '<tr><td colspan="8" class="empty-hint">本期无凭证</td></tr>'; return; }
   // 科目名显示口径：取科目表实时名称，科目改名后历史凭证显示同步更新；分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
-  // 制单人取真实值：兼容 ty 新录的 maker 与金蝶导入的 preparer。
-  // 原实现写死 '本账套' —— 导出的 Excel 里每张凭证制单人都一样，等于没有制单人信息。
-  var makerOf = function (v) { return (S && S.voucherMaker) ? S.voucherMaker(v) : (v.maker || v.preparer || ''); };
+  // 制单人：取模块级 makerOf（屏幕与导出共用一份，见文件上方定义）。
   // 红字冲销关联索引（一次遍历建好，避免每行都扫全表）：
   //   revOf[id]      = 冲销了 id 的那张【未删除】红字冲销凭证 —— 用于「已冲」标记 + 判断可否再红字冲销
   //   reversedSet    = 本身即红字冲销凭证的 id 集合
@@ -1207,7 +1216,7 @@ function renderQuery(start, end) {
       var makerCell = first ? html`${makerOf(v)}` : '';
       // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
       tr.innerHTML =
-        html`<td>${dateCell}</td><td>${noCell}</td><td class="cell-ellipsis" title="${e.summary || v.summary || ''}">${e.summary || v.summary || ''}</td><td class="cell-ellipsis" title="${e.code + ' ' + (subjName[e.code] || e.name || '')}">${e.code ? html`<a href="#" class="link-gl-subject" data-code="${e.code}">${e.code}</a> ` : ''}${subjName[e.code] || e.name || ''}</td><td class="ta-r mono">${U.num(e.dr) ? money(e.dr) : ''}</td><td class="ta-r mono">${U.num(e.cr) ? money(e.cr) : ''}</td><td>${first ? (v.attach || '') : ''}</td><td>${first ? (v.sourceNo || '') : ''}</td><td>${makerCell}</td>`;
+        html`<td>${dateCell}</td><td>${noCell}</td><td class="cell-ellipsis" title="${e.summary || v.summary || ''}">${e.summary || v.summary || ''}</td><td class="cell-ellipsis" title="${e.code + ' ' + (subjName[e.code] || e.name || '')}">${e.code ? html`<a href="#" class="link-gl-subject" data-code="${e.code}">${e.code}</a> ` : ''}${subjName[e.code] || e.name || ''}</td><td class="ta-r mono">${U.num(e.dr) ? money(e.dr) : ''}</td><td class="ta-r mono">${U.num(e.cr) ? money(e.cr) : ''}</td><td>${first ? (v.attach || '') : ''}</td><td>${makerCell}</td>`;
       tb.appendChild(tr);
       first = false;
     });
@@ -1216,10 +1225,10 @@ function renderQuery(start, end) {
   vs.forEach(function (v) { v.entries.forEach(function (e) { sumDr += U.num(e.dr); sumCr += U.num(e.cr); }); });
   var trt = document.createElement('tr');
   trt.className = 'grp-row';
-  // 末尾补空列：表头 10 列，本行 = 1(空) + 4(合计) + 2(借贷) + 3(补空) = 10。
-  // ⚠ 此前是 colspan="4"（合计 11 列）—— 那是「还有操作列」时的旧值，
-  //   移除操作列后表头变 10 列却漏改此处，表格被撑成 11 列、表头与内容错位。
-  trt.innerHTML = html`<td colspan="4" class="ta-r">合 计</td><td class="ta-r mono grp-amt">${money(sumDr)}</td><td class="ta-r mono grp-amt">${money(sumCr)}</td><td colspan="3"></td>`;
+  // 末尾补空列：表头 8 列，本行 = 4(合计占「日期/字号/摘要/科目」) + 2(借贷) + 2(补空) = 8。
+  // ⚠ 此处历来是「表头改了漏改这里」的高发点（曾 11 列、后来 9 列对 10 列表头）。
+  //   改表头时请回来数一遍：4 + 2 + N 必须等于表头列数。
+  trt.innerHTML = html`<td colspan="4" class="ta-r">合 计</td><td class="ta-r mono grp-amt">${money(sumDr)}</td><td class="ta-r mono grp-amt">${money(sumCr)}</td><td colspan="2"></td>`;
   tb.appendChild(trt);
 }
 

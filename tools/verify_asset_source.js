@@ -12,7 +12,8 @@
  * 【比什么】（来源与账套按编码配对）
  *   ① 确定性字段必须逐值相同：名称 / 部门 / 开始使用日期 / 原值 / 使用年限 / 残值率 / 残值 /
  *      折旧方法 / 状态 / 数量 / 规格 / 存放地点 / 使用人 / 备注 / **六个科目映射**
- *      · 类别：来源是**名称**、账套存**编码** → 用该账套自己的类别档案映射后再比（否则必假报）；
+ *      · 类别：双方都存**名称**（2026-10-27 起账套 category 即名称，与金蝶「固定资产类别」列同口径）；
+ *        读到的若是「类别存编码」的旧账套，先用同一份 migrateAssetCategoryToName 在内存里迁移再比；
  *      · 金额：来源是「元」、账套是内部定点整数 → 经 util.yuan 换回元后比（±0.005 元）。
  *   ② 累计折旧（单独判据）：来源的「累计折旧额」↔ 账套的 accumDeprBegin，
  *      **差额必须恰为 1 期月折旧**（月折旧 =（原值 − 残值）/（年限 × 12））。
@@ -36,7 +37,8 @@
  *   退出码：0 = 全部一致（或无来源可对）；1 = 存在差异
  *
  * 【来源位置 —— 已确认并固定记忆，别再满机找】
- *   目录：`~/Downloads/金蝶账套 ais/`（**不在仓库里**，故 git 里查不到）
+ *   目录：**本仓库的上一级** `../金蝶账套 ais/`（**不在仓库里**，故 git 里查不到；
+ *         历史上放在 `~/Downloads/金蝶账套 ais/`，2026-10-27 实测已挪到项目上一级）
  *     · 账套原文件：`添钰来客_2025年/2026年_金蝶KIS格式.ais`、`绅蓝之星_2024/2025/2026年_金蝶KIS格式.ais`
  *     · 固定资产卡片：两张金蝶导出 xlsx —— **卡片只在这两张 xlsx 里，`.ais` 不含固定资产**
  *       （KIS 账套本身没有固定资产表，导入后 `fixedAssets` 为空；卡片是从 xlsx 单独导进来的）
@@ -58,6 +60,7 @@ global.window = global; global.__TAURI__ = {}; global.isTauri = false;
 require(path.join(ROOT, 'js', 'storage.js'));
 require(path.join(ROOT, 'js', 'store.js'));
 const U = global.util;                                   // 定点换算单点：yuan / AMT_SCALE
+const EX = global.__TY_EXPORT__ || {};                    // store 的导出对象（含类别迁移等单点实现）
 global.XLSX = require(path.join(ROOT, 'js', 'xlsx.full.min.js'));
 require(path.join(ROOT, 'js', 'ty-io.js'));
 const TyIo = global.TyIo;
@@ -73,7 +76,9 @@ function appRoot() {
   if (process.platform === 'win32') return path.join(h, 'AppData', 'Roaming', '添钰财务');
   return path.join(h, '.local', 'share', '添钰财务');
 }
-const SRC_DIR = process.argv[2] || process.env.TY_ASSET_SRC_DIR || path.join(os.homedir(), 'Downloads', '金蝶账套 ais');
+/* 来源目录默认取**本仓库的上一级**（实测位置：<workspace 父目录>/金蝶账套 ais）——
+   原先写死 ~/Downloads 下，已随实际挪动失效；env / 命令行参数仍可覆盖。 */
+const SRC_DIR = process.argv[2] || process.env.TY_ASSET_SRC_DIR || path.join(path.dirname(ROOT), '金蝶账套 ais');
 const BOOK_DIR = process.argv[3] || process.env.TY_ASSET_BOOK_DIR || path.join(appRoot(), 'books');
 
 /* 账套里"应用内新增"的卡：来源不可考，不参与对源比对（见头注释） */
@@ -98,7 +103,7 @@ try { books = fs.readdirSync(BOOK_DIR).filter(f => f.endsWith('.json') && f.inde
 
 if (!xlsx.length) {
   console.log('跳过：' + SRC_DIR + ' 下没有金蝶导出的卡片 xlsx（无来源可比）');
-  console.log('  → 金蝶原始数据（含那两张固定资产卡片 xlsx）应放在 ~/Downloads/金蝶账套 ais/，');
+  console.log('  → 金蝶原始数据（含那两张固定资产卡片 xlsx）应放在本仓库上一级的「金蝶账套 ais/」，');
   console.log('    见本文件头注释「来源位置」；若已挪走，用 TY_ASSET_SRC_DIR=<目录> 或第一个参数指定。');
   process.exit(0);
 }
@@ -114,6 +119,9 @@ console.log('账套目录：' + BOOK_DIR);
 let comparedBooks = 0;
 books.forEach(function (bf) {
   const book = JSON.parse(fs.readFileSync(path.join(BOOK_DIR, bf), 'utf8'));
+  /* 账套可能是「类别存编码」的旧格式（还没被新版打开过）→ 在**内存副本**上跑同一份迁移再对照，
+     保证脚本读旧账套也不误报。只改内存，绝不写盘（对源脚本必须只读）。 */
+  if (typeof EX.migrateAssetCategoryToName === 'function') EX.migrateAssetCategoryToName(book);
   const cards = book.fixedAssets || [];
   if (!cards.length) return;                                   // 无卡片的账套跳过（不算未对照）
   const bookName = norm(book.company && book.company.name);
@@ -136,8 +144,6 @@ books.forEach(function (bf) {
   const list = TyIo.parseAssetWorkbook(global.XLSX.read(fs.readFileSync(path.join(SRC_DIR, src)), { type: 'buffer' }));
   console.log('  来源：' + src + '（' + list.length + ' 张）');
 
-  const catByCode = {};
-  (book.assetCats || []).forEach(c => { catByCode[norm(c.code)] = norm(c.name); });
   const byCode = {}, srcByCode = {};
   cards.forEach(fa => { byCode[norm(fa.code)] = fa; });
   list.forEach(s => { srcByCode[norm(s.code)] = s; });
@@ -168,8 +174,7 @@ books.forEach(function (bf) {
     if (norm(s.method) !== norm(b.method)) diffs.push('折旧方法 "' + s.method + '" vs "' + b.method + '"');
     if (norm(s.status) !== norm(b.status)) diffs.push('状态 "' + s.status + '" vs "' + b.status + '"');
     if (norm(s.qty) !== norm(b.qty)) diffs.push('数量 ' + s.qty + ' vs ' + b.qty);
-    const mapped = catByCode[norm(b.category)];
-    if (norm(s.category) && mapped && norm(s.category) !== mapped) diffs.push('类别 "' + s.category + '" vs 账套 ' + b.category + '(=' + mapped + ')');
+    if (norm(s.category) !== norm(b.category)) diffs.push('类别 "' + s.category + '" vs "' + b.category + '"');
     [['faAcctId', '固定资产科目'], ['accDeprAcct', '累计折旧科目'], ['deprFeeAcct', '折旧费用科目'],
       ['cleanAcct', '清理科目'], ['purchaseAcct', '购入对方科目'], ['impairAcct', '减值科目']].forEach(function (p) {
         const sv = norm(s[p[0]]), bv = norm(b[p[0]]);

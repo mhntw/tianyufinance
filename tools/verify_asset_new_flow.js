@@ -28,6 +28,7 @@ function ck(cond, label) { if (cond) { pass++; console.log('  \u2713 ' + label);
 const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const ASSET = fs.readFileSync(path.join(ROOT, 'js/pages/asset/Asset.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+const STORE = fs.readFileSync(path.join(ROOT, 'js/store.js'), 'utf8');
 
 console.log('\n=== A. store 层：编辑卡片时累计折旧字段同步（P0-1）===');
 // 跨平台账套目录 + 无账套即跳过（原先写死 macOS 路径，CI/Linux 上抛 ENOENT 会被误判为失败）
@@ -74,7 +75,8 @@ else {
 console.log('\n=== B. 表单静态契约 ===');
 ck(!/id="aStatus"/.test(HTML), 'B1 已移除「状态」字段（消除无凭证清理入口）');
 ck(!/id="aCleanPeriod"/.test(HTML), 'B2 已移除「清理期间」字段');
-ck(/<label class="req">类别<\/label>/.test(HTML), 'B3 资产类别改必填');
+ck(!/id="aCategory"/.test(HTML), 'B3 卡片表单已无「类别」字段（2026-10-27 移除）');
+ck(/id="aCode"[^>]*placeholder="留空自动生成/.test(HTML), 'B3b 资产编码不再必填（留空自动生成）');
 ck(/<label>期初累计折旧<\/label>/.test(HTML), 'B4 期初累计折旧去星标（非必填）');
 ck(/<label>本年已折旧<\/label>/.test(HTML), 'B5 本年已折旧去星标');
 ck(/<label>数量<\/label>/.test(HTML), 'B6 数量去星标（非必填）');
@@ -95,6 +97,22 @@ ck(/=== '1606'/.test(ASSET), 'C6 新增时资产清理科目默认带出 1606');
 ck(/function _anchorMonth/.test(ASSET) && /function _updateHints/.test(ASSET), 'C7 锚点推导与提示函数已就位');
 ck(/'aAcq', 'aPeriodUsed'/.test(ASSET), 'C8 锚点相关字段变动会刷新时点提示');
 ck(/_editingDeprMonth \|\| _anchorMonth\(\)/.test(ASSET), 'C9 编辑已计提卡片时优先用卡片自带锚点月');
+
+console.log('\n=== D. 资产类别档案下线后的契约（2026-10-27）===');
+ck(!/id="aCategory"/.test(HTML) && !/id="assetCatList"/.test(HTML),
+  'D1 卡片表单与 datalist 中的类别输入已删除');
+ck(/function _nextAssetCode/.test(ASSET) && !/if \(!fa\.code\) return showToast/.test(ASSET),
+  'D1b 资产编码自动生成（KH0001 递增），不再强制手填');
+ck(/function _deprGroups\(month, showCleaned, startMonth\)/.test(ASSET) && !/byDept/.test(ASSET),
+  'D1c 折旧分组固定按部门（byDept 死参数已清除）');
+ck(!/id="btnAssetCatMgr"/.test(HTML) && !/id="assetCatListModal"/.test(HTML) && !/id="catModal"/.test(HTML),
+  'D2 类别维护弹窗 / 类别编辑弹窗 / 工具条入口 均已删除');
+ck(!/id="assetCatTree"/.test(HTML), 'D3 左树类别筛选已删除（只保留部门树）');
+ck(!/assetCats\(\)/.test(ASSET), 'D4 前端不再读取类别档案');
+ck(!/normalizeAssetCategory\s*:\s*function/.test(STORE), 'D5 store 不再有「编码↔名称」归一方法');
+ck(/function migrateAssetCategoryToName/.test(STORE) && /migrateAssetCategoryToName\(this\.state\)/.test(STORE),
+  'D6 store 在 normalizeState 里调用幂等迁移（编码 → 名称）');
+ck(/assetCats: \[\],/.test(STORE), 'D7 emptyState 保留 assetCats 空数组键（旧版本回退时的兼容位）');
 
 console.log('\n结果：通过 ' + pass + ' / 失败 ' + fail);
 process.exit(fail ? 1 : 0);

@@ -186,7 +186,45 @@ if (extraRegistered.length > 0) {
   for (const x of extraRegistered) console.log(`    __render${x}`);
 }
 
-// ========== 4. 汇总 ==========
+// ========== 4. 弹窗结构一致性（2026-10-27 起作为门禁） ==========
+/* 全站弹窗此前是：有的一带 ×、有的只靠底部关闭；主按钮靠 CSS `:first-child` 隐式上色；
+   宽度 9 种取值。这类纯视觉漂移任何单测都抓不到，只能靠结构断言。这里固化三条硬约束：
+     ① 每个弹窗标题栏必须有 × —— 否则"怎么关"全站不统一；
+     ② × 必须点得动 —— 有 id（各自绑定）或 data-modal-close（全局委托）；
+     ③ 一个按钮区最多一个 .btn-primary —— 多个主操作等于没主操作。 */
+console.log('\n=== 4. 弹窗结构（标题 × / 单一主操作） ===');
+const htmlLines = html.split('\n');
+const modalIssues = [];
+let modalCount = 0;
+for (let i = 0; i < htmlLines.length; i++) {
+  const mm = /<div class="modal"([^>]*)>/.exec(htmlLines[i]);
+  if (!mm) continue;
+  const mid = (/id="([^"]+)"/.exec(mm[1]) || [])[1] || '(no-id)';
+  const ind = htmlLines[i].match(/^\s*/)[0].length;
+  let j = i + 1; const blk = [];
+  for (; j < htmlLines.length; j++) {
+    if (/^\s*<\/div>\s*$/.test(htmlLines[j]) && htmlLines[j].match(/^\s*/)[0].length === ind) break;
+    blk.push(htmlLines[j]);
+  }
+  const b = blk.join('\n');
+  modalCount++;
+  if (!/class="modal-x"/.test(b)) modalIssues.push(mid + '：标题栏缺关闭按钮 ×');
+  [...b.matchAll(/<button class="modal-x"([^>]*)>/g)].forEach((x, k) => {
+    if (!/id="/.test(x[1]) && !/data-modal-close/.test(x[1])) {
+      modalIssues.push(mid + '：第 ' + (k + 1) + ' 个 × 既无 id 也无 data-modal-close（点了没反应）');
+    }
+  });
+  const act = /<div class="modal-actions[^"]*"[\s\S]*?<\/div>/.exec(b);
+  if (act) {
+    const n = (act[0].match(/btn-primary/g) || []).length;
+    if (n > 1) modalIssues.push(mid + '：按钮区有 ' + n + ' 个 .btn-primary（只应保留 1 个主操作）');
+  }
+}
+if (modalCount === 0) modalIssues.push('未解析到任何 .modal 块（正则失效？）');
+modalIssues.forEach(s => console.log('  ✗ ' + s));
+console.log(`  弹窗 ${modalCount} 个，结构问题 ${modalIssues.length} 个`);
+
+// ========== 5. 汇总 ==========
 // 【修正 2026-09-21】原写 `domRefs.length` —— 把「有 null guard 的安全项」也算进失败，
 //   于是本脚本永远退出码 1。后果是它一直没能进 run-all 回归（收录即永久红灯），
 //   反而掩盖了这个判定错误。现按 hasGuard 区分：只有无保护的才是真断裂。
@@ -204,7 +242,7 @@ if (deadScans.length) {
   deadScans.forEach(s => console.log('    · ' + s));
   process.exit(1);
 }
-const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length;
+const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length + modalIssues.length;
 console.log('\n=== 汇总 ===');
 console.log(`  扫描量:         $("id") ${dollarScanned} 处 / store 方法 ${storeMethods.size} 个 / renderVia 路由 ${needed.size} 个`);
 console.log(`  DOM 引用断裂:   ${domUnsafe.length}  (无 null guard，会炸 TypeError)`);

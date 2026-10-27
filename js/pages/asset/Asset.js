@@ -20,17 +20,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
    * ============================================================ */
   /* 固定资产卡片（ykj-page1：过滤条 / 工具条 / 左树(类别+部门)+右表） */
   var _assetPage = 1, _assetPageSize = 500, _assetFiltered = [];
-  var _assetCatSel = '';        // 左树选中的类别 code（''=全部）—— 类别字段存的是**编码**
   // 左树/筛选选中的部门**名称**（''=全部）。⚠️ 部门存的是名称、不是编码：
   // 卡片表单的「使用部门」是自由文本输入，store 里 addFixedAsset 也无「部门编码」契约，
   // 全库消费方（本树 / fDept 筛选 / 折旧汇总表按部门汇总）都按名称比。
   // 原先这里传/比的是 d.code → 卡片里写的「客房」永远匹配不上下拉的「002」，按部门筛选恒为 0 张。
   var _assetDeptSel = '';
-  function _catName(code) {
-    var c = assetCats().filter(function (x) { return x.code === code; })[0];
-    return c ? c.name : (code || '');
-  }
-  // 左侧栏： table-left-box(资产类别树) + bottom-box(部门树)，各含「全部」根节点
+  // 左侧栏只剩部门树（类别树随档案体系下线，2026-10-27）
   function _buildAssetTree(ulId, selCode, onPick) {
     var ul = $(ulId); if (!ul) return;
     ul.innerHTML = '';
@@ -64,10 +59,6 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return li;
   }
   function renderAssetTree() {
-    _buildAssetTree('assetCatTree', _assetCatSel, function (code) { _assetCatSel = code; _assetPage = 1; renderAssetTree(); renderAssets(); });
-    assetCats().forEach(function (c) {
-      $('assetCatTree').appendChild(_assetTreeLeaf(c.name, c.code === _assetCatSel, function (code) { _assetCatSel = code; _assetPage = 1; renderAssetTree(); renderAssets(); }, c.code));
-    });
     _buildAssetTree('assetDeptTree', _assetDeptSel, function (name) { _assetDeptSel = name; _assetPage = 1; renderAssetTree(); renderAssets(); });
     // 部门树按**名称**选中/回传（与卡片 fa.dept 同口径），不要传 d.code
     S.depts().forEach(function (d) {
@@ -116,12 +107,11 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     try { closed = _astSt.getItem(ASSET_SIDER_KEY) === '1'; } catch (e) { }
     _setAssetSiderClosed(closed, false);
   }
-  /* 卡片筛选：只剩两个来源 —— 左侧树（类别 / 部门，点击即筛）与顶部「显示已清理资产」。
+  /* 卡片筛选：只剩两个来源 —— 左侧部门树（点击即筛，类别树已随档案体系下线）与顶部「显示已清理资产」。
      2026-09-18 按用户要求移除了「过滤」折叠面板及其 11 项组合条件（编码、名称、日期区间、
      折旧方法、凭证与否…）：本软件卡片量级小，那些条件几乎用不到，却带来"点了没反应"一类
      的问题与无谓的维护负担。筛选逻辑本身保留 —— 左侧树仍要通过它生效。 */
   function _assetFilterList() {
-    var cat = _assetCatSel;
     var dept = _assetDeptSel;
     var sw = $('fShowCleanedTop');
     var showCleaned = !!(sw && sw.checked);
@@ -133,7 +123,6 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
      * 判据用 acqM > period（而非 >=）：当月购置的卡仍要出现，资产已入账，只是尚未开始计提。 */
     var period = _assetPeriod();
     return S.state.fixedAssets.filter(function (fa) {
-      if (cat && fa.category !== cat) return false;
       if (dept && fa.dept !== dept) return false;
       if (!showCleaned && fa.status === '清理') return false;
       var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
@@ -186,7 +175,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return v;
   }
 
-  // 资产卡片 27 列共用 td 拼接（卡片页 + 折旧凭证页复用）
+  // 资产卡片 25 列共用 td 拼接（仅卡片页使用；折旧凭证页已合并下线）
+  // 2026-10-27：删除「减值准备凭证」「其他变动凭证」两列 —— 二者全库无生成入口
+  // （fa.impairVoucher / fa.otherVoucher 只有 store 默认 '' + Excel 导入可带），界面恒空。
+  // 字段与 ty-io 的 Excel 映射保留（数据交换能力不变，Excel 本就是屏幕的超集，如已下线的「类别」列）。
   function _assetRowCells(fa) {
     var md = S.assetMonthlyDepr(fa);
     /* 四个金额全部按「期间选择器的期间」滚算：
@@ -202,7 +194,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var accumEnd = _accumDeprAt(fa, pEnd, md);
     var netBegin = Math.max(0, num(fa.original) - accumBegin - num(fa.impairment));
     var netEnd = Math.max(0, num(fa.original) - accumEnd - num(fa.impairment));
-    return html`<td class="mono">${fa.code || ''}</td><td>${fa.name || ''}</td><td>${_catName(fa.category)}</td><td>${fa.dept || ''}</td><td>${fa.acqDate || ''}</td><td class="ta-r mono">${money(fa.original)}</td><td class="ta-r mono">${money(accumBegin)}</td><td class="ta-r mono">${money(accumEnd)}</td><td class="ta-r mono">${money(md)}</td><td>${fa.life ? fa.life + '年' : ''}</td><td>${fa.periodUsed || ''}</td><td class="ta-r mono">${money(fa.salvage)}</td><td class="ta-r mono">${num(fa.salvageRate).toFixed(2)}</td><td class="ta-r mono">${money(fa.impairment)}</td><td class="ta-r mono">${money(netBegin)}</td><td class="ta-r mono">${money(netEnd)}</td><td>${fa.method || ''}</td><td>${fa.status || '正常'}</td><td class="ta-r">${fa.qty || ''}</td><td>${fa.spec || ''}</td><td>${fa.location || ''}</td><td>${fa.user || ''}</td><td>${fa.cleanPeriod || ''}</td><td class="mono">${_addVoucherCell(fa)}</td><td class="mono">${fa.cleanVoucher || ''}</td><td class="mono">${fa.impairVoucher || ''}</td><td class="mono">${fa.otherVoucher || ''}</td><td>${fa.memo || ''}</td>`;
+    return html`<td class="mono">${fa.code || ''}</td><td>${fa.name || ''}</td><td>${fa.dept || ''}</td><td>${fa.acqDate || ''}</td><td class="ta-r mono">${money(fa.original)}</td><td class="ta-r mono">${money(accumBegin)}</td><td class="ta-r mono">${money(accumEnd)}</td><td class="ta-r mono">${money(md)}</td><td>${fa.life ? fa.life + '年' : ''}</td><td>${fa.periodUsed || ''}</td><td class="ta-r mono">${money(fa.salvage)}</td><td class="ta-r mono">${num(fa.salvageRate).toFixed(2)}</td><td class="ta-r mono">${money(fa.impairment)}</td><td class="ta-r mono">${money(netBegin)}</td><td class="ta-r mono">${money(netEnd)}</td><td>${fa.method || ''}</td><td>${fa.status || '正常'}</td><td class="ta-r">${fa.qty || ''}</td><td>${fa.spec || ''}</td><td>${fa.location || ''}</td><td>${fa.user || ''}</td><td>${fa.cleanPeriod || ''}</td><td class="mono">${_addVoucherCell(fa)}</td><td class="mono">${fa.cleanVoucher || ''}</td><td>${fa.memo || ''}</td>`;
   }
   function renderAssets() {
     _assetFiltered = _assetFilterList();
@@ -241,10 +233,14 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         sNE += Math.max(0, num(fa.original) - ae - num(fa.impairment));
       });
       var trf = document.createElement('tr');
-      // 前置列 = 勾选(1) + 操作「合计」(2) + 编码/名称/类别/部门/开始使用日期(5) = 7 列
+      // 前置列 = 勾选(1) + 操作「合计」(2) + 编码/名称/部门/开始使用日期(4) = 6 列
       // 2026-09-23 修复：此前 colspan="6" 是「录入期间」列还在时的写法，
       // 该列于 f2f460dd 删除后本行未同步，合计行比表头多 1 列 → 所有金额右移一列。
-      trf.innerHTML = html`<td></td><td>合计</td><td colspan="5"></td><td class="ta-r mono">${money(sOrig)}</td><td class="ta-r mono">${money(sB)}</td><td class="ta-r mono">${money(sE)}</td><td class="ta-r mono">${money(sM)}</td><td></td><td></td><td class="ta-r mono">${money(sS)}</td><td></td><td class="ta-r mono">${money(sI)}</td><td class="ta-r mono">${money(sNB)}</td><td class="ta-r mono">${money(sNE)}</td><td colspan="12"></td>`;
+      // 2026-10-27：类别列移除后，这里的 colspan 由 5 收为 4（必须与表头同步，否则金额整体右移）。
+      // 2026-10-27（同日第二批）：「减值准备凭证」「其他变动凭证」两列移除后，尾部 colspan 由 12 收为 10
+      // —— 它覆盖的是「折旧方法 / 状态 / 数量 / 规格型号 / 存放地点 / 使用人 / 清理期间 / 新增资产凭证 /
+      //    清理凭证 / 备注」这 10 列。每次动表头都要回来数一遍这个数，否则合计行比表头窄、金额整体左移。
+      trf.innerHTML = html`<td></td><td>合计</td><td colspan="4"></td><td class="ta-r mono">${money(sOrig)}</td><td class="ta-r mono">${money(sB)}</td><td class="ta-r mono">${money(sE)}</td><td class="ta-r mono">${money(sM)}</td><td></td><td></td><td class="ta-r mono">${money(sS)}</td><td></td><td class="ta-r mono">${money(sI)}</td><td class="ta-r mono">${money(sNB)}</td><td class="ta-r mono">${money(sNE)}</td><td colspan="10"></td>`;
       foot.appendChild(trf);
     }
     $('assetCount').textContent = '共 ' + total + ' 条';
@@ -674,7 +670,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           var warns = _assetImportCheck(listAdd);
           listAdd.forEach(function (fa) { delete fa.monthDeprRef; delete fa.accumDeprRef; S.addFixedAsset(fa); });
           // 导入后清空左树筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
-          _assetCatSel = ''; _assetDeptSel = ''; _assetPage = 1;
+          _assetDeptSel = ''; _assetPage = 1;
           var hasNonNormal = listAdd.some(function (fa) { return (fa.status || '正常') !== '正常'; });
           var swTop = $('fShowCleanedTop'); if (swTop) swTop.checked = hasNonNormal;
           renderAssetTree(); renderAssets(); syncAll();
@@ -823,10 +819,6 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   $('aPageSize').addEventListener('change', function () { _assetPageSize = num($('aPageSize').value); _assetPage = 1; renderAssets(); });
   $('aCheckAll').addEventListener('change', function (e) { document.querySelectorAll('.aChk').forEach(function (c) { c.checked = e.target.checked; }); });
-  // 资产类别页表头全选：此前同样是「有元素、无绑定」。
-  $('catCheckAll').addEventListener('change', function (e) {
-    document.querySelectorAll('.catChk').forEach(function (c) { c.checked = e.target.checked; });
-  });
   $('assetBody').addEventListener('click', async function (e) {
     if (e.target.classList.contains('link-edit')) {
       _openAssetModal(e.target.getAttribute('data-asset-edit'));
@@ -934,16 +926,6 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     _updateHints();
   }
   function _openAssetModal(id) {
-    // 填充类别下拉（仅一次）
-    var ac = $('aCategory');
-    if (ac && ac.options.length <= 1) {
-      var fa = id ? S.state.fixedAssets.filter(function (x) { return x.id === id; })[0] : null;
-      // 新增时只列启用类别；编辑时额外补回该卡片当前类别（即使已停用，避免历史回填丢失）
-      assetCats().forEach(function (c) {
-        if (c.enabled === false && !(fa && fa.category === c.code)) return;
-        var o = document.createElement('option'); o.value = c.code; o.textContent = c.name + (c.enabled === false ? '（停用）' : ''); ac.appendChild(o);
-      });
-    }
     // 科目选择统一为联想输入（bindSubjectPicker 组件，带前缀过滤）
     _bindAcctCombos();
     var fa = id ? S.state.fixedAssets.filter(function (x) { return x.id === id; })[0] : null;
@@ -978,7 +960,6 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aAccumDeprBegin').value = fa ? U.yuan(num(fa.accumDeprBegin)) : 0;   // 元域输入框
     $('aYearDepr').value = fa ? U.yuan(num(fa.yearDepr)) : 0;               // 元域输入框
     $('aQty').value = fa ? (fa.qty || 1) : 1;
-    $('aCategory').value = fa ? (fa.category || '') : '';
     $('aSpec').value = fa ? (fa.spec || '') : '';
     $('aLocation').value = fa ? (fa.location || '') : '';
     $('aUser').value = fa ? (fa.user || '') : '';
@@ -1013,16 +994,30 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('assetModal').setAttribute('data-asset-id', id || '');
     openModal('assetModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
+  /* 资产编码自动生成（2026-10-27）：表单不再要求手填。
+     只在**既有 KH 系列**里取最大号 +1（KH0001…），与金蝶导入的原编码（0001 / 0019 等纯数字）
+     完全隔开、互不干扰；导入的卡保留自己的编码，对源脚本仍按编码配对。
+     编码不能整块删除：导入去重（同一张卡重复导入会变两张）与对源校验都靠它。 */
+  function _nextAssetCode() {
+    var max = 0;
+    (S.state.fixedAssets || []).forEach(function (x) {
+      var m = /^KH(\d+)$/.exec(String(x.code == null ? '' : x.code).trim());
+      if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+    });
+    var s = String(max + 1);
+    while (s.length < 4) s = '0' + s;
+    return 'KH' + s;
+  }
   // 收集表单为卡片对象
   function _collectAsset() {
     return {
-      code: $('aCode').value, name: $('aName').value, faAcctId: $('aFaAcct').value, dept: $('aDept').value,
+      code: String($('aCode').value || '').trim(), name: $('aName').value, faAcctId: $('aFaAcct').value, dept: $('aDept').value,
       acqDate: $('aAcq').value, original: U.num($('aOriginal').value), accDeprAcct: $('aAccDeprAcct').value,
       method: $('aMethod').value, deprFeeAcct: $('aDeprFeeAcct').value, cleanAcct: $('aCleanAcct').value,
       purchaseAcct: $('aPurchaseAcct').value, impairAcct: $('aImpairAcct').value, salvageRate: $('aSalvageRate').value,
       life: U.num($('aLife').value) / 12, periodUsed: U.num($('aPeriodUsed').value),
       accumDeprBegin: U.num($('aAccumDeprBegin').value), yearDepr: U.num($('aYearDepr').value),
-      qty: U.num($('aQty').value), category: $('aCategory').value, spec: $('aSpec').value,
+      qty: U.num($('aQty').value), spec: $('aSpec').value,
       location: $('aLocation').value, user: $('aUser').value,
       impairment: U.num($('aImpairment').value), memo: $('aMemo').value,
       // 刻意不采集 status / cleanPeriod：表单已移除这两个字段。
@@ -1044,13 +1039,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var rawRate = $('aSalvageRate').value, rawLife = $('aLife').value;
     var rawPeriod = $('aPeriodUsed').value, rawBegin = $('aAccumDeprBegin').value;
     var fa = _collectAsset();
+    // 编码留空 → 自动生成；手填的、以及导入卡片带来的金蝶编码都原样保留
+    if (!fa.code) fa.code = _nextAssetCode();
     // 必填校验
-    if (!fa.code) return showToast('请填写资产编码', 'error');
     if (!fa.name) return showToast('请填写资产名称', 'error');
     if (!fa.faAcctId) return showToast('请选择固定资产科目', 'error');
     if (!fa.dept) return showToast('请选择使用部门', 'error');
     if (!fa.acqDate) return showToast('请选择开始使用日期', 'error');
-    if (!fa.category) return showToast('请选择资产类别', 'error');   // 资产类别为必填
     if (!fa.original) return showToast('请填写原值', 'error');
     if (!fa.accDeprAcct) return showToast('请选择累计折旧科目', 'error');
     if (!fa.method) return showToast('请选择折旧方法', 'error');
@@ -1102,9 +1097,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // btnDasPrint 已加 data-print，由全局委托统一走 tyPrint()。
   $('btnDasExport').addEventListener('click', function () {
     var month = dasMonth();
-    var groups = _deprGroups(month, false, $('dasShowCleaned').checked, dasStartMonth());
+    var groups = _deprGroups(month, $('dasShowCleaned').checked, dasStartMonth());
     if (!groups.length) return showToast('当前期间无可导出数据', 'error');
-    var headers = ['类别'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
+    var headers = ['部门'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = groups.map(function (g) {
       return [g.key].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprSum(g.rows, c.k)); }));
     });
@@ -1152,7 +1147,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         netEnd: netEnd,
         orig: num(fa.original),
         impair: num(fa.impairment),
-        cat: fa.category || '', catName: _catName(fa.category), dept: fa.dept || '', code: fa.code || '', name: fa.name || ''
+        dept: fa.dept || '', code: fa.code || '', name: fa.name || ''
       };
     });
     return rows;
@@ -1176,11 +1171,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function deprSum(rows, key) {
     return rows.reduce(function (s, r) { return s + deprVal(r, key); }, 0);
   }
-  // 按类别（或部门）分组并保持插入顺序 → [{ key, rows }]。
-  function _deprGroups(month, byDept, showCleaned, startMonth) {
+  // 按部门分组并保持插入顺序 → [{ key, rows }]。
+  // 2026-10-27：类别不再参与报表分组（档案下线后类别已是卡片遗留字段，仅保留数据不再展示）。
+  // 原先这里有个「是否按部门」的开关参数，但三处调用**全部传 false**，等于「按部门」是死路径；现固定为按部门。
+  function _deprGroups(month, showCleaned, startMonth) {
     var groups = {}, order = [];
     _assetDeprRows(month, { showCleaned: showCleaned, startMonth: startMonth }).forEach(function (r) {
-      var k = byDept ? (r.dept || '未指定部门') : (r.catName || '未分类');
+      var k = r.dept || '未指定部门';
       if (!groups[k]) { groups[k] = []; order.push(k); }
       groups[k].push(r);
     });
@@ -1189,7 +1186,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function renderDas(month) {
     var showCleaned = $('dasShowCleaned').checked;
     if ($('dasMonthTh')) $('dasMonthTh').textContent = (month || currentPeriod()) + '折旧';
-    var groups = _deprGroups(month, false, showCleaned, dasStartMonth());
+    var groups = _deprGroups(month, showCleaned, dasStartMonth());
     var tb = $('dasBody'); tb.innerHTML = '';
     var all = [];
     groups.forEach(function (g) {
@@ -1211,7 +1208,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本
     var month = periodRangeValue('dadPeriod');
     renderDad(month);
-    if (globalThis.setRptHead) globalThis.setRptHead('dadTitleRow', '折旧明细表', 11, month);
+    if (globalThis.setRptHead) globalThis.setRptHead('dadTitleRow', '折旧明细表', 10, month);
   }
   function dadMonth() { var e = $('dadPeriodEnd'); return e ? e.value : currentPeriod(); }
   function dadStartMonth() { var e = $('dadPeriodStart'); return (e && e.value) ? e.value : dadMonth(); }
@@ -1221,26 +1218,26 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var month = dadMonth();
     var rows = _assetDeprRows(month, { showCleaned: $('dadShowCleaned').checked, startMonth: dadStartMonth() });
     if (!rows.length) return showToast('当前期间无可导出数据', 'error');
-    var headers = ['类别', '编码', '名称', '部门'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
+    var headers = ['部门', '编码', '名称'].concat(DEPR_AMT_COLS.map(function (c) { return c.h; }));
     var data = rows.map(function (r) {
-      return [r.catName, r.code, r.name, r.dept].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprVal(r, c.k)); }));
+      return [r.dept, r.code, r.name].concat(DEPR_AMT_COLS.map(function (c) { return U.yuanFmt(deprVal(r, c.k)); }));
     });
     __safeExportExcel(TyIo.buildSheetWorkbook({ sheet: '折旧明细表', rows: [headers].concat(data) }), '折旧明细表_' + month);
   });
   function renderDad(month) {
     var showCleaned = $('dadShowCleaned').checked;
     if ($('dadMonthTh')) $('dadMonthTh').textContent = (month || currentPeriod()) + '折旧';
-    // 明细表口径：按类别分组 → 组内逐资产明细行 + 组末「小计」→ 表末「合计」。
-    // 与「折旧汇总表」的分工由此确立：汇总表一行一类别、只出合计，明细表到每一张资产卡片。
-    var groups = _deprGroups(month, false, showCleaned, dadStartMonth());
+    // 明细表口径：按部门分组 → 组内逐资产明细行 + 组末「小计」→ 表末「合计」。
+    // 与「折旧汇总表」的分工由此确立：汇总表一行一部门、只出合计，明细表到每一张资产卡片。
+    var groups = _deprGroups(month, showCleaned, dadStartMonth());
     var tb = $('dadBody'); tb.innerHTML = '';
     var all = [];
     groups.forEach(function (g) {
       g.rows.forEach(function (r) {
         var tr = document.createElement('tr');
-        // 逐资产明细行：4 个文本列 + 共用金额列。
-        // （原实现这 4 列未转义，资产名称/部门里出现 < & " 会破坏单元格结构，现与汇总表一致走 html`` 转义）
-        tr.innerHTML = html`<td>${r.catName}</td><td class="mono">${r.code}</td><td>${r.name}</td><td>${r.dept}</td>${DEPR_AMT_COLS.map(function (c) {
+        // 逐资产明细行：3 个文本列（部门/编码/名称）+ 共用金额列。
+        // （文本列一律走 html`` 转义：资产名称/部门里出现 < & " 会破坏单元格结构）
+        tr.innerHTML = html`<td>${r.dept}</td><td class="mono">${r.code}</td><td>${r.name}</td>${DEPR_AMT_COLS.map(function (c) {
           return html`<td class="ta-r mono">${money(deprVal(r, c.k))}</td>`;
         })}`;
         tb.appendChild(tr);
@@ -1251,92 +1248,31 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       // 7 个键里 6 个取不到值（0 + undefined = NaN），合计行只有「原值」列是对的。
       var lab = document.createElement('tr');
       lab.className = 'subtotal-row';
-      lab.innerHTML = html`<td></td><td></td><td>${g.key} 小计</td><td></td>${DEPR_AMT_COLS.map(function (c) {
+      lab.innerHTML = html`<td></td><td></td><td>${g.key} 小计</td>${DEPR_AMT_COLS.map(function (c) {
         return html`<td class="ta-r mono">${money(deprSum(g.rows, c.k))}</td>`;
       })}`;
       tb.appendChild(lab);
     });
     var foot = $('dadFoot'); foot.innerHTML = '';
     var trf = document.createElement('tr');
-    trf.innerHTML = html`<td colspan="4">合计</td>${DEPR_AMT_COLS.map(function (c) {
+    trf.innerHTML = html`<td colspan="3">合计</td>${DEPR_AMT_COLS.map(function (c) {
       return html`<td class="ta-r mono">${money(deprSum(all, c.k))}</td>`;
     })}`;
     foot.appendChild(trf);
   }
 
-  /* 资产类别：默认档案（6 类）与「编码 ↔ 名称」归一的唯一事实源在 store —— 前端只引用。
-     原先这份预置写在本函数里（懒创建），而「category 存编码」的契约在 store —— 两处分离导致
-     导入把类别**名称**写进了 category（筛选筛不到、编辑会丢类别）。现已收敛到 store。 */
-  function assetCats() { return S.assetCats(); }
-  function renderAssetCategory() {
-    var tb = $('catBody'); tb.innerHTML = '';
-    assetCats().forEach(function (c, i) {
-      var tr = document.createElement('tr');
-      tr.innerHTML = html`<td class="col-check"><input type="checkbox" class="catChk" data-i="${i}"></td><td><a class="link-edit" data-cat="${i}">编辑</a> <a class="link-toggle" data-catdel="${i}">${c.enabled === false ? '启用' : '停用'}</a></td><td class="mono">${c.code}</td><td>${c.name}${c.enabled === false ? html` <span class="tag-disabled">停用</span>` : ''}</td><td>${c.method}</td><td class="ta-r">${c.life} 年</td><td class="ta-r">${c.salvage}%</td><td class="mono">${c.asset}</td><td class="mono">${c.depr}</td><td>${c.memo}</td>`;
-      tb.appendChild(tr);
-    });
-  }
-  function refreshAssetCategory() { renderAssetCategory(); }
-  $('btnResetCat').addEventListener('click', async function () {
-    if (!(await H.confirmAsync('恢复默认资产类别将覆盖当前已自定义的类别与折旧参数，确认继续？', { title: '恢复默认类别' }))) return;
-    // 空数组 = 回落默认类别（assetCats() 的判据是 !Array.isArray || !length）。
-    // **不能写 null**：写前体检会把 null 判为「顶层集合类型损坏」→ 拒绝落盘并亮红条。
-    S.setBookFields({ assetCats: [] }); renderAssetCategory(); showToast('已恢复默认类别');
-  });
-  $('btnNewCat').addEventListener('click', function () { _openCatModal(-1); });
-  $('btnDelCat').addEventListener('click', async function () {
-    var checked = [].slice.call(document.querySelectorAll('.catChk:checked')).map(function (c) { return num(c.getAttribute('data-i')); });
-    if (!checked.length) return showToast('请先勾选要停用的类别', 'error');
-    if (!(await H.confirmAsync('确认停用选中的 ' + checked.length + ' 个资产类别？\n停用后新增资产不能再选该类，历史资产类别保留。', { title: '停用资产类别' }))) return;
-    var list = assetCats();
-    checked.forEach(function (i) { if (list[i]) list[i].enabled = false; });
-    S.setBookFields({ assetCats: list }); renderAssetCategory(); showToast('已停用'); syncAll();
-  });
-  $('catBody').addEventListener('click', async function (e) {
-    if (e.target.classList.contains('link-toggle')) {
-      var i = num(e.target.getAttribute('data-catdel'));
-      var cat = assetCats()[i];
-      var disabling = !(cat && cat.enabled === false);
-      if (disabling) {
-        if (!(await H.confirmAsync('确认停用资产类别「' + (cat ? cat.name : '') + '」？', { title: '停用资产类别' }))) return;
-      }
-      cat.enabled = disabling ? false : true;
-      // 就地改的是 state 里的同一份对象，但**不会自动落盘** —— 必须显式 persist，否则重启后复位
-      S.persist();
-      renderAssetCategory(); showToast(disabling ? '已停用' : '已启用'); syncAll();
-    } else if (e.target.classList.contains('link-edit')) {
-      _openCatModal(num(e.target.getAttribute('data-cat')));
-    }
-  });
-  function _openCatModal(idx) {
-    var c = idx >= 0 ? assetCats()[idx] : null;
-    $('catModal').setAttribute('data-idx', idx);
-    $('catCode').value = c ? c.code : '';
-    $('catName').value = c ? c.name : '';
-    $('catMethod').value = c ? c.method : '平均年限法';
-    $('catLife').value = c ? c.life : 5;
-    $('catSalvage').value = c ? c.salvage : 5;
-    $('catAsset').value = c ? c.asset : '1601';
-    $('catDepr').value = c ? c.depr : '1602';
-    $('catMemo').value = c ? c.memo : '';
-    openModal('catModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
-  }
-  $('btnCloseCat').addEventListener('click', function () { closeModal('catModal'); });
-  $('btnSaveCat').addEventListener('click', function () {
-    var idx = num($('catModal').getAttribute('data-idx'));
-    var c = {
-      code: $('catCode').value, name: $('catName').value, method: $('catMethod').value,
-      life: U.num($('catLife').value), salvage: U.num($('catSalvage').value),
-      asset: $('catAsset').value, depr: $('catDepr').value, memo: $('catMemo').value,
-      enabled: (idx >= 0 ? (assetCats()[idx] && assetCats()[idx].enabled !== false) : true)
-    };
-    if (!c.code || !c.name) return showToast('请填写类别编码与名称', 'error');
-    var list = assetCats();
-    if (idx >= 0) list[idx] = c; else list.push(c);
-    S.setBookFields({ assetCats: list });
-    closeModal('catModal');
-    renderAssetCategory(); syncAll(); showToast('类别已保存');
-  });
+  /* ---------- 资产类别：整个维度已于 2026-10-27 从固定资产页面移除 ----------
+     曾经存在：类别档案 assetCats（编码/名称/折旧方法/年限/残值率/科目）+ 维护弹窗 + 左树类别筛选
+     + 卡片「类别」字段 + 折旧报表按类别分组。删除依据（均为代码事实）：
+       ① 档案里除 code/name/enabled 外的字段**从未被任何逻辑读取** —— 卡片折旧参数一律取自
+          fa.life / fa.salvageRate / fa.method，选类别也不会带出年限或科目；
+       ② 金蝶导出的「固定资产类别」列给的是**名称**，为把它转成编码而生的 normalizeAssetCategory
+          反而制造了"名称写进编码槽"的一连串事故（按类别筛不到、编辑后类别被清空）；
+       ③ 两本真实账套 29 张卡片里 25 张挤在同一个类别（器具、工具、家具），分组几乎无信息量；
+          改用**部门**分组后口径更贴近酒店实务，而部门字段 29/29 齐全。
+     现在的模型：卡片表单与列表都没有类别；折旧汇总表/明细表按**部门**分组；
+     数据里的 fa.category 与 assetCats 档案都**保留不读不写不删** —— 前者是老账套历史数据，
+     后者是旧版本回退时类别归一的依据（升降级可逆）。 */
 
   /* 折旧生成状态提示：合并自原独立「折旧凭证」页的顶部提示。
    * 只保留核心价值 —— 提前告知用户本期是否已计提折旧，避免重复点击。
@@ -1403,31 +1339,22 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     openModal('assetHistoryModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
 
-  /* 固定资产卡片页工具条「资产类别」弹窗入口 */
-  (function () {
-    var opener = $('btnAssetCatMgr');
-    if (opener) opener.addEventListener('click', function () {
-      renderAssetCategory();
-      openModal('assetCatListModal');
-    });
-    var closer = $('btnCloseAssetCatList');
-    if (closer) closer.addEventListener('click', function () {
-      closeModal('assetCatListModal');
-    });
-  })();
-  /* 卡片页工具条「部门」弹窗入口：**复用工资页那个「部门职员」弹窗**（部门基础资料全库只有一份，
-     资产卡片要用部门却得跑去工资页改，路径太绕）。渲染走 main.js 已挂的 __renderDeptStaff；
-     关闭按钮、行内「编辑 / 启用停用」的绑定都在 Salary.js，此处只负责打开，不重复绑。 */
+  /* （原「资产类别」弹窗入口已随档案体系下线删除，2026-10-27） */
+  /* 卡片页工具条「部门」入口（2026-10-27 改）：跳到「系统设置 → 部门」卡片维护。
+     部门是账套级基础资料（与科目、凭证字同级），此前寄居在工资页的弹窗里、由 main.js 的
+     __renderDeptStaff 全局钩子暴露；工资模块一旦隐藏/移除资产页就变哑。现在档案归设置页，
+     这里只做跳转 —— 也顺带把「基础资料要在业务页弹窗里改」这个错位纠正掉。 */
   (function () {
     var opener = $('btnAssetDeptMgr');
     if (!opener) return;
     opener.addEventListener('click', function () {
-      if (globalThis.__renderDeptStaff) globalThis.__renderDeptStaff();
-      openModal('deptStaffModal');
+      if (typeof goPage === 'function') goPage('system-settings');
+      var card = document.getElementById('cardSysDept');
+      if (card && card.scrollIntoView) card.scrollIntoView({ block: 'center' });
     });
   })();
 
 export {
-  refreshAssets, refreshDas, refreshDad, refreshAssetCategory
+  refreshAssets, refreshDas, refreshDad
 };
 

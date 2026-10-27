@@ -169,13 +169,15 @@
 .cmd-overlay{
   position:fixed; inset:0; z-index:1200;
   display:none; align-items:flex-start; justify-content:center;
-  background:rgba(var(--ty-scrim),.38);
+  background:rgba(0, 0, 0, .35);
   padding-top:12vh;
 }
+/* 命令面板（快速跳转）：宽度归入弹窗「列表选择器」档 650，
+   圆角/阴影与 .modal-box 统一（2026-10-27；原 560px + 14px 圆角是独立一套） */
 .cmd-modal{
-  width:min(560px,92vw); background:var(--ty-white);
-  border:1px solid var(--ty-border); border-radius:14px;
-  box-shadow:0 18px 50px rgba(var(--ty-scrim),.22); overflow:hidden;
+  width:min(650px,calc(100vw - 32px)); background:var(--ty-white);
+  border:1px solid var(--ty-border); border-radius:4px;
+  box-shadow:0 8px 32px rgba(var(--ty-scrim),.22); overflow:hidden;
 }
 .cmd-input-row{
   display:flex; align-items:center; gap:10px;
@@ -229,8 +231,13 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 数字排版收口：金额列统一右对齐（兜底，避免个别表格漏挂 .ta-r/.num 时左偏） */
-.grid td.num, .grid td.ta-r, .col-amt, .col-amount, .c-amt, .si-amt, .grp-amt, td.num, .mono {
+/* 数字排版收口：金额列统一右对齐（兜底，避免个别表格漏挂 .ta-r/.num 时左偏）。
+   ⚠️ 2026-10-27 把 `.mono` 从这条规则里摘掉：.mono 是**字体类**（tabular-nums，定义见下方「对齐与数字字体」段），
+   不是对齐类。它曾兼职右对齐，结果所有「用等宽字体显示编码/编号」的列（科目编码、资产编码、操作日志时间
+   等 13 处）被一起推到右边，与左对齐的表头上下错位。
+   摘掉它对金额没有任何影响：金额/数量列一律显式挂 .ta-r / .num / .col-amt（全站 80+ 处，逐行核过，
+   没有一处金额只靠 .mono 右对齐）。新增编码列不需要任何声明，默认就是左对齐。 */
+.grid td.num, .grid td.ta-r, .col-amt, .col-amount, .c-amt, .si-amt, .grp-amt, td.num {
   text-align: right;
 }
 
@@ -727,7 +734,7 @@ img, svg { display: block; max-width: 100%; }
 }
 .subj-search:focus { border-color: var(--ty-blue); }
 /* 凭证模板弹窗列表（jinbooks 风格：搜索条 + 分组行式列表） */
-#vchTplModal .modal-box { width: 680px; max-width: calc(100vw - 32px); }
+#vchTplModal .modal-box { width: 650px; max-width: calc(100vw - 32px); }
 .vch-tpl-body { padding: 10px 16px 14px; }
 .vch-tpl-top { display: flex; align-items: center; }
 .vch-tpl-searchbox {
@@ -763,7 +770,6 @@ img, svg { display: block; max-width: 100%; }
 .vch-tpl-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .vch-tpl-empty-my { font-size: var(--fs-xs); color: var(--ty-text-3); text-align: center; padding: 4px 0 2px; }
 /* 保存为凭证模板面板 */
-#vchTplSaveModal .modal-box { width: 480px; max-width: calc(100vw - 32px); }
 .vch-tpl-save-meta { display: flex; flex-direction: column; gap: 10px; }
 .vch-tpl-save-meta label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--ty-blue-dark); }
 .vch-tpl-save-meta .inp { height: 32px; border: 1px solid var(--ty-border-2); border-radius: 6px; padding: 0 10px; font-size: var(--fs-sm); color: var(--ty-text); background: var(--ty-white); }
@@ -1753,6 +1759,10 @@ label.req::before {
 
 /* 对齐与数字字体 */
 .ta-r, .col-amt, .col-amount { text-align: right; }   /* 约定①：金额/数量列（col-amt/col-amount 为历史同义类名） */
+/* 约定①补充（2026-10-27）：编码列显式左对齐。
+   背景：本段上面写着「col-code 编码」是对齐角色类，但 CSS 里从来没有这条规则 —— 之前是靠
+   `.mono` 兼职右对齐的反面（编码右偏）暴露出来的。显式写一次，别再依赖"没人给它设右对齐"的巧合。 */
+.col-code { text-align: left; }
 /* 【2026-10-04 补齐】JS 一直在输出 .ta-c / .text-center（凭证行号列 Voucher.js:203、费用明细表
    ExpenseDetail.js:537），但 style.css 里**从来没有这两条** —— 即"居中"从未生效。
    这是 JS↔CSS 类名契约缺失的典型（同 check_class_contract.js 头部所述的那类缺陷）。
@@ -2467,12 +2477,22 @@ label.req::before {
 /* ============================================================
  * 弹窗
  * ============================================================ */
+/* 全站层叠规范（2026-10-27 梳理）：
+     100   页面内容 .content
+     200   顶栏 .topbar
+    1000   页面内下拉/浮层（搜索 1000 / 导航弹层 1050 / 账套 1300）
+    1100   ★模态弹窗 .modal —— 必须高于顶栏与页面下拉，否则遮罩盖不住顶栏、顶栏还能点
+    1200   全局命令面板 .cmd-overlay（可从任意弹窗跳走）
+    9999   需要浮在弹窗之上的业务浮层（科目树 .subj-tree-pop、模板浮层、快速设置）
+   10001   轻提示 .toast
+   2147483647  确认/输入对话框（dialog-bridge 动态创建，必须盖住任何已打开模态）
+   注意：以前 .modal 是 100，低于顶栏 200 —— 弹窗打开时顶栏浮在遮罩上方且仍可交互。 */
 .modal {
   display: none;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, .35);
-  z-index: 100;
+  z-index: 1100;
   align-items: center;
   justify-content: center;
 }
@@ -2487,8 +2507,20 @@ label.req::before {
    overflow 由 hidden 改为 auto：两者**裁剪范围相同**（不会新增"弹层被裁"的风险，该风险本已存在），
    区别只在"内容超高时能否滚动" —— 原先超高内容既裁掉又看不到，现在可滚。
    注：.modal-box.modal-wide 自己写了 overflow: visible 且更具体，不受本行影响 ✓ */
+/* ============================================================
+   弹窗尺寸档位（2026-10-27 收敛，全站只用这 5 档）
+     400   常规：表单 / 设置 / 确认（基类，含科目、云同步、新建账套等）
+     650   列表选择器：从模板生成凭证
+     780   宽表单 / 多列表格：固定资产卡片、凭证回收站、部门职员、变动记录
+     950   超宽表格（原工资凭证模板档位；模块下线后保留备用于其它超宽表）
+     1134  左树 + 右表单：结账凭证模板设置
+   新增弹窗请直接复用上面某一档，不要再临时写 420 / 460 / 520 这类中间值 ——
+   这正是此前"每个弹窗都不一样宽"的来源。
+   配套约定：所有弹窗标题栏右上角必须有 ×（标记 data-modal-close 即自动生效）；
+            主操作显式标 .btn-primary，按钮顺序 [危险/辅助] [主操作] [取消]。
+   ============================================================ */
 .modal-box {
-  width: 380px;
+  width: 400px;                    /* 常规弹窗统一档位（2026-10-27）：原 380，与 420/460/480/520 一并收敛 */
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 64px);
   background: var(--ty-white);
@@ -2514,17 +2546,31 @@ label.req::before {
   border-bottom: 1px solid var(--ty-border);
 }
 
+/* 弹窗正文容器（2026-10-27 收敛）：只负责「超高可滚动」，不加 padding ——
+   各弹窗内容自带内边距（.vch-tpl-body / .qs-body / 表格自身等），加了会双重留白。
+   此前只有 dialog-bridge 用内联样式模拟滚动，index.html 里另外 5 处 .modal-body 都没有约束。 */
+.modal-body {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+/* 部门档案卡片（#deptGrid，「系统设置」页；2026-10-27 从工资页弹窗迁入）：
+   .grid 是 table-layout:auto，短内容列会被摊成差不多宽。这里给「编码 / 操作」定宽，
+   让「部门名称」独占剩余宽度 —— 它是信息量最大的列，理应最宽。
+   编码列左对齐不需要单独写：.mono 已是纯字体类（见文件上方「数字排版收口」段），
+   且该列同时挂了 .col-code（显式左对齐）。
+   列序（删掉「类型」「上级」两列后）：1 编码 / 2 名称 / 3 操作。 */
+#deptGrid th:nth-child(1), #deptGrid td:nth-child(1) { width: 110px; }
+#deptGrid th:nth-child(3), #deptGrid td:nth-child(3) { width: 150px; }
+
 .modal-box .form-row {
   padding: 12px 16px 0;
 }
 
-.modal-box .form-row label {
-  width: 82px;
-  flex: 0 0 82px;
-  font-size: var(--fs-sm);
-  color: var(--ty-text-2);
-  text-align: left;
-}
+/* 【2026-10-27 删除】原 .modal-box .form-row label { width:82px; text-align:left }
+   —— 它与紧凑弹窗的「左对齐 + 冒号」、固定资产卡片的「134px 右对齐」三种写法并存，
+   同一屏里 label 对齐方式五花八门。现在统一继承 .form-row label（96px / 右对齐），
+   只有固定资产卡片弹窗例外（9 字标签，由 #assetModal 给 134px）。 */
 
 .modal-box .form-row .inp { flex: 1; width: auto; min-width: 0; font-size: var(--fs-sm); }
 /* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行，label 与内容需在一行内由
@@ -2532,19 +2578,18 @@ label.req::before {
    不能对整行 flex-wrap（会把 label 和内容拆开导致「外币核算」断行）。 */
 /* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行的内容统一用 .chk-group 容器
    （flex:1 弹性换行），label 固定在行首不参与换行，避免「外币核算」断行、控件挤压。 */
-/* 紧凑表单弹窗（短 label）：标题左对齐 + 冒号 + 12px gap 与 set-row 统一
-   适用于 label 多为 2-4 字的弹窗；长 label 弹窗（如固定资产卡片）保持固定宽右对齐不启用。 */
-.modal-compact .form-row { gap: 12px; }
-.modal-compact .form-row > label { text-align: left; width: auto; flex: 0 0 auto; padding-right: 0; }
-.modal-compact .form-row > label::after { content: '：'; }
+/* 【2026-10-27 统一】原紧凑弹窗（.modal-compact）用「label 左对齐 + 冒号 + 宽度自适应」，
+   与常规弹窗的右对齐并存，显得杂乱；现已删除这组覆盖，所有弹窗统一 96px 右对齐。
+   实测弹窗内最长标签 5 字（服务器地址），96px 足够。 */
 /* 弹窗内说明文字：与 form-row 左边缘对齐（16px），上间距 12px 统一 */
 .modal-box .set-hint { padding: 12px 16px 0; margin: 0; }
-/* 云同步设置弹窗：服务器地址 URL 较长，加宽到 440px */
-#cloudSyncModal .modal-box { width: 440px; }
+/* 云同步设置弹窗：URL 较长，用常规 400px 档即可（弹窗宽度已全站收敛，不再单独加宽） */
 /* 新增科目弹窗：宽度贴合内容（fit-content），保证每行一行排完且不过宽 */
 /* 【2026-10-04】min-width 会**压过** max-width（CSS 规则），故基类那条守卫管不住它 ——
    这里用 min() 让"420px 的舒适宽度"与"视口上限"取小值，窄窗口下才不会撑破。 */
-#subjectModal .modal-box { width: fit-content; min-width: min(420px, calc(100vw - 32px)); }
+/* 2026-10-27：由 fit-content 改为固定 400px（常规档）—— 与全站弹窗同宽；
+   内容仍能自适应：6 个辅助核算复选框在 .chk-group 内换行，不会撑破弹窗。 */
+#subjectModal .modal-box { width: 400px; max-width: calc(100vw - 32px); }
 #subjectModal .form-row { flex-wrap: nowrap; }
 #subjectModal .form-row .chk-group {
   flex: 1 1 auto; min-width: 0;
@@ -2572,7 +2617,11 @@ label.req::before {
 }
 .operator-box .modal-actions { padding-bottom: 16px; }
 .modal-box .form-row .inp-pin { flex: 0 0 auto; width: 130px; }
-.modal-box .form-row .inp-sel { width: 226px; font-size: var(--fs-sm); }
+/* 【2026-10-27 统一】原 .inp-sel 固定 226px，而 .inp 是 flex:1 撑满 ——
+   同一个弹窗里输入框和下拉框右边缘对不齐，看着长短不一。
+   现统一为「一起撑满」：两者都取行内剩余宽度，右边缘对齐。
+   .inp-pin（数量这类定宽小输入框）保持 130px 不动。 */
+.modal-box .form-row .inp-sel { flex: 1; width: auto; min-width: 0; font-size: var(--fs-sm); }
 
 /* 云同步登录弹窗：主操作占满表单宽度，视觉稳重 */
 .cl-actions { padding: 12px 16px 0; }
@@ -2609,7 +2658,7 @@ label.req::before {
 
 /* 宽弹窗表单： left/right 两栏布局 */
 .modal-box.modal-wide {
-  width: 820px;
+  width: 780px;                    /* 2026-10-27 整体缩窄：820 → 780 */
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 64px);
   overflow: visible;
@@ -2625,11 +2674,35 @@ label.req::before {
   padding-bottom: 8px;
 }
 .modal-box.modal-wide .form-grid .form-row { padding: 12px 18px 0; }
-.modal-box.modal-wide .form-grid .form-row label { width: 92px; flex: 0 0 92px; }
 .modal-box.modal-wide .form-grid .form-row .inp,
 .modal-box.modal-wide .form-grid .form-row .inp-sel { width: 100%; max-width: 250px; }
 .modal-box.modal-wide .form-grid .form-row-full { grid-column: 1 / -1; }
 .modal-box.modal-wide .form-grid .form-row-full .inp { max-width: 600px; }
+
+/* 【2026-10-27】固定资产卡片弹窗（新增/编辑）布局收紧，只作用于 #assetModal，
+   不影响同样用 .modal-wide 的其它弹窗（工资、凭证等 5 处）。两个问题：
+   ① label 折行 —— 最长的「资产购入对方科目」9 字 ×13px + 必填星号 ≈ 123px，
+      而原宽 92px 装不下，label 折成两行；同一网格行里左右两个字段高度错位，
+      看起来就像"行在换行"。现在给到 134px 并禁止折行 ——
+      实测最长的是「预计使用期数(月)」10 字 + 星号 ≈ 129px，134px 刚好够（128 会溢出压住输入框）。
+   ② 输入框统一宽度 —— 所有行内输入框一律 120px（不按类型分档，否则长短参差显得乱）。
+      这个值由最紧的一行倒推：弹窗 780 − 两列 → 每列 390，减 form-row 左右内距 36 = 354 可用；
+      「残值率 / 期初累计折旧 / 月折旧额」右侧还有 .form-hint 提示（nowrap，最长
+      「截至 2026-08 月末」约 82px，含 6px 外边距），134 + 10 + 120 + 6 + 82 = 352 ≤ 354。
+      备注独占整行，取 240px（= 2×120，与两列节奏对齐）。 */
+#assetModal .form-row { flex-wrap: nowrap; }
+#assetModal .form-row > label {
+  width: 134px;
+  flex: 0 0 134px;
+  white-space: nowrap;          /* 关键：label 永不折行（最长「预计使用期数(月)」约 129px） */
+}
+#assetModal .form-row .inp,
+#assetModal .form-row .inp-sel { width: 100%; max-width: 120px; }
+/* 日期例外：Chromium 的原生 date 控件有最小内容宽度（yyyy/mm/dd + 日历图标），
+   120px 会把日期截成「2024/08/3C」（实测），故单独给到 138px。
+   这是控件差异，不是排版不齐 —— 同样带箭头图标的 select 在 120px 下显示正常。 */
+#assetModal .form-row input[type="date"] { max-width: 138px; }
+#assetModal .form-row-full .inp { max-width: 240px; }
 /* 分组标题（新增卡片"基本信息"等） */
 .form-section-title {
   grid-column: 1 / -1;
@@ -2723,18 +2796,18 @@ label.req::before {
 /* 弹窗内提示文字（紧接 modal-actions-tight 下方） */
 .modal-tip { margin: 6px 16px 0; }
 
-.modal-actions .btn:first-child {
-  color: var(--ty-white);
-  background: var(--ty-btn);
-  border-color: var(--ty-btn);
-}
+/* 【2026-10-27 移除「首个子元素自动变主按钮」规则】
+   原规则是 `.modal-actions .btn:first-child { 白字蓝底 }`，靠"在不在第一位"隐式决定主色，结果是：
+     · 只有一个「关闭」的弹窗（凭证回收站、变动记录、结账检查项）里，关闭按钮被染成主操作色；
+     · 新增/调整按钮顺序时颜色会意外改变，云同步弹窗为此还单独写了一段补丁压回次要样式；
+     · 与"主操作只有一个"这个视觉语义完全脱钩。
+   现在改为**显式** `.btn-primary`：谁是主操作由 HTML 说了算，与位置无关。
+   弹窗按钮区统一约定（2026-10-27）：
+     顺序 [危险/辅助靠左] → [主操作 ★btn-primary] → [取消/关闭]，右对齐；
+     只读类弹窗（回收站、变动记录、检查项）只有「关闭」，用普通 .btn。 */
 
-.modal-actions .btn:first-child:hover {
-  background: var(--ty-btn-hover);
-  border-color: var(--ty-btn-hover);
-}
-
-/* 危险钮即使非首个子元素也保持红色（基础 .btn-danger 已定义红底白字），不被上方 first-child 蓝底规则覆盖 */
+/* 危险钮：基础 .btn-danger 已是红底白字，与 .btn-primary 互斥使用；
+   2026-10-27 起主操作一律显式标注 .btn-primary，不再依赖位置。 */
 .modal-actions .btn-danger {
   color: var(--ty-white);
   background: var(--ty-red);
@@ -4570,24 +4643,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .settle-audit .warn { color: var(--st-hl-fg); }   /* 原橙 2.09，改深黄棕 5.54 */
 .settle-audit .ok { color: var(--ty-green); }
 
-/* 期末调汇：期末汇率输入框 */
-.settle-fx-rate {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--ty-text-2);
-}
-.settle-fx-rate input {
-  width: 76px;
-  height: 26px;
-  border: 1px solid var(--ty-border);
-  border-radius: 4px;
-  padding: 0 8px;
-  font-size: var(--fs-sm);
-  text-align: right;
-}
-.settle-fx-rate input:focus { border-color: var(--ty-blue); outline: none; }
 
 /* 结账前检查清单 */
 .settle-check-wrap { margin: 4px 0 16px; }
@@ -4630,7 +4685,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .scc-name { font-size: var(--fs-sm); color: var(--ty-text); }
 .scc-sel { font-size: var(--fs-xs); padding: 3px 6px; border: 1px solid var(--ty-border-2); border-radius: 4px; background: var(--ty-white); }
 .scc-empty { font-size: var(--fs-sm); color: var(--ty-text-2); padding: 8px 0; }
-.settle-check-box { width: 520px; max-width: 92vw; }
+.settle-check-box { width: 400px; max-width: calc(100vw - 32px); }
 .settle-check-modal-body { padding: 14px 16px; max-height: 62vh; overflow: auto; }
 
 /* 结账页：Tab 切换 */
@@ -4678,8 +4733,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 /* 弹窗内表格：列宽走全站标准（原按表写死的 min-width 720/900 已删除），
    需要横向滚动时由外层 .asset-cat-scroll 承接 */
 /* 工资凭证模板弹窗内容较宽：加宽弹窗并允许横向滚动 */
-#salaryTplModal .modal-box { width: 1000px; max-width: calc(100vw - 32px); }
-#salaryTplModal .asset-cat-scroll { overflow: auto; }
+/* 工资模块 2026-10-27 下线：#salaryTplModal / #page-salary / #sstGrid 的样式已随页面移除。 */
 
 /* 工具栏 */
 .settle-operate {
@@ -5271,27 +5325,32 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   z-index: 9999;
   display: flex; align-items: center; justify-content: center;
 }
+/* 【2026-10-27 收敛】此浮层原先自成一派：820px（旧宽档值）、10px 圆角、
+   标题栏自写 padding/字号、关闭键是 22px 带底色的 span。
+   现统一为弹窗规范：宽 780（宽档）、圆角 4、标题栏对齐 .modal-title（42px 行高 / 16px 内距 / th-bg 底）、
+   关闭键对齐 .modal-x（20px、text-3、悬停变蓝、无底色块）。 */
 .quick-settings-modal {
-  width: 820px; max-width: 92vw;
-  max-height: 80vh;
+  width: 780px; max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
   background: var(--ty-white);
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.2);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.22);
   display: flex; flex-direction: column;
 }
 .qs-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px;
+  height: 42px; padding: 0 16px;
+  background: var(--ty-th-bg);
   border-bottom: 1px solid var(--ty-border);
 }
-.qs-title { font-size: var(--fs-lg); font-weight: 400; color: var(--ty-text); }
+.qs-title { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text); }
 .qs-close {
-  font-size: 22px; cursor: pointer; color: var(--ty-text-2); line-height: 1;
-  padding: 2px 6px; border-radius: 4px;
+  font-size: 20px; cursor: pointer; color: var(--ty-text-3); line-height: 42px;
+  padding: 0;
 }
-.qs-close:hover { background: var(--ty-content-bg); }
+.qs-close:hover { color: var(--ty-blue); background: none; }
 .qs-body {
-  padding: 16px 24px;
+  padding: 16px;
   overflow-y: auto;
   flex: 1;
 }
@@ -5329,15 +5388,13 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   font-size: var(--fs-2xs); line-height: 17px; color: var(--ty-blue-dark);
   background: var(--ty-blue-2); border-radius: 3px; vertical-align: 1px;
 }
+/* 【2026-10-27 收敛】底部按钮区对齐 .modal-actions（16px 内距 / 8px 间距）。
+   同时删掉原先单独写的 .qs-footer .btn 覆盖 —— 它把按钮做得更大（7×22 内距、5px 圆角），
+   于是同一个软件里"弹窗按钮"有两种外观；现在统一由全站 .btn 决定。 */
 .qs-footer {
   display: flex; justify-content: flex-end; gap: 8px;
-  padding: 14px 20px;
+  padding: 16px;
   border-top: 1px solid var(--ty-border);
-}
-.qs-footer .btn {
-  padding: 7px 22px; border-radius: 5px; font-size: var(--fs-sm); cursor: pointer;
-  border: 1px solid var(--ty-border); background: var(--ty-white); color: var(--ty-text);
-  transition: all .15s;
 }
 .qs-footer .btn-primary {
   background: var(--ty-btn); color: var(--ty-white); border-color: var(--ty-btn);
@@ -5745,8 +5802,12 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 
 /* 凭证字卡片：默认行高亮 + 操作链接 */
 .vw-default { font-weight: 600; color: var(--ty-text); }
+/* 窄卡（凭证字 / 账套管理 / 部门）：内容只有三四列的短表，拉满 1200px 会让「名称」列
+   空出半屏白。760px 与凭证字表同宽，三张卡在设置页里视觉一致。
+   部门卡 2026-10-27 从工资页弹窗迁入时一并纳入，避免出现「同页两张表一宽一窄」。 */
 #page-system-settings #cardSysVch,
-#page-system-settings #cardSysBooks { max-width: 760px; }
+#page-system-settings #cardSysBooks,
+#page-system-settings #cardSysDept { max-width: 760px; }
 .link-make-def { color: var(--ty-blue); cursor: pointer; margin-right: 8px; }
 .link-make-def:hover { text-decoration: underline; }
 .link-toggle { color: var(--ty-blue); cursor: pointer; margin-right: 8px; }
@@ -5867,8 +5928,9 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
 .btn-link.btn-link-danger { color: var(--ty-red); }
 .btn-link.btn-link-danger:hover { color: var(--ty-red); text-decoration: underline; }
 .book-ops .btn-link + .btn-link { margin-left: 10px; }
-/* 云同步设置弹窗：「清空设置」是破坏性操作，靠左与保存类按钮分开；
-   .modal-actions .btn:first-child 会强制加深色主按钮底色，这里必须压回次要样式 */
+/* 云同步设置弹窗：「清空设置」是破坏性操作，靠 margin-right:auto 顶到最左，与保存类按钮分开。
+   2026-10-27 起主按钮改由显式 .btn-primary 决定（不再有"首个子元素自动变蓝"），
+   这里只保留它低调的次要配色。 */
 #cloudSyncModal .modal-actions { flex-wrap: wrap; }
 #cloudSyncModal #btnCsClear {
   margin-right: auto;

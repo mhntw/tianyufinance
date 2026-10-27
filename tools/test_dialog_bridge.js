@@ -97,7 +97,13 @@ async function run() {
     const p = confirmAsync('第一段\n第二段', { title: '格式' });
     const body = last(made).innerHTML;
     assert.ok(body.indexOf('第一段<br>第二段') >= 0, '同段内单换行应为 <br>');
-    assert.ok(/max-height:60vh/.test(body), '正文应可滚动，避免长文案撑破窗口');
+    // 【2026-10-27】滚动约束从「dialog-bridge 内联」收归样式表的 .modal-body ——
+    // 原先只有确认框自己能滚，index.html 里另外 5 处 .modal-body 反而没有约束。
+    // 故这里改为：正文必须挂在统一容器上，且样式表里确实定义了超高可滚动。
+    assert.ok(/class="modal-body"/.test(body), '正文使用统一的 .modal-body 容器');
+    const cssTxt = require('fs').readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
+    assert.ok(/\.modal-body\s*\{[^}]*max-height:\s*60vh[^}]*overflow:\s*auto/.test(cssTxt),
+      '.modal-body 在样式表里定义了 max-height:60vh + overflow:auto');
     last(made)._q['.ty-dlg-ok'].onclick();
     await p;
   });

@@ -80,13 +80,14 @@ function showDialog(opts) {
     overlay.className = 'modal';            // 复用 .modal / .modal-box / .modal-actions
     overlay.style.zIndex = '2147483647';    // 必须盖住任何已打开的业务模态
     overlay.innerHTML =   /* escape-ok: safeTitle 走 esc()，正文走 renderDialogBody()（内部 esc1），输入值 esc(..., true) */
-      '<div class="modal-box" style="width:460px">' +
+      // 宽度不再内联写死 460px（2026-10-27）：交给 .modal-box 的常规档 400px，
+      // 全站弹窗只有 5 档宽度，确认框属于常规档；长文案交给下面 modal-body 的折行。
+      '<div class="modal-box">' +
         '<div class="modal-title">' + safeTitle + '</div>' +
         // 正文整体左缩进：层次 =「标题顶格 ↔ 正文缩进」，一次设置覆盖所有内容，不必逐段判断
-        // ⚠ 注：.modal-body 在 style.css 里**没有规则**（那里只有 .settle-check-modal-body），
-        //   本处外观全部由下面这行内联提供 —— 已登记进 check_class_contract 的基线；
-        //   若将来给 .modal-body 补全局样式，注意 index.html 里另有 3 处模态框也用该类。
-        '<div class="modal-body" style="max-height:60vh;overflow:auto;line-height:1.75;word-break:break-word;padding-left:1em;">' +
+        // 【2026-10-27】"超高可滚动"已收进样式表的 .modal-body（原先只在此处内联模拟，
+        //   index.html 里另外 5 处 .modal-body 反而没有滚动约束），这里只留文字排版所需的内联。
+        '<div class="modal-body" style="line-height:1.75;word-break:break-word;padding-left:1em;">' +
           renderDialogBody(opts.message) +
           (isInput
             ? '<input class="inp ty-dlg-input" type="text" value="' + esc(opts.input.value, true) +

@@ -420,8 +420,9 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button class="btn" id="btnVchTplSaveCancel">取消</button>
+            <!-- 顺序统一为「主操作 → 取消」（2026-10-27），与全站其它弹窗一致；此前是反的 -->
             <button class="btn btn-primary" id="btnVchTplSaveOk">保存模板</button>
+            <button class="btn" id="btnVchTplSaveCancel">取消</button>
           </div>
         </div>
       </div>
@@ -449,7 +450,7 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button class="btn btn-primary" id="btnRecycleBinClose2">关闭</button>
+            <button class="btn" id="btnRecycleBinClose2">关闭</button>
           </div>
         </div>
       </div>
@@ -515,7 +516,7 @@
           <thead><tr>
             <th>日期</th><th class="vq-th-no" id="qThNo" title="点击或回车按凭证字号排序" tabindex="0" role="button" data-kb-activate>凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th class="col-fill">摘要</th><th class="col-fill">科目</th>
             <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
-            <th>附件</th><th>原单据编号</th><th>制单人</th>
+            <th>附件</th><th>制单人</th>
           </tr></thead>
           <tbody id="qBody"></tbody>
         </table>
@@ -697,7 +698,7 @@
 
 
         <!-- 「过滤」折叠面板已于 2026-09-18 按用户要求移除（与原始凭证页口径一致）。
-             保留的筛选入口：左侧「类别 / 部门」树（点击即筛）、顶部「显示已清理资产」、会计期选择。 -->
+             保留的筛选入口：左侧「部门」树（点击即筛）、顶部「显示已清理资产」、会计期选择。 -->
 
         <!-- 卡片页工具栏：按「对卡片做事 / 数据进出 / 基础资料」**三组**排列，竖线分隔，从左到右按使用频率。
              两个刻意的取舍：
@@ -733,8 +734,7 @@
             </div>
           </span>
           <span class="orig-btn-sep"></span>
-          <button class="btn" id="btnAssetCatMgr" title="资产类别基础资料（折旧方法/科目等）">资产类别</button>
-          <button class="btn" id="btnAssetDeptMgr" title="部门基础资料（资产卡片的「使用部门」从这里选；与工资页的「部门职员」是同一个弹窗）">部门</button>
+          <button class="btn" id="btnAssetDeptMgr" title="部门基础资料：跳到「系统设置 → 部门」维护，资产卡片的「使用部门」就取自这份档案">部门</button>
         </div>
 
         <!-- 导入体检提示条：导入固定资产卡片后，把「会静默出错」的情况显式列出来
@@ -764,12 +764,9 @@
               <span>筛选</span>
               <button type="button" class="dl-panel-min" id="assetSiderMin" title="收起筛选栏">»</button>
             </div>
-            <button type="button" class="dl-panel-restore" id="assetSiderRestore" title="展开筛选（资产类别 / 部门）">«</button>
+            <button type="button" class="dl-panel-restore" id="assetSiderRestore" title="展开筛选（部门）">«</button>
             <div class="orig-sider-body">
-              <div class="orig-sider-box">
-                <div class="orig-sider-title">资产类别</div>
-                <ul class="orig-tree" id="assetCatTree"></ul>
-              </div>
+              <!-- 类别树已随「资产类别档案」下线（2026-10-27），筛选栏只保留部门 -->
               <div class="orig-sider-box orig-sider-box-bottom">
                 <div class="orig-sider-title">部门</div>
                 <ul class="orig-tree" id="assetDeptTree"></ul>
@@ -781,12 +778,12 @@
             <table class="grid" id="assetGrid">
               <thead><tr>
                 <th class="col-check"><input type="checkbox" id="aCheckAll"></th>
-                <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="col-fill">类别</th><th>部门</th><th>开始使用日期</th>
+                <th>操作</th><th>资产编码</th><th class="col-fill">资产名称</th><th>部门</th><th>开始使用日期</th>
                 <th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r">期末累计折旧</th><th class="ta-r">月折旧</th>
                 <th>预计使用期限</th><th>已折旧期间</th><th class="ta-r">残值</th><th class="ta-r">残值率%</th>
                 <th class="ta-r">减值准备</th><th class="ta-r">期初净值</th><th class="ta-r">期末净值</th><th>折旧方法</th><th>状态</th>
                 <th class="ta-r">数量</th><th>规格型号</th><th>存放地点</th><th>使用人</th><th>清理期间</th>
-                <th>新增资产凭证</th><th>清理凭证</th><th>减值准备凭证</th><th>其他变动凭证</th><th class="col-fill">备注</th>
+                <th>新增资产凭证</th><th>清理凭证</th><th class="col-fill">备注</th>
               </tr></thead>
               <tbody id="assetBody"></tbody>
               <tfoot id="assetFoot"></tfoot>
@@ -820,7 +817,7 @@
         <div class="scroll-area">
         <table class="grid" id="dasGrid">
           <thead><tr class="grid-title" id="dasTitleRow"></tr>
-            <tr><th class="col-fill" id="dasGroupTh">类别</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dasMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+            <tr><th class="col-fill" id="dasGroupTh">部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dasMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
           <tbody id="dasBody"></tbody>
           <tfoot id="dasFoot"></tfoot>
         </table>
@@ -838,90 +835,13 @@
         <table class="grid" id="dadGrid">
 
           <thead><tr class="grid-title" id="dadTitleRow"></tr>
-          <tr><th class="col-fill">类别</th><th>资产编码</th><th class="col-fill">资产名称</th><th>部门</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dadMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
+          <tr><th class="col-fill">部门</th><th>资产编码</th><th class="col-fill">资产名称</th><th class="ta-r">原值</th><th class="ta-r">期初累计折旧</th><th class="ta-r" id="dadMonthTh">本月折旧</th><th class="ta-r">本年折旧额</th><th class="ta-r">期末累计折旧</th><th class="ta-r">期末减值准备</th><th class="ta-r">期末净值</th></tr></thead>
           <tbody id="dadBody"></tbody>
           <tfoot id="dadFoot"></tfoot>
         </table>
         </div>
       </section>
 
-
-      <section class="page" id="page-salary">
-        <div class="page-actions">
-            <div data-period="sal" data-default="currentPeriod" data-on-change="__renderSalary"></div>
-            <button class="btn btn-primary" id="btnNewSalary">新增工资</button>
-            <button class="btn" id="btnGenSalaryAccrual">计提工资凭证</button>
-            <button class="btn" id="btnGenSalaryPay">发放工资凭证</button>
-            <button class="btn" id="btnOpenDeptStaff">部门职员</button>
-            <button class="btn" id="btnOpenSalaryTpl">凭证模板</button>
-            <button class="btn" data-print>打印</button>
-        </div>
-        <div class="scroll-area">
-        <table class="grid" id="salGrid">
-          <thead><tr><th>期间</th><th>姓名</th><th class="col-fill">工资类别</th><th class="ta-r">应发</th><th class="ta-r">实发</th><th>操作</th></tr></thead>
-          <tbody id="salBody"></tbody>
-        </table>
-        </div>
-      </section>
-
-      <section class="page" id="page-salary-statistics">
-        <div class="page-actions">
-            <div data-period="sst" data-default="currentPeriod" data-on-change="__renderSalaryStats"></div>
-            <button class="btn" data-print>打印</button>
-        </div>
-        <div class="scroll-area">
-        <table class="grid" id="sstGrid">
-          <thead><tr><th>月份</th><th class="col-fill">工资类别</th><th>职员数</th><th class="ta-r">应发工资汇总</th><th class="ta-r">实发工资汇总</th></tr></thead>
-          <tbody id="sstBody"></tbody>
-        </table>
-        </div>
-      </section>
-
-      <!-- 工资页内弹窗：部门职员（原独立页 page-department-staff 收敛） -->
-      <div class="modal" id="deptStaffModal">
-        <div class="modal-box modal-wide">
-          <div class="modal-title">部门职员</div>
-          <div class="modal-actions modal-actions-tight">
-            <button class="btn btn-primary" id="btnAddDept">新增部门</button>
-            <span class="flex-gap"></span>
-            <button class="btn" id="btnCloseDeptStaff">关闭</button>
-          </div>
-          <div class="asset-cat-scroll">
-            <table class="grid" id="dsGrid">
-              <thead><tr><th>部门编码</th><th class="col-fill">部门名称</th><th>类型</th><th>上级</th><th>操作</th></tr></thead>
-              <tbody id="dsBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- 工资页内弹窗：工资凭证模板（原独立页 page-salary-tpl 收敛） -->
-      <div class="modal" id="salaryTplModal">
-        <div class="modal-box modal-wide">
-          <div class="modal-title">工资凭证模板</div>
-          <div class="modal-actions modal-actions-tight">
-            <button class="btn btn-primary" id="btnAddSalaryTpl">新增</button>
-            <button class="btn" id="btnResetSalaryTpl">恢复默认</button>
-            <span class="flex-gap"></span>
-            <button class="btn" id="btnCloseSalaryTpl">关闭</button>
-          </div>
-          <div class="k-tip info modal-tip">设置计提工资与发放工资凭证的制单规则，生成工资凭证时按模板取凭证字与摘要。</div>
-          <div class="asset-cat-scroll">
-            <table class="grid ag-theme-alpine" id="salaryTplGrid">
-              <thead><tr>
-                <th class="col-fill">模板名称</th>
-                <th>凭证类型</th>
-                <th class="col-fill">工资类别</th>
-                <th>凭证字</th>
-                <th>启用</th>
-                <th class="col-fill">模板说明</th>
-                <th>操作</th>
-              </tr></thead>
-              <tbody id="salaryTplBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
 
       <section class="page" id="page-settle">
         <!-- 结账页：Tab 切换 期末处理 / 结账 / 反结账 -->
@@ -1185,19 +1105,6 @@
             </div>
             </div>
 
-      <div class="modal ty-modal-container" id="vatEditModal">
-        <div class="modal-box">
-          <div class="modal-title">转出未交增值税-凭证设置<button class="modal-x" id="btnVatEditClose2">×</button></div>
-          <div class="modal-body" id="vatEditBody"></div>
-          <div class="modal-actions">
-            <button class="btn btn-sm btn-ghost" id="btnVatEditAdd">+ 新增科目映射</button>
-            <span class="modal-actions-right">
-              <button class="btn btn-primary" id="btnVatEditSave">确定</button>
-              <button class="btn" id="btnVatEditClose">取消</button>
-            </span>
-          </div>
-        </div>
-      </div>
 
 
       <section class="page" id="page-subject">
@@ -1224,7 +1131,6 @@
               <th class="col-code">科目编码</th>
               <th class="col-name col-fill">科目名称</th>
               <th>科目类别</th>
-              <th>余额方向</th>
               <th>是否现金科目</th>
               <th class="col-op">操作</th>
             </tr></thead>
@@ -1393,11 +1299,23 @@
         </div>
 
         <div class="card" id="cardSysVch">
-          <div class="card-head"><span>凭证字</span><button type="button" class="card-head-op" id="btnAddWord">新增</button></div>
+          <div class="card-head"><span>凭证字</span></div>
           <div class="grid-wrap">
             <table class="grid" id="vwGrid">
               <thead><tr><th>凭证字</th><th class="col-fill">打印标题</th><th class="col-op">操作</th></tr></thead>
               <tbody id="vwBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 部门档案（2026-10-27 从工资页弹窗迁入）：与「凭证字」同构的基础资料卡片。
+             资产卡片的部门下拉、左树、按部门分组都读这一份档案。 -->
+        <div class="card" id="cardSysDept">
+          <div class="card-head"><span>部门</span><button type="button" class="card-head-op" id="btnAddDept">新增</button></div>
+          <div class="grid-wrap">
+            <table class="grid" id="deptGrid">
+              <thead><tr><th class="col-code">部门编码</th><th class="col-fill">部门名称</th><th class="col-op">操作</th></tr></thead>
+              <tbody id="deptBody"></tbody>
             </table>
           </div>
         </div>
@@ -1649,7 +1567,7 @@
 
   <div class="modal" id="newBookModal">
     <div class="modal-box modal-compact">
-      <div class="modal-title">新建账套</div>
+      <div class="modal-title">新建账套<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-row">
         <label>账套名称</label><input id="nbName" class="inp" placeholder="如：XX公司">
       </div>
@@ -1670,7 +1588,7 @@
 
   <div class="modal" id="renameBookModal">
     <div class="modal-box modal-compact">
-      <div class="modal-title">重命名账套</div>
+      <div class="modal-title">重命名账套<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-row">
         <label>新名称</label><input id="rbName" class="inp" placeholder="如：XX公司">
       </div>
@@ -1684,7 +1602,7 @@
 
   <div class="modal" id="editPeriodModal">
     <div class="modal-box modal-compact">
-      <div class="modal-title">修改启用期间</div>
+      <div class="modal-title">修改启用期间<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-row">
         <label>启用期间</label><input id="epStart" class="inp" type="month">
       </div>
@@ -1698,7 +1616,7 @@
 
   <div class="modal" id="cloudSyncModal">
     <div class="modal-box">
-      <div class="modal-title">云同步设置</div>
+      <div class="modal-title">云同步设置<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-row">
         <label>服务器地址</label><input id="csUrl" class="inp" placeholder="https://dav.jianguoyun.com/dav/">
       </div>
@@ -1711,17 +1629,20 @@
       <p class="set-hint" id="csPassHint" style="display:none">应用密码已保存在本机（上面显示为星号），升级软件不会丢失；要更换请清空后输入新密码。</p>
       <p class="set-hint">在坚果云网页端：账户信息 → 安全选项 → 第三方应用管理 → 添加应用密码。</p>
       <div class="modal-actions">
+        <!-- 顺序统一：破坏性操作靠左（#btnCsClear 由 CSS margin-right:auto 顶到最左），
+             其后「主操作 → 取消」与全站一致。此前是 [测试][保存][取消][清空]，
+             清空设置被挤在最右侧主操作旁边，容易误点。 -->
+        <button class="btn" id="btnCsClear">清空设置</button>
         <button class="btn" id="btnCsTest">测试连接</button>
         <button class="btn btn-primary" id="btnCsSave">保存</button>
         <button class="btn" id="btnCsCancel">取消</button>
-        <button class="btn" id="btnCsClear">清空设置</button>
       </div>
     </div>
   </div>
 
   <div class="modal" id="subjectModal">
     <div class="modal-box modal-compact">
-      <div class="modal-title">新增科目</div>
+      <div class="modal-title">新增科目<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-row"><label>科目编码</label><input id="subCode" class="inp" placeholder="子科目=父编码+数字位，请与同父现有下级保持一致"></div>
       <div class="form-row"><label>科目名称</label><input id="subName" class="inp" placeholder="如 应收账款-客户"></div>
       <div class="form-row"><label>科目类别</label>
@@ -1735,7 +1656,7 @@
       </div>
       <div class="k-tip info" id="subjNameTip" style="display:none">注意：科目名称修改后，以前期间凭证、报表上的科目名称都会变成新的科目名称。</div>
       <div class="modal-actions">
-        <button class="btn" id="btnSaveSubject">保存</button>
+        <button class="btn btn-primary" id="btnSaveSubject">保存</button>
         <button class="btn" id="btnCloseSubject">取消</button>
       </div>
     </div>
@@ -1743,23 +1664,23 @@
 
   <div class="modal" id="assetModal">
     <div class="modal-box modal-wide">
-      <div class="modal-title">固定资产卡片</div>
+      <div class="modal-title">固定资产卡片<button class="modal-x" data-modal-close="1">×</button></div>
       <div class="form-grid">
         <div class="form-section-title">基本信息</div>
-        <div class="form-row"><label class="req">资产编码</label><input id="aCode" class="inp"></div>
+        <div class="form-row"><label>资产编码</label><input id="aCode" class="inp" placeholder="留空自动生成"></div>
         <div class="form-row"><label class="req">资产名称</label><input id="aName" class="inp"></div>
-        <div class="form-row"><label class="req">固定资产科目</label><input id="aFaAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">固定资产科目</label><input id="aFaAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
         <!-- 使用部门已由「自由文本」改为下拉（option value = 部门**名称**，与卡片 fa.dept 同口径）：
              自由文本无法与部门档案对齐，是「按部门筛选筛不到」的根源。 -->
         <div class="form-row"><label class="req">使用部门</label><select id="aDept" class="inp-sel"><option value="">请选择</option></select></div>
         <div class="form-row"><label class="req">开始使用日期</label><input id="aAcq" class="inp" type="date"></div>
         <div class="form-row"><label class="req">原值</label><input id="aOriginal" class="inp" type="number"></div>
-        <div class="form-row"><label class="req">累计折旧科目</label><input id="aAccDeprAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">累计折旧科目</label><input id="aAccDeprAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
         <div class="form-row"><label class="req">折旧方法</label><select id="aMethod" class="inp-sel"><option>平均年限法</option><option>工作量法</option><option>年数总和法</option><option>双倍余额递减法</option></select></div>
-        <div class="form-row"><label class="req">折旧费用科目</label><input id="aDeprFeeAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
-        <div class="form-row"><label class="req">资产清理科目</label><input id="aCleanAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
-        <div class="form-row"><label class="req">资产购入对方科目</label><input id="aPurchaseAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
-        <div class="form-row"><label>减值准备对方科目</label><input id="aImpairAcct" class="inp-sel" placeholder="输入编码或名称选择" autocomplete="off"></div>
+        <div class="form-row"><label class="req">折旧费用科目</label><input id="aDeprFeeAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
+        <div class="form-row"><label class="req">资产清理科目</label><input id="aCleanAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
+        <div class="form-row"><label class="req">资产购入对方科目</label><input id="aPurchaseAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
+        <div class="form-row"><label>减值准备对方科目</label><input id="aImpairAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
         <!-- 星标规则：「期初累计折旧」「本年已折旧」为选填（默认 0），故去星标；
              残值率 / 预计使用期数 / 已折旧期间为必填，保留。
              「月折旧额」只读（由原值、残值率、期数联动算出，不接受手工录入）。 -->
@@ -1771,7 +1692,6 @@
         <div class="form-row"><label>本年已折旧</label><input id="aYearDepr" class="inp" type="number" value="0"></div>
         <div class="form-row"><label>数量</label><input id="aQty" class="inp" type="number" value="1"></div>
         <div class="form-section-title">其他信息</div>
-        <div class="form-row"><label class="req">类别</label><select id="aCategory" class="inp-sel"><option value="">请选择</option></select></div>
         <div class="form-row"><label>规格型号</label><input id="aSpec" class="inp"></div>
         <div class="form-row"><label>存放地点</label><input id="aLocation" class="inp"></div>
         <div class="form-row"><label>使用人</label><input id="aUser" class="inp"></div>
@@ -1796,71 +1716,13 @@
       <div class="modal-title" id="assetHistoryTitle">变动记录<button class="modal-x" id="btnCloseAssetHistory">×</button></div>
       <div class="modal-body" id="assetHistoryBody"></div>
       <div class="modal-actions">
-        <button class="btn btn-primary" id="btnCloseAssetHistory2">关闭</button>
+        <button class="btn" id="btnCloseAssetHistory2">关闭</button>
       </div>
     </div>
   </div>
 
-  <div class="modal" id="assetCatListModal">
-    <div class="modal-box modal-wide">
-      <div class="modal-title">资产类别</div>
-      <div class="modal-actions modal-actions-tight">
-        <button class="btn btn-primary" id="btnNewCat">新增</button>
-        <button class="btn" id="btnDelCat">停用</button>
-        <button class="btn" id="btnResetCat">恢复默认</button>
-        <span class="flex-gap"></span>
-        <button class="btn" id="btnCloseAssetCatList">关闭</button>
-      </div>
-      <div class="asset-cat-scroll">
-        <table class="grid" id="catGrid">
-          <thead>
-            <tr>
-              <th class="col-check"><input type="checkbox" id="catCheckAll"></th>
-              <th>操作</th><th>类别编码</th><th class="col-fill">类别名称</th><th>折旧方法</th><th>预计使用年限</th>
-              <th>预计净残值率%</th><th>固定资产科目</th><th>累计折旧科目</th><th class="col-fill">备注</th>
-            </tr>
-          </thead>
-          <tbody id="catBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="catModal">
-    <div class="modal-box modal-compact">
-      <div class="modal-title">编辑资产类别</div>
-      <div class="form-grid">
-        <div class="form-row"><label>类别编码</label><input id="catCode" class="inp"></div>
-        <div class="form-row"><label>类别名称</label><input id="catName" class="inp"></div>
-        <div class="form-row"><label>折旧方法</label><select id="catMethod" class="inp"><option>平均年限法</option><option>工作量法</option><option>年数总和法</option><option>双倍余额递减法</option></select></div>
-        <div class="form-row"><label>预计使用年限</label><input id="catLife" class="inp" type="number" value="5"></div>
-        <div class="form-row"><label>预计净残值率%</label><input id="catSalvage" class="inp" type="number" value="5"></div>
-        <div class="form-row"><label>固定资产科目</label><input id="catAsset" class="inp" value="1601"></div>
-        <div class="form-row"><label>累计折旧科目</label><input id="catDepr" class="inp" value="1602"></div>
-        <div class="form-row form-row-full"><label>备注</label><input id="catMemo" class="inp"></div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="btnSaveCat">保存</button>
-        <button class="btn" id="btnCloseCat">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="salaryModal">
-    <div class="modal-box modal-compact">
-      <div class="modal-title">新增工资</div>
-      <div class="form-row"><label>期间</label><input id="sMonth" class="inp" type="month"></div>
-      <div class="form-row"><label>姓名</label><input id="sName" class="inp"></div>
-      <div class="form-row"><label>工资类别</label><select id="sCat" class="inp"><option value="">全部</option><option value="前台">前台</option><option value="客房">客房</option><option value="餐厅">餐厅</option></select></div>
-      <div class="form-row"><label>应发</label><input id="sShould" class="inp" type="number"></div>
-      <div class="form-row"><label>实发</label><input id="sReal" class="inp" type="number"></div>
-      <div class="modal-actions">
-        <button class="btn" id="btnSaveSalary">保存</button>
-        <button class="btn" id="btnCloseSalary">取消</button>
-      </div>
-    </div>
-  </div>
-
+  <!-- 「资产类别」维护弹窗与「编辑资产类别」弹窗已于 2026-10-27 删除：
+       类别改为卡片自有名称（fa.category），不再有档案需要维护。理由见 Asset.js 同位置注释。 -->
   <!-- 纯本地单机版：已移除登录门与云端账号弹窗，数据全在本地。 -->
   <div class="toast" id="toast"></div>
 

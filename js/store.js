@@ -122,19 +122,17 @@
  * 固定资产
  *   addFixedAsset, updateFixedAsset, removeFixedAsset
  *   depreciateMonth, assetMonthlyDepr, genCleanVoucher
- *   资产类别 assetCats / normalizeAssetCategory（默认档案 + 「编码↔名称」归一的唯一事实源）
+ *   资产类别 category（卡片自有字段，存**类别名称**；档案体系已下线，见 migrateAssetCategoryToName）
  *   新增资产凭证 = 关联已有凭证 linkAssetAcquisitions / unlinkAssetAcquisitions（**绝不生成凭证**）
  *
- * 工资 / 薪酬
- *   addPayroll, removePayroll, payrollSummary
- *   genPayrollVoucher
- *   salaryVchTpls, addSalaryVchTpl, resetSalaryVchTpls
+ * 工资 / 薪酬（2026-10-27 模块整体下线）
+ *   生成与管理方法已全部移除；state.payrolls / state.salaryVchTpls 两个字段保留不读不写
+ *   （schema 白名单与 v5→v6 金额迁移仍需要它们），工资业务走普通凭证录入。
  *
  * 工具 / 自检 / 健康
  *   runSelfTest                  ← 期初/凭证/报表恒等式自检（首页横幅）
  *   financialHealthCheck         ← 深度健康体检
  *   backupNow                    ← 立即手动备份（Rust Storage）
- *   vatEditGet / vatEditSet      ← 增值税附列资料（小规模/一般纳税人）
  *   log 系统：addLog, getLogs
  *   getParam / setParam          ← 全局参数（bookHideZero / thousand 等）
  *
@@ -482,7 +480,7 @@
     { id: 'cf_cash',    name: '现金及现金等价物', rowNum: '' }
   ];
 
-  /* ---------- 默认部门（酒店三部门，与工资模块 Salary.js 同源） ---------- */
+  /* ---------- 默认部门（酒店三部门；部门档案原为工资页弹窗，2026-10-27 迁入「系统设置」卡片） ---------- */
   // 仅作空状态种子；用户可在「部门职员」中增删。浅拷贝避免账套间共享同一数组引用。
   var DEFAULT_DEPTS = [
     { code: '001', name: '前台', type: '部门', parent: '' },
@@ -490,21 +488,18 @@
     { code: '003', name: '餐厅', type: '部门', parent: '' }
   ];
 
-  /* ---------- 默认资产类别（6 类，平均年限法） ----------
-   * 【为什么从 Asset.js 搬到这里】这份预置原先只写在前端 Asset.js 的 assetCats() 里（懒创建），
-   * 而「category 存类别**编码**」这条契约只写在 addFixedAsset 的注释里。结果是：Excel/外部账套导入
-   * 把「类别**名称**」直接写进了 category 字段 —— 显示看不出问题（_catName 查不到编码就原样返回），
-   * 但按类别筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。
-   * 归一（编码↔名称）与老账套回填都必须在**数据层**做，故把默认档案移到 store，前端只引用。
-   * 浅拷贝避免账套间共享同一数组引用。 */
-  var DEFAULT_ASSET_CATS = [
-    { code: '001', name: '房屋、建筑物',     method: '平均年限法', life: 30, salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
-    { code: '002', name: '机器机械生产设备', method: '平均年限法', life: 10, salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
-    { code: '003', name: '器具、工具、家具', method: '平均年限法', life: 5,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
-    { code: '004', name: '运输工具',         method: '平均年限法', life: 4,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
-    { code: '005', name: '电子设备',         method: '平均年限法', life: 3,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true },
-    { code: '006', name: '其他固定资产',     method: '平均年限法', life: 5,  salvage: 5, asset: '1601', depr: '1602', memo: '', enabled: true }
-  ];
+  /* ---------- 资产类别：2026-10-27 起整个维度下线（档案 + 卡片字段展示 + 报表分组） ----------
+   * 【为什么下线】原设计是 assetCats 档案（code/name/method/life/salvage/asset/depr）
+   *   + 卡片 category 存**编码**。但实测（全库 grep）除 code/name/enabled 外的字段**没有任何逻辑读取**：
+   *   卡片折旧参数一律取自卡片自身（fa.life / fa.salvageRate / fa.method），选类别也不会带出年限或科目。
+   *   而「编码↔名称」归一在导入金蝶数据时反复把**名称**写进编码字段，造成按类别筛不到、
+   *   编辑卡片后类别被清空等事故（见 normalizeState 里的历史注释）。
+   *   真实数据也印证了价值极低：29 张卡片里 25 张挤在同一类别，而部门字段 29/29 齐全。
+   * 【现在】卡片表单与列表都不再有类别；折旧汇总表/明细表改按**部门**分组。
+   *   fa.category 仍按名称存（导入金蝶零转换），但只作为历史数据保留，不再参与任何展示与统计。
+   * 【兼容】老账套里的 assetCats 键**保留原样**：新版本不读、不写、不删。
+   *   它是旧版本回退时的归一依据 —— 旧版 normalizeAssetCategory 靠它把名称匹配回原编码，升降级可逆。
+   *   故 emptyState 里仍保留该键（空数组），保证 schema 与历史账套完全一致。 */
 
   /* ---------- 空状态（单一账套） ----------
    * standard: 会计准则机器键。当前仅 'small2013'（小企业会计准则 2013）一套，建账时由 newBook(key) 传入
@@ -597,21 +592,24 @@
       openingBalances: {},   // { code: { dr:0, cr:0 } }
       vouchers: [],          // 凭证（全账套）
       fixedAssets: [],       // 固定资产卡片
-      payrolls: [],          // 工资记录
-      salaryVchTpls: [],     // 工资凭证模板（计提/发放）
+      /* 以下两键为**遗留字段**（工资模块 2026-10-27 下线）：不读不写，但必须保留 ——
+         checkBookShape 的白名单与 migrateAmountsToV6 的金额换算都按它们存在来做，
+         删掉会让老账套体检报错、迁移保真审计失真。 */
+      payrolls: [],          // 遗留：工资记录
+      salaryVchTpls: [],     // 遗留：工资凭证模板（计提/发放）
       vchTemplates: [],      // 日常凭证模板（常用业务结构，按账套保存）
       settleTemplates: [],   // 期末处理自定义模板（外部账套导入 / 用户自建）
       depts: DEFAULT_DEPTS.map(function (s) { return Object.assign({}, s); }), // 部门职员种子（酒店三部门）
-      assetCats: DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); }), // 资产类别档案（默认 6 类）
+      assetCats: [],          // 已下线（2026-10-27）：类别改为卡片 fa.category 直接存名称。保留该键仅为兼容旧账套与旧版本回退
       cashFlowItems: CASH_FLOW_ITEMS.map(function (it) { return Object.assign({}, it); }),
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
       operationLogs: [],      // 操作日志 [{ time, user, action, detail }]
       closedPeriods: [],     // 已结账月份列表 ['YYYY-MM', ...]
       voucherWords: [
         { name: '记', title: '记账凭证', enabled: true },
-        { name: '收', title: '收款凭证', enabled: true },
-        { name: '付', title: '付款凭证', enabled: true },
-        { name: '转', title: '转账凭证', enabled: true }
+        { name: '收', title: '收款凭证', enabled: false },
+        { name: '付', title: '付款凭证', enabled: false },
+        { name: '转', title: '转账凭证', enabled: false }
       ],
       param: {
         standard: stdMeta.label,
@@ -708,6 +706,37 @@
       });
     });
     book.schemaVersion = 6;
+    return book;
+  }
+
+  /* ---------- 资产类别：编码 → 名称（v6 内的幂等结构迁移，2026-10-27） ----------
+   * 【为什么不提升 schemaVersion】加载判据是「既非本版本、也非 5 → 拒绝加载并弹版本冲突」
+   *   （见 _consumeDiskBook / switchBook）。一提版本号，所有没升级的用户打开账套就被拦住。
+   *   故沿用 v6，靠**值形态**识别新旧数据：
+   *     category 命中 assetCats[].code → 旧数据（存的是编码）→ 换成对应类别名称
+   *     其余                          → 已是名称（或历史脏文本）→ 原样不动
+   * 【幂等】转换后值是名称，不再命中 code 集合，二次进入无变化。
+   * 【极端情况自洽】若某类别名称恰好等于某个编码，映射结果与原值相同，仍无害。
+   * 【只改内存】随下一次正常写盘落库，与 normalizeDept 回填同一语义（不在加载路径强行写盘）。
+   * 【旧版本可回退】assetCats 档案刻意保留不删：旧版 normalizeAssetCategory 靠它把名称
+   *   匹配回原编码，所以「升级 → 迁成名称 → 退回旧版」是闭环，不是单向门。 */
+  function migrateAssetCategoryToName(book) {
+    if (!book || typeof book !== 'object') return book;
+    var cats = Array.isArray(book.assetCats) ? book.assetCats : [];
+    var byCode = {};
+    cats.forEach(function (c) {
+      if (!c || c.code == null) return;
+      var name = String(c.name == null ? '' : c.name).trim();
+      if (name) byCode[String(c.code)] = name;
+    });
+    (book.fixedAssets || []).forEach(function (fa) {
+      if (!fa) return;
+      var before = String(fa.category == null ? '' : fa.category).trim();
+      if (!before) { if (fa.category !== '') fa.category = ''; return; }
+      var after = byCode[before];
+      if (after != null && after !== before) fa.category = after;
+      else if (before !== fa.category) fa.category = before;   // 只顺带去掉首尾空白
+    });
     return book;
   }
 
@@ -2469,11 +2498,8 @@
       // 这里若继续拦，用户得先手工解锁，而界面上并没有能解锁这两个字段的入口
       // （「解除购入凭证关联」清的是 addVoucher，管不到 deprVoucher / cleanVoucher）。
       // 清理凭证那条尤其严重：删凭证要求先取消清理、取消清理要求先删凭证 —— 互相锁死无解。
-      // 工资：工资模块按凭证类型（v.kind）+ 同期间识别凭证（工资记录无 voucherId 字段）。
-      // 删掉工资凭证后工资数据仍在，会造成「工资已发但总账无凭证」的账实不符，故拦截提示先处理工资记录。
-      // 原实现按摘要正则匹配，对导入凭证（无 v.summary）恒不命中，该保护从未生效。
-      // 仅拦截工资模块显式生成的凭证（v.payroll 标记）；纯手工录入、仅科目结构像工资的凭证不锁
-      if (v && v.payroll) hits.push('工资');
+      /* 工资：2026-10-27 模块下线，这一条拦截随之取消 —— 工资凭证不再有「业务单据」可以回滚，
+         历史账套里带 v.payroll 标记的凭证（本机两本为 0 张）现在按普通凭证处理，可直接删除/红冲。 */
       return hits;
     },
     // 查「活」的红字冲销凭证（软删的不算，与 reverseVoucher 防重复同口径）。
@@ -2521,7 +2547,7 @@
         // 按引用类型给具体指引：原实现一律说「请先解除关联后再删除」，而固定资产类引用
         // 根本不是靠「解除关联」解的（那按钮清的是购入凭证字段），会把人带进死胡同。
         var REF_TIPS = {
-          '工资': '请先在工资模块删除对应工资记录'
+          '工资': '请先在工资模块删除对应工资记录（删除时会同步作废本凭证）'
         };
         var tips = ref.map(function (r) { return REF_TIPS[r] || ('请先处理「' + r + '」后再删除'); });
         return { ok: false, msg: '该凭证已被' + ref.join('、') + '引用。' + tips.join('；') };
@@ -2570,6 +2596,8 @@
           .some(function (x) { return x.id !== id; });
         if (_dupCarry) return { ok: false, msg: '本期已有结转损益凭证，还原此凭证会导致本年利润重复结转；请先删除当前结转凭证，或使用「重新结转损益」刷新。' };
       }
+      /* 工资凭证的还原闸门随模块下线一并移除（2026-10-27）：它防的是「工资台账与凭证不同步」，
+         现在工资模块已不存在、payrolls 也不再产生数据，这道闸只会把回收站里的历史工资凭证锁死。 */
       v.deleted = 'n';
       delete v.deletedAt;
       delete v.deletedBy;
@@ -2646,9 +2674,10 @@
       //   ① 期末处理类 —— v.kind（结转损益/本年利润/成本/折旧/利润分配/工资计提发放）
       //   ② 固定资产   —— 卡片上的 deprVoucher / cleanVoucher 存【凭证号 word-no】，与 kind 无关
       //                   （外部导入的折旧凭证没有 kind，但卡片有 deprVoucher）
-      //   ③ 工资模块   —— v.payroll 标记
-      // 三类都不该手工红字冲销，但【理由不同】：
-      //   · 期末类 / 工资：官方入口是「重新生成」，会先删旧凭证、再按最新数据重算；
+      //   （工资模块 2026-10-27 下线后不再有第三类：v.payroll 标记的凭证按普通凭证处理，可正常红冲，
+      //     因为「重新生成」这个官方入口已随模块消失，红冲成为唯一更正途径。）
+      // 两类都不该手工红字冲销，但【理由不同】：
+      //   · 期末类：官方入口是「重新生成」，会先删旧凭证、再按最新数据重算；
       //     手工红字冲销后结账清单仍认为本期已结转/已计提，两套判定打架，账反而更乱。
       //   · 固定资产折旧 / 清理：红字冲销【不会回退卡片】—— 只有「删除凭证」才会
       //     （_revertAssetDepr / _revertAssetClean）。红字冲销后卡片的累计折旧、清理状态
@@ -2667,22 +2696,18 @@
           + '红字冲销不会撤销处置业务，会造成账实不符。请先到「固定资产」对该卡片执行「取消清理」，'
           + '系统会同时删掉这张凭证' };
       }
-      if (orig.payroll) {
-        return { ok: false, msg: '该凭证由「工资」模块生成。红字冲销不改动工资记录，会造成「工资已发、账上无凭证」。'
-          + '请先到工资模块处理对应工资记录，再用工资模块重新生成凭证' };
-      }
-      if (orig.kind) {
+      /* 工资类凭证放行（2026-10-27 模块下线）：本机两本账套都没有这类凭证，但外部导入的账套可能仍存
+         kind=payrollAcc/payrollPay 的历史凭证 —— 模块没了就没有「重新生成」入口，拦着等于让它无法更正。 */
+      var _K0 = this.VOUCHER_KINDS;
+      var _isPayrollKind = (orig.kind === _K0.PAYROLL_ACC || orig.kind === _K0.PAYROLL_PAY);
+      if (orig.kind && !_isPayrollKind) {
         var K = this.VOUCHER_KINDS, KIND_LABEL = {}, KIND_WHERE = {};
         KIND_LABEL[K.CARRY_PL] = '结转损益';
         KIND_LABEL[K.CARRY_YE] = '结转本年利润';
         KIND_LABEL[K.CARRY_COST] = '结转销售成本';
         KIND_LABEL[K.DEPR] = '计提折旧';
-        KIND_LABEL[K.PAYROLL_ACC] = '计提工资';
-        KIND_LABEL[K.PAYROLL_PAY] = '发放工资';
         KIND_LABEL[K.PROFIT_DIST] = '利润分配';
         KIND_WHERE[K.DEPR] = '「固定资产 → 计提折旧」或「期末处理」';
-        KIND_WHERE[K.PAYROLL_ACC] = '「工资」模块';
-        KIND_WHERE[K.PAYROLL_PAY] = '「工资」模块';
         return { ok: false, msg: '该凭证是「' + (KIND_LABEL[orig.kind] || '期末业务') + '」自动生成的凭证，'
           + '不应手工红字冲销（它的自动逻辑自带「重新生成」入口，会先删旧再按最新数据重算）。'
           + '如需更正，请到' + (KIND_WHERE[orig.kind] || '「结账 → 期末处理」') + '重新生成' };
@@ -3144,8 +3169,10 @@
       CARRY_COST: 'carryCost',       // 结转销售成本
       // CARRY_VAT / ACCRUE_SURTAX / ACCRUE_INCTAX 已随对应期末模板下线（2026-09-18），
       // 不再定义。理由见 _detectVoucherKind 与 settleChecklist 处注释。
-      PAYROLL_ACC: 'payrollAcc',     // 计提工资
-      PAYROLL_PAY: 'payrollPay',     // 发放工资
+      /* 工资两型：**仅用于识别历史/外部账套里已存在的凭证**（guessKind 分类、回收站展示、红冲放行判断）。
+         工资模块 2026-10-27 已下线，不会再有新的凭证被写入这两个 kind。 */
+      PAYROLL_ACC: 'payrollAcc',     // 计提工资（遗留）
+      PAYROLL_PAY: 'payrollPay',     // 发放工资（遗留）
       PROFIT_DIST: 'profitDist'      // 利润分配（提取盈余公积/分配股利，仅 12 月）
     },
 
@@ -4960,43 +4987,6 @@
       });
       return { rows: rows };
     },
-    // 转出未交增值税 凭证设置（结账页「检查并结账」→ 增值税编辑弹窗）
-    // 存 state.vatTplEntries（[{code,name,target}]），读取时无自定义则按科目树生成默认
-    vatEditGet: function (month) {
-      var saved = this.state.vatTplEntries;
-      if (saved && saved.length) {
-        return { entries: saved.map(function (x) { return { code: x.code || '', name: x.name || '', target: x.target || '' }; }) };
-      }
-      var subs = (this.state.subjects || []).filter(function (s) {
-        return s.code !== '2221' && s.code.indexOf('2221') === 0;
-      });
-      function isDirect(s) {
-        for (var i = 0; i < subs.length; i++) {
-          var t = subs[i];
-          if (t.code !== s.code && s.code.indexOf(t.code) === 0) return false;
-        }
-        return true;
-      }
-      var vatSub = null, unpaySub = null;
-      for (var i = 0; i < subs.length; i++) {
-        var s = subs[i];
-        if (!isDirect(s)) continue;
-        if (!vatSub && s.name.indexOf('增值税') >= 0 && s.name.indexOf('未交') < 0) vatSub = s;
-        if (!unpaySub && s.name.indexOf('未交') >= 0) unpaySub = s;
-        if (vatSub && unpaySub) break;
-      }
-      var entries = [];
-      if (vatSub && unpaySub) entries.push({ code: vatSub.code, name: vatSub.name, target: unpaySub.code });
-      return { entries: entries };
-    },
-    vatEditSet: function (month, data) {
-      var entries = (data && Array.isArray(data.entries)) ? data.entries : [];
-      this.state.vatTplEntries = entries.filter(function (x) { return x && x.code; }).map(function (x) {
-        return { code: x.code, name: x.name || '', target: x.target || '' };
-      });
-      this.persist();
-      return { ok: true };
-    },
     // 现金流量表（按凭证指定现金流量活动汇总）
     cashFlow: function (month) {
       var self = this;
@@ -5128,38 +5118,15 @@
     },
 
     /* ===================== 固定资产 ===================== */
-    // 资产类别档案（单一事实源）。缺省/为空时用默认 6 类补齐（老账套首次打开资产页时也会走到这里）。
-    assetCats: function () {
-      if (!Array.isArray(this.state.assetCats) || !this.state.assetCats.length) {
-        this.state.assetCats = DEFAULT_ASSET_CATS.map(function (c) { return Object.assign({}, c); });
-      }
-      return this.state.assetCats;
-    },
-    /* 把外来的「类别」值归一为**类别编码**（本系统唯一契约）。
-     * 顺序：空 → ''；命中编码 → 原值；命中名称 → 对应编码；都命中不了 → 按该名称**新建**一条档案。
-     * 「新建」是为了迁移不丢信息：外部账套的资产类别未必正好是我们预置的 6 类，
-     * 若不新建，那张卡片的类别就永远筛不到、且编辑时会被清空（正是本次要修的病）。
-     * 幂等：归一后的值是编码，再次调用在第一步就返回。 */
-    normalizeAssetCategory: function (v) {
-      var raw = String(v == null ? '' : v).trim();
-      if (!raw) return '';
-      var list = this.assetCats(), i;
-      for (i = 0; i < list.length; i++) { if (String(list[i].code) === raw) return raw; }
-      for (i = 0; i < list.length; i++) { if (String(list[i].name) === raw) return String(list[i].code); }
-      var max = 0;
-      list.forEach(function (c) { var n = parseInt(c.code, 10); if (!isNaN(n) && n > max) max = n; });
-      var code = String(max + 1);
-      while (code.length < 3) code = '0' + code;
-      list.push({ code: code, name: raw, method: '平均年限法', life: '', salvage: '',
-        asset: '', depr: '', memo: '导入资产时自动建立', enabled: true });
-      this.state.assetCats = list;
-      return code;
-    },
+    /* 【资产类别已下线（2026-10-27）】原先的两个类别方法（读取档案 / 编码↔名称归一）已整体删除。
+       卡片 fa.category 仍按**名称**存（与金蝶导出「固定资产类别」列同口径），但只作为历史数据
+       保留 —— 表单不采集（编辑卡片不会覆盖它）、列表不展示、报表也不再用它分组（改按部门）。
+       保留它的理由只有一个：将来若要恢复类别维度，数据是自洽的名称而不是编码。
+       老账套里保留下来的 assetCats 档案**不读、不写、不删** —— 那是旧版本回退时的归一依据。
+       编码 → 名称的一次性幂等迁移见 migrateAssetCategoryToName（由 normalizeState 调用）。 */
     /* ---------- 部门（基础资料）：单一事实源 + 名称归一 ----------
-     * ⚠️ 与「资产类别」**方向相反**，别照抄：
-     *   类别字段存**编码**（卡片表单是下拉、store 注释里写明「类别编码」）；
-     *   部门字段存**名称** —— 卡片表单的「使用部门」是**自由文本输入**，addFixedAsset 也没有
-     *   「部门编码」的契约，且全库消费方（卡片左树 / fDept 筛选 / 折旧汇总表「按部门汇总」）
+     * 部门字段存**名称**：卡片表单的「使用部门」是下拉（option value = 名称），addFixedAsset
+     *   也没有「部门编码」的契约，且全库消费方（卡片左树 / fDept 筛选 / 折旧汇总表「按部门汇总」）
      *   都是按**名称**比对。故这里归一为**名称**，code 只作档案内部标识。
      * 【为什么要归一】和类别同一个病根：外部账套导入**不带部门档案**（kis-import.js 全库 0 处提及），
      *   本系统的 depts 一直是内置默认种子（前台/客房/餐厅）；而外部账套卡片表里的部门是
@@ -5217,6 +5184,40 @@
       this.persist();
       return { ok: true, renamed: renamed, touched: touched };
     },
+    /* 新增部门（2026-10-27 从工资页搬进 store：此前唯一实现是 Salary.js 里直接 list.push +
+     * setBookFields，页面自己管基础资料写入。部门档案现在住「系统设置」，入口可能不止一个，
+     * 再让页面各自拼数组迟早分叉，故与 renameDept 并列收口到这里。
+     * @param d {name, code?}；code 为空时按现有编码最大值 +1 补零三位生成
+     * @returns {{ok:boolean, msg?:string, code?:string}} */
+    addDept: function (d) {
+      var name = String((d && d.name) == null ? '' : d.name).trim();
+      if (!name) return { ok: false, msg: '部门名称不能为空' };
+      var list = this.depts();
+      var code = String((d && d.code) == null ? '' : d.code).trim();
+      if (!code) {
+        var max = 0;
+        list.forEach(function (x) { var n = parseInt(x.code, 10); if (!isNaN(n) && n > max) max = n; });
+        code = String(max + 1);
+        while (code.length < 3) code = '0' + code;
+      }
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].code) === code) return { ok: false, msg: '部门编码「' + code + '」已被占用' };
+        if (String(list[i].name) === name) return { ok: false, msg: '部门「' + name + '」已存在' };
+      }
+      list.push({ code: code, name: name, type: '部门', parent: '', enabled: true });
+      this.setBookFields({ depts: list });
+      return { ok: true, code: code };
+    },
+    /* 启用 / 停用部门（原实现是页面里直接改 d.enabled 再 S.persist()）。
+     * 停用只影响"能不能再选"，历史卡片/凭证数据保留 —— 所以这里不校验引用。 */
+    setDeptEnabled: function (idx, enabled) {
+      var list = this.depts();
+      var d = list[idx];
+      if (!d) return { ok: false, msg: '部门不存在' };
+      d.enabled = !!enabled;
+      this.setBookFields({ depts: list });
+      return { ok: true };
+    },
     /* 资产变动历史：关键字段清单 + 中文标签。
      * 只记录影响折旧计算/资产价值/归属的字段，编码、名称、规格等不改折旧的不记。
      * history 挂在 fa 自身上，随卡片持久化，老账套 undefined 自动兜底为空数组。 */
@@ -5254,9 +5255,9 @@
       // 数值字段初始化（严格对齐卡片列）
       fa.code = fa.code || '';                       // 编码
       fa.name = fa.name || '';                       // 名称
-      // 类别：唯一契约是**类别编码**。导入（Excel/外部账套）给的多是类别名称，此处归一 ——
-      // 否则按类别筛选筛不到、编辑卡片时下拉选不中（保存会把类别清空）。见 normalizeAssetCategory。
-      fa.category = this.normalizeAssetCategory(fa.category);
+      // 类别：契约是**类别名称**（2026-10-27 起，与金蝶导出同口径）。此处只去首尾空白；
+      // 老账套里的编码由加载时的 migrateAssetCategoryToName 统一转换，不在录入路径处理。
+      fa.category = String(fa.category == null ? '' : fa.category).trim();
       // 部门：契约是**部门名称**。导入（Excel/外部账套卡片表）给的是名称，此处归一 ——
       // 档案里没有的部门会按名称补进 depts，否则资产左树/按部门筛选永远对不上。见 normalizeDept。
       fa.dept = this.normalizeDept(fa.dept);
@@ -5330,9 +5331,8 @@
       var self = this;
       var oldVals = {};
       this._ASSET_HISTORY_FIELDS.forEach(function (k) { oldVals[k] = old[k]; });
-      // 与 addFixedAsset 同口径：编辑保存进来的类别/部门也过一遍归一（下拉/输入给的本就合规，此处是防呆，
-      // 并保证手填的新部门会被补进部门档案）
-      if (fa && fa.category !== undefined) fa.category = this.normalizeAssetCategory(fa.category);
+      // 与 addFixedAsset 同口径：类别只去空白（契约是名称）；部门仍走档案归一（新部门会被补进档案）
+      if (fa && fa.category !== undefined) fa.category = String(fa.category == null ? '' : fa.category).trim();
       if (fa && fa.dept !== undefined) fa.dept = this.normalizeDept(fa.dept);
       Object.assign(this.state.fixedAssets[idx], fa, { id: id });
       // 合并后做净值/累计折旧兜底补算（表单 _collectAsset 不采集 accumDepr/netValue* 字段，
@@ -5775,152 +5775,12 @@
       return ok ? { ok: true } : { ok: false, msg: '备份文件无效' };
     },
 
-    /* ===================== 工资 ===================== */
-    addPayroll: function (p) {
-      p.id = 'P' + Date.now();
-      p.should = amt(p.should); p.real = amt(p.real);
-      this.state.payrolls.push(p);
-      this.persist();
-    },
-    removePayroll: function (id) {
-      var p = this.state.payrolls.filter(function (x) { return x.id === id; })[0];
-      if (!p) return { ok: false, msg: '工资记录不存在' };
-      // 财务严谨：该期间已生成工资计提/发放凭证则禁删，避免账实不符
-      if (p.month && this.hasPayrollVoucher(p.month)) {
-        return { ok: false, msg: p.month + ' 已生成工资凭证，请先删除工资凭证再删除记录' };
-      }
-      this.state.payrolls = this.state.payrolls.filter(function (x) { return x.id !== id; });
-      this.persist();
-      return { ok: true };
-    },
-    // 某期间是否已生成工资计提/发放凭证
-    // 此前两处失效：摘要正则对导入凭证恒不命中（无 v.summary）；v.period 归期错误（自生成凭证无 period 字段，导入 period 为数字 1~12，与 'YYYY-MM' 恒不等）。改用 voucherMonth() 统一归期（与 periodVouchers 同口径）。
-    hasPayrollVoucher: function (month) {
-      var self = this;
-      var K = this.VOUCHER_KINDS;
-      return (this.state.vouchers || []).some(function (v) {
-        if (v.deleted === 'y' || voucherMonth(v) !== month) return false;
-        var k = self.voucherKind(v);
-        return k === K.PAYROLL_ACC || k === K.PAYROLL_PAY;
-      });
-    },
-    // 工资表汇总（某月）
-    payrollSummary: function (month) {
-      return this.state.payrolls.filter(function (p) { return p.month === month; });
-    },
-    // 计提工资与发放工资两类凭证分别生成
-    // 计提：借 管理费用(5602) 贷 应付职工薪酬(2211)
-    // 发放：借 应付职工薪酬(2211) 贷 库存现金(1001)/银行存款(1002)
-    // 凭证字按「工资凭证模板」取（按凭证类型 + 工资类别匹配已启用模板；
-    // 无匹配则回退账套默认凭证字 param.voucherWord）。模板类别为空时匹配"全部/全部(旧)"。
-    pickPayrollWord: function (type, category) {
-      var vchType = (type === 'pay') ? '发放工资' : '计提工资';
-      var tpls = this.salaryVchTpls() || [];
-      var hit = null;
-      // 优先精确匹配工资类别
-      for (var i = 0; i < tpls.length; i++) {
-        var t = tpls[i];
-        if (t.enabled && t.vchType === vchType && t.category === (category || '')) { hit = t; break; }
-      }
-      // 回退"全部"类（含"全部(旧)"）
-      if (!hit) {
-        for (var j = 0; j < tpls.length; j++) {
-          var u = tpls[j];
-          if (u.enabled && u.vchType === vchType && (u.category === '全部' || u.category === '全部(旧)')) { hit = u; break; }
-        }
-      }
-      var w = hit && hit.word ? hit.word : (this.state.param && this.state.param.voucherWord) || '记';
-      return w;
-    },
-    genPayrollVoucher: function (month, type) {
-      if (this.isPeriodClosed(month)) return { ok: false, msg: '该月已结账' };
-      var list = this.payrollSummary(month);
-      if (!list.length) return { ok: false, msg: '本月无工资记录' };
-      var total = 0;
-      list.forEach(function (p) { total += num(p.real); });
-      // 科目角色解析（单点）：工资费用(管理费用) 随准则 5602|6602；应付职工薪酬/银行存款 恒 2211/1002
-      var paySubj = this.subjectRole('PAYROLL_PAYABLE');
-      var feeSubj = this.subjectRole('PAYROLL_FEE');
-      var bankSubj = this.subjectRole('BANK');
-      if (!paySubj) return { ok: false, msg: '科目表缺少「应付职工薪酬」科目，请先在科目页添加' };
-      var entries, summary;
-      if (type === 'pay') {
-        if (!bankSubj) return { ok: false, msg: '科目表缺少「银行存款」科目，请先在科目页添加' };
-        entries = [
-          { code: paySubj.code, name: paySubj.name, summary: month + '工资发放', dr: total, cr: 0 },
-          { code: bankSubj.code, name: bankSubj.name, summary: month + '工资发放', dr: 0, cr: total }
-        ];
-        summary = month + '发放工资';
-      } else {
-        if (!feeSubj) return { ok: false, msg: '科目表缺少「管理费用」科目，请先在科目页添加' };
-        entries = [
-          { code: feeSubj.code, name: feeSubj.name, summary: month + '工资计提', dr: total, cr: 0 },
-          { code: paySubj.code, name: paySubj.name, summary: month + '工资计提', dr: 0, cr: total }
-        ];
-        summary = month + '计提工资';
-      }
-      // 凭证字按模板取（全部类默认启用，按工资类别分流需职员绑定类别）
-      var word = this.pickPayrollWord(type, '');
-      var v = {
-        word: word, date: lastDay(month), attach: 0, summary: summary,
-        kind: (type === 'pay') ? this.VOUCHER_KINDS.PAYROLL_PAY : this.VOUCHER_KINDS.PAYROLL_ACC,
-        payroll: true,
-        entries: entries
-      };
-      var saved = this._addVoucher(v);
-      if (!saved || saved.ok === false) {
-        return { ok: false, msg: (saved && saved.msg) || '生成工资凭证失败' };
-      }
-      return { ok: true, voucher: saved, total: total, type: type };
-    },
-    // 工资凭证模板：计提工资 / 发放工资，按工资类别（全部/全部(旧)）配制证字与启用状态
-    // 默认 13 条（对照： struct/工资_凭证模板.md L8105-8260）
-    defaultSalaryVchTpls: function () {
-      var base = [
-        ['计提工资', '计提工资', '全部', '记', 1],
-        ['发放工资', '发放工资', '全部', '记', 1],
-        ['计提工资', '计提工资', '前台', '记', 1],
-        ['发放工资', '发放工资', '前台', '记', 1],
-        ['计提工资', '计提工资', '客房', '记', 1],
-        ['发放工资', '发放工资', '客房', '记', 1],
-        ['计提工资', '计提工资', '餐厅', '记', 1],
-        ['发放工资', '发放工资', '餐厅', '记', 1]
-      ];
-      return base.map(function (r, i) {
-        return {
-          id: 'SVT' + (i + 1),
-          name: r[0], vchType: r[1], category: r[2], word: r[3],
-          enabled: r[4], memo: (r[1] === '计提工资' ? '计提本月工资' : '发放本月工资')
-        };
-      });
-    },
-    salaryVchTpls: function () {
-      if (!this.state.salaryVchTpls || !this.state.salaryVchTpls.length) {
-        this.state.salaryVchTpls = this.defaultSalaryVchTpls();
-        this.persist();
-      }
-      return this.state.salaryVchTpls;
-    },
-    addSalaryVchTpl: function (t) {
-      t.id = 'SVT' + Date.now();
-      this.state.salaryVchTpls.push(t);
-      this.persist();
-    },
-    updateSalaryVchTpl: function (id, patch) {
-      var arr = this.state.salaryVchTpls;
-      for (var i = 0; i < arr.length; i++) {
-        if (arr[i].id === id) { Object.assign(arr[i], patch); break; }
-      }
-      this.persist();
-    },
-    removeSalaryVchTpl: function (id) {
-      this.state.salaryVchTpls = this.state.salaryVchTpls.filter(function (x) { return x.id !== id; });
-      this.persist();
-    },
-    resetSalaryVchTpls: function () {
-      this.state.salaryVchTpls = this.defaultSalaryVchTpls();
-      this.persist();
-    },
+    /* 工资模块已于 2026-10-27 整体下线：addPayroll / updatePayroll / removePayroll / payrollSummary /
+     * pickPayrollWord / genPayrollVoucher / revokePayrollVouchers / livePayrollVouchers / hasPayrollVoucher /
+     * salaryVchTpls 及其增删改全部移除（连同两张工资凭证的生成能力）。
+     * ⚠️ state.payrolls 与 state.salaryVchTpls 两个**字段**保留不读不写：
+     *   它们是 schema 白名单（checkBookShape）与 v5→v6 金额迁移（migrateAmountsToV6）的一部分，
+     *   删字段会让老账套体检与迁移保真审计失效。工资业务此后一律走普通凭证录入。 */
 
     /* ===================== 设置：现金流量初始余额 ===================== */
     // 对照：该页仅录入各现金流量项目「本年累计」(balance) 一列，无期初列（期初现金由现金科目余额体现）。
@@ -6066,18 +5926,10 @@
         this.state.standard = (autoStd && global.STANDARDS[autoStd]) ? autoStd : 'small2013';
       }
       fillBookDefaults(this.state, def);   // 只补 undefined；reportRules 由下方 cloneStandard 深拷
-      // 资产类别回填（老账套迁移，幂等）：早期导入把「类别**名称**」直接写进了 fa.category，
-      // 与类别档案的**编码**错配 —— 显示看不出问题（_catName 查不到编码就原样返回），但按类别
-      // 筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。此处统一归一为编码。
-      // 必须在上面 def 填充【之后】做：normalizeAssetCategory 要用 this.state.assetCats。
-      // 只改内存，随下一次正常写盘落库（与 backfillIncomeRowIds 的只读语义一致）。
-      (function (self) {
-        (self.state.fixedAssets || []).forEach(function (fa) {
-          var before = String(fa.category == null ? '' : fa.category);
-          var after = self.normalizeAssetCategory(before);
-          if (before !== after) fa.category = after;
-        });
-      })(this);
+      // 资产类别：编码 → 名称（幂等，完整说明见 migrateAssetCategoryToName）。
+      // 必须在 fillBookDefaults 之后：映射要读老账套里保留的 assetCats 档案。
+      // 只改内存，随下一次正常写盘落库（与下面的部门回填、backfillIncomeRowIds 同一语义）。
+      migrateAssetCategoryToName(this.state);
       // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— 外部账套导入不带部门档案，
       // 本系统 depts 只有默认种子（前台/客房/餐厅），而卡片里写的是厨房/酒店/酒店洗衣房，
       // 于是资产左树与「按部门筛选」对不上（筛选比的是 d.code，卡片存的是名称）。
@@ -6210,7 +6062,6 @@
       item: { label: 'str', end: 'num', year: 'num' } },
     cashFlow: { self: { items: 'obj', ytd: 'obj',
       operating: 'num', investing: 'num', financing: 'num', exchange: 'num', opening: 'num' } },
-    vatEditGet: { row: { code: 'str', name: 'str', target: 'str' } },
     opening: { self: { dr: 'num', cr: 'num', yb: 'num', ytdDr: 'num', ytdCr: 'num' } }
   };
   // 契约断言（只校验、不修改数据）。供 tools/audit_render_contract.js 复用；
@@ -6266,6 +6117,9 @@
       arrayKeys: bookShape().arr,
       objectKeys: bookShape().obj
     },
+    /* 资产类别迁移（编码 → 名称）：暴露给校验脚本，让测试跑**真实实现**而不是手抄一份逻辑
+       （抄本 = 测的不是产品，这类"假绿"本项目已经踩过）。 */
+    migrateAssetCategoryToName: migrateAssetCategoryToName,
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,

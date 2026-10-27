@@ -235,19 +235,29 @@ console.log('【6】来源拦截 —— 固定资产清理凭证（卡片 cleanV
     /取消清理/.test((r && r.msg) || ''), r && r.msg);
 }
 
-/* ══════════ 7. 来源拦截：工资（v.payroll） ══════════ */
+/* ══════════ 7. 工资类凭证：模块下线后按普通凭证处理（2026-10-27） ══════════
+   原断言是「工资凭证被拒」，理由为「红冲不改工资记录，请到工资模块重新生成」。
+   工资模块整体下线后没有「重新生成」入口了，继续拦等于让历史工资错账无法更正，
+   故改为放行 —— 这条断言反向锁住新契约，避免以后有人把拦截加回来。 */
 console.log('');
-console.log('【7】来源拦截 —— 工资模块生成的凭证（v.payroll）');
+console.log('【7】工资类凭证可直接红冲（工资模块已下线）');
 {
   const st = mkBook();
   const pay = putVoucher(st, { no: '1', date: '2026-07-31', payroll: true, summary: '计提工资', entries: [
     { code: '5602', summary: '计提工资', dr: 600, cr: 0 },
     { code: '1002', summary: '计提工资', dr: 0, cr: 600 }
   ] });
-  const r = S.reverseVoucher(pay.id, { month: TARGET, reason: 'x' });
-  ck('7.1 工资凭证被拒', !!(r && r.ok === false), JSON.stringify(r));
-  ck('7.2 理由点明「红冲不改工资记录」',
-    /工资/.test((r && r.msg) || '') && /工资记录/.test((r && r.msg) || ''), r && r.msg);
+  const r = S.reverseVoucher(pay.id, { month: TARGET, reason: '工资错账更正' });
+  ck('7.1 v.payroll 标记的凭证可以红冲', !!(r && r.ok === true && r.voucher), JSON.stringify(r && r.msg));
+
+  const st2 = mkBook();
+  const payKind = putVoucher(st2, { no: '1', date: '2026-07-31', kind: 'payrollAcc', summary: '计提工资', entries: [
+    { code: '5602', summary: '计提工资', dr: 600, cr: 0 },
+    { code: '1002', summary: '计提工资', dr: 0, cr: 600 }
+  ] });
+  const r2 = S.reverseVoucher(payKind.id, { month: TARGET, reason: '工资错账更正' });
+  ck('7.2 kind=payrollAcc 的历史凭证同样放行（否则老账套里的工资凭证永远改不了）',
+    !!(r2 && r2.ok === true && r2.voucher), JSON.stringify(r2 && r2.msg));
 }
 
 /* ══════════ 8. 期间校验：目标期间已结账 ══════════ */

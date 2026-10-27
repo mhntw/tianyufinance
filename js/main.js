@@ -9,16 +9,13 @@ import {
 import { refreshSubjects } from './pages/subject/Subject.js?v=dev';
 import { renderExpenseDetail } from './pages/report/ExpenseDetail.js?v=dev';
 import {
-  refreshAssets, refreshDas, refreshDad, refreshAssetCategory
+  refreshAssets, refreshDas, refreshDad
 } from './pages/asset/Asset.js?v=dev';
 import {
   refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
   refreshBackup, refreshLogs, refreshBookManage, refreshSysEvents,
   refreshParam, refreshSystemSettings
 } from './pages/settings/Settings.js?v=dev';
-import {
-  refreshSalary, refreshSalaryStats, refreshDeptStaff, refreshSalaryTpl
-} from './pages/salary/Salary.js?v=dev';
 import './pages/settle/Settle.js?v=dev';
 import './pages/settings/Opening.js?v=dev';
 import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=dev';
@@ -53,11 +50,10 @@ globalThis.__renderSubjects = refreshSubjects;
 // —— report 尾巴域：费用明细 ——
 globalThis.__renderExpenseDetail = renderExpenseDetail;
 
-// —— 固定资产域：资产清单 / 折旧汇总表 / 折旧明细表 / 资产类别 / 资产变动记录 / 折旧凭证（独立分页） ——
+// —— 固定资产域：资产清单 / 折旧汇总表 / 折旧明细表 / 资产变动记录 / 折旧凭证（独立分页） ——
 globalThis.__renderAssets = refreshAssets;
 globalThis.__renderDas = refreshDas;
 globalThis.__renderDad = refreshDad;
-globalThis.__renderAssetCategory = refreshAssetCategory;
 
 // —— 设置域：现金流量初始 / 现金流量项目 / 备份 / 操作日志 / 系统参数 / 系统设置 ——
 globalThis.__renderCashflowInit = refreshCashflowInit;
@@ -68,11 +64,7 @@ globalThis.__renderSysEvents = refreshSysEvents;
 globalThis.__renderParam = refreshParam;
 globalThis.__renderSystemSettings = refreshSystemSettings;
 
-// —— 工资域：工资表 / 工资统计 / 部门职员 / 工资凭证模板（新手导航已移除） ——
-globalThis.__renderSalary = refreshSalary;
-globalThis.__renderSalaryStats = refreshSalaryStats;
-globalThis.__renderDeptStaff = refreshDeptStaff;
-globalThis.__renderSalaryTpl = refreshSalaryTpl;
+/* 工资域已于 2026-10-27 整体下线（页面 / 弹窗 / 路由 / 渲染函数全部移除）。部门档案同日迁到设置页。 */
 
 // —— 凭证域：录入 / 汇总 / 查询 ——
 globalThis.__renderVoucher = refreshVoucher;

@@ -10,6 +10,8 @@ import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
 import { html, raw } from '../../common/html.js?v=dev';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
 import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
+// 部门档案卡片（2026-10-27 从工资页迁入本页；模块自带事件绑定与渲染）
+import { refreshDeptCard } from './Dept.js?v=dev';
 
 // refreshAll 是 app.js IIFE 的局部刷新函数，经桥接层暴露；本模块必须先绑定才能调用
 // （否则裸调用抛 ReferenceError，导致「导入成功但读取账套失败」）
@@ -21,25 +23,15 @@ const refreshAll = H.refreshAll;
   function refreshVoucherWord() {
     var tb = $('vwBody'); tb.innerHTML = '';
     var curDef = (S.state.param && S.state.param.voucherWord) || '';
-    // 预计算每个凭证字被引用次数（已删除凭证不计入）
-    var refCount = {};
-    (S.state.vouchers || []).forEach(function (v) {
-      if (v.deleted === 'y') return;
-      var w = v.word || '记';
-      refCount[w] = (refCount[w] || 0) + 1;
-    });
     (S.state.voucherWords || []).forEach(function (w, i) {
       var tr = document.createElement('tr');
       var isDef = (w.name === curDef);
-      var refs = refCount[w.name] || 0;
       // 凭证字名/标题是用户可编辑字段：html`` 插值默认转义（属性上下文同样安全）
       tr.innerHTML = html`<td class="${isDef ? 'vw-default' : ''}">${w.name}${isDef ? html` <span class="ok-tag">默认</span>` : ''}</td><td>${w.title}</td><td class="col-op">${isDef
             ? html`<a class="link-del disabled">—</a>`
             : html`<a class="link-make-def" data-i="${i}">设为默认</a>`}${isDef
             ? ''
-            : html`<a class="link-toggle" data-i="${i}">${w.enabled === false ? '启用' : '停用'}</a>`}${isDef || refs > 0
-            ? ''
-            : html`<a class="link-del link-vw-del" data-i="${i}">删除</a>`}</td>`;
+            : html`<a class="link-toggle" data-i="${i}">${w.enabled === false ? '启用' : '停用'}</a>`}</td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.link-make-def').forEach(function (a) {
@@ -65,31 +57,7 @@ const refreshAll = H.refreshAll;
         S.persist(); refreshVoucherWord();
       });
     });
-    tb.querySelectorAll('.link-vw-del').forEach(function (a) {
-      a.addEventListener('click', async function () {
-        var i = +this.getAttribute('data-i');
-        var row = S.state.voucherWords[i];
-        if (!row) return;
-        // 二次确认
-        if (!(await H.confirmAsync('确认删除凭证字「' + row.name + '」？\n未被任何凭证使用，可安全删除。', { title: '删除凭证字' }))) return;
-        S.state.voucherWords.splice(i, 1);
-        // 删的是默认字 → 回退到第一个启用项
-        if (row.name === curDef) {
-          var firstEn = S.state.voucherWords.find(function (x) { return x.enabled !== false; });
-          S.state.param.voucherWord = firstEn ? firstEn.name : (S.state.voucherWords[0] ? S.state.voucherWords[0].name : '记');
-        }
-        S.persist(); refreshVoucherWord(); showToast('已删除凭证字「' + row.name + '」');
-      });
-    });
   }
-  $('btnAddWord').addEventListener('click', async function () {
-    var name = await H.promptAsync('凭证字（如 记 / 转 / 收）：', '', { title: '新增凭证字' });
-    if (!name) return;
-    var title = (await H.promptAsync('打印标题（如 记账凭证）：', name + '账凭证', { title: '打印标题' })) || name;
-    S.setBookFields({ voucherWords: (Array.isArray(S.state.voucherWords) ? S.state.voucherWords : [])
-      .concat([{ name: name.trim(), title: title.trim(), enabled: true }]) });
-    refreshVoucherWord(); showToast('已新增凭证字');
-  });
 
   // 注：原币别管理（refreshCurrency/addCurrency）已随外币核算功能整体下线
   // 注：原辅助核算档案管理（refreshAuxSetting 等）已随 store.js 底层函数一并下线
@@ -110,7 +78,7 @@ const refreshAll = H.refreshAll;
       var ytdCell = isTitle
         ? html`<td class="num"></td>`
         : html`<td class="num"><input class="cf-ytd input-sm" data-id="${it.id}" value="${U.yuan(o.ytd || 0)}"></td>`;   // 回填「元」输入框：store 内部为定点整数
-      tr.innerHTML = html`<td>${it.name}</td><td class="mono center">${it.rowNum || ''}</td>${ytdCell}<td></td>`;
+      tr.innerHTML = html`<td>${it.name}</td><td class="mono ta-c">${it.rowNum || ''}</td>${ytdCell}<td></td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.cf-ytd').forEach(function (inp) {
@@ -823,6 +791,8 @@ function refreshSystemSettings() {
   if (globalThis.__renderParam) globalThis.__renderParam();
   else refreshParam();
   refreshVoucherWord();
+  // 部门档案卡片（2026-10-27 从工资页迁入）：与凭证字同页同构，资产卡片的部门下拉共用这份档案
+  refreshDeptCard();
   // 云同步卡（WebDAV）：与设置页一并刷新配置与上次同步信息
   if (globalThis.__renderCloudSync) globalThis.__renderCloudSync();
 }
@@ -831,6 +801,6 @@ export {
   refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
   refreshBackup, refreshLogs, refreshBookManage,
   refreshSysEvents,
-  refreshParam, refreshSystemSettings
+  refreshParam, refreshSystemSettings, refreshDeptCard
 };
 

@@ -65,7 +65,7 @@ function ck(cond, label) {
         （否则一张缺 entries 的老凭证会让整本账永远存不进去 —— 那比脏数据本身更糟） */
   S.state.vouchers = [{ id: 'v1', entries: [] }];
   S.state.assetCats = [];
-  ck(S._bookSaveProblems().length === 0, '空 assetCats（=恢复默认类别）+ 正常凭证 → 体检通过');
+  ck(S._bookSaveProblems().length === 0, '空 assetCats（老账套/导入缺字段）+ 正常凭证 → 体检通过');
   S.state.vouchers = [{ id: 'v1', entries: [] }, { id: 'v2' }];   // v2 缺 entries
   ck(S._bookSaveProblems().length === 0, '个别凭证缺 entries → 不阻断写盘（交给离线审计）');
   ck((await S._saveBookChecked('B1')) === true, '该状态仍能正常落盘（用户新录入不会丢）');
@@ -130,6 +130,37 @@ function ck(cond, label) {
   });
   ck(missed.length === 0, '写前体检覆盖 schema 全部 ' + (shape.arrayKeys || []).length + ' 个数组字段' +
     (missed.length ? '（漏：' + missed.join(',') + '）' : ''));
+
+  /* 11) 资产类别：编码 → 名称的迁移（2026-10-27 路线 C，跑 store 的真实实现）
+        契约：fa.category 存**名称**；老账套的编码在加载时转换；
+              assetCats 档案**保留不删**（旧版本回退时靠它把名称匹配回编码，升降级可逆）。 */
+  const mig = STORE_MOD.migrateAssetCategoryToName;
+  ck(typeof mig === 'function', 'store 导出类别迁移函数（供工具/测试跑真实实现）');
+  const oldBook = {
+    assetCats: [{ code: '003', name: '器具、工具、家具' }, { code: '005', name: '电子设备' }],
+    fixedAssets: [
+      { id: 'A1', category: '003' },                // 旧格式：编码
+      { id: 'A2', category: '器具、工具、家具' },    // 新格式：名称
+      { id: 'A3', category: '' },                   // 空
+      { id: 'A4' },                                 // 无该字段
+      { id: 'A5', category: ' 电子设备 ' },          // 名称带空白
+    ],
+  };
+  mig(oldBook);
+  const cats = oldBook.fixedAssets.map(function (f) { return f.category; });
+  ck(cats[0] === '器具、工具、家具', '编码 003 → 对应名称');
+  ck(cats[1] === '器具、工具、家具', '已是名称 → 保持不变');
+  ck(cats[2] === '', '空类别 → 空串');
+  ck(cats[3] === '', '缺 category 字段 → 补空串');
+  ck(cats[4] === '电子设备', '名称首尾空白被去掉');
+  ck(Array.isArray(oldBook.assetCats) && oldBook.assetCats.length === 2,
+    'assetCats 档案保留（旧版回退的归一依据，不删）');
+  const onceJson = JSON.stringify(oldBook);
+  mig(oldBook);
+  ck(JSON.stringify(oldBook) === onceJson, '迁移幂等：第二次调用无任何变化');
+  const noCatBook = { fixedAssets: [{ category: '办公家具' }] };
+  mig(noCatBook);
+  ck(noCatBook.fixedAssets[0].category === '办公家具', '无档案的账套（新建/导入）→ 名称原样保留');
 
   console.log('');
   if (fail) { console.log('✗ 账套持久化不变量：' + fail + ' 项不符（通过 ' + pass + '）'); process.exit(1); }

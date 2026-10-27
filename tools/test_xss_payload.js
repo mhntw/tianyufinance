@@ -232,17 +232,17 @@ sawEscapedPayload('设置-凭证字');
  * C. 固定资产列表（卡片名 / 编码 / 历史记录）
  * ============================================================ */
 const Asset = loadPage('js/pages/asset/Asset.js',
-  'globalThis.__PAGE_HOOK__ = { refreshAssets: refreshAssets, refreshDad: refreshDad, refreshAssetCategory: renderAssetCategory, allHistory: showAllFaHistory };');
+  'globalThis.__PAGE_HOOK__ = { refreshAssets: refreshAssets, refreshDad: refreshDad, allHistory: showAllFaHistory };');
 
 installEvilBook();
 S.state.fixedAssets = [{
   id: 'FA1', code: P_ATTR, name: P_IMG, cls: '01', dept: P_TAG, status: '在用',
   orig: U.amt(1000), salvageRate: 5, life: 60, startMonth: '2024-01', method: '平均年限法',
   acqDate: '2024-01-15', original: U.amt(1000), accumDepr: 0, accumDeprBegin: 0, salvage: 0, impairment: 0,
+  // 类别现在是卡片自有文本字段（2026-10-27 起无档案），同样必须转义
+  category: P_TAG,
   history: [{ time: '2024-02-01 10:00:00', op: P_TAG, who: P_IMG, fields: { name: [P_IMG, P_TAG], memo: P_TAG } }]
 }];
-// 资产类别档案名/编码/备注也是用户可编辑字段
-S.state.assetCats = [{ code: P_ATTR, name: P_IMG, method: P_TAG, life: 5, salvage: 5, asset: '1601', depr: '1602', memo: P_TAG }];
 CAPTURED.length = 0;
 try { Asset.refreshAssets(); } catch (e) { check(false, 'Asset.refreshAssets 可执行', String((e && e.stack) || e)); }
 assertNoPayload('固定资产清单');
@@ -254,11 +254,8 @@ try { Asset.refreshDad('2024-06'); } catch (e) { check(false, 'Asset.refreshDad 
 assertNoPayload('折旧明细表');
 sawEscapedPayload('折旧明细表');
 
-/* 资产类别档案表 */
-CAPTURED.length = 0;
-try { Asset.refreshAssetCategory(); } catch (e) { check(false, 'Asset.refreshAssetCategory 可执行', String((e && e.stack) || e)); }
-assertNoPayload('资产类别档案');
-sawEscapedPayload('资产类别档案');
+/* （「资产类别档案表」用例已移除：类别档案 2026-10-27 下线，类别现在是卡片自有字段，
+   其转义由上方「固定资产清单」用例的 category 覆盖） */
 
 /* 变动历史（时间线 + 字段前后值表） */
 CAPTURED.length = 0;
@@ -327,27 +324,18 @@ assertNoPayload('科目档案');
 sawEscapedPayload('科目档案');
 
 /* ============================================================
- * G. 部门职员 / 工资表（部门名 / 职员名 / 备注）
+ * G. 部门档案（部门编码 / 部门名称）
+ *    工资模块 2026-10-27 整体下线，工资表/工资凭证模板两段随之删除；
+ *    部门档案已迁到 js/pages/settings/Dept.js。
  * ============================================================ */
-const SAL = loadPage('js/pages/salary/Salary.js',
-  'globalThis.__PAGE_HOOK__ = { refreshSalary: refreshSalary, renderDeptStaff: renderDeptStaff, refreshSalaryTpl: refreshSalaryTpl };');
+const DEPT = loadPage('js/pages/settings/Dept.js',
+  'globalThis.__PAGE_HOOK__ = { refreshDeptCard: refreshDeptCard };');
 installEvilBook();
 S.state.depts = [{ code: P_ATTR, name: P_IMG, type: P_TAG, parent: '', enabled: true }];
-S.state.payrolls = [{ month: '2024-06', name: P_IMG, category: P_TAG, should: U.amt(100), real: U.amt(90) }];
-S.state.salaryTemplates = [{ id: 'T1', name: P_IMG, vchType: '计提工资', category: P_TAG, word: P_ATTR, enabled: true, memo: P_TAG }];
-getEl('salMonth').value = '2024-06';
 CAPTURED.length = 0;
-try { SAL.refreshSalary(); } catch (e) { check(false, 'Salary.refreshSalary 可执行', String((e && e.stack) || e)); }
-assertNoPayload('工资表');
-sawEscapedPayload('工资表');
-CAPTURED.length = 0;
-try { SAL.renderDeptStaff(); } catch (e) { check(false, 'Salary.renderDeptStaff 可执行', String((e && e.stack) || e)); }
-assertNoPayload('部门职员');
-sawEscapedPayload('部门职员');
-CAPTURED.length = 0;
-try { SAL.refreshSalaryTpl(); } catch (e) { check(false, 'Salary.refreshSalaryTpl 可执行', String((e && e.stack) || e)); }
-assertNoPayload('工资凭证模板');
-sawEscapedPayload('工资凭证模板');
+try { DEPT.refreshDeptCard(); } catch (e) { check(false, 'Dept.refreshDeptCard 可执行', String((e && e.stack) || e)); }
+assertNoPayload('部门档案');
+sawEscapedPayload('部门档案');
 
 /* ============================================================
  * H. 期初余额（科目编码/名称 + 平衡提示）

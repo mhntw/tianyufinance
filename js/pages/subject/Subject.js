@@ -125,12 +125,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         : html` <a class="link-del" data-code="${s.code}">删除</a>`;
       // 三角放在【科目编码列】的编码前（与科目余额表一致）；名称列只留缩进 + 名称
       // 插值默认转义（含属性上下文）；arrow / indent 是 store 生成的 HTML 片段，显式 raw() 放行。
-      tr.innerHTML = html`<td class="mono">${raw(arrow)}${s.code}</td><td class="col-name">${raw(indent)}<span class="subj-name">${s.name}</span></td><td>${(ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name}</td><td>${(ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).side}</td><td>${cashCodes.indexOf(s.code) >= 0 ? '✓' : '—'}</td><td class="col-op"><a class="link-edit" data-code="${s.code}">编辑</a>${opDel}</td>`;
+      tr.innerHTML = html`<td class="mono">${raw(arrow)}${s.code}</td><td class="col-name">${raw(indent)}<span class="subj-name">${s.name}</span></td><td>${(ACCOUNT_CLASSES[s.grpCls || s.cls] || ACCOUNT_CLASSES[s.cls]).name}</td><td>${cashCodes.indexOf(s.code) >= 0 ? '✓' : '—'}</td><td class="col-op"><a class="link-edit" data-code="${s.code}">编辑</a>${opDel}</td>`;
       tb.appendChild(tr);
     });
     if (!list.length) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="6" class="empty-hint">暂无该类科目</td>';
+      tr.innerHTML = '<td colspan="5" class="empty-hint">暂无该类科目</td>';
       tb.appendChild(tr);
     }
     $('subjTotalCount').textContent = list.length;

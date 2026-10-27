@@ -828,9 +828,8 @@ function refreshSettle() {
   if (bookScopeChanged('settle')) {
     selMonth = currentPeriod(); selReopenMonth = currentPeriod();
     /* 正在编辑的**自定义结转模板**同属上一本账套 —— 性质与「编辑中的凭证」相同：
-       不复位则模板行会带着旧账套的科目一路保存进新账套。
-       ⚠ 以下两项**刻意不在此处复位**，别"顺手补齐"：
-         · currentVat —— 增值税面板每次打开都会 `currentVat = S.vatEditGet(month)` 重算，留旧值读不到；
+        不复位则模板行会带着旧账套的科目一路保存进新账套。
+       ⚠ 以下一项**刻意不在此处复位**，别"顺手补齐"：
          · 科目选择器句柄 —— 它 getSubjects 是实时读 S.subjects()，且 bindSubjectPicker 有幂等保护，
            置 null 会**拿不回句柄**（详见 Ledger 多栏账处的同名说明）。 */
     newTplRows = []; editingCustomId = null;
@@ -881,52 +880,6 @@ function refreshSettle() {
   syncCheckAllState();
 }
 
-// 增值税编辑弹窗（结账页 转出未交增值税 凭证设置）
-function openVatEditModal() {
-  var month = currentPeriod();
-  currentVat = S.vatEditGet(month);
-  renderVatEdit();
-  openModal('vatEditModal');
-}
-function closeVatEditModal() { closeModal('vatEditModal'); }
-function renderVatEdit() {
-  var b = $('vatEditBody');
-  if (!b) return;
-  var rows = currentVat.entries;
-  var out = '';
-  rows.forEach(function (e, idx) {
-    out += html`<div class="vat-edit-row" data-idx="${idx}"><input class="vet-code" type="text" value="${e.code || ''}" placeholder="科目编码"><input class="vet-name" type="text" value="${e.name || ''}" placeholder="科目名称"><span class="vet-arrow">→</span><input class="vet-target" type="text" value="${e.target || ''}" placeholder="目标科目"><button class="vet-del" data-idx="${idx}">删除</button></div>`;
-  });
-  b.innerHTML = out;
-  b.querySelectorAll('.vet-del').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var i = +this.getAttribute('data-idx');
-      currentVat.entries.splice(i, 1);
-      renderVatEdit();
-    });
-  });
-  b.querySelectorAll('.vet-code,.vet-name,.vet-target').forEach(function (inp) {
-    inp.addEventListener('change', function () {
-      var i = +this.closest('.vat-edit-row').getAttribute('data-idx');
-      var cls = this.className.indexOf('vet-code') >= 0 ? 'code'
-        : this.className.indexOf('vet-name') >= 0 ? 'name' : 'target';
-      currentVat.entries[i][cls] = this.value;
-    });
-  });
-}
-var currentVat = { entries: [] };
-if ($('btnVatEditAdd')) $('btnVatEditAdd').addEventListener('click', function () {
-  currentVat.entries.push({ code: '', name: '', target: '' });
-  renderVatEdit();
-});
-if ($('btnVatEditSave')) $('btnVatEditSave').addEventListener('click', function () {
-  S.vatEditSet(currentPeriod(), currentVat);
-  showToast('增值税凭证设置已保存');
-  closeVatEditModal();
-  refreshSettle();
-});
-if ($('btnVatEditClose')) $('btnVatEditClose').addEventListener('click', closeVatEditModal);
-if ($('btnVatEditClose2')) $('btnVatEditClose2').addEventListener('click', closeVatEditModal);
 
 // 结账 tab 月份方块导航渲染（已结账月 / 当前期 / 未结账月 三种状态）
 function renderSettleMonthNav() {
