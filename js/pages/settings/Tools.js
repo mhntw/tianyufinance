@@ -230,8 +230,10 @@ if (rbOk) rbOk.addEventListener('click', function () {
       var st = txt ? JSON.parse(txt) : null;
       if (!st || !st.company) throw new Error('读取账套内容失败');
       st.company.name = nn;
-      return window.Storage.saveBook(id, JSON.stringify(st)).then(function (r) {
-        if (r && r.ok === false) throw new Error((r && r.error) || '写盘失败');
+      // 统一走 saveSnapshotChecked：体检 → 熔断 → 写盘 → 判 ok。不要再直调 Storage.saveBook
+      // 绕过防护（那会跳过写前体检与熔断，且已由 check_arch_boundaries 钉死）
+      return S.saveSnapshotChecked(id, st).then(function (ok) {
+        if (!ok) throw new Error('写盘失败');
         // 写盘成功后再留痕，避免"记了日志但实际未改"的假记录
         if (oldName) logSysEvent('重命名账套', '账套名称由「' + oldName + '」改为「' + nn + '」', id);
       });
@@ -452,11 +454,10 @@ if (trashBox) trashBox.addEventListener('click', async function (e) {
           var dup = (S._bookList || []).some(function (x) { return x.id !== newId && x.name === newName; });
           if (dup && newName) {
             b.company.name = newName + '（已还原）';
-            if (typeof window.Storage.saveBook === 'function') {
-              var sr = await window.Storage.saveBook(newId, JSON.stringify(b));
-              // 与「重命名账套」同一判据：Storage.saveBook 内部已 catch、恒 resolved，
-              // 不判 r.ok 就会把写盘失败当成功（这里表现为重名去重没落到盘上却浑然不知）。
-              if (sr && sr.ok === false) throw new Error((sr && sr.error) || '写盘失败');
+            if (typeof S.saveSnapshotChecked === 'function') {
+              // 与「重命名账套」同一入口：体检 → 熔断 → 写盘 → 判 ok
+              var okDup = await S.saveSnapshotChecked(newId, b);
+              if (!okDup) throw new Error('写盘失败');
             }
           }
         } catch (e) { console.warn('[还原账套] 重名去重未生效（不阻断还原）：' + ((e && e.message) || e)); }

@@ -86,6 +86,18 @@ function ck(cond, label) {
   /* 7) 闸门期间备份也停手（否则空账套备份会挤掉环形保留里的好备份） */
   ck((await S.backupNow()) === false, '闸门期间 backupNow() 不写备份');
 
+  /* 8) 写**指定快照**的唯一入口（设置页改名其它账套 / 还原后去重）：同样过体检与熔断 */
+  S.state.vouchers = [];                       // 复原成合法态再取快照
+  const snap = JSON.parse(JSON.stringify(S.state));
+  snap.company = { name: '另一本账' };
+  ck((await S.saveSnapshotChecked('B_other', snap)) === true, 'saveSnapshotChecked 正常快照 → 写入成功');
+  const badSnap = JSON.parse(JSON.stringify(snap));
+  badSnap.vouchers = null;
+  const beforeBad = await window.Storage.loadBook('B_other');
+  const okBad = await S.saveSnapshotChecked('B_other', badSnap);
+  ck(okBad === false, 'saveSnapshotChecked 坏快照 → 拒绝写入');
+  ck((await window.Storage.loadBook('B_other')) === beforeBad, 'saveSnapshotChecked 坏快照 → 原文件未被覆盖');
+
   console.log('');
   if (fail) { console.log('✗ 账套持久化不变量：' + fail + ' 项不符（通过 ' + pass + '）'); process.exit(1); }
   console.log('✓ 账套持久化不变量：' + pass + ' 项全部通过');

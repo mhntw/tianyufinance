@@ -1219,8 +1219,8 @@
        ⚠ 刻意**不调用 normalizeState()**：它有副作用（归一资产类别/部门、回填规则行 id，
          必要时自己调 persist()），在写盘路径里调用会造成递归写盘、备份节奏变化。
          写盘只做序列化所需的保真处理，数据归一仍由加载后那一次 normalize 负责。 */
-    _bookSaveProblems: function () {
-      var st = this.state;
+    _bookSaveProblems: function (st) {
+      st = st || this.state;
       if (!st || typeof st !== 'object') return ['状态不是对象'];
       var problems = [];
       // 顶层集合：必须仍是数组（null / 对象 = 数据已被破坏，写下去就等于删掉整块业务数据）
@@ -1306,6 +1306,38 @@
       }).catch(function (e) {
         self._setServerStatus(false);
         self._onSaveFail(e && e.message || e);
+        return false;
+      });
+    },
+
+    /* 写**指定快照**（不是当前账套的 state）的唯一入口。
+       场景：设置页改名「其它账套」、还原账套后自动去重命名 —— 这些写的是磁盘上另一本账，
+       不能走 _saveBookChecked（它只认 this.state），但**必须过同一道关**：
+       熔断 → 体检 → 序列化 → 写盘 → 判 r.ok。此前这两处直接 window.Storage.saveBook(…)，
+       等于绕过写前体检与熔断（边界穿透）；现统一收口到这里，并由 check_arch_boundaries 钉死。
+       刻意不碰 _setServerStatus / _onSaveOk：那是「当前账套」的保存指示灯，写别的账套不该动它。
+       返回 Promise<boolean>（true = 确实写入成功）。 */
+    saveSnapshotChecked: function (bid, st) {
+      var self = this;
+      if (typeof window.Storage === 'undefined' || !bid || !st) return Promise.resolve(false);
+      if (this._isWriteBlockedFor(bid)) return Promise.resolve(false);
+      var problems = this._bookSaveProblems(st);
+      if (problems.length) {
+        this._onSaveFail('账套数据结构异常，已中止写盘以保护原账套：' + problems.join('；'));
+        return Promise.resolve(false);
+      }
+      var payload;
+      try {
+        payload = JSON.stringify(st);
+      } catch (e) {
+        this._onSaveFail('账套序列化失败：' + ((e && e.message) || e));
+        return Promise.resolve(false);
+      }
+      return Promise.resolve(window.Storage.saveBook(bid, payload)).then(function (r) {
+        if (r && r.ok === false) { self._onSaveFail((r && r.error) || '未知原因'); return false; }
+        return true;
+      }).catch(function (e) {
+        self._onSaveFail((e && e.message) || e);
         return false;
       });
     },
