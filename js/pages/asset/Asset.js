@@ -1279,7 +1279,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function refreshAssetCategory() { renderAssetCategory(); }
   $('btnResetCat').addEventListener('click', async function () {
     if (!(await H.confirmAsync('恢复默认资产类别将覆盖当前已自定义的类别与折旧参数，确认继续？', { title: '恢复默认类别' }))) return;
-    S.state.assetCats = null; S.persist(); renderAssetCategory(); showToast('已恢复默认类别');
+    // 空数组 = 回落默认类别（assetCats() 的判据是 !Array.isArray || !length）。
+    // **不能写 null**：写前体检会把 null 判为「顶层集合类型损坏」→ 拒绝落盘并亮红条。
+    S.setBookFields({ assetCats: [] }); renderAssetCategory(); showToast('已恢复默认类别');
   });
   $('btnNewCat').addEventListener('click', function () { _openCatModal(-1); });
   $('btnDelCat').addEventListener('click', async function () {
@@ -1288,7 +1290,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!(await H.confirmAsync('确认停用选中的 ' + checked.length + ' 个资产类别？\n停用后新增资产不能再选该类，历史资产类别保留。', { title: '停用资产类别' }))) return;
     var list = assetCats();
     checked.forEach(function (i) { if (list[i]) list[i].enabled = false; });
-    S.state.assetCats = list; S.persist(); renderAssetCategory(); showToast('已停用'); syncAll();
+    S.setBookFields({ assetCats: list }); renderAssetCategory(); showToast('已停用'); syncAll();
   });
   $('catBody').addEventListener('click', async function (e) {
     if (e.target.classList.contains('link-toggle')) {
@@ -1331,8 +1333,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     if (!c.code || !c.name) return showToast('请填写类别编码与名称', 'error');
     var list = assetCats();
     if (idx >= 0) list[idx] = c; else list.push(c);
-    S.state.assetCats = list;
-    S.persist();
+    S.setBookFields({ assetCats: list });
     closeModal('catModal');
     renderAssetCategory(); syncAll(); showToast('类别已保存');
   });

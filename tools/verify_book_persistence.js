@@ -33,7 +33,7 @@ global.__TAURI__ = {};
 global.isTauri = false;
 
 require(path.join(ROOT, 'js', 'storage.js'));
-require(path.join(ROOT, 'js', 'store.js'));
+const STORE_MOD = require(path.join(ROOT, 'js', 'store.js'));
 const S = global.S;
 
 let pass = 0, fail = 0;
@@ -60,6 +60,15 @@ function ck(cond, label) {
   const ok = await S._saveBookChecked('B1');
   ck(ok === false, '结构异常 → 保存返回 false');
   ck((await window.Storage.loadBook('B1')) === ORIGINAL, '结构异常 → 磁盘原文件未被覆盖');
+
+  /* 2b) 分层判据：空集合合法；个别脏凭证**不**阻断写盘
+        （否则一张缺 entries 的老凭证会让整本账永远存不进去 —— 那比脏数据本身更糟） */
+  S.state.vouchers = [{ id: 'v1', entries: [] }];
+  S.state.assetCats = [];
+  ck(S._bookSaveProblems().length === 0, '空 assetCats（=恢复默认类别）+ 正常凭证 → 体检通过');
+  S.state.vouchers = [{ id: 'v1', entries: [] }, { id: 'v2' }];   // v2 缺 entries
+  ck(S._bookSaveProblems().length === 0, '个别凭证缺 entries → 不阻断写盘（交给离线审计）');
+  ck((await S._saveBookChecked('B1')) === true, '该状态仍能正常落盘（用户新录入不会丢）');
 
   /* 3) 损坏文件 → parse_fail + 闸门 */
   S._clearBookWriteBlock();
@@ -97,6 +106,30 @@ function ck(cond, label) {
   const okBad = await S.saveSnapshotChecked('B_other', badSnap);
   ck(okBad === false, 'saveSnapshotChecked 坏快照 → 拒绝写入');
   ck((await window.Storage.loadBook('B_other')) === beforeBad, 'saveSnapshotChecked 坏快照 → 原文件未被覆盖');
+
+  /* 9) 受控写入口（B2）：写字段 → 作废派生缓存 → 落盘，三件事必须成对发生 */
+  S._glCache = { fake: 1 };
+  S._vchIndex = { fake: 1 };
+  S.bookId = 'B2test';
+  const okf = S.setBookFields({ depts: [{ code: '001', name: '测试部' }] });
+  ck(okf === true && Array.isArray(S.state.depts), 'setBookFields 写入字段');
+  ck(Object.keys(S._glCache).length === 0 && S._vchIndex === null, 'setBookFields 同时作废 _glCache / _vchIndex');
+  S._glCache = { fake: 1 };
+  S._vchIndex = { fake: 1 };
+  S.setParam('voucherWord', '转');
+  ck(S.state.param.voucherWord === '转', 'setParam 写入 param 键');
+  ck(Object.keys(S._glCache).length === 0 && S._vchIndex === null, 'setParam 同时作废派生缓存（param 影响取数口径）');
+
+  /* 10) 体检规则必须**随 schema 派生**：schema 里每个数组字段被写成 null 都要能识别。
+        （有人把它改回硬编码清单时，这里会立刻红 —— 那正是"新增字段漏检"的来源） */
+  const shape = STORE_MOD.bookSchema;
+  const missed = (shape.arrayKeys || []).filter(function (k) {
+    const probe = { subjects: [], vouchers: [] };
+    probe[k] = null;
+    return !S._bookSaveProblems(probe).some(function (x) { return x.indexOf(k) === 0; });
+  });
+  ck(missed.length === 0, '写前体检覆盖 schema 全部 ' + (shape.arrayKeys || []).length + ' 个数组字段' +
+    (missed.length ? '（漏：' + missed.join(',') + '）' : ''));
 
   console.log('');
   if (fail) { console.log('✗ 账套持久化不变量：' + fail + ' 项不符（通过 ' + pass + '）'); process.exit(1); }

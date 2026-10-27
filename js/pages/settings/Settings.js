@@ -47,9 +47,8 @@ const refreshAll = H.refreshAll;
         var i = +this.getAttribute('data-i');
         var row = S.state.voucherWords[i];
         if (!row || row.enabled === false) return showToast('默认凭证字必须启用', 'warn');
-        S.state.param = S.state.param || {};
-        S.state.param.voucherWord = row.name;
-        S.persist(); refreshVoucherWord(); showToast('已将「' + row.name + '」设为默认凭证字');
+        S.setParam('voucherWord', row.name);
+        refreshVoucherWord(); showToast('已将「' + row.name + '」设为默认凭证字');
       });
     });
     tb.querySelectorAll('.link-toggle').forEach(function (a) {
@@ -87,9 +86,9 @@ const refreshAll = H.refreshAll;
     var name = await H.promptAsync('凭证字（如 记 / 转 / 收）：', '', { title: '新增凭证字' });
     if (!name) return;
     var title = (await H.promptAsync('打印标题（如 记账凭证）：', name + '账凭证', { title: '打印标题' })) || name;
-    if (!S.state.voucherWords) S.state.voucherWords = [];
-    S.state.voucherWords.push({ name: name.trim(), title: title.trim(), enabled: true });
-    S.persist(); refreshVoucherWord(); showToast('已新增凭证字');
+    S.setBookFields({ voucherWords: (Array.isArray(S.state.voucherWords) ? S.state.voucherWords : [])
+      .concat([{ name: name.trim(), title: title.trim(), enabled: true }]) });
+    refreshVoucherWord(); showToast('已新增凭证字');
   });
 
   // 注：原币别管理（refreshCurrency/addCurrency）已随外币核算功能整体下线

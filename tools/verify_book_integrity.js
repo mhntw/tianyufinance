@@ -84,10 +84,6 @@ if (!SCHEMA) {
 }
 const V6 = SCHEMA.version;
 
-/* 必须是数组 / 对象的顶层字段 */
-const ARRAY_FIELDS = ['subjects', 'vouchers', 'fixedAssets', 'payrolls', 'salaryVchTpls', 'vchTemplates',
-  'settleTemplates', 'depts', 'assetCats', 'cashFlowItems', 'operationLogs', 'closedPeriods', 'voucherWords'];
-const OBJ_FIELDS = ['company', 'openingBalances', 'subjectCashFlowMap', 'param', 'reportRules'];
 /* 缺了会直接影响"账能不能用"的核心集合（其余缺失可由 emptyState 补默认，无信息损失） */
 const CORE_FIELDS = ['subjects', 'vouchers'];
 /* 固定资产卡片的金额字段（v6 内部为整数，单位 0.0001 元） */
@@ -113,13 +109,13 @@ function checkOne(file) {
   if (missingCore.length) problems.push('缺核心字段：' + missingCore.join(', '));
   if (missingRest.length) notices.push('缺字段（加载时补默认）：' + missingRest.join(', '));
 
-  // 2) 类型：数组/对象必须真的是数组/对象（否则读取方直接崩或整块丢）
-  ARRAY_FIELDS.forEach(k => {
+  // 2) 类型：期望形状直接取自 store 的 schema 派生（与写前体检同一来源，避免规则漂移）
+  (SCHEMA.arrayKeys || []).forEach(k => {
     if (d[k] !== undefined && !Array.isArray(d[k])) {
       problems.push(k + ' 应为数组，实际是 ' + (d[k] === null ? 'null' : typeof d[k]));
     }
   });
-  OBJ_FIELDS.forEach(k => {
+  (SCHEMA.objectKeys || []).forEach(k => {
     if (d[k] !== undefined && (d[k] === null || typeof d[k] !== 'object' || Array.isArray(d[k]))) problems.push(k + ' 应为对象');
   });
 

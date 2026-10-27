@@ -74,6 +74,14 @@ function makeEnv(bookId, state) {
     state: state || {},
     _persists: 0,
     persist: function () { S._persists++; },
+    /* 与 store.setBookFields 同口径：写多个顶层字段 → 落盘（本测试只计次数）。
+       Settle.js 的写入已收口到这个受控入口（架构边界 B2），mock 必须跟上。 */
+    setBookFields: function (obj) {
+      if (!S.state || !obj) return false;
+      Object.keys(obj).forEach(function (k) { S.state[k] = obj[k]; });
+      S._persists++;
+      return true;
+    },
     /* 与 store.js:3221-3239 同口径（cost 默认关、dep/profit 默认开、其它 id 默认关） */
     settleTplEnabled: function (id) {
       const tpls = S.state.settleTemplates;

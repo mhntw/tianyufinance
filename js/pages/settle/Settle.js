@@ -1080,8 +1080,10 @@ function snapshotSettleTemplate(t) {
 }
 function stateSettleTemplates() {
   if (!S || !S.state) return [];
-  if (!Array.isArray(S.state.settleTemplates)) S.state.settleTemplates = [];
-  return S.state.settleTemplates;
+  // 只读兜底（架构边界 B2）：不在这里改写 state；写回统一走 writeSettleTemplatesToState。
+  // 返回**浅拷贝**，避免调用方原地改数组、绕过受控写入与"清缓存 + 落盘"。
+  var arr = Array.isArray(S.state.settleTemplates) ? S.state.settleTemplates : [];
+  return arr.slice();
 }
 
 function defaultSettleTemplates() {
@@ -1148,9 +1150,7 @@ function migrateLegacySettleTemplates() {
       }
     });
   }
-  S.state._settleTplMigrated = true;
-  S.state.settleTemplates = arr;
-  if (S.persist) S.persist();
+  S.setBookFields({ _settleTplMigrated: true, settleTemplates: arr });
 }
 
 /* 加载模板配置：系统默认 + 账套记录（权威）。旧 localStorage **不参与**读取（只由迁移函数读一次）。 */
@@ -1189,11 +1189,12 @@ function getSettleTemplates() { return settleTmplList; }
    只用于"降级回旧版本"与一次性迁移。 */
 function writeSettleTemplatesToState() {
   if (!S || !S.state) return;
-  S.state.settleTemplates = settleTmplList
-    .filter(function (t) { return t && t.id && t.id !== 'fx'; })
-    .map(snapshotSettleTemplate);
-  S.state._settleTplMigrated = true;
-  if (S.persist) S.persist();
+  S.setBookFields({
+    settleTemplates: settleTmplList
+      .filter(function (t) { return t && t.id && t.id !== 'fx'; })
+      .map(snapshotSettleTemplate),
+    _settleTplMigrated: true
+  });
 }
 function persistSettleTemplates() { writeSettleTemplatesToState(); }
 
@@ -1963,10 +1964,9 @@ function openSettleCheckModal() {
   body.innerHTML = out;
   body.querySelectorAll('.scc-sel').forEach(function (sel) {
     sel.addEventListener('change', function () {
-      S.state.param = S.state.param || {};
-      S.state.param.checkOverrides = S.state.param.checkOverrides || {};
-      S.state.param.checkOverrides[sel.getAttribute('data-key')] = sel.value;
-      S.persist();
+      var co = Object.assign({}, (S.state.param && S.state.param.checkOverrides) || {});
+      co[sel.getAttribute('data-key')] = sel.value;
+      S.setParam('checkOverrides', co);
       refreshSettle();
     });
   });

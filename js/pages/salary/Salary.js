@@ -151,8 +151,8 @@ const periodRangeValue = H.periodRangeValue;
     var list = S.depts();
     var code = await H.promptAsync('部门编码：', String(list.length + 1).padStart(3, '0'), { title: '部门编码' }); if (!code) return;
     list.push({ code: code.trim(), name: name.trim(), type: '部门', parent: '', enabled: true });
-    S.state.depts = list;
-    S.persist(); renderDeptStaff(); showToast('已新增部门');
+    S.setBookFields({ depts: list });
+    renderDeptStaff(); showToast('已新增部门');
   });
 
   /* ============================================================

@@ -639,6 +639,23 @@
     }
   }
 
+  /* 账套的**类型形状**（哪些顶层键是数组 / 是对象），从 emptyState 派生并缓存一次。
+     为什么不用硬编码清单：新增顶层集合字段时，清单一定会漏（体检规则与 schema 漂移，
+     结果新字段坏了也不拦）。派生后规则随 schema 自动演进。
+     为什么缓存：写盘是热路径，每次重建 emptyState 要 map 一遍科目/部门默认表，没必要。
+     只缓存**键名**、不缓存值 —— 值若被复用会与 state 共享引用（默认数组被就地改坏）。 */
+  var BOOK_SHAPE = null;
+  function bookShape() {
+    if (BOOK_SHAPE) return BOOK_SHAPE;
+    var d = emptyState(), arr = [], obj = [];
+    for (var k in d) {
+      if (Array.isArray(d[k])) arr.push(k);
+      else if (d[k] && typeof d[k] === 'object') obj.push(k);
+    }
+    BOOK_SHAPE = { arr: arr, obj: obj };
+    return BOOK_SHAPE;
+  }
+
   /* ============================================================
    * 存量账套迁移：v5（金额=「元」浮点）→ v6（金额=内部定点整数，0.0001 元）。
    *
@@ -1222,33 +1239,21 @@
     _bookSaveProblems: function (st) {
       st = st || this.state;
       if (!st || typeof st !== 'object') return ['状态不是对象'];
-      var problems = [];
-      // 顶层集合：必须仍是数组（null / 对象 = 数据已被破坏，写下去就等于删掉整块业务数据）
-      ['subjects', 'vouchers', 'fixedAssets', 'payrolls', 'assetCats', 'depts', 'cashFlowItems',
-        'closedPeriods', 'operationLogs', 'voucherWords', 'salaryVchTpls', 'vchTemplates',
-        'settleTemplates'].forEach(function (k) {
+      var problems = [], shape = bookShape();
+      // 类型必须与 emptyState 一致（null / 形状错 = 数据已被破坏，写下去等于删掉整块业务数据）
+      shape.arr.forEach(function (k) {
         if (st[k] === undefined) return;                 // 缺失交给补全
         if (!Array.isArray(st[k])) problems.push(k + ' 应为数组（现值 ' + (st[k] === null ? 'null' : typeof st[k]) + '）');
       });
-      ['openingBalances', 'subjectCashFlowMap', 'company', 'param', 'reportRules'].forEach(function (k) {
+      shape.obj.forEach(function (k) {
         if (st[k] === undefined) return;
         if (st[k] === null || typeof st[k] !== 'object' || Array.isArray(st[k])) problems.push(k + ' 应为对象');
       });
-      if (problems.length) return problems;              // 已发现硬伤，不再深挖
-      var ob = st.openingBalances;
-      if (ob && typeof ob === 'object') {
-        var badOb = 0;
-        Object.keys(ob).forEach(function (c) {
-          var row = ob[c];
-          if (!row || typeof row !== 'object' || Array.isArray(row)) badOb++;
-        });
-        if (badOb) problems.push('期初余额有 ' + badOb + ' 行结构异常');
-      }
-      if (Array.isArray(st.vouchers)) {
-        var badV = 0;
-        st.vouchers.forEach(function (v) { if (!v || typeof v !== 'object' || !Array.isArray(v.entries)) badV++; });
-        if (badV) problems.push('凭证有 ' + badV + ' 张缺 entries 数组');
-      }
+      /* 【刻意不深挖】"某张凭证缺 entries""某行期初余额结构坏"这类**已存在的脏数据**不在这里拦截：
+         它们不会让整块业务数据消失，而拒绝写盘会把用户的**所有新录入**一起锁死 ——
+         一张坏凭证导致整本账存不进去，比脏数据本身更糟。
+         这类问题的定位交给离线工具：tools/verify_book_integrity.js（结构审计）与
+         tools/verify_books_audit.js（账务对账）。写盘热路径只做 O(1) 的顶层类型判断。 */
       return problems;
     },
     _fillMissingBookDefaults: function () {
@@ -1340,6 +1345,19 @@
         self._onSaveFail((e && e.message) || e);
         return false;
       });
+    },
+
+    /* 受控写入口（架构边界 B2）：页面不再直接 `S.state.x = …`。
+       一次写多个顶层字段 → 作废派生缓存（_glCache / _vchIndex）→ 落盘。
+       为什么必须收口：字段写入要与"清缓存 + 落盘"成对出现；散在页面里就会出现
+       「改了状态忘了清缓存」或「忘了 persist」——这正是本项目历史上的事故模式。 */
+    setBookFields: function (obj) {
+      if (!this.state || !obj || typeof obj !== 'object') return false;
+      var st = this.state;
+      Object.keys(obj).forEach(function (k) { st[k] = obj[k]; });
+      this._invalidate();
+      this.persist();
+      return true;
     },
     persist: function () {
       // 轻量持久化当前账套指针（真实数据由下方 _saveBookChecked 落盘）
@@ -5099,6 +5117,9 @@
     setParam: function (k, v) {
       this.state.param = this.state.param || {};
       this.state.param[k] = v;
+      /* param 里有影响取数口径的键（standard/currency/期间等），改完必须作废派生缓存，
+         否则账簿/报表会命中旧缓存。收回口（B2）后这里是页面写 param 的唯一入口。 */
+      this._invalidate();
       this.persist();
       return this.state.param;
     },
@@ -6239,7 +6260,12 @@
     store: S,
     /* 账套 schema 的**单一来源**，供 tools/verify_book_integrity.js 等只读校验脚本 require。
        工具不要再用正则从源码抓键名 —— 缩进/结构一变就静默失效（那是"假绿"）。 */
-    bookSchema: { version: SCHEMA_VERSION, keys: Object.keys(emptyState()) },
+    bookSchema: {
+      version: SCHEMA_VERSION,
+      keys: Object.keys(emptyState()),
+      arrayKeys: bookShape().arr,
+      objectKeys: bookShape().obj
+    },
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
