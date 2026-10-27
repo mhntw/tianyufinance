@@ -167,7 +167,19 @@ fn sanitize_filename(name: &str) -> String {
     s
 }
 
-// 原子写：先写 .tmp 再 rename，避免写到一半崩溃损坏文件
+// 原子写：先写 .tmp 再 rename，避免写到一半崩溃损坏文件。
+//
+// ⚠ 三条前提/边界（2026-10-27 审计结论，刻意保持简单，改动前必读）：
+//   1. **必须保持同步命令 + 主线程串行**：本文件的 #[tauri::command] 都是同步函数，Tauri 在主线程
+//      逐条处理 IPC，所以两次 save 不会并发 → 固定名 .tmp 是安全的。
+//      若把命令改成 async / #[tauri::command(async)] / spawn_blocking，并发立刻成立：两个线程会
+//      同时 create 截断同一个 .tmp。届时**必须同时**做两件事，缺一不可：
+//        ① tmp 用唯一名（如 "{pid}-{nanos}.tmp"）；② 前端按账套串行化写入（只写最新 state）。
+//      否则会出现"内容交错"（文件损坏）或"旧快照覆盖新快照"（少最后一笔）。
+//   2. 写失败 / 磁盘满时 `?` 会提前返回，**不会 rename** → 磁盘上的旧文件始终完整。
+//   3. 不做目录 fsync（已知限制）：Linux 需 fsync(parent) 才保证 rename 持久，而 macOS 的 fsync
+//      并不等于落盘（要 F_FULLFSYNC，Rust std 未暴露）。跨平台用 std 拿不到严格保证，加半吊子
+//      实现反而更复杂；桌面单机断电窗口极小，代价可接受。
 fn atomic_write(path: &PathBuf, content: &str) -> Result<(), String> {
     let tmp = path.with_extension("tmp");
     {

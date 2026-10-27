@@ -623,6 +623,22 @@
     };
   }
 
+  /* 账套顶层默认值补全 —— **唯一实现**，两处共用：
+       · 加载后的 normalizeState（老账套迁移）
+       · 写盘前的 _fillMissingBookDefaults（保证落盘 JSON 结构齐全 ——
+         JSON.stringify 会**静默丢弃** undefined 键，字段就"莫名没了"）
+     语义：只补 undefined 的键，绝不覆盖已有值（不损失任何信息）。
+     reportRules 例外跳过：emptyState 里它可能是全局模板的**共享引用**，
+     必须由调用方用 cloneStandard 深拷后再用，直接赋值会让账套之间串数据。 */
+  function fillBookDefaults(st, def) {
+    if (!st) return;
+    def = def || emptyState();
+    for (var k in def) {
+      if (k === 'reportRules') continue;
+      if (st[k] === undefined) st[k] = def[k];
+    }
+  }
+
   /* ============================================================
    * 存量账套迁移：v5（金额=「元」浮点）→ v6（金额=内部定点整数，0.0001 元）。
    *
@@ -893,9 +909,28 @@
       var reset = function () { self.state = emptyState(); self.normalizeState(); self.ensureCashFlowFields(); };
       if (!txt) { if (resetOnMissing) reset(); return Promise.resolve(); }
       var res;
-      try { res = JSON.parse(txt); } catch (e) { throw new Error('parse_fail'); }
+      try { res = JSON.parse(txt); } catch (e) {
+        /* 能读到却解析不了 = 文件已损坏。首次加载时内存只是兜底空账套，必须设写盘闸门，
+           否则下一次 persist 会把损坏文件原地覆盖（原文件就再也救不回来了）。
+           刷新重载（resetOnMissing=false）不设：内存是旧的好数据，继续写盘反而是修复。 */
+        if (resetOnMissing) this._markBookWriteBlocked('账套文件 JSON 解析失败（文件可能已损坏）');
+        throw new Error('parse_fail');
+      }
       if (res && res.empty) { if (resetOnMissing) reset(); return Promise.resolve(); }
-      if (!(res && res.subjects && res.vouchers)) { if (resetOnMissing) reset(); return Promise.resolve(); }
+      /* 核心结构必须是**数组**：空对象 / 字符串同样算坏文件（原先的 truthy 判定会放过它们，
+         随后页面 forEach 崩或整块数据消失）。此处用 isArray 严格判定。 */
+      if (!(res && Array.isArray(res.subjects) && Array.isArray(res.vouchers))) {
+        /* 能 parse 但结构坏：不静默 —— 原先直接 reset 成空账套，用户只看到"账套被清空"，
+           随后一次操作就把原文件覆盖。现改为：首次加载暂停写盘并提示，等「数据恢复」或重新导入。 */
+        if (resetOnMissing) {
+          this._markBookWriteBlocked('账套文件结构不完整（subjects/vouchers 不是数组）');
+          reset();
+        }
+        this._reportBookBroken(this.bookId);
+        return Promise.resolve();
+      }
+      // 文件可读、结构正确 → 自动解除写盘闸门（避免一次瞬时读取/解析故障让软件永久只读）
+      this._clearBookWriteBlock();
       if (res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION && res.schemaVersion !== 5) {
         // 版本不一致（既非本版本、也非可迁移的 v5）：不静默忽略，交 UI 决策
         console.warn('[Store] 账套文件版本(' + res.schemaVersion + ') 与程序(' + SCHEMA_VERSION + ') 不一致');
@@ -986,6 +1021,9 @@
         return self._consumeDiskBook(txt, true);
       }).catch(function (err) {
         console.error('[Store] 加载账套「' + self.bookId + '」失败：' + ((err && err.message) || err));
+        /* 读取失败（IO/权限/文件被占用/解析失败）也要设写盘闸门：此刻内存是兜底空账套，
+           不拦就会把它写回、覆盖掉那份还没能读出来的原文件。下次成功读取会自动解锁。 */
+        self._markBookWriteBlocked('读取账套文件失败：' + ((err && err.message) || err));
         self.state = emptyState(); self.normalizeState();
         // 与「刷新重载」路径（loadCurrentBookFromDisk）同一口径：损坏必须让用户看见，
         // 否则下次 persist 会把空账套写回原文件，用户以为账套被"清空"。
@@ -1040,6 +1078,9 @@
     _flushOnExit: function () {
       var bid = this.bookId;
       if (!bid || !this.state) return;
+      /* 写盘闸门期间（磁盘账套文件已损坏）关窗兜底也必须停手：
+         此刻内存是兜底空账套，写出去只会覆盖原文件/挤掉好备份。 */
+      if (this._isWriteBlockedFor(bid)) return;
       // 仅当确有未完成的写入（主账本在途/堆积，或自动备份防抖未收尾/在途）时才兜底，
       // 避免每次关闭页面都重复全量发送。
       /* 2026-10-04：原条件读 this._persistBusy / _persistPending，但这两个字段**全库从无赋值点**
@@ -1144,6 +1185,86 @@
     _onSaveOk: function () {
       if (this._saveFailCount) { this._saveFailCount = 0; if (typeof window.__onPersistOk === 'function') window.__onPersistOk(); }
     },
+    /* 【写盘闸门】磁盘账套文件已损坏（能读到却解析/结构失败）时暂停自动写盘。
+       理由：首次加载失败后内存里只是**兜底空账套**，下一次 persist 会把它原地写回，
+       把「还能人工救出来的原文件」彻底覆盖 —— 那是真正不可逆的丢失。
+       解除点：用户成功执行「数据恢复」（restoreBookState）或「导入账套」（importExternalBook）。
+       刷新重载（resetOnMissing=false）不设闸门：内存握着旧的好数据，继续写盘反而是修复。 */
+    _markBookWriteBlocked: function (reason) {
+      this._bookWriteBlocked = true;
+      this._bookWriteBlockedId = this.bookId || '';
+      this._bookWriteBlockedReason = reason || '';
+      this._bookWriteBlockedNotified = false;
+    },
+    /* 闸门只针对**出问题的那一本**：新建账套 / 切到别的健康账套时 id 不同，不应被连带拦住。
+       blockedId 为空（尚未选定账套）时按"全拦"处理，宁可保守。 */
+    _isWriteBlockedFor: function (bid) {
+      if (!this._bookWriteBlocked) return false;
+      var blockedId = this._bookWriteBlockedId || '';
+      return !blockedId || !bid || blockedId === bid;
+    },
+    _clearBookWriteBlock: function () {
+      this._bookWriteBlocked = false;
+      this._bookWriteBlockedId = '';
+      this._bookWriteBlockedReason = '';
+      this._bookWriteBlockedNotified = false;
+    },
+
+    /* 落盘前的两道关（2026-10-27）—— 账套文件**不许缺字段，更不许写坏数据**：
+       （一）_bookSaveProblems()：**只读**体检。一旦发现"本来有值、却被弄成 null / 类型错"的
+             核心集合，就**中止本次写盘**并亮红条，保护磁盘上那份还好的原账套。
+             口径：宁可这次存不进去、让用户看见告警，也不把空数据写上去覆盖真数据。
+       （二）_fillMissingBookDefaults()：**纯补全**，只给"本来就不存在"（undefined）的键补默认值。
+             这类补全不损失信息（JSON 里 undefined 等于不存在），目的是让文件结构始终齐全。
+       ⚠ 刻意**不调用 normalizeState()**：它有副作用（归一资产类别/部门、回填规则行 id，
+         必要时自己调 persist()），在写盘路径里调用会造成递归写盘、备份节奏变化。
+         写盘只做序列化所需的保真处理，数据归一仍由加载后那一次 normalize 负责。 */
+    _bookSaveProblems: function () {
+      var st = this.state;
+      if (!st || typeof st !== 'object') return ['状态不是对象'];
+      var problems = [];
+      // 顶层集合：必须仍是数组（null / 对象 = 数据已被破坏，写下去就等于删掉整块业务数据）
+      ['subjects', 'vouchers', 'fixedAssets', 'payrolls', 'assetCats', 'depts', 'cashFlowItems',
+        'closedPeriods', 'operationLogs', 'voucherWords', 'salaryVchTpls', 'vchTemplates',
+        'settleTemplates'].forEach(function (k) {
+        if (st[k] === undefined) return;                 // 缺失交给补全
+        if (!Array.isArray(st[k])) problems.push(k + ' 应为数组（现值 ' + (st[k] === null ? 'null' : typeof st[k]) + '）');
+      });
+      ['openingBalances', 'subjectCashFlowMap', 'company', 'param', 'reportRules'].forEach(function (k) {
+        if (st[k] === undefined) return;
+        if (st[k] === null || typeof st[k] !== 'object' || Array.isArray(st[k])) problems.push(k + ' 应为对象');
+      });
+      if (problems.length) return problems;              // 已发现硬伤，不再深挖
+      var ob = st.openingBalances;
+      if (ob && typeof ob === 'object') {
+        var badOb = 0;
+        Object.keys(ob).forEach(function (c) {
+          var row = ob[c];
+          if (!row || typeof row !== 'object' || Array.isArray(row)) badOb++;
+        });
+        if (badOb) problems.push('期初余额有 ' + badOb + ' 行结构异常');
+      }
+      if (Array.isArray(st.vouchers)) {
+        var badV = 0;
+        st.vouchers.forEach(function (v) { if (!v || typeof v !== 'object' || !Array.isArray(v.entries)) badV++; });
+        if (badV) problems.push('凭证有 ' + badV + ' 张缺 entries 数组');
+      }
+      return problems;
+    },
+    _fillMissingBookDefaults: function () {
+      var st = this.state;
+      if (!st) return;
+      var def = emptyState();
+      fillBookDefaults(st, def);          // 顶层（与 normalizeState 同一实现，reportRules 除外）
+      var fill = function (obj, d) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+        Object.keys(d).forEach(function (k) { if (obj[k] === undefined) obj[k] = d[k]; });
+      };
+      fill(st.param, def.param);
+      fill(st.company, def.company);
+      // reportRules 一律交给加载后的 normalizeState（cloneStandard 深拷 + 行 id 回填），此处不碰
+    },
+
     // 立即落盘并**判定成败**，返回 Promise<boolean>（true = 已写入磁盘）。
     // 必须判 r.ok：Storage.saveBook 内部已 catch、恒为 resolved —— 不判就会把写盘失败当成功
     // （原实现的致命缺陷）。抽成**一处实现**供 persist / 新建账套 / 导入账套共用：
@@ -1152,8 +1273,21 @@
     _saveBookChecked: function (bid) {
       var self = this;
       if (typeof window.Storage === 'undefined' || !bid) return Promise.resolve(true);
+      if (this._isWriteBlockedFor(bid)) {
+        if (!this._bookWriteBlockedNotified) {
+          this._bookWriteBlockedNotified = true;
+          console.error('[persist] 已暂停写盘以保护原账套文件：' + (this._bookWriteBlockedReason || '文件不可信'));
+        }
+        return Promise.resolve(false);
+      }
       var payload;
       try {
+        var problems = this._bookSaveProblems();
+        if (problems.length) {
+          this._onSaveFail('账套数据结构异常，已中止写盘以保护磁盘上的原账套：' + problems.join('；'));
+          return Promise.resolve(false);
+        }
+        this._fillMissingBookDefaults();
         payload = JSON.stringify(this.state);
       } catch (e) {
         // 序列化失败（如状态里混入循环引用）→ 直接告警，绝不静默
@@ -1191,6 +1325,9 @@
       this._persistInFlight = (this._persistInFlight || 0) + 1;
       var persistDone = function () { self._persistInFlight = Math.max(0, (self._persistInFlight || 1) - 1); };
       this._saveBookChecked(bid).then(persistDone, persistDone);
+      /* 闸门期间连自动备份也不写：空账套备份会把环形保留（仅 10 份）里的历史好备份挤掉 ——
+         那等于用"假的空备份"覆盖"真的可恢复备份"，比不备份更糟。 */
+      if (this._isWriteBlockedFor(bid)) return;
       // 自动备份（防抖节流，常开不可关）：落 Rust 备份目录（<应用数据目录>/添钰财务/backups，环形保留）。
       // 桌面版数据即文件，无需浏览器缓存兜底。
       // 备份失败连续 ≥3 次时，复用主账本保存失败的 UI 横幅告警——磁盘满/权限等问题
@@ -1360,6 +1497,8 @@
       //   这里就会跳过迁移、金额被少乘 10000 倍；反之若转换器自己乘了 10000，这里会再多乘一次。
       if (book.schemaVersion !== SCHEMA_VERSION) migrateAmountsToV6(book);
       this.bookId = id; this.state = book;
+      // 导入的是完整可信账套（已过 checkBookShape）：解除损坏文件写盘闸门
+      this._clearBookWriteBlock();
       if (this.state.schemaVersion == null) this.state.schemaVersion = SCHEMA_VERSION; // 导入账套补版本号，避免每次加载误判版本冲突
       // 补全账套字段并自动判定会计准则（导入不含 standard 字段，按科目自动判定，
       // 避免一律默认为旧准则把 6xxx 小企业准则账套标错）；normalizeState 内部含 detectStandardBySubjects 判定。
@@ -1430,6 +1569,8 @@
         : st;
       this.state = Object.assign({}, emptyState(), stripProtoKeys(inbound));   // 合并进空状态：旧备份缺字段时不至于渲染崩掉
       this.state.schemaVersion = SCHEMA_VERSION;
+      // 用户手里的备份是可信数据：恢复成功即解除「损坏文件写盘闸门」，让新账套能正常落盘
+      this._clearBookWriteBlock();
       // 【必须作废总账缓存】恢复的是**同一账套**（bookId 不变），而缓存键是 bookId|month ——
       // 不作废的话，恢复后查询同月份会命中「恢复前」的旧缓存，账簿/报表继续显示旧数。
       this._invalidate();
@@ -1498,7 +1639,8 @@
             rollbackToPrev('目标账套版本(' + res.schemaVersion + ') 无法由本程序读取');
             return;
           }
-          if (res && res.subjects && res.vouchers) {
+          // 与首次加载同一判据：核心结构必须是数组（truthy 的对象/字符串会放坏文件过关）
+          if (res && Array.isArray(res.subjects) && Array.isArray(res.vouchers)) {
             // 与首次加载共用**同一条**迁移链路（快照 → 迁移 → 自检 → 落盘 → 回读）。
             // 此前这里只补一个版本号就完事，v5 老账套切过来会整体错 10000 倍。
             self._applyLoadedBookAndPersist(res, txt, id);
@@ -2896,6 +3038,8 @@
     // 「导入 / 恢复备份」等整本覆盖动作前的回退，由「覆盖前存档」saveRestoreSnapshot 单独承担。
     backupNow: function () {
       var bid = this.currentBookId();
+      // 写盘闸门期间不写备份：内存可能是兜底空账套，写出去会挤掉环形保留里的历史好备份
+      if (this._isWriteBlockedFor(bid)) return Promise.resolve(false);
       // 兜底：当前指针为空但有账套时，回退到 default / 第一个（避免空指针导致备份直接失败）
       if (!bid) {
         var bs = this._bookList || [];
@@ -5868,9 +6012,7 @@
         var autoStd = detectStandardBySubjects(this.state && this.state.subjects);
         this.state.standard = (autoStd && global.STANDARDS[autoStd]) ? autoStd : 'small2013';
       }
-      for (var k in def) {
-        if (this.state[k] === undefined) this.state[k] = def[k];
-      }
+      fillBookDefaults(this.state, def);   // 只补 undefined；reportRules 由下方 cloneStandard 深拷
       // 资产类别回填（老账套迁移，幂等）：早期导入把「类别**名称**」直接写进了 fa.category，
       // 与类别档案的**编码**错配 —— 显示看不出问题（_catName 查不到编码就原样返回），但按类别
       // 筛选筛不到、编辑卡片时下拉选不中（保存后类别被清空）。此处统一归一为编码。
@@ -6063,6 +6205,9 @@
   // B 方案迁移：新增 ESM 导出（不破坏旧全局）。后续页面模块通过 import 使用。
   const exported = {
     store: S,
+    /* 账套 schema 的**单一来源**，供 tools/verify_book_integrity.js 等只读校验脚本 require。
+       工具不要再用正则从源码抓键名 —— 缩进/结构一变就静默失效（那是"假绿"）。 */
+    bookSchema: { version: SCHEMA_VERSION, keys: Object.keys(emptyState()) },
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,
