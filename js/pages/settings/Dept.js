@@ -20,7 +20,10 @@ function renderDeptBody() {
   list.forEach(function (d, i) {
     var tr = document.createElement('tr');
     // html`` 插值默认转义：部门名/编码都是用户可编辑字段，属性上下文同样安全
-    tr.innerHTML = html`<td class="mono col-code">${d.code}</td><td>${d.name}</td><td><a class="link-edit" data-edit-dept="${i}">编辑</a> <a class="link-toggle" data-i="${i}">${d.enabled === false ? '启用' : '停用'}</a></td>`;
+    // 已引用的部门不可删（硬删会造悬空引用）：链接置灰，点它给明确指引。未引用才可删。
+    var used = (S.state.fixedAssets || []).filter(function (fa) { return String(fa.dept == null ? '' : fa.dept) === d.name; }).length;
+    var delCls = used > 0 ? 'link-del disabled' : 'link-del';
+    tr.innerHTML = html`<td class="mono col-code">${d.code}</td><td>${d.name}</td><td><a class="link-edit" data-edit-dept="${i}">编辑</a> <a class="link-toggle" data-i="${i}">${d.enabled === false ? '启用' : '停用'}</a> <a class="${delCls}" data-del-dept="${i}">删除</a></td>`;
     tb.appendChild(tr);
   });
   if (!list.length) tb.innerHTML = '<tr><td colspan="3" class="empty-hint">暂无部门</td></tr>';
@@ -54,6 +57,24 @@ export function refreshDeptCard() {
         return;
       }
 
+      // 删除（仅未引用部门可删；被引用时链接置灰，点它给明确指引）
+      var delA = t.closest && t.closest('a[data-del-dept]');
+      if (delA) {
+        if (delA.classList.contains('disabled')) {
+          showToast('该部门已被资产卡片使用，无法删除。请先到资产页将这些卡片的「使用部门」改为其它部门，或停用该部门。', 'error');
+          return;
+        }
+        var di = +delA.getAttribute('data-del-dept');
+        var dd = S.depts()[di];
+        if (!dd) return;
+        if (!(await H.confirmAsync('确认删除部门「' + dd.name + '」？删除后不可恢复。\n\n注意：已有资产卡片使用该部门的不可删除，请改用「停用」。', { title: '删除部门' }))) return;
+        var r1 = S.removeDept(di);
+        if (!r1.ok) return showToast(r1.msg, 'error');
+        renderDeptBody();
+        showToast('已删除部门「' + dd.name + '」');
+        return;
+      }
+
       // 编辑（改名 / 改编码）：两步 prompt，默认值预填当前值，任一步取消即整体放弃。
       // 落库与「回写所有引用该部门的资产卡片」都在 store.renameDept 里（两件事不能拆开做）。
       var editA = t.closest && t.closest('a[data-edit-dept]');
@@ -79,10 +100,8 @@ export function refreshDeptCard() {
     addBtn.addEventListener('click', async function () {
       var name = await H.promptAsync('部门名称：', '', { title: '新增部门' });
       if (!name || !name.trim()) return;
-      var list = S.depts();
-      var code = await H.promptAsync('部门编码：', String(list.length + 1).padStart(3, '0'), { title: '部门编码' });
-      if (!code || !code.trim()) return;
-      var r = S.addDept({ name: name, code: code });
+      // 编码由 store.addDept 自动按现有最大值+1 生成（与资产卡片表单内联新增一致），无需用户手填。
+      var r = S.addDept({ name: name.trim() });
       if (!r.ok) return showToast(r.msg, 'error');
       renderDeptBody();
       showToast('已新增部门「' + name.trim() + '」');

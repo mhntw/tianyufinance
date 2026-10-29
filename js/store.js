@@ -123,7 +123,6 @@
  *   addFixedAsset, updateFixedAsset, removeFixedAsset
  *   depreciateMonth, assetMonthlyDepr, genCleanVoucher
  *   资产类别 category（卡片自有字段，存**类别名称**；档案体系已下线，见 migrateAssetCategoryToName）
- *   新增资产凭证 = 关联已有凭证 linkAssetAcquisitions / unlinkAssetAcquisitions（**绝不生成凭证**）
  *
  * 工资 / 薪酬（2026-10-27 模块整体下线）
  *   生成与管理方法已全部移除；state.payrolls / state.salaryVchTpls 两个字段保留不读不写
@@ -5208,6 +5207,27 @@
       this.setBookFields({ depts: list });
       return { ok: true, code: code };
     },
+    /* 删除部门（仅当未被任何资产卡片引用时）。
+     * 部门是按名称存的共享基础资料，硬删除会造悬空引用（卡片按部门筛选 / 折旧汇总缺一块），
+     * 故加引用守卫：有卡片在用则拒删并提示改用「停用」或先改卡片部门。
+     * 这是「停用」之外、面向「加错且从未使用」部门的彻底清理手段。
+     * @returns {{ok:boolean, msg?:string}} */
+    removeDept: function (idx) {
+      var list = this.depts();
+      var d = list[idx];
+      if (!d) return { ok: false, msg: '部门不存在' };
+      var name = String(d.name == null ? '' : d.name);
+      var used = (this.state.fixedAssets || []).filter(function (fa) {
+        return String(fa.dept == null ? '' : fa.dept) === name;
+      }).length;
+      if (used > 0) {
+        return { ok: false, msg: '该部门已被 ' + used + ' 张资产卡片使用，无法删除。请先将这些卡片的「使用部门」改为其它部门，或停用该部门。' };
+      }
+      list.splice(idx, 1);
+      this.state.depts = list;
+      this.persist();
+      return { ok: true };
+    },
     /* 启用 / 停用部门（原实现是页面里直接改 d.enabled 再 S.persist()）。
      * 停用只影响"能不能再选"，历史卡片/凭证数据保留 —— 所以这里不校验引用。 */
     setDeptEnabled: function (idx, enabled) {
@@ -5392,84 +5412,6 @@
       this.state.fixedAssets = this.state.fixedAssets.filter(function (x) { return x.id !== id; });
       this.persist();
       return { ok: true };
-    },
-    /* ===================== 「新增资产凭证」= 关联已有凭证（绝不生成） =====================
-     * 【为什么是「关联」而不是「生成」】
-     * 迁移账套的购入凭证**本来就在凭证表里** —— 实测添钰来客账套 10 张卡片，10/10 都能在 1037 张
-     * 凭证里按「借 固定资产 = 卡片原值」精确命中（记-48/49/…）。若这里再「生成」一张，就是
-     * **固定资产重复入账（翻倍）**，属本项目最忌讳的错误。故本函数只把已存在的凭证挂到卡片上。
-     * 【匹配规则】（需同时满足）
-     *   ① 凭证未删除；
-     *   ② 含一条分录：科目 == 卡片固定资产科目(faAcctId) 且 借方 == 卡片原值(original)；
-     *   ③ 该凭证的贷方含「卡片购入对方科目」(purchaseAcct) —— 与卡片配置互证，避免同额错配；
-     *      purchaseAcct 为空时只按 ② 判（不强求 ③）。
-     * 【多重命中择优】先排除已被其它卡片占用的凭证；再按凭证日期离「开始使用日期」最近；最后按凭证字号升序。
-     * 【幂等】已有 addVoucher 的卡片直接跳过，可反复点。**不新增任何凭证**。
-     * ids：可选。给定（非空）时只处理这些卡片 id —— 「批量操作 → 关联凭证」勾了就传勾选的，没勾就传空 = 全部。
-     * 返回 { ok, linked:[{code,name,no,date}], unmatched:[{code,name,reason}] } */
-    linkAssetAcquisitions: function (ids) {
-      var self = this;
-      var only = null;
-      if (ids && ids.length) { only = {}; ids.forEach(function (id) { only[id] = 1; }); }
-      var list = this.state.fixedAssets || [];
-      var vs = (this.state.vouchers || []).filter(function (v) { return v.deleted !== 'y'; });
-      var used = {};                                    // 凭证 id → 已挂它的卡片编码
-      list.forEach(function (fa) { if (fa.addVoucherId) used[fa.addVoucherId] = fa.code; });
-      var linked = [], unmatched = [];
-      list.forEach(function (fa) {
-        if (only && !only[fa.id]) return;               // 只处理指定的那些卡片
-        if (fa.addVoucher) return;                      // 已关联 → 幂等跳过
-        var faCode = String(fa.faAcctId || '');
-        var orig = num(fa.original);
-        var opp = String(fa.purchaseAcct || '');
-        if (!orig) { unmatched.push({ code: fa.code, name: fa.name, reason: '原值为 0，无从匹配' }); return; }
-        var cands = vs.filter(function (v) {
-          var okDr = (v.entries || []).some(function (e) {
-            // 双方都是 0.0001 元整数 → 精确相等（原写 < 0.005 的容差，在整数域本就等价于 ===，
-            // 但留着会让人误以为「允许半分误差」，一旦以后金额改成别的精度就会静默失配）。
-            return String(e.code) === faCode && num(e.dr) === orig;
-          });
-          if (!okDr) return false;
-          if (!opp) return true;
-          return (v.entries || []).some(function (e) { return String(e.code) === opp && num(e.cr) > 0; });
-        });
-        if (!cands.length) {
-          unmatched.push({ code: fa.code, name: fa.name,
-            reason: '凭证表里找不到「借 ' + (faCode || '固定资产') + ' = ' + yuan(orig) + (opp ? ' 且 贷 ' + opp : '') + '」的凭证' });
-          return;
-        }
-        // 择优：优先未被占用；全被占用时允许复用（一张凭证买多张同额资产是合法的）
-        var pool = cands.filter(function (v) { return !used[v.id]; });
-        if (!pool.length) pool = cands;
-        var acq = String(fa.acqDate || '');
-        var acqTs = acq ? Date.parse(acq) : NaN;
-        pool.slice().sort(function (a, b) {
-          var da = isNaN(acqTs) ? 0 : Math.abs(Date.parse(a.date) - acqTs);
-          var db = isNaN(acqTs) ? 0 : Math.abs(Date.parse(b.date) - acqTs);
-          if (da !== db) return da - db;
-          var ka = (a.word || '记') + '-' + a.no, kb = (b.word || '记') + '-' + b.no;
-          return ka < kb ? -1 : (ka > kb ? 1 : 0);
-        });
-        var pick = pool[0];
-        fa.addVoucher = (pick.word || '记') + '-' + pick.no;   // 显示用（列/导出/筛选读它）
-        fa.addVoucherId = pick.id;                             // 跳转用（id 含月份，唯一）
-        used[pick.id] = fa.code;
-        linked.push({ code: fa.code, name: fa.name, no: fa.addVoucher, date: pick.date || '' });
-      });
-      if (linked.length) this.persist();
-      return { ok: true, linked: linked, unmatched: unmatched };
-    },
-    // 解除关联（错配回退）：只清卡片的 addVoucher/addVoucherId —— **绝不碰凭证本身**
-    // （凭证是账，不能因为解关联而消失或改动）。
-    unlinkAssetAcquisitions: function (ids) {
-      var map = {}; (ids || []).forEach(function (id) { map[id] = 1; });
-      var n = 0;
-      (this.state.fixedAssets || []).forEach(function (fa) {
-        if (!map[fa.id]) return;
-        if (fa.addVoucher || fa.addVoucherId) { fa.addVoucher = ''; fa.addVoucherId = ''; n++; }
-      });
-      if (n) this.persist();
-      return { ok: true, n: n };
     },
     // 清理（报废/处置业务，卡片保留、状态=已清理、记清理期间）
     cleanFixedAsset: function (id, month) {

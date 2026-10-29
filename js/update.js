@@ -212,6 +212,8 @@
     download: function (latest, asset) {
       triggerDownload(asset ? asset.url : null, latest && latest.url);
     },
+    // 供其它模块打开外部链接（如金蝶账套转换工具）；复用本文件已验证的 Tauri 打开方式
+    openUrl: openUrl,
     REPO_RELEASE: REPO_RELEASE
   };
 })();

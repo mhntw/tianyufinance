@@ -217,17 +217,13 @@ if (rGen.ok) {
   ck(fa7.cleanPeriod === '2026-03', 'D12 清理期间恢复 2026-03');
   ck(fa7.cleanVoucher === cvno, 'D13 清理凭证引用恢复 ' + cvno);
   ck(!(recC && recC.cleanReverted), 'D14 快照已消费（不会重复回退）');
-  // D15~D18 代码层：清理已改成一步式（标记＋生成凭证），并保持失败回滚；防日后被改回两步
+  // D15~D16 代码层：行内清理一步式（标记＋生成凭证）并保持失败回滚；防日后被改回两步
   const assetSrc = fs.readFileSync(path.resolve(__dirname, '../js/pages/asset/Asset.js'), 'utf8');
   const inlineClean = assetSrc.slice(assetSrc.indexOf("contains('link-clean')"));
   ck(/genCleanVoucher/.test(inlineClean.slice(0, 1400)), 'D15 行内清理一步式：标记后紧接调用 genCleanVoucher');
   ck(/cancelCleanFixedAsset/.test(inlineClean.slice(0, 1800)), 'D16 行内清理生成失败时回滚标记（不留悬空状态）');
-  const batchClean = assetSrc.slice(assetSrc.indexOf("act === 'clean'"));
-  ck(/genCleanVoucher/.test(batchClean.slice(0, 1400)), 'D17 批量清理同样是一步式');
-  const idxSrc = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
-  const menu = idxSrc.slice(idxSrc.indexOf('id="assetBatchMenu"'));
-  ck(menu.indexOf('data-batch="clean"') < menu.indexOf('data-batch="cleanvch"'),
-    'D18 批量菜单按「日常操作在上、维护工具在下」排列');
+  // 注：批量清理 / 关联购入凭证 / 解除关联 / 补生成清理凭证 已于 2026-10-28 从「更多」菜单移除（低频维护工具，意义不大）；
+  // 删除守卫仍保留行内清理一步式（D5~D14 的取消清理路径），故此处仅校验行内逻辑，不再校验已删除的批量清理分支及菜单排序。
   const genBtn = assetSrc.slice(assetSrc.indexOf('btnAssetGenVoucher'));
   ck(/aChk:checked/.test(genBtn.slice(0, 800)) && /与勾选无关/.test(genBtn.slice(0, 1800)),
     'D19 计提折旧在「有勾选」时会告知范围与勾选无关（防误以为只提勾选的资产）');
@@ -313,10 +309,7 @@ ck(rCancel3.ok === false && /^无法取消清理：/.test(rCancel3.msg || ''),
 ck(faF.status === '清理' && !!faF.cleanVoucher, 'F13 失败后卡片保持「已清理」（不做一半，账实不脱节）');
 S.state.closedPeriods = [];
 
-// 代码层：批量清理失败回滚必须只针对本次新标记的卡片（否则会误删勾选里既有凭证卡片的凭证）
-const assetSrc2 = fs.readFileSync(path.resolve(__dirname, '../js/pages/asset/Asset.js'), 'utf8');
-const batchCleanSrc = assetSrc2.slice(assetSrc2.indexOf("act === 'clean'"));
-ck(/newlyMarked/.test(batchCleanSrc.slice(0, 1600)), 'F10 批量清理回滚范围已收窄为「本次新标记的卡片」');
+// 注：批量清理功能已于 2026-10-28 从「更多」菜单移除，原 F10「批量清理回滚范围收窄」回归点随之撤销。
 
 console.log('\n' + (bad ? '\u2717 \u6709 ' + bad + ' \u9879\u672a\u901a\u8fc7' : '\u2713 \u5168\u90e8\u901a\u8fc7'));
 process.exit(bad ? 1 : 0);

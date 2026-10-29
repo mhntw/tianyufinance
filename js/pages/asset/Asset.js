@@ -691,103 +691,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     e.stopPropagation();
     var m = $('assetBatchMenu'); if (m) m.hidden = !m.hidden;
   });
-  $('assetBatchMenu').addEventListener('click', async function (e) {
+  $('assetBatchMenu').addEventListener('click', function (e) {
     var a = e.target.closest('a');
     if (!a) return;
-    // 先收起菜单再分发：菜单里现在还有「导入/导出/打印」这类**没有 data-batch** 的项，
-    // 它们由各自既有通道处理（导入/导出 = 本文件按 id 绑定；打印 = app.js 的 [data-print] 全局委托）。
-    // 原先按 a[data-batch] 选择器取元素并在取不到时直接 return，会导致点这三项菜单不收起 —— 故改为
-    // 先关闭、再判断有无 data-batch，无则交还给它们的处理器。
+    // 「更多」菜单现已无 data-batch 项（导入/导出/变动记录各自按 id 绑定），
+    // 此处仅负责点击后收起菜单，不再有 data-batch 分发。
     $('assetBatchMenu').hidden = true;
-    var act = a.getAttribute('data-batch');
-    if (!act) return;
-    var checked = [].slice.call(document.querySelectorAll('.aChk:checked')).map(function (c) { return c.getAttribute('data-id'); });
-    // 「关联凭证」：把**账上已有**的购入凭证挂到卡片上，填「新增资产凭证」列。
-    // ⚠️ 只关联、不生成凭证 —— 迁移账套里购入凭证本就在（实测 10 张卡片 10/10 命中），
-    // 再「生成」一张就是固定资产重复入账。幂等：已关联的卡片跳过，可反复点。
-    // 不要求先勾选（勾了就只关联勾选的、没勾就关联全部未关联的）→ 排在通用守卫之前
-    if (act === 'link') {
-      var lr = S.linkAssetAcquisitions(checked);
-      renderAssets(); syncAll();
-      var lmsg = lr.linked.length ? ('已关联 ' + lr.linked.length + ' 张卡片的凭证') : '没有可新关联的卡片';
-      if (lr.unmatched.length) lmsg += '；另有 ' + lr.unmatched.length + ' 张未匹配到凭证';
-      showToast(lmsg, lr.unmatched.length ? 'warn' : 'success');
-      if (lr.unmatched.length) console.warn('[关联凭证] 未匹配明细：', lr.unmatched);
-      return;
-    }
-    if (!checked.length) return showToast('请先勾选要操作的卡片', 'error');
-    if (act === 'cleanvch') {
-      // 生成清理凭证（原「生成凭证」按钮勾了已清理卡片时走的那条路径，现归到批量操作里）。
-      // 只挑「已清理且未生成清理凭证」的卡片，genCleanVoucher 自身对已生成过的会跳过（幂等）。
-      // 与「计提折旧」一致：写凭证的动作不加二次确认。
-      var month = _assetPeriod();
-      var cleanIds = checked.filter(function (id) {
-        var fa = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-        return fa && fa.status === '清理' && !fa.cleanVoucher;
-      });
-      if (!cleanIds.length) return showToast('勾选的卡片里没有「已清理且未生成清理凭证」的资产', 'warn');
-      var rc = S.genCleanVoucher(cleanIds, month);
-      if (!rc.ok) return showToast(rc.msg, 'error');
-      showToast('已生成清理凭证 ' + rc.voucher.word + '-' + rc.voucher.no);
-      renderAssets(); syncAll();
-    } else if (act === 'unlink') {
-      // 错配回退：只解除「卡片 ↔ 购入凭证」的关联，**不动凭证本身**（凭证是账，不能因解关联而消失）
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认解除「新增资产凭证」的关联？\n只解除关联，不会删除或修改任何凭证。（此操作与删除折旧/清理凭证无关）', { title: '解除购入凭证关联' }))) return;
-      var ur = S.unlinkAssetAcquisitions(checked);
-      renderAssets(); syncAll();
-      showToast(ur.n ? ('已解除 ' + ur.n + ' 张卡片的关联') : '所勾选的卡片本来就没有关联凭证');
-    } else if (act === 'clean') {
-      // 与行内清理同一口径：批量标记 + 一张汇总清理凭证（genCleanVoucher 支持多卡合并成一张）；
-      // 生成失败则整体回滚标记，避免留下「已清理但无凭证」的悬空状态。
-      var m2 = _assetPeriod();
-      if (!(await H.confirmAsync('已勾选 ' + checked.length + ' 张卡片，确认批量清理并生成清理凭证（清理期间 ' + m2 + '）？\n\n' +
-        '将生成一张汇总凭证：借 固定资产清理/累计折旧，贷 固定资产。\n' +
-        '注意：该凭证只转出账面价值，处置收入、清理费用与净损益结转需另行手工处理。\n\n' +
-        '清理后这些卡片会移入「显示已清理资产」视图并停止计提折旧；如需撤销，删除该凭证即可自动恢复。', { title: '批量清理' }))) return;
-      // 只记下「本次新标记」的卡片：失败回滚时只还原这些。
-      // 不能拿 checked 整体回滚 —— 勾选里可能混有「原本就已清理且有凭证」的卡片，
-      // 而 cancelCleanFixedAsset 现在会连同凭证一起撤销，那就误删了人家既有的清理凭证。
-      var newlyMarked = checked.filter(function (id) {
-        var f = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-        return f && f.status !== '清理';
-      });
-      newlyMarked.forEach(function (id) { S.cleanFixedAsset(id, m2); });
-      var gv2 = S.genCleanVoucher(checked, m2);
-      if (!gv2.ok) {
-        newlyMarked.forEach(function (id) { S.cancelCleanFixedAsset(id); });
-        renderAssets(); syncAll();
-        return showToast('批量清理未完成：' + gv2.msg, 'error');
-      }
-      renderAssets(); syncAll();
-      showToast('已清理 ' + gv2.count + ' 张，生成凭证 ' + ((gv2.voucher.word || '记') + '-' + gv2.voucher.no) +
-        '，金额 ' + money(gv2.total) + '（卡片已归入「显示已清理资产」）');
-    } else {
-      // 【文案优化 2026-09-20】原提示只报数量（「1 张因已折旧/清理未删」），用户既看不出
-      //   哪一张被拒，也不知道该拿它怎么办。现统一为与上方「关联凭证」分支一致的做法：
-      //   ① 确认弹窗先讲清规则与「不可恢复」；② 结果里点名具体卡片（编码优先、其次名称）；
-      //   ③ 被拒时给出明确处置指引「改用清理」；④ 失败用 warn 级别 + 控制台留明细备查。
-      if (!(await H.confirmAsync('确认删除选中的 ' + checked.length + ' 张资产卡片？删除后不可恢复。\n\n' +
-        '注意：已有折旧或清理记录的卡片不会被删除。', { title: '批量删除' }))) return;
-      var delOk = 0, delBlocked = [], blockedDetail = [];
-      checked.forEach(function (id) {
-        var fa = S.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
-        var r = S.removeFixedAsset(id);
-        if (r.ok) { delOk++; return; }
-        var label = fa ? (fa.code || fa.name || id) : id;
-        delBlocked.push(label);
-        blockedDetail.push(label + '：' + (r.msg || ''));
-      });
-      renderAssets(); syncAll();
-      if (!delBlocked.length) {
-        showToast('已删除 ' + delOk + ' 张资产卡片', 'success');
-      } else {
-        // 分两行：第一行说结果与哪几张，第二行说原因与处置办法；\n 由 .toast 的
-        // white-space: pre-line 生效。内容较多，停留 5 秒（默认 2.2 秒读不完）。
-        showToast('已删除 ' + delOk + ' 张；' + delBlocked.length + ' 张未删除（' + delBlocked.join('、') + '）' +
-          '\n原因：已有折旧或清理记录，请改用「清理」处理', 'warn', 5000);
-        console.warn('[批量删除] 未删除明细：', blockedDetail);
-      }
-    }
   });
   document.addEventListener('click', function (e) {
     var m = $('assetBatchMenu');
@@ -795,7 +704,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   });
   // 「计提折旧」：按左侧期间对【全部】应计提资产计提本月折旧并生成折旧凭证。
   // 为什么不吃勾选：准则要求对所有应计提折旧的固定资产按月计提，不能挑着提（漏提即账实不符），
-  //   故本操作与勾选无关。但页面上「批量清理/批量删除/关联购入凭证」都遵循「勾了就只处理勾选的」，
+  //   故本操作与勾选无关。但页面上「批量删除」遵循「勾了就只处理勾选的」，
   //   用户极易形成同样预期 —— 因此仅在【有勾选】时弹确认明确告知范围，不勾选则直接执行（日常不打扰）。
   $('btnAssetGenVoucher').addEventListener('click', async function () {
     var month = _assetPeriod();
@@ -925,28 +834,30 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aMonthDepr').value = ((o * (1 - r / 100)) / m).toFixed(2);
     _updateHints();
   }
+  // 填充「使用部门」下拉（每次打开重填，保证表单内「＋部门」新增后立即可选）。部门存**名称**
+  // （与卡片 fa.dept 同口径），故 option 的 value 就是名称；新增时只列启用部门，编辑时补回该卡片
+  // 当前部门（含已停用），卡片部门不在档案里的兜底也列出来，否则一保存就被清空。
+  function _fillDeptOptions(ad, fa) {
+    if (!ad) return;
+    ad.innerHTML = '<option value="">请选择</option>';
+    var hasCurDept = false;
+    S.depts().forEach(function (d) {
+      if (d.enabled === false && !(fa && fa.dept === d.name)) return;
+      if (fa && fa.dept === d.name) hasCurDept = true;
+      var o = document.createElement('option');
+      o.value = d.name; o.textContent = d.name + (d.enabled === false ? '（停用）' : '');
+      ad.appendChild(o);
+    });
+    if (fa && fa.dept && !hasCurDept) {
+      var oc = document.createElement('option'); oc.value = fa.dept; oc.textContent = fa.dept; ad.appendChild(oc);
+    }
+  }
   function _openAssetModal(id) {
     // 科目选择统一为联想输入（bindSubjectPicker 组件，带前缀过滤）
     _bindAcctCombos();
     var fa = id ? S.state.fixedAssets.filter(function (x) { return x.id === id; })[0] : null;
-    // 填充部门下拉（仅一次）。部门存**名称**（与卡片 fa.dept 同口径），故 option 的 value 就是名称。
-    // 与类别下拉同款：新增时只列启用部门；编辑时补回该卡片当前部门（含已停用）。
-    var ad = $('aDept');
-    if (ad && ad.options.length <= 1) {
-      var hasCurDept = false;
-      S.depts().forEach(function (d) {
-        if (d.enabled === false && !(fa && fa.dept === d.name)) return;
-        if (fa && fa.dept === d.name) hasCurDept = true;
-        var o = document.createElement('option');
-        o.value = d.name; o.textContent = d.name + (d.enabled === false ? '（停用）' : '');
-        ad.appendChild(o);
-      });
-      // 兜底：卡片上的部门不在档案里（老数据 / 手工改过）→ 也列出来。
-      // 否则 <select> 会回落到「请选择」，一保存就把部门清空了。
-      if (fa && fa.dept && !hasCurDept) {
-        var oc = document.createElement('option'); oc.value = fa.dept; oc.textContent = fa.dept; ad.appendChild(oc);
-      }
-    }
+    // 填充部门下拉（每次重填，保证「表单内新增部门」后立即可选）。
+    _fillDeptOptions($('aDept'), fa);
     $('aCode').value = fa ? (fa.code || '') : '';
     $('aName').value = fa ? (fa.name || '') : '';
     _setAcctCombos(fa); // 回填 7 个科目（input 的 .value）
@@ -992,6 +903,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       else el.removeAttribute('title');
     });
     $('assetModal').setAttribute('data-asset-id', id || '');
+    // 「删除」仅编辑「正常」卡片可见：新增卡片无物可删；已清理的卡不显示——
+    // 它本就该走行内「取消清理」恢复到正常状态，而非删；且即使显示，底层守卫也会拦并提示
+    // 「改用清理」，对一张已经清理的卡反而造成困惑。守卫逻辑仍保留作为最后兜底。
+    $('btnDeleteAsset').style.display = (fa && fa.status !== '清理') ? '' : 'none';
     openModal('assetModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
   /* 资产编码自动生成（2026-10-27）：表单不再要求手填。
@@ -1026,6 +941,18 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     };
   }
   $('btnCloseAsset').addEventListener('click', function () { closeModal('assetModal'); });
+  // 行内删除入口收敛到此处：编辑卡片时若发现录错、该删，直接在编辑弹窗删（对齐「删除=纠错」语义）。
+  // 守卫在 store.removeFixedAsset：有折旧/清理记录的卡会拒删并提示改用「清理」，无需前端再判。
+  $('btnDeleteAsset').addEventListener('click', async function () {
+    var id = $('assetModal').getAttribute('data-asset-id');
+    if (!id) return;
+    if (!(await H.confirmAsync('确认删除该资产卡片？删除后不可恢复。\n\n注意：已有折旧或清理记录的卡片不会被删除，请改用「清理」。', { title: '删除卡片' }))) return;
+    var r = S.removeFixedAsset(id);
+    if (!r.ok) return showToast(r.msg || '删除失败', 'error');
+    closeModal('assetModal');
+    renderAssets(); syncAll();
+    showToast('已删除资产卡片', 'success');
+  });
   $('btnCloseAssetHistory').addEventListener('click', function () { closeModal('assetHistoryModal'); });
   $('btnCloseAssetHistory2').addEventListener('click', function () { closeModal('assetHistoryModal'); });
   // aAcq / aPeriodUsed 也挂上：这两个字段决定锚点月，变动时需即时刷新期初累计折旧的时点提示
@@ -1339,18 +1266,22 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     openModal('assetHistoryModal');   // 走统一入口：初始聚焦 + 关闭时焦点还原
   }
 
-  /* （原「资产类别」弹窗入口已随档案体系下线删除，2026-10-27） */
-  /* 卡片页工具条「部门」入口（2026-10-27 改）：跳到「系统设置 → 部门」卡片维护。
-     部门是账套级基础资料（与科目、凭证字同级），此前寄居在工资页的弹窗里、由 main.js 的
-     __renderDeptStaff 全局钩子暴露；工资模块一旦隐藏/移除资产页就变哑。现在档案归设置页，
-     这里只做跳转 —— 也顺带把「基础资料要在业务页弹窗里改」这个错位纠正掉。 */
+  /* 资产卡片表单「使用部门」下拉的就地新增：录卡时若下拉没有想要的部门，直接点「＋部门」
+     输入名称即可建（编码由 store.addDept 自动生成），并自动刷新下拉、选中新建项。
+     部门是账套级单一事实源（S.depts()），此处建好的部门在设置页/工资/折旧汇总同步可见。
+     这替代了原先「工具条部门按钮跳转到系统设置」的割裂体验。 */
   (function () {
-    var opener = $('btnAssetDeptMgr');
-    if (!opener) return;
-    opener.addEventListener('click', function () {
-      if (typeof goPage === 'function') goPage('system-settings');
-      var card = document.getElementById('cardSysDept');
-      if (card && card.scrollIntoView) card.scrollIntoView({ block: 'center' });
+    var add = $('btnAddDeptInForm');
+    if (!add) return;
+    add.addEventListener('click', async function () {
+      var name = await H.promptAsync('部门名称：', '', { title: '新增部门' });
+      if (!name || !name.trim()) return;
+      var r = S.addDept({ name: name.trim() });   // code 留空 → store 自动按最大值+1 生成
+      if (!r.ok) return showToast(r.msg, 'error');
+      var ad = $('aDept');
+      _fillDeptOptions(ad, null);   // 新增模式刷新（只列启用部门，新建部门自然在内）
+      ad.value = name.trim();        // 自动选中刚建的部门
+      showToast('已新增部门「' + name.trim() + '」并选中');
     });
   })();
 

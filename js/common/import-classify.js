@@ -38,6 +38,10 @@
  *   ⚠ 任何 action 都**不含"覆盖当前账套"** —— 覆盖请走「查看备份」。
  *   ⚠ 2026-10-22 起不再有 'new-ais' / 'merge-ais'：.ais 一律转 error 并指向 ais-tool/。
  */
+// 金蝶账套转换工具地址（ais-tool 独立部署，主软件 .ais 导入已拆至此）。
+// 集中常量：域名变动只改此处。
+export const KD_CONVERT_URL = 'https://cloud1-d6gy9gmgva37f14b8-1408612325.tcloudbaseapp.com/';
+
 export function importPlanOf(list) {
   const files = [];
   for (let i = 0; i < (list ? list.length : 0); i++) if (list[i]) files.push(list[i]);

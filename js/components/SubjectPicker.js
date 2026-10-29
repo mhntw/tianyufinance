@@ -53,7 +53,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
     position: 'fixed', zIndex: '9999', background: '#fff',
     border: '1px solid var(--ty-border)', borderRadius: '4px',
     boxShadow: '0 6px 20px rgba(0,0,0,.14)', width: '300px',
-    fontSize: '13px', color: 'var(--ty-text)', overflow: 'hidden'
+    fontSize: 'var(--fs-md)', color: 'var(--ty-text)', overflow: 'hidden'
   });
 
   const list = document.createElement('div');

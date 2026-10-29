@@ -9,7 +9,7 @@ import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
 // 自动转义标签模板（js/common/html.js）：本页含用户可编辑文本的行已迁移，插值默认转义。
 import { html, raw } from '../../common/html.js?v=dev';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
-import { importPlanOf, importErrText, safeIdOf } from '../../common/import-classify.js?v=dev';
+import { importPlanOf, importErrText, safeIdOf, KD_CONVERT_URL } from '../../common/import-classify.js?v=dev';
 // 部门档案卡片（2026-10-27 从工资页迁入本页；模块自带事件绑定与渲染）
 import { refreshDeptCard } from './Dept.js?v=dev';
 
@@ -614,8 +614,58 @@ const refreshAll = H.refreshAll;
   /* 【2026-09-28 三合一】原 #multiAisFile 的 change 绑定已删除（合并进统一的导入入口）。 */
 
 
-  // 导入入口：一个按钮 → 一个文件选择器（#bookImportFile，只收 .json）
-  $('btnBookImport').addEventListener('click', function () { if (bmFile) bmFile.click(); });
+  // 导入入口：一个按钮 → 弹出「导入格式选择」对话框（.json 直导 / 金蝶 .ais 先转换）
+  $('btnBookImport').addEventListener('click', function () { openImportGateDialog(); });
+
+  /* 导入格式选择对话框（2026-10-28）：把"选文件"前置为一个显式格式选择，
+     解决金蝶账套转换工具的可达性 —— 用户点导入账套即看到两种来源，
+     金蝶这一支的"转换"二字为可点超链接，直接跳转换工具（openUrl 复用 update.js 范式）。
+     选「本软件 .json」才触发原 #bookImportFile 文件框（accept=.json），原导入流程不变。
+     选 .ais 的兜底仍由 importPlanOf 的 error 提示承担（异常路径）。 */
+  function openImportGateDialog() {
+    if (typeof document === 'undefined') return;
+    var overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.style.zIndex = '2147483647';
+    overlay.innerHTML =
+      '<div class="modal-box">' +
+        '<div class="modal-title">导入账套</div>' +
+        '<div class="modal-body" style="line-height:1.75;word-break:break-word;">' +
+          '<div class="ig-body">' +
+            '<div class="ig-opt">' +
+              '<div class="ig-h">① 本软件账套（.json）</div>' +
+              '<div class="ig-d">选择本软件账套备份文件直接导入（均新增一本，不覆盖当前账套）。</div>' +
+              '<button class="btn btn-primary" id="igJsonBtn">选择 .json 文件</button>' +
+            '</div>' +
+            '<div class="ig-opt">' +
+              '<div class="ig-h">② 金蝶账套（.ais）</div>' +
+              '<div class="ig-d">金蝶账套需先<span id="igConvertLink" class="link-open" role="button">转换</span>成本软件账套（.json）后再导入。</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-actions"><button class="btn ty-dlg-cancel">关闭</button></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.classList.add('show');
+    var srcEl = document.activeElement;
+    var closed = false;
+    function close() {
+      if (closed) return; closed = true;
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (srcEl && document.contains(srcEl) && typeof srcEl.focus === 'function') { try { srcEl.focus(); } catch (e) {} }
+    }
+    overlay.querySelector('#igJsonBtn').onclick = function () { close(); var f = $('bookImportFile'); if (f) f.click(); };
+    overlay.querySelector('#igConvertLink').onclick = function () {
+      var openerFn = (window.__TY_UPDATE__ && window.__TY_UPDATE__.openUrl) || function (u) { window.open(u, '_blank'); };
+      openerFn(KD_CONVERT_URL);
+    };
+    overlay.querySelector('.ty-dlg-cancel').onclick = close;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function onKey(e) {
+      var k = e.key || '', code = e.keyCode || e.which || 0;
+      if (k === 'Escape' || k === 'Esc' || code === 27) { e.preventDefault(); close(); document.removeEventListener('keydown', onKey); }
+    });
+  }
 
 /* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
 function bindEditPeriodBtn() {

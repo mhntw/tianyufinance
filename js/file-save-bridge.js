@@ -120,7 +120,7 @@
         '<div style="padding:14px 18px;font-weight:600;border-bottom:1px solid var(--ty-border);">导出完成</div>' +
         '<div style="padding:18px;word-break:break-all;line-height:1.6;">' +
           '<div style="color:var(--ty-text-3);margin-bottom:6px;">' + escHtml(o.desc || '文件已保存到：') + '</div>' +
-          '<div style="font-family:monospace;font-size:var(--fs-sm);color:var(--ty-blue-dark);background:var(--ty-blue-2);padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
+          '<div style="font-family:monospace;font-size:var(--fs-md);color:var(--ty-blue-dark);background:var(--ty-blue-2);padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
         '</div>' +
         '<div style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--ty-border);">' +
           '<button class="ty-export-open" style="padding:7px 16px;border:1px solid var(--ty-blue-dark);background:var(--ty-blue-dark);color:var(--ty-white);border-radius:6px;cursor:pointer;font-size:var(--fs-md);">在文件夹中显示</button>' +

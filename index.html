@@ -722,19 +722,9 @@
             <div class="orig-batch-menu" id="assetBatchMenu" hidden>
               <a href="javascript:;" id="btnAssetImport">导入</a>
               <a href="javascript:;" id="btnAssetExport">导出</a>
-              <a href="javascript:;" data-print>打印</a>
               <a href="javascript:;" id="btnAssetHistory" title="查看全部固定资产的变动记录（新增/修改/清理）">变动记录</a>
-              <span class="orig-batch-sep"></span>
-              <a href="javascript:;" data-batch="clean">批量清理</a>
-              <a href="javascript:;" data-batch="del">批量删除</a>
-              <span class="orig-batch-sep"></span>
-              <a href="javascript:;" data-batch="cleanvch" title="补漏用：为「已清理但未生成清理凭证」的卡片补生成（正常清理已自动生成，无需此步）">补生成清理凭证</a>
-              <a href="javascript:;" data-batch="link" title="维护用：把账上已有的购入凭证挂到卡片上（只关联、不生成凭证）：勾选了就只关联勾选的，没勾选就关联全部未关联的">关联购入凭证</a>
-              <a href="javascript:;" data-batch="unlink" title="维护用：只解除卡片与「新增资产凭证」的关联，不删除、不修改任何凭证（与删除凭证无关）">解除购入凭证关联</a>
             </div>
           </span>
-          <span class="orig-btn-sep"></span>
-          <button class="btn" id="btnAssetDeptMgr" title="部门基础资料：跳到「系统设置 → 部门」维护，资产卡片的「使用部门」就取自这份档案">部门</button>
         </div>
 
         <!-- 导入体检提示条：导入固定资产卡片后，把「会静默出错」的情况显式列出来
@@ -1672,7 +1662,7 @@
         <div class="form-row"><label class="req">固定资产科目</label><input id="aFaAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
         <!-- 使用部门已由「自由文本」改为下拉（option value = 部门**名称**，与卡片 fa.dept 同口径）：
              自由文本无法与部门档案对齐，是「按部门筛选筛不到」的根源。 -->
-        <div class="form-row"><label class="req">使用部门</label><select id="aDept" class="inp-sel"><option value="">请选择</option></select></div>
+        <div class="form-row"><label class="req">使用部门</label><select id="aDept" class="inp-sel"><option value="">请选择</option></select><a href="javascript:;" id="btnAddDeptInForm" class="btn-link" style="flex:0 0 auto;margin-left:8px;white-space:nowrap" title="没找到合适的部门？点此直接新增（会写入部门档案，工资/折旧汇总也能用）">＋部门</a></div>
         <div class="form-row"><label class="req">开始使用日期</label><input id="aAcq" class="inp" type="date"></div>
         <div class="form-row"><label class="req">原值</label><input id="aOriginal" class="inp" type="number"></div>
         <div class="form-row"><label class="req">累计折旧科目</label><input id="aAccDeprAcct" class="inp-sel" placeholder="输入编码或名称" autocomplete="off"></div>
@@ -1702,9 +1692,8 @@
         <div class="form-row form-row-full"><label>备注</label><input id="aMemo" class="inp"></div>
       </div>
       <div class="modal-actions">
-        <!-- 两键足够：「保存」写入并关窗、「取消」放弃。
-             原「保存并复制」与「保存并新增」已于 2026-09-18 移除 —— 二者实现完全相同（都是开一张
-             清空的新表单），且同批同型资产用「数量」字段一张卡即可，无需连续录入。 -->
+        <!-- 顺序按全站约定 [危险靠左] → [主操作] → [取消]；「删除」仅编辑模式显示（新增无卡可删）。 -->
+        <button class="btn btn-danger" id="btnDeleteAsset" style="display:none">删除</button>
         <button class="btn btn-primary" id="btnSaveAsset">保存</button>
         <button class="btn" id="btnCloseAsset">取消</button>
       </div>
