@@ -1256,8 +1256,96 @@
 
       <!-- 设置：数据与安全（账套备份与恢复 / 账套管理 / 操作日志） -->
       <section class="page" id="page-system-settings">
-        <!-- 方案C 纯结构冻结：整页内容作为唯一滚动区，卡片内表格表头吸顶（与账簿/报表页同一套） -->
-        <div class="scroll-area">
+        <!-- 设置页：四区块合并为单页滚动（基础设置 / 安全与同步 / 账套管理 / 关于），2026-10-30 -->
+        <div class="settings-content">
+        <div class="settings-pane" data-pane="books">
+          <div class="set-group-title">账套管理</div>
+        <div class="card span-2" id="cardSysBooks">
+          <div class="card-tools-wrap">
+            <div class="book-toolbar">
+              <button class="btn-link" id="btnNewBook">新建账套</button>
+              <!-- 【2026-09-28 三合一 + 语义统一】原「导入账套 / 多年合并导入 / 导入备份」三个按钮合并为此一个：
+                   按所选文件的**种类 + 数量**自动分流（判据见 js/common/import-classify.js）：
+                     1 个 .ais → 新建账套 ； ≥2 个 .ais → 合并为一个连续多年账套 ；
+                     1 个 .json → 作为新账套导入。
+                   【核心不变量】本入口**只做新增，绝不覆盖当前账套** —— 用户看到"导入"二字想的是
+                   "加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉。
+                   "覆盖当前账本"全应用只有一处：「查看备份 → 恢复」（从应用内快照回滚）。 -->
+              <button class="btn-link" id="btnBookImport" title="导入账套（均新增一本，不覆盖当前账套）：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 账套备份（＝作为新账套导入）。要用备份覆盖当前账套，请走「查看备份 → 恢复」">导入账套</button>
+              <!-- 【2026-09-28 删除「查看校验报告」按钮】它只对多年合并账套有内容（其它账套点了只弹 toast，
+                   对绝大多数用户是死按钮），而目标用户的价值已在合并导入成功那一刻自动弹卡片交付；
+                   跨年数据本来也在风险检测里被检（store.js 检测 6）→ 跨年**完整表**现作为
+                   「风险检测」卡片里的一个分区呈现，差异超阈值可直接穿透到科目账。 -->
+              <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡/跨年跳变等）">风险检测</button>
+              <!-- 【2026-09-28 删除「手动备份」】它与**自动备份**是同一种产物、同一目录、同一个 10 份滚动池
+                   （见 store.js persist 的自动存档与 lib.rs 的 MAX_AUTO_BACKUPS），
+                   唯一增量只是"现在立刻多写一份、挤掉最旧的一份"，而自动备份已在
+                   「每次改动落盘后」「关窗时」「结账/反结账/年结/结转等高风险操作前」都各写一份。
+                   故对用户是纯粹的重复与困惑（按钮名还与「查看备份」相近）。
+                   注意：store.backupNow() 方法**保留**（仍被上述高风险操作调用），删的只是这个 UI 入口。 -->
+              <button class="btn-link" id="btnBkAll" title="把当前所有账套导出为完整副本文件（写到本机导出目录并提示路径）——这是唯一能离开本机的副本：生成后请把它拷到 U 盘 / 网盘；自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失">导出账套</button>
+              <button class="btn-link" id="btnListBackup">查看备份</button>
+              <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
+              <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
+                   原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->
+              <input type="file" id="bookImportFile" accept=".json" style="display:none">
+              <!-- 注：曾短暂存在一个「从文件恢复…」的选择器（外部 .json 覆盖当前账套），已按用户要求删除；
+                   覆盖当前账本现只走「查看备份」里每行的「恢复」（应用内快照）。 -->
+
+            </div>
+
+            <div id="backupList" class="backup-list" style="display:none"></div>
+            <div id="trashPanel" class="backup-list" style="display:none"></div>
+          </div>
+          <div class="grid-wrap">
+            <table class="grid std-table" id="bookGrid">
+              <thead><tr><th class="col-fill">账套名称</th><th>启用期间</th><th>凭证数</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="bookBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card span-2" id="healthCheckCard" style="display:none">
+          <div class="card-head">
+            <span>风险检测结果</span>
+            <button class="modal-x" id="btnHealthCheckCloseCard">×</button>
+          </div>
+          <div id="healthCheckSummaryInPage" class="health-summary"></div>
+          <div class="table-box">
+            <table class="ty-table" id="healthCheckTableInPage"></table>
+          </div>
+          <!-- 跨年一致性校验分区（2026-09-28 由原独立按钮「查看校验报告」并入）：数据来自
+               meta.yearBoundaries，**只有多年合并账套才有**，故无数据时整段隐藏。
+               表格与独立卡片共用同一套渲染（Settings.js 的 _renderYearBoundaryToCard）。 -->
+          <div id="healthYearSec" style="display:none">
+            <p class="backup-sec-title">跨年一致性校验（仅多年合并账套）</p>
+            <p class="set-hint">下表对比各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。
+              差异 ≥ ¥100,000 的科目可直接点击编码穿透到该科目账。</p>
+            <div class="table-box">
+              <table class="ty-table" id="healthYearTable"></table>
+            </div>
+          </div>
+          <div class="card-note">
+            说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。如发现异常，请穿透到对应科目/凭证核实。
+          </div>
+        </div>
+
+        <div class="card span-2" id="yearBoundaryCard" style="display:none">
+          <div class="card-head">
+            <span>跨年一致性校验报告</span>
+            <button class="modal-x" id="btnYearBoundaryCloseCard">×</button>
+          </div>
+          <div class="table-box">
+            <table class="ty-table" id="yearBoundaryTableInPage"></table>
+          </div>
+          <div class="card-note">
+            说明：本报告对比多年合并账套各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。差异超 1 元的科目标红显示。
+          </div>
+        </div>
+
+        </div>
+<div class="settings-pane" data-pane="basic">
+          <div class="set-group-title">基础设置</div>
         <div class="card" id="cardSysInfo">
           <div class="card-head"><span>基本信息</span></div>
           <div class="set-row">
@@ -1310,79 +1398,9 @@
           </div>
         </div>
 
-        <div class="card" id="cardSecurity">
-          <div class="card-head"><span>安全设置</span></div>
-
-          <div class="set-sec">闲置锁屏（防顺手误点）</div>
-          <div class="set-row">
-            <label><input type="checkbox" id="lockEnabled"> 启用闲置锁屏</label>
-            <span class="lock-timeout"><label>自动锁定超时（分钟）</label><input id="lockTimeout" type="number" min="1" max="180" value="5" class="set-input"></span>
-          </div>
-          <div class="set-row">
-            <button class="btn" id="btnLockNow">立即锁定屏幕（Ctrl/⌘ + L）</button>
-          </div>
-
-          <div class="set-sec">操作密码</div>
-          <p class="set-hint" id="opPwHint">操作密码默认 <code>admin</code>，用于清空回收站等不可逆操作验证与锁屏解锁，建议尽快修改并牢记。</p>
-          <div class="set-row">
-            <label>当前密码</label>
-            <input id="opPwCur" class="set-input" type="password" placeholder="输入当前操作密码">
-          </div>
-          <div class="set-row">
-            <label>新设密码</label>
-            <input id="opPwInput" class="set-input" type="password" placeholder="4 位以上新密码（留空 = 恢复默认密码）">
-          </div>
-          <div class="page-actions"><button class="btn btn-primary" id="btnSaveOpPw">保存</button></div>
         </div>
-
-        <!-- ========== 账套与数据（原「数据与安全」页并入） ========== -->
-        <div class="card" id="cardSysBooks">
-          <div class="card-head"><span>账套管理</span></div>
-          <div class="card-tools-wrap">
-            <div class="book-toolbar">
-              <button class="btn-link" id="btnNewBook">新建账套</button>
-              <!-- 【2026-09-28 三合一 + 语义统一】原「导入账套 / 多年合并导入 / 导入备份」三个按钮合并为此一个：
-                   按所选文件的**种类 + 数量**自动分流（判据见 js/common/import-classify.js）：
-                     1 个 .ais → 新建账套 ； ≥2 个 .ais → 合并为一个连续多年账套 ；
-                     1 个 .json → 作为新账套导入。
-                   【核心不变量】本入口**只做新增，绝不覆盖当前账套** —— 用户看到"导入"二字想的是
-                   "加一本 / 打开别人给的账"，不会预期自己正在用的账被换掉。
-                   "覆盖当前账本"全应用只有一处：「查看备份 → 恢复」（从应用内快照回滚）。 -->
-              <button class="btn-link" id="btnBookImport" title="导入账套（均新增一本，不覆盖当前账套）：金蝶 KIS .ais（选 1 个＝新建账套；按年多选＝合并为一个连续多年账套）、本软件 .json 账套备份（＝作为新账套导入）。要用备份覆盖当前账套，请走「查看备份 → 恢复」">导入账套</button>
-              <!-- 【2026-09-28 删除「查看校验报告」按钮】它只对多年合并账套有内容（其它账套点了只弹 toast，
-                   对绝大多数用户是死按钮），而目标用户的价值已在合并导入成功那一刻自动弹卡片交付；
-                   跨年数据本来也在风险检测里被检（store.js 检测 6）→ 跨年**完整表**现作为
-                   「风险检测」卡片里的一个分区呈现，差异超阈值可直接穿透到科目账。 -->
-              <button class="btn-link" id="btnFinancialHealth" title="一键扫描当前账套的风险点（科目方向异常/大额凭证/期末损益未结转/资产负债表不平衡/跨年跳变等）">风险检测</button>
-              <!-- 【2026-09-28 删除「手动备份」】它与**自动备份**是同一种产物、同一目录、同一个 10 份滚动池
-                   （见 store.js persist 的自动存档与 lib.rs 的 MAX_AUTO_BACKUPS），
-                   唯一增量只是"现在立刻多写一份、挤掉最旧的一份"，而自动备份已在
-                   「每次改动落盘后」「关窗时」「结账/反结账/年结/结转等高风险操作前」都各写一份。
-                   故对用户是纯粹的重复与困惑（按钮名还与「查看备份」相近）。
-                   注意：store.backupNow() 方法**保留**（仍被上述高风险操作调用），删的只是这个 UI 入口。 -->
-              <button class="btn-link" id="btnBkAll" title="把当前所有账套导出为完整副本文件（写到本机导出目录并提示路径）——这是唯一能离开本机的副本：生成后请把它拷到 U 盘 / 网盘；自动备份与账套在同一块硬盘上，硬盘损坏时两者会一起丢失">导出账套</button>
-              <button class="btn-link" id="btnListBackup">查看备份</button>
-              <button class="btn-link" id="btnToggleTrash" title="查看已删除的账套（保留 7 天，可还原）">回收站</button>
-              <!-- 统一导入入口的文件选择器：同时接受 .ais（可多选＝按年合并）与 .json（备份恢复）。
-                   原先三处各有一个隐藏 input（aisFile / bkFile / multiAisFile），现已合并为一个。 -->
-              <input type="file" id="bookImportFile" accept=".json" style="display:none">
-              <!-- 注：曾短暂存在一个「从文件恢复…」的选择器（外部 .json 覆盖当前账套），已按用户要求删除；
-                   覆盖当前账本现只走「查看备份」里每行的「恢复」（应用内快照）。 -->
-
-            </div>
-
-            <div id="backupList" class="backup-list" style="display:none"></div>
-            <div id="trashPanel" class="backup-list" style="display:none"></div>
-          </div>
-          <div class="grid-wrap">
-            <table class="grid std-table" id="bookGrid">
-              <thead><tr><th class="col-fill">账套名称</th><th>启用期间</th><th>凭证数</th><th>状态</th><th>操作</th></tr></thead>
-              <tbody id="bookBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 云同步（WebDAV 手动同步）：只做补齐与覆盖，永不删除；后台不联网 -->
+<div class="settings-pane" data-pane="security">
+          <div class="set-group-title">安全与同步</div>
         <div class="card" id="cardCloudSync">
           <div class="card-head"><span>云同步</span></div>
           <div id="csUnset">
@@ -1409,48 +1427,37 @@
           </div>
         </div>
 
-        <!-- 风险检测结果卡片：位于账套管理和操作日志之间 -->
-        <div class="card" id="healthCheckCard" style="display:none">
-          <div class="card-head">
-            <span>风险检测结果</span>
-            <button class="modal-x" id="btnHealthCheckCloseCard">×</button>
+        <div class="card span-2" id="cardSecurity">
+          <div class="card-head"><span>安全设置（自动锁屏）</span></div>
+
+          <div class="set-row">
+            <label for="lockEnabled">闲置自动锁屏</label>
+            <input type="checkbox" id="lockEnabled" class="set-chk">
           </div>
-          <div id="healthCheckSummaryInPage" class="health-summary"></div>
-          <div class="table-box">
-            <table class="ty-table" id="healthCheckTableInPage"></table>
+          <div class="set-row">
+            <label for="lockTimeout">自动锁屏超时</label>
+            <span class="lock-timeout"><input id="lockTimeout" type="number" min="1" max="180" value="5" class="set-input" size="3"> 分钟</span>
           </div>
-          <!-- 跨年一致性校验分区（2026-09-28 由原独立按钮「查看校验报告」并入）：数据来自
-               meta.yearBoundaries，**只有多年合并账套才有**，故无数据时整段隐藏。
-               表格与独立卡片共用同一套渲染（Settings.js 的 _renderYearBoundaryToCard）。 -->
-          <div id="healthYearSec" style="display:none">
-            <p class="backup-sec-title">跨年一致性校验（仅多年合并账套）</p>
-            <p class="set-hint">下表对比各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。
-              差异 ≥ ¥100,000 的科目可直接点击编码穿透到该科目账。</p>
-            <div class="table-box">
-              <table class="ty-table" id="healthYearTable"></table>
+          <div class="set-row" id="lockNowRow">
+            <label>立即锁定</label>
+            <button class="btn-link" id="btnLockNow">锁定屏幕（Ctrl/⌘ + L）</button>
+          </div>
+
+          <div id="lockPwWrap">
+          <div class="set-sec">锁屏密码</div>
+          <div class="set-row">
+            <label>锁屏密码</label>
+            <div class="set-value">
+              <span id="opPwStatus">未设置</span>
             </div>
           </div>
-          <div class="card-note">
-            说明：本报告基于当前账套的最新期间数据自动扫描，仅提示可能存在的风险点，不构成会计或法律意见。如发现异常，请穿透到对应科目/凭证核实。
           </div>
         </div>
 
-        <!-- 跨年一致性校验报告卡片：位于风险检测结果和操作日志之间 -->
-        <div class="card" id="yearBoundaryCard" style="display:none">
-          <div class="card-head">
-            <span>跨年一致性校验报告</span>
-            <button class="modal-x" id="btnYearBoundaryCloseCard">×</button>
-          </div>
-          <div class="table-box">
-            <table class="ty-table" id="yearBoundaryTableInPage"></table>
-          </div>
-          <div class="card-note">
-            说明：本报告对比多年合并账套各年 .ais 的上年期末 vs 本年期初（按科目），差异源于手动调期初或年结未达账。差异超 1 元的科目标红显示。
-          </div>
         </div>
-
+<div class="settings-pane" data-pane="about">
+          <div class="set-group-title">关于</div>
         <div class="card" id="cardAbout">
-          <div class="card-head"><span>关于</span></div>
           <div class="about-box">
             <div class="about-line">
               <span class="about-label">产品</span>
@@ -1475,8 +1482,7 @@
             <div class="about-copy">© 2026 诗和远方</div>
           </div>
         </div>
-
-      </div>
+        </div></div>
       </section>
 
       <!-- 操作日志（独立页）：当前账套日志（审计明细）+ 跨账套操作日志（全局 changelog） -->

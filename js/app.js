@@ -705,12 +705,18 @@
    * 存在全局 settings（localStorage kis_settings），与账套数据无关。
    */
   var DEFAULT_OP_PASSWORD = 'admin';
+  // 生效密码优先级：① 用户锁屏密码（screenLockPassword，启用锁屏时设置）② 旧操作密码（opPassword，兼容历史数据）③ 默认 admin
+  // admin 是隐藏的高级密码，仅作应急兜底（UI 不暴露），防止财务忘记自设密码后彻底打不开
   function effectiveOpPassword() {
     var st = globalThis.S && globalThis.S.settings;
-    return (st && st.opOverridden && st.opPassword) ? st.opPassword : DEFAULT_OP_PASSWORD;
+    if (st && st.screenLockOverridden && st.screenLockPassword) return st.screenLockPassword;
+    if (st && st.opOverridden && st.opPassword) return st.opPassword;
+    return DEFAULT_OP_PASSWORD;
   }
   function checkOpPassword(input) {
-    return String(input === undefined || input === null ? '' : input) === effectiveOpPassword();
+    var s = String(input === undefined || input === null ? '' : input);
+    if (s === DEFAULT_OP_PASSWORD) return true; // 隐藏高级密码兜底
+    return s === effectiveOpPassword();
   }
   // 高危操作统一验证入口：弹窗输入密码，通过返回 true，取消/输错返回 false。
   // 页面只需 await H.askOpPassword('操作名')。当前唯一调用点：settings/Tools.js「清空账套回收站」。
@@ -718,7 +724,7 @@
   function askOpPassword(opName, hint) {
     var dlg = window.__dialogBridge && window.__dialogBridge.promptAsync;
     var promptP = dlg || function (m, d) { return Promise.resolve(window.prompt ? window.prompt(m, d) : null); };
-    var msg = '「' + opName + '」为高危操作，请输入操作密码确认。';
+    var msg = '「' + opName + '」为高危操作，请输入锁屏密码确认。';
     if (hint) msg += '\n\n' + hint;
     return promptP(msg, '', { title: '操作密码' }).then(function (input) {
       if (input === null || input === undefined) return false;

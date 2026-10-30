@@ -740,50 +740,100 @@ function bindAboutCard() {
   });
 }
 
-/* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
-function bindOpPasswordBtn() {
-  // 操作密码修改：必须先验证「当前操作密码」（未自定义时为默认 admin），验证通过才允许改/恢复默认
-  var bOpPw = $('btnSaveOpPw');
-  if (bOpPw) bOpPw.addEventListener('click', function () {
-    // 1) 验证当前生效密码（H.checkOpPassword 单点实现：默认 admin 或用户自定义值）
-    var cur = ($('opPwCur') && $('opPwCur').value || '');
-    if (!cur) { showToast('请输入当前操作密码', 'error'); return; }
-    if (!(H.checkOpPassword ? H.checkOpPassword(cur) : cur === 'admin')) {
-      showToast('当前操作密码不正确', 'error');
-      if ($('opPwCur')) $('opPwCur').value = '';
-      return;
-    }
-    // 2) 新密码：留空 = 恢复默认 admin
-    var v = ($('opPwInput') && $('opPwInput').value || '').trim();
+
+// 锁屏密码弹窗：启用锁屏瞬间强制设置（新密码 + 确认，覆盖式），取消则不允许启用
+function openOpPwModal(cb) {
+  if (typeof document === 'undefined') return;
+  var overlay = document.createElement('div');
+  overlay.className = 'modal';
+  overlay.style.zIndex = '2147483647';
+  overlay.innerHTML =
+    '<div class="modal-box">' +
+      '<div class="modal-title">设置锁屏密码' +
+        '<button class="modal-x" data-modal-close>×</button>' +
+      '</div>' +
+      '<div class="modal-body">' +
+        '<div class="form-row"><label>新密码</label><input id="opPwInput" class="inp" type="password" placeholder="4 位以上新密码"></div>' +
+        '<div class="form-row"><label>确认密码</label><input id="opPwConfirm" class="inp" type="password" placeholder="再次输入新密码"></div>' +
+        '<p class="set-hint">锁屏密码用于解锁屏幕与高危操作确认，请牢记，两次输入需一致。</p>' +
+      '</div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn ty-dlg-cancel">取消</button>' +
+        '<button class="btn btn-primary" id="opPwOk">确定</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.classList.add('show');
+  var newEl = overlay.querySelector('#opPwInput');
+  var confirmEl = overlay.querySelector('#opPwConfirm');
+  if (newEl) newEl.focus();
+  var srcEl = document.activeElement;
+  var closed = false;
+  function close(result) {
+    if (closed) return; closed = true;
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    if (srcEl && document.contains(srcEl) && typeof srcEl.focus === 'function') { try { srcEl.focus(); } catch (e) {} }
+    if (typeof cb === 'function') cb(result);
+  }
+  overlay.querySelectorAll('[data-modal-close], .ty-dlg-cancel').forEach(function (x) { x.addEventListener('click', function () { close(false); }); });
+  overlay.querySelector('#opPwOk').addEventListener('click', function () {
+    var v = (newEl && newEl.value || '').trim();
     if (v && v.length < 4) return showToast('新密码至少 4 位', 'error');
+    if (!v) return showToast('请设置锁屏密码', 'error');
+    // 两次输入核对：须与确认密码一致
+    var confirm = (confirmEl && confirmEl.value || '').trim();
+    if (v !== confirm) return showToast('两次输入的密码不一致', 'error');
     var stg = S.settings || {};
-    if (v) { stg.opPassword = v; stg.opOverridden = true; }
-    else { stg.opPassword = ''; stg.opOverridden = false; }
+    stg.screenLockPassword = v; stg.screenLockOverridden = true;
     if (typeof S.saveSettings === 'function') S.saveSettings();
     else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
-    if ($('opPwCur')) $('opPwCur').value = '';
-    if ($('opPwInput')) $('opPwInput').value = '';
     refreshParam();
-    // 存过密码后更新 hint 显隐
-    var opHint = $('opPwHint');
-    if (opHint) opHint.style.display = (stg.opOverridden) ? 'none' : '';
-    showToast('操作密码已保存' + (v ? '' : '（已恢复默认密码）'), 'success');
+    updateLockPwStatus();
+    close(true);
+    showToast('锁屏密码已保存', 'success');
   });
 }
 
-/* 锁屏设置：启用开关 + 超时分钟 + 立即锁定按钮；复用操作密码解锁，与财务引擎解耦 */
+// 锁屏密码状态显示：已设置 / 未设置（用于「修改密码」按钮旁 + 启用锁屏时刷新）
+function updateLockPwStatus() {
+  var el = $('opPwStatus');
+  if (!el) return;
+  var st = S.settings || {};
+  el.textContent = (st.screenLockOverridden && st.screenLockPassword) ? '已设置' : '未设置';
+}
+
+/* 锁屏设置：启用开关 + 超时分钟 + 立即锁定按钮 + 锁屏密码；复用 H.checkOpPassword 解锁 */
 function bindLockSettings() {
   var en = $('lockEnabled'), to = $('lockTimeout'), now = $('btnLockNow');
+  var lockNowRow = $('lockNowRow'), lockPwWrap = $('lockPwWrap');
   if (!en) return;
   var stg = S.settings || {};
   en.checked = !!stg.screenLockEnabled;
   to.value = parseInt(stg.screenLockTimeout, 10) > 0 ? stg.screenLockTimeout : '5';
-  to.disabled = !en.checked;
+  // 超时始终可编辑：锁屏关闭时也要能预设时长（用户要求锁屏关时仍可设置超时）
   function persist() {
     if (typeof S.saveSettings === 'function') S.saveSettings();
     else { try { localStorage.setItem('kis_settings', JSON.stringify(stg)); } catch (e) {} }
   }
-  en.addEventListener('change', function () { stg.screenLockEnabled = en.checked; to.disabled = !en.checked; persist(); });
+  // 锁屏关闭时隐藏「立即锁定」与「锁屏密码」区；开启时显示
+  function syncLockUi() {
+    var on = en.checked;
+    if (lockNowRow) lockNowRow.style.display = on ? '' : 'none';
+    if (lockPwWrap) lockPwWrap.style.display = on ? '' : 'none';
+  }
+  en.addEventListener('change', function () {
+    if (en.checked) {
+      // 启用瞬间始终强制设置（覆盖式）：当前操作人设自己的密码，
+      // 避免 A 设过、B 启用后不知密码且无法改的接手漏洞；取消则不允许启用
+      openOpPwModal(function (ok) {
+        if (ok) { stg.screenLockEnabled = true; persist(); }
+        else { en.checked = false; }
+        syncLockUi(); updateLockPwStatus();
+      });
+    } else {
+      stg.screenLockEnabled = false; persist(); syncLockUi();
+    }
+  });
   to.addEventListener('change', function () {
     var v = parseInt(to.value, 10); if (!(v > 0)) v = 5; to.value = v;
     stg.screenLockTimeout = String(v); persist();
@@ -791,6 +841,8 @@ function bindLockSettings() {
   if (now) now.addEventListener('click', function () {
     if (globalThis.__LOCK__) globalThis.__LOCK__.manualLock();
   });
+  syncLockUi();
+  updateLockPwStatus();
 }
 
 
@@ -819,9 +871,8 @@ function refreshParam() {
   }
   // 注：货币资金赤字检查现由【结账检查项】「货币资金赤字」承担（store.js 的 runSelfTest）。
   //     原凭证页「偏好设置」弹窗（含该开关）已于 2026-09-21 整体移除，此处不再有相关参数。
-  // 默认密码 admin 提示：改过就不再提示
-  var opHint = $('opPwHint');
-  if (opHint) opHint.style.display = (S.state.op && S.state.op.opOverridden) ? 'none' : '';
+  // 锁屏密码状态（弹窗式修改）：已设 / 未设
+  updateLockPwStatus();
   // 事件绑定（一次性）——参数改了自动存，不需要保存按钮
   if (!globalThis.__paramBound) {
     // 系统参数相关开关已迁移至各功能页面，此处不再有独立参数需绑定
@@ -829,12 +880,13 @@ function refreshParam() {
     // 启用期间：只读展示 + 受控「修改」弹窗。空账套直接改；已有凭证/期初/结账时保存前确认提示
     bindEditPeriodBtn();
     bindAboutCard();
-    bindOpPasswordBtn();
     bindLockSettings();
     // 【2026-10-04 删除】此处原有第二处 `globalThis.__paramBound = true;` —— 与 if 开头那处重复
     //   （此时必然已为 true），属死存储，删掉不留"同一标记写两遍"的疑点。
   }
 }
+
+
 
 // 系统设置聚合页：系统参数 + 凭证字 + 卡片合一；凭证模板统一在「期末结账」页管理
 function refreshSystemSettings() {
