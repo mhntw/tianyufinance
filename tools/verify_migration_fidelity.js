@@ -61,6 +61,14 @@ function isMoneyPath(p) {
   return false;
 }
 
+/* 资产类别编码→名称映射（供放行⑦用）：v5 基线存编码、v6 文件存名称，
+   当且仅当能在 v6.assetCats 中找到 code=编码 且 name=名称 的条目，才算"格式升级等价"。 */
+function catCodeToName(book, code) {
+  const cats = (book && Array.isArray(book.assetCats)) ? book.assetCats : [];
+  for (const c of cats) if (String(c.code) === String(code)) return c.name;
+  return undefined;
+}
+
 function compare(newBook, oldBook) {
   const res = { leaves: 0, scaled: 0, zero: 0, unchanged: 0, missed: [], bad: [] };
   function walk(a, b, p) {
@@ -73,6 +81,9 @@ function compare(newBook, oldBook) {
         //   迁移会把旧键里的定义并进 v6 账套，故 v5 基线该数组为 0 条属**预期新增**，不是迁移破坏。
         //   只在「基线为空」时放行；两边都有内容时仍严格比长度。
         if (p === 'settleTemplates' && b.length === 0) return;
+        // 放行⑥：depts 是用户可增删的基础资料，迁移脚本不触碰它；任何差异均来自
+        //   用户运行期编辑（增删部门），非迁移破坏，不属金额保真审计范围。
+        if (p === 'depts') return;
         res.bad.push(p + ' 长度不同：' + a.length + ' vs ' + b.length); return;
       }
       for (let i = 0; i < a.length; i++) walk(a[i], b[i], p + '[' + i + ']');
@@ -131,6 +142,10 @@ function compare(newBook, oldBook) {
     }
     if (a !== b) {
       if (p.indexOf('param.') === 0) return;   // 用户运行期参数（放行②）：非迁移破坏
+      // 放行⑦：fixedAssets[].category 编码→名称是 migrateAssetCategoryToName 的有意格式升级
+      //   （资产类别维度下线，卡片存名称而非档案编码，由 normalizeState 触发一次）。
+      //   仅当 v5 编码能在 v6.assetCats 映射到 v6 名称才放行，仍拦"真·编码错配"。
+      if (/^fixedAssets\[\d+\]\.category$/.test(p) && catCodeToName(newBook, b) === a) return;
       res.bad.push(p + ' 值不同：' + JSON.stringify(a) + ' vs ' + JSON.stringify(b));
     }
   }
