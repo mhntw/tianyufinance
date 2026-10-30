@@ -5934,7 +5934,7 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint {
 #page-system-settings .set-group-title { padding-left: var(--sp-4); }
 #page-system-settings .set-row > label { width: 104px; flex: none; }
 .set-group-title {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--ty-text);
   margin: var(--sp-6) 0 var(--sp-3);
