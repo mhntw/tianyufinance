@@ -29,6 +29,30 @@ global.document = { body, activeElement: null, createElement: t => new El(t), ge
 global.window = { innerHeight: 800, scrollX: 0, scrollY: 0, addEventListener: () => {} };
 global.$ = () => null;
 global.__TY_HELPERS__ = { esc: s => String(s == null ? '' : s) };
+/* app.js 提供的通用键盘/浮层原语（真实环境由 app.js 定义，本文件在 ESM 之前加载）。
+   这里按同一契约实现最小版：bindOutsideClose 在 document 上挂监听并按
+   isOpen / el / ignore（选择器 | 元素 | 判定函数）判定；pushEsc 只入栈，本测试不触发 Esc。 */
+global.TYKeyboard = {
+  focusables: () => [],
+  bindOutsideClose(opt) {
+    global.document.addEventListener(opt.event || 'click', function (e) {
+      if (!opt.isOpen || !opt.isOpen()) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const el = (typeof opt.el === 'function') ? opt.el() : opt.el;
+      if (!el) return;
+      if (el.contains(t)) return;
+      for (const ig of (opt.ignore || [])) {
+        if (typeof ig === 'string') { if (t.closest(ig)) return; }
+        else if (typeof ig === 'function') { if (ig(t)) return; }
+        else if (ig && ig.contains && ig.contains(t)) return;
+      }
+      opt.close();
+    });
+  },
+  pushEsc() { return {}; },
+  removeEsc() {}
+};
 const fireDocument = (t, target) => docHandlers.filter(h => h[0] === t).forEach(h => h[1]({ type: t, target, preventDefault() {}, stopPropagation() {} }));
 const popOf = () => body.children.filter(c => c._cls && c._cls.has('subj-range-pop'))[0] || null;
 const popCount = () => body.children.filter(c => c._cls && c._cls.has('subj-range-pop')).length;

@@ -2,6 +2,7 @@
 import { H, $, S, money, yuan, absFmt, goPage, currentPeriod, esc, escAttr, showToast, nowTimeStr, round2,
   monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter, U } from './_shared.js';
 import { html, raw } from '../../common/html.js?v=dev';
+import { renderPager } from '../../common/pager.js?v=dev';
 const edState = {
   page: 1,
   pageSize: 500,
@@ -49,15 +50,7 @@ function bindED() {
     refreshExpenseDetail();
   });
 
-  $('edPages') && $('edPages').addEventListener('click', e => {
-    const li = e.target.closest('li');
-    if (!li || li.classList.contains('disabled') || li.classList.contains('active')) return;
-    const page = parseInt(li.dataset.page, 10);
-    if (!isNaN(page)) {
-      edState.page = page;
-      refreshExpenseDetail();
-    }
-  });
+  // 页码点击由 common/pager.js 的容器委托统一处理（原先这里单独绑一份 li 解析）
 
   // 树形展开/折叠（事件委托）：操作/分析列已删除，仅名称列内 arrow 触发
   $('edBody') && $('edBody').addEventListener('click', e => {
@@ -287,7 +280,7 @@ function buildEDSubjectPop() {
     if (e.target.closest('.ed-subj-tag-close')) return;
     pop.hidden = !pop.hidden;
   });
-  // 键盘：Enter/Space/↓ 开合，Esc 关闭
+  // 键盘：Enter/Space/↓ 开合（Esc 由全局 Esc 栈统一，见下方 pushEsc）
   rebind(trigger, 'keydown', 'triggerKey', e => {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -296,13 +289,10 @@ function buildEDSubjectPop() {
         const first = pop.querySelector('.ed-subj-toggle[tabindex="0"], input[type=checkbox][data-subj]');
         if (first) first.focus();
       } else { pop.hidden = true; }
-    } else if (e.key === 'Escape' && !pop.hidden) {
-      e.preventDefault(); pop.hidden = true;
     }
   });
-  // 浮层键盘：Enter/Space 触发聚焦的展开箭头，Esc 关闭并回到触发框
+  // 浮层键盘：Enter/Space 触发聚焦的展开箭头（Esc 由全局 Esc 栈统一）
   rebind(pop, 'keydown', 'popKey', e => {
-    if (e.key === 'Escape') { e.preventDefault(); pop.hidden = true; trigger.focus(); refreshExpenseDetail(); return; }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const toggle = e.target.closest('.ed-subj-toggle');
     if (toggle) { e.preventDefault(); toggle.click(); }
@@ -313,13 +303,17 @@ function buildEDSubjectPop() {
     globalThis.TYKeyboard.pushEsc(function () { return !pop.hidden; },
       function () { pop.hidden = true; trigger.focus(); refreshExpenseDetail(); });
   }
-  // 点击页面其它处关闭（关闭时刷新报表）
-  const closeHandler = e => {
-    if (pop.hidden) return;
-    const wrap = $('edSubjectWrap');
-    if (!wrap.contains(e.target)) { pop.hidden = true; refreshExpenseDetail(); }
-  };
-  rebind(document, 'click', 'docClick', closeHandler);
+  // 点击页面其它处关闭（关闭时刷新报表）：统一走 TYKeyboard.bindOutsideClose。
+  // key 保证幂等 —— 本函数每次渲染都会执行，不能每次都在 document 上再挂一个监听。
+  if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+    globalThis.TYKeyboard.bindOutsideClose({
+      key: 'expenseDetailSubjectPop',
+      el: pop,
+      isOpen: function () { return !pop.hidden; },
+      ignore: [$('edSubjectWrap')],
+      close: function () { pop.hidden = true; refreshExpenseDetail(); }
+    });
+  }
 }
 
 function edSelectedSubjectCodes() {
@@ -560,7 +554,8 @@ function renderEDGrid(months, roots, totals, opts) {
       const arrow = (globalThis.S && globalThis.S.subjectArrowHTML)
         ? globalThis.S.subjectArrowHTML(n.code, !!hasChildren, expanded, 'ed-tree-arrow')
         : (hasChildren
-            ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${escAttr(n.code)}">${expanded ? '▼' : '▶'}</span>`
+            // 字符由 CSS 按 .expanded 状态给出（三角字符唯一来源），这里只输出状态
+        ? `<span class="ed-tree-arrow ${expanded ? 'expanded' : ''}" data-c="${escAttr(n.code)}"></span>`
             : '<span class="ed-tree-spacer"></span>');
       const name = n.name;
       // 用节点自带的 level（store 已预计算），统一走 subjectIndentHTML
@@ -616,13 +611,12 @@ function renderEDPagination(totalRoots) {
   const totalPages = U.totalPages(totalRoots, edState.pageSize);
   if (edState.page > totalPages) edState.page = totalPages;
 
-  let html = '';
-  html += `<li class="${edState.page === 1 ? 'disabled' : ''}" data-page="${edState.page - 1}" title="上一页"><button><i class="tyicon tyicon-arrow-left"></i></button></li>`;
-  for (let i = 1; i <= totalPages; i++) {
-    html += `<li class="${i === edState.page ? 'active' : ''}" data-page="${i}" title="${i}"><button>${i}</button></li>`;
-  }
-  html += `<li class="${edState.page === totalPages ? 'disabled' : ''}" data-page="${edState.page + 1}" title="下一页"><button><i class="tyicon tyicon-arrow-right"></i></button></li>`;
-  pagesEl.innerHTML = html;
+  // 统一分页器（common/pager.js）：页码窗口 + … 折叠，不再把全部页码铺成一行
+  renderPager(pagesEl, {
+    page: edState.page,
+    total: totalPages,
+    onGo(p) { edState.page = p; refreshExpenseDetail(); }
+  });
 }
 
 // 导出（xlsx，与全账套报表统一）：直接基于 refreshExpenseDetail 缓存的全量数据构造，不解析 DOM。

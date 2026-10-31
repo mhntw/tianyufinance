@@ -224,7 +224,69 @@ if (modalCount === 0) modalIssues.push('未解析到任何 .modal 块（正则�
 modalIssues.forEach(s => console.log('  ✗ ' + s));
 console.log(`  弹窗 ${modalCount} 个，结构问题 ${modalIssues.length} 个`);
 
-// ========== 5. 汇总 ==========
+// ========== 5. 动态浮层（JS 创建的 .modal）结构一致性（2026-10-31 起作为门禁） ==========
+/* 背景：全站浮层此前有 4 套显隐写法、3 套 Esc、4 套焦点还原、6 种遮罩点击判定、3 种 × 绑定，
+   问题分散且互不影响，很容易"改了一处忘了另一处"。现在统一到 app.js 的 TYModal：
+     openModal/closeModal(el|id) + 全局 Esc（按打开顺序取最上层）+ Tab 陷阱
+     + data-backdrop 遮罩委托 + data-modal-close 关闭委托 + el.__onClose 业务收尾。
+   静态弹窗由 §4 守护；动态创建的（确认框 / 导出结果 / 导入账套 / 锁屏密码 / 命令面板）
+   在 index.html 里看不到，故这里按文件断言：
+     ① 必须有标题栏 ×（modal-x）——全站"怎么关"一致
+     ② 必须走统一入口（TYModal / openModal），不得只 classList.add('show') 了事
+     ③ 禁止内联 zIndex —— 层级用 .modal-top / .modal-cmd 类（禁止再出现 2147483647 字面量）
+   新增动态浮层请照此办理，否则这里会红。
+   app.js 是统一入口与静态结构定义处，不在本段扫描范围（其行为由 §4 与全局键盘代码约束）。 */
+console.log('\n=== 5. 动态浮层（JS 创建 .modal） ===');
+const dynIssues = [];
+let dynCount = 0;
+for (const f of ALL_JS) {
+  const rel = path.relative(ROOT, f);
+  if (rel === path.join('js', 'app.js')) continue;
+  const src = fs.readFileSync(f, 'utf8');
+  // 判定：该文件确实创建一个 class 含 modal 的节点
+  if (!/(className\s*=\s*['"]modal|class="modal)/.test(src)) continue;
+  dynCount++;
+  if (!/modal-x/.test(src)) dynIssues.push(rel + '：动态模态缺标题栏 ×（modal-x）');
+  if (!/TYModal|openModal/.test(src)) dynIssues.push(rel + '：未走统一入口（TYModal / openModal）');
+  if (/\.style\.zIndex\s*=\s*['"]\d/.test(src)) dynIssues.push(rel + '：仍有内联 zIndex（应改用 .modal-top / .modal-cmd 类）');
+}
+if (dynCount === 0) dynIssues.push('未找到任何动态模态实现文件（正则失效？）');
+dynIssues.forEach(s => console.log('  ✗ ' + s));
+console.log(`  动态浮层实现 ${dynCount} 个文件，结构问题 ${dynIssues.length} 个`);
+
+// ========== 6. 通用元素单一出口（空状态 / 内联事件） ==========
+/* 同类元素各写一套最典型的两处，现已收敛，这里守住不许回流：
+     · 空状态曾有 7 个类（empty-hint / stm-empty / search-empty / vch-tpl-empty-my /
+       scc-empty / book-empty / cmd-empty），样式分散在文件 4 个段落，其中两个连样式都没有。
+       现在只有 .empty-hint（紧凑场合加 .empty-hint-sm）。
+     · 内联 onclick/onchange 会绕过全局点击委托与键盘可达（tabindex + data-kb-activate），
+       历史上已清零，这里继续守住。 */
+console.log('\n=== 6. 通用元素单一出口（空状态 / 内联事件） ===');
+const elemIssues = [];
+const cssSrc = fs.readFileSync(path.join(ROOT, 'css', 'style.css'), 'utf8');
+for (const line of cssSrc.split('\n')) {
+  const m = /^\.([a-z0-9-]*empty[a-z0-9-]*)/.exec(line.trim());
+  if (m && !/^empty-hint/.test(m[1])) {
+    elemIssues.push('css/style.css：空状态应统一用 .empty-hint，发现 .' + m[1]);
+  }
+}
+for (const f of [...ALL_JS, INDEX_HTML]) {
+  const rel = path.relative(ROOT, f);
+  const src = fs.readFileSync(f, 'utf8');
+  for (const c of (src.match(/class="[^"]*"/g) || [])) {
+    const m = /(?:^|[\s"])([a-z0-9-]*-empty[a-z0-9-]*)/.exec(c);
+    if (m && !/^empty-hint/.test(m[1])) {
+      elemIssues.push(rel + '：空状态应统一用 .empty-hint，发现 ' + m[1]);
+    }
+  }
+  if (/\son(click|change|input|keydown|mousedown|mouseup)="/.test(src)) {
+    elemIssues.push(rel + '：仍有内联事件属性（会绕过事件委托与键盘可达）');
+  }
+}
+elemIssues.forEach(s => console.log('  ✗ ' + s));
+console.log(`  通用元素问题 ${elemIssues.length} 个`);
+
+// ========== 7. 汇总 ==========
 // 【修正 2026-09-21】原写 `domRefs.length` —— 把「有 null guard 的安全项」也算进失败，
 //   于是本脚本永远退出码 1。后果是它一直没能进 run-all 回归（收录即永久红灯），
 //   反而掩盖了这个判定错误。现按 hasGuard 区分：只有无保护的才是真断裂。
@@ -242,13 +304,17 @@ if (deadScans.length) {
   deadScans.forEach(s => console.log('    · ' + s));
   process.exit(1);
 }
-const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length + modalIssues.length;
+const totalFails = domUnsafe.length + sCalls.length + missingRegistered.length +
+  modalIssues.length + dynIssues.length + elemIssues.length;
 console.log('\n=== 汇总 ===');
 console.log(`  扫描量:         $("id") ${dollarScanned} 处 / store 方法 ${storeMethods.size} 个 / renderVia 路由 ${needed.size} 个`);
 console.log(`  DOM 引用断裂:   ${domUnsafe.length}  (无 null guard，会炸 TypeError)`);
 console.log(`    └ 安全项:     ${domSafe.length}  (有 null guard，不计失败)`);
 console.log(`  Store 方法断裂: ${sCalls.length}`);
 console.log(`  Render 注册断链: ${missingRegistered.length}`);
+console.log(`  静态弹窗结构:   ${modalIssues.length}`);
+console.log(`  动态浮层结构:   ${dynIssues.length}  (${dynCount} 个实现文件)`);
+console.log(`  通用元素单一出口: ${elemIssues.length}`);
 console.log(`  -----------------------------------`);
 console.log(`  总计: ${totalFails} ${totalFails === 0 ? '✅ 全部通过' : '❌ 需要修复'}`);
 process.exit(totalFails === 0 ? 0 : 1);

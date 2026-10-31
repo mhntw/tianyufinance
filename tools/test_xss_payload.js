@@ -135,6 +135,13 @@ function loadPage(rel, hookSrc) {
   (0, eval)(src + '\n;globalThis.__XP_IMPORTS__.html = html; globalThis.__XP_IMPORTS__.raw = raw;');
 })();
 
+/* 分页器（common/pager.js）同样用真实源码 —— 页面模块 import 它，测试里不能缺，
+   也不该在测试里另写一份页码逻辑（那是自己验自己）。 */
+(function () {
+  const src = stripEsm(fs.readFileSync(path.join(ROOT, 'js', 'common', 'pager.js'), 'utf8'));
+  (0, eval)(src + '\n;globalThis.__XP_IMPORTS__.renderPager = renderPager;');
+})();
+
 /* ---------- 恶意 payload：每种都试两种形态 ---------- */
 const P_TAG = '<script>window.__XSS__=1</script>';
 const P_IMG = '<img src=x onerror="window.__XSS__=1">';

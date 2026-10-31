@@ -32,7 +32,8 @@ const WRITABLE = {
   'kis_bk_remind': '上次备份提醒日期（本机）',
   'kis_ui_scale': '界面缩放比例（本机）',
   'quick_menu_keys': '快捷菜单配置（本机）',
-  'tyNavCollapsed': '侧边导航折叠状态（本机）',
+  /* 【2026-10-31 删除】'tyNavCollapsed'：侧边导航折叠状态。侧栏已整体移除，js/ 下已无任何
+     getItem/setItem 主体，白名单里留着等于给一个不存在的写入方发许可证。 */
   'cloud_sync_last': '上次云同步时间/目录/条数（本机路径）',
   'ty_update_check': '更新检查缓存（本机）',
   'ty_update_notified': '更新提示已读标记（本机）'

@@ -8,6 +8,7 @@ import { H, $, money, esc, showToast, fmtDate, currentPeriod, S, U, num,
   ACCOUNT_CLASSES, exportTable } from './_shared.js';
 // 自动转义标签模板（js/common/html.js）：本页含用户可编辑文本的行已迁移，插值默认转义。
 import { html, raw } from '../../common/html.js?v=dev';
+import { renderPager } from '../../common/pager.js?v=dev';
 // 导入账套的分流判据（纯函数，另见 js/common/import-classify.js 的说明）
 import { importPlanOf, importErrText, safeIdOf, KD_CONVERT_URL } from '../../common/import-classify.js?v=dev';
 // 部门档案卡片（2026-10-27 从工资页迁入本页；模块自带事件绑定与渲染）
@@ -77,7 +78,7 @@ const refreshAll = H.refreshAll;
       if (isTitle) tr.className = 'cf-title-row';
       var ytdCell = isTitle
         ? html`<td class="num"></td>`
-        : html`<td class="num"><input class="cf-ytd input-sm" data-id="${it.id}" value="${U.yuan(o.ytd || 0)}"></td>`;   // 回填「元」输入框：store 内部为定点整数
+        : html`<td class="num"><input class="inp inp-sm cf-ytd" data-id="${it.id}" value="${U.yuan(o.ytd || 0)}"></td>`;   // 回填「元」输入框：store 内部为定点整数
       tr.innerHTML = html`<td>${it.name}</td><td class="mono ta-c">${it.rowNum || ''}</td>${ytdCell}<td></td>`;
       tb.appendChild(tr);
     });
@@ -280,9 +281,12 @@ const refreshAll = H.refreshAll;
       });
     }
     $('logCount').textContent = '共 ' + total + ' 条';
-    $('logPage').textContent = logPageState.page + ' / ' + pages;
-    $('logPrev').disabled = logPageState.page <= 1;
-    $('logNext').disabled = logPageState.page >= pages;
+    // 分页统一走 common/pager.js（替代原「上一页 n / m 下一页」文字按钮）
+    renderPager($('logPages'), {
+      page: logPageState.page,
+      total: pages,
+      onGo: function (p) { logPageState.page = p; refreshLogs(); }
+    });
   }
 
   $('btnLogQuery').addEventListener('click', function () { logPageState.page = 1; refreshLogs(); });
@@ -290,11 +294,7 @@ const refreshAll = H.refreshAll;
     $('logUser').value = ''; $('logType').value = '';
     logPageState.page = 1; refreshLogs();
   });
-  $('logPrev').addEventListener('click', function () { if (logPageState.page > 1) { logPageState.page--; refreshLogs(); } });
-  $('logNext').addEventListener('click', function () {
-    var pages = U.totalPages(logPageState.filtered.length, logPageState.size);   // 分页算术单点
-    if (logPageState.page < pages) { logPageState.page++; refreshLogs(); }
-  });
+  // 上一页/下一页由 common/pager.js 的容器委托统一处理，不再单独绑 logPrev/logNext
   $('logPageSize').addEventListener('change', function () { logPageState.page = 1; refreshLogs(); });
 
   /* ============================================================
@@ -625,11 +625,12 @@ const refreshAll = H.refreshAll;
   function openImportGateDialog() {
     if (typeof document === 'undefined') return;
     var overlay = document.createElement('div');
-    overlay.className = 'modal';
-    overlay.style.zIndex = '2147483647';
+    overlay.className = 'modal modal-top';       // 层级用类，不再内联 zIndex
+    overlay.setAttribute('data-backdrop', 'close');
     overlay.innerHTML =
       '<div class="modal-box">' +
-        '<div class="modal-title">导入账套</div>' +
+        '<div class="modal-title">导入账套' +
+          '<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button></div>' +
         '<div class="modal-body" style="line-height:1.75;word-break:break-word;">' +
           '<div class="ig-body">' +
             '<div class="ig-opt">' +
@@ -646,13 +647,11 @@ const refreshAll = H.refreshAll;
         '<div class="modal-actions"><button class="btn ty-dlg-cancel">关闭</button></div>' +
       '</div>';
     document.body.appendChild(overlay);
-    overlay.classList.add('show');
-    var srcEl = document.activeElement;
-    var closed = false;
+    // 关闭收尾只留"移除 DOM"；显示/焦点还原/Esc/遮罩/× 全部由 TYModal 统一处理
+    overlay.__onClose = function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
     function close() {
-      if (closed) return; closed = true;
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      if (srcEl && document.contains(srcEl) && typeof srcEl.focus === 'function') { try { srcEl.focus(); } catch (e) {} }
+      if (globalThis.TYModal) globalThis.TYModal.close(overlay);
+      else overlay.classList.remove('show');
     }
     overlay.querySelector('#igJsonBtn').onclick = function () { close(); var f = $('bookImportFile'); if (f) f.click(); };
     overlay.querySelector('#igConvertLink').onclick = function () {
@@ -660,11 +659,8 @@ const refreshAll = H.refreshAll;
       openerFn(KD_CONVERT_URL);
     };
     overlay.querySelector('.ty-dlg-cancel').onclick = close;
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', function onKey(e) {
-      var k = e.key || '', code = e.keyCode || e.which || 0;
-      if (k === 'Escape' || k === 'Esc' || code === 27) { e.preventDefault(); close(); document.removeEventListener('keydown', onKey); }
-    });
+    if (globalThis.TYModal) globalThis.TYModal.open(overlay);
+    else overlay.classList.add('show');
   }
 
 /* 由 refreshParam 抽出（2026-10-04 纯搬迁）：块体逐字未改，仅整体去 2 格缩进（原在 if 内）。 */
@@ -745,12 +741,12 @@ function bindAboutCard() {
 function openOpPwModal(cb) {
   if (typeof document === 'undefined') return;
   var overlay = document.createElement('div');
-  overlay.className = 'modal';
-  overlay.style.zIndex = '2147483647';
+  overlay.className = 'modal modal-top';       // 层级用类，不再内联 zIndex
+  overlay.setAttribute('data-backdrop', 'close');
   overlay.innerHTML =
     '<div class="modal-box">' +
       '<div class="modal-title">设置锁屏密码' +
-        '<button class="modal-x" data-modal-close>×</button>' +
+        '<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button>' +
       '</div>' +
       '<div class="modal-body">' +
         '<div class="form-row"><label>新密码</label><input id="opPwInput" class="inp" type="password" placeholder="4 位以上新密码"></div>' +
@@ -763,19 +759,21 @@ function openOpPwModal(cb) {
       '</div>' +
     '</div>';
   document.body.appendChild(overlay);
-  overlay.classList.add('show');
   var newEl = overlay.querySelector('#opPwInput');
   var confirmEl = overlay.querySelector('#opPwConfirm');
-  if (newEl) newEl.focus();
-  var srcEl = document.activeElement;
-  var closed = false;
-  function close(result) {
-    if (closed) return; closed = true;
+  var _result = false;
+  // 关闭收尾：移除 DOM + 回调；显示/焦点还原/Esc/遮罩/× 统一由 TYModal 处理
+  overlay.__onClose = function () {
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    if (srcEl && document.contains(srcEl) && typeof srcEl.focus === 'function') { try { srcEl.focus(); } catch (e) {} }
-    if (typeof cb === 'function') cb(result);
+    if (typeof cb === 'function') cb(_result);
+  };
+  function close(result) {
+    _result = result;
+    if (globalThis.TYModal) globalThis.TYModal.close(overlay);
+    else { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); if (typeof cb === 'function') cb(result); }
   }
-  overlay.querySelectorAll('[data-modal-close], .ty-dlg-cancel').forEach(function (x) { x.addEventListener('click', function () { close(false); }); });
+  // × 走全局 data-modal-close 委托，这里只绑「取消」
+  overlay.querySelector('.ty-dlg-cancel').addEventListener('click', function () { close(false); });
   overlay.querySelector('#opPwOk').addEventListener('click', function () {
     var v = (newEl && newEl.value || '').trim();
     if (v && v.length < 4) return showToast('新密码至少 4 位', 'error');
@@ -792,6 +790,9 @@ function openOpPwModal(cb) {
     close(true);
     showToast('锁屏密码已保存', 'success');
   });
+  if (globalThis.TYModal) globalThis.TYModal.open(overlay);
+  else overlay.classList.add('show');
+  if (newEl) newEl.focus();
 }
 
 // 锁屏密码状态显示：已设置 / 未设置（用于「修改密码」按钮旁 + 启用锁屏时刷新）

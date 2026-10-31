@@ -15,12 +15,11 @@
 //   showDialog({ title, message, input }) → 通用实现（input 省略即为确认框）
 //   renderDialogBody(text)                → 正文 HTML（分段 / 缩进 / 列表）
 
-// 未关闭浮层的栈（关闭时用于回落），以及"当前响应键盘的那一个"。
-// 刻意用单独的 _activeClose，而不是每次去比较"栈顶是不是我"：若历史上某个弹窗异常退出、
-// 没从栈里摘干净，栈顶判断会**永久失效** —— 表现为回车/Esc 全部静默无反应（实测反馈）。
-// 而新弹窗一打开就接管 _activeClose，不受任何陈旧残留影响，天然自愈。
-var _dlgStack = [];
-var _activeClose = null;
+// 【2026-10-31 收敛】原来自建了 _dlgStack + _activeClose 第二套"只关最上层"机制，
+// 与 app.js 的 TYModal/全局 Esc 栈并行。现在全部交给统一入口：
+//   · Esc / 遮罩 / × → 全局 closeModal → overlay.__onClose → 本文件的 finish()
+//   · 回车 = 确定 → 本文件只保留这一条（全局没有 Enter 语义）
+// 因此不再需要独立栈。
 
 // 正文渲染：把各调用点现有的纯文本文案转成有版面层次 HTML（**不改任何调用点的文案写法**）。
 //   ① 空行断块；连续普通行合成一段（段内 <br> 保持原有行距）
@@ -77,16 +76,16 @@ function showDialog(opts) {
     }
     var safeTitle = esc(opts.title || (isInput ? '输入' : '确认'));
     var overlay = document.createElement('div');
-    overlay.className = 'modal';            // 复用 .modal / .modal-box / .modal-actions
-    overlay.style.zIndex = '2147483647';    // 必须盖住任何已打开的业务模态
+    overlay.className = 'modal modal-top';         // 层级走 .modal-top 类，不再内联 zIndex
+    overlay.setAttribute('data-backdrop', 'close'); // 点遮罩 = 取消（全局委托统一处理）
     overlay.innerHTML =   /* escape-ok: safeTitle 走 esc()，正文走 renderDialogBody()（内部 esc1），输入值 esc(..., true) */
-      // 宽度不再内联写死 460px（2026-10-27）：交给 .modal-box 的常规档 400px，
-      // 全站弹窗只有 5 档宽度，确认框属于常规档；长文案交给下面 modal-body 的折行。
+      // 宽度交给 .modal-box 的常规档 400px（全站 5 档宽度之一），长文案交给 .modal-body 折行。
       '<div class="modal-box">' +
-        '<div class="modal-title">' + safeTitle + '</div>' +
+        // 标题栏必须带 ×（全站统一）：data-modal-close 由全局委托接管 → closeModal → __onClose
+        '<div class="modal-title">' + safeTitle +
+          '<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button></div>' +
         // 正文整体左缩进：层次 =「标题顶格 ↔ 正文缩进」，一次设置覆盖所有内容，不必逐段判断
-        // 【2026-10-27】"超高可滚动"已收进样式表的 .modal-body（原先只在此处内联模拟，
-        //   index.html 里另外 5 处 .modal-body 反而没有滚动约束），这里只留文字排版所需的内联。
+        // "超高可滚动"由样式表 .modal-body 统一提供（max-height:60vh + overflow:auto）。
         '<div class="modal-body" style="line-height:1.75;word-break:break-word;padding-left:1em;">' +
           renderDialogBody(opts.message) +
           (isInput
@@ -100,51 +99,53 @@ function showDialog(opts) {
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
-    overlay.classList.add('show');           // .modal 默认 display:none
-    var opener = document.activeElement;     // 记录来源焦点，关闭后还原（键盘可达性）
     var input = isInput ? overlay.querySelector('.ty-dlg-input') : null;
     var okBtn = overlay.querySelector('.ty-dlg-ok');
     var cancelBtn = overlay.querySelector('.ty-dlg-cancel');
-    if (input) { input.focus(); if (input.value) input.select(); }
-    else if (okBtn) okBtn.focus();
     var closed = false;
+    var _closeKind = null;                   // 本次关闭意图（'ok' / 'cancel'），供 __onClose 取值
     function valueOf(kind) {                 // kind: 'ok' | 'cancel'
       if (!isInput) return kind === 'ok';
       return kind === 'ok' ? (input ? input.value.trim() : '') : null;
     }
-    function close(kind) {
-      if (closed) return;                    // 防重复关闭（连点按钮 + 按键 + 遮罩）
+    // 业务收尾：只负责移除 DOM + resolve；隐藏/焦点还原已由 closeModal 统一完成
+    function finish(kind) {
+      if (closed) return;                    // 防重复（连点按钮 + 按键 + 遮罩/×/Esc）
       closed = true;
-      var i = _dlgStack.indexOf(close);
-      if (i >= 0) _dlgStack.splice(i, 1);
-      if (_activeClose === close) _activeClose = _dlgStack[_dlgStack.length - 1] || null;
       if (typeof document.removeEventListener === 'function') document.removeEventListener('keydown', onKey, false);
       if (input && input.removeEventListener) input.removeEventListener('keydown', onKey);
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      if (opener && document.contains(opener) && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} }
       resolve(valueOf(kind));
     }
+    // 统一关闭入口：所有路径都先进 closeModal（移除 show + 焦点还原），再由 __onClose 收尾
+    function close(kind) {
+      if (closed) return;
+      _closeKind = kind;
+      if (overlay.classList.contains('show') && globalThis.TYModal) globalThis.TYModal.close(overlay);
+      else finish(kind);
+    }
+    overlay.__onClose = function () { finish(_closeKind || 'cancel'); };
     function onKey(e) {
-      // 多道判断，任何一道失灵都不该让键盘整体无响应：
-      //   ① 自己是否还在栈里（已关闭就忽略）；
-      //   ② 是否最上层（嵌套时只有最上层响应）；
-      //   ③ 回车/ESC 用 e.key 与 keyCode **双判定** —— 中文输入法组合状态或个别 webview 下
-      //      e.key 可能为空或为 'Process'，只认 e.key 就会出现「回车没反应、Esc 没反应」。
-      if (_activeClose !== close) return;   // 只有当前弹窗响应键盘
+      // 只保留「回车 = 确定」；Esc/遮罩/× 已由 TYModal 统一处理，不再重复判定。
+      // 回车用 e.key 与 keyCode 双判定：中文输入法组合态或个别 webview 下 e.key 可能为空/'Process'。
+      if (closed) return;
+      var t = globalThis.TYModal && globalThis.TYModal.top && globalThis.TYModal.top();
+      if (t && t !== overlay) return;        // 嵌套对话框时只有最上层响应回车
       var k = e.key || '';
       var code = e.keyCode || e.which || 0;
       if (k === 'Enter' || code === 13) { e.preventDefault(); close('ok'); }
-      else if (k === 'Escape' || k === 'Esc' || code === 27) { e.preventDefault(); close('cancel'); }
     }
-    _dlgStack.push(close);
-    _activeClose = close;                    // 新弹窗接管键盘（自愈：不惧栈内陈旧残留）
     if (okBtn) okBtn.onclick = function () { close('ok'); };
     if (cancelBtn) cancelBtn.onclick = function () { close('cancel'); };
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close('cancel'); });
     // 键盘监听挂 document（不依赖焦点），用**冒泡阶段**（捕获阶段在个别 webview 里不可靠）；
     // 输入框再单独挂一份双保险 —— 两处都会触发 onKey，靠 closed 守卫保证只生效一次。
     if (typeof document.addEventListener === 'function') document.addEventListener('keydown', onKey, false);
     if (input && input.addEventListener) input.addEventListener('keydown', onKey);
+    // 打开：统一入口负责显示 + 焦点移入前的记录；随后自行聚焦更合适的目标（输入框/确定键）
+    if (globalThis.TYModal) globalThis.TYModal.open(overlay);
+    else overlay.classList.add('show');
+    if (input) { input.focus(); if (input.value) input.select(); }
+    else if (okBtn) okBtn.focus();
   });
 }
 

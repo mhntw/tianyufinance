@@ -80,8 +80,8 @@ export function createSubjectTree(opts) {
     for (let p = n.parent; p; p = byCode[p] ? byCode[p].parent : null) depth++;
     line.className = 'dl-tn' + (n.kids.length ? ' dl-tn-parent' : '') + ' indent-' + Math.min(depth, 5);
     const arrow = document.createElement('span');
-    arrow.className = 'dl-arrow';
-    arrow.textContent = n.kids.length ? '▶' : '';
+    arrow.className = 'dl-arrow' + (n.kids.length ? ' collapsed' : '');
+    // 字符由 CSS 的「三角字符唯一来源」按 .collapsed 状态给出，这里不写文本
     arrow.style.visibility = n.kids.length ? 'visible' : 'hidden';
     n.arrowEl = arrow;
     const codeEl = document.createElement('span'); codeEl.className = 'dl-code'; codeEl.textContent = n.s.code;
@@ -142,7 +142,7 @@ export function createSubjectTree(opts) {
       for (let i = 0; i < all.length; i++) {
         const n = all[i];
         n.line.classList.toggle('dl-hide', !keep.has(n.s.code));
-        if (n.kids.length) { n.arrowEl.textContent = '▼'; n.line.setAttribute('aria-expanded', 'true'); }
+        if (n.kids.length) { n.arrowEl.classList.remove('collapsed'); n.line.setAttribute('aria-expanded', 'true'); }
       }
       refreshRoving();
       if (firstLine && firstLine.scrollIntoView) firstLine.scrollIntoView({ block: 'center' });
@@ -153,7 +153,7 @@ export function createSubjectTree(opts) {
       n.line.classList.toggle('dl-hide', ancestorCollapsed(n.s.code));
       if (n.kids.length) {
         const expanded = !collapsed.has(n.s.code);
-        n.arrowEl.textContent = expanded ? '▼' : '▶';
+        n.arrowEl.classList.toggle('collapsed', !expanded);
         n.line.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       }
     }

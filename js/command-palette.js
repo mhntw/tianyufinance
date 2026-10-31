@@ -1,6 +1,6 @@
 /* command-palette.js —— 全局命令面板（Ctrl/Cmd + K 快速跳转）
- * 复用 app.js 暴露的 globalThis.QUICK_MENU_ITEMS 作为唯一导航数据源，
- * 与左侧导航、首页快捷菜单同源；选中后调用 globalThis.goPage(page) 跳转。
+ * 复用 app.js 暴露的 globalThis.QUICK_MENU_ITEMS 作为唯一导航数据源（与首页常用功能同源，
+ * 左侧导航已整体移除）；选中后调用 globalThis.goPage(page) 跳转。
  * 纯前端、零逻辑风险：不碰账套数据，只做"导航"。
  */
 (function () {
@@ -31,15 +31,19 @@
 
   function build() {
     overlay = document.createElement('div');
-    overlay.className = 'cmd-overlay';
+    // 走全站 .modal 体系：遮罩/居中/焦点移入/Esc/Tab 陷阱/遮罩点击 全部由统一入口提供。
+    // .modal-cmd 只调层级（1200，可从任意弹窗跳走）+ 顶部对齐的定位。
+    overlay.className = 'modal modal-cmd';
     overlay.id = 'cmdPalette';
-    overlay.style.display = 'none';
+    overlay.setAttribute('data-backdrop', 'close');
     overlay.innerHTML =
-      '<div class="cmd-modal" role="dialog" aria-label="快速跳转">' +
+      '<div class="modal-box cmd-box" role="dialog" aria-label="快速跳转">' +
         '<div class="cmd-input-row">' +
           '<span class="iconcool sousuo icon--cmd"></span>' +
           '<input type="text" class="cmd-input" id="cmdInput" placeholder="跳转到模块、账簿、报表…（输入名称筛选）" autocomplete="off">' +
           '<kbd class="cmd-kbd">Esc</kbd>' +
+          // 全站弹层统一带 ×（这里没有标题栏，× 落在输入行右端）
+          '<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button>' +
         '</div>' +
         '<div class="cmd-results" id="cmdResults"></div>' +
         '<div class="cmd-foot">↑↓ 选择 · ↵ 打开 · Esc 关闭</div>' +
@@ -49,10 +53,7 @@
     list = overlay.querySelector('#cmdResults');
 
     input.addEventListener('input', function () { render(input.value); });
-    // 点背景关闭（点列表项不触发，因为 target 不是 overlay）
-    overlay.addEventListener('mousedown', function (e) {
-      if (e.target === overlay) close();
-    });
+    // 遮罩点击关闭由全局 data-backdrop 委托统一处理
     list.addEventListener('click', function (e) {
       var el = e.target.closest('.cmd-item');
       if (el) select(parseInt(el.dataset.idx, 10));
@@ -67,7 +68,7 @@
     });
     active = filtered.length ? 0 : -1;
     if (!filtered.length) {
-      list.innerHTML = '<div class="cmd-empty">无匹配项</div>';
+      list.innerHTML = '<div class="empty-hint empty-hint-sm">无匹配项</div>';
       return;
     }
     var html = '';
@@ -93,25 +94,25 @@
     if (globalThis.goPage) globalThis.goPage(it.page);
   }
 
-  var lastFocus = null;
+  // 打开/关闭统一走 TYModal（记录与还原来源焦点、焦点移入、Esc、Tab 陷阱都在那一处）
   function open() {
     if (!overlay) build();
-    lastFocus = document.activeElement;   // 记录来源焦点，关闭后还原
-    overlay.style.display = 'flex';
     input.value = '';
     render('');
-    setTimeout(function () { input.focus(); }, 0);
+    if (globalThis.TYModal) globalThis.TYModal.open(overlay);
+    else overlay.classList.add('show');
+    setTimeout(function () { if (input) input.focus(); }, 0);
   }
   function close() {
-    if (overlay) overlay.style.display = 'none';
-    if (lastFocus && document.contains(lastFocus) && typeof lastFocus.focus === 'function') { try { lastFocus.focus(); } catch (e) {} }
-    lastFocus = null;
+    if (!overlay) return;
+    if (globalThis.TYModal) globalThis.TYModal.close(overlay);
+    else overlay.classList.remove('show');
   }
-  // 压入全局 Esc 栈（自愈：面板关闭后该项会被自动剔除）
-  if (globalThis.TYKeyboard) globalThis.TYKeyboard.pushEsc(function () { return !!overlay && overlay.style.display !== 'none'; }, close);
   function toggle() {
-    if (overlay && overlay.style.display !== 'none') close(); else open();
+    if (overlay && overlay.classList.contains('show')) close(); else open();
   }
+  // 暴露打开入口：首页「全部功能」等按钮复用该面板（显示全部模块分组、可搜索）
+  globalThis.openCommandPalette = open;
 
   function move(d) {
     if (!filtered.length) return;
@@ -129,12 +130,11 @@
       toggle();
       return;
     }
-    if (!overlay || overlay.style.display === 'none') return;
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+    if (!overlay || !overlay.classList.contains('show')) return;
+    // Esc / Tab 不在这里处理：已由全局模态体系统一（Esc 关闭、Tab 焦点陷阱）
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
     else if (e.key === 'Enter') { e.preventDefault(); select(active); }
-    else if (e.key === 'Tab') { e.preventDefault(); input.focus(); }   // 焦点陷阱：面板打开时 Tab 不跑到背后页面
   });
 
   // 顶栏可见入口：提示快捷键，点击亦可打开
@@ -142,13 +142,25 @@
     var right = document.querySelector('.topbar-right');
     if (!right) return;
     if (document.getElementById('cmdTrigger')) return;
-    var btn = document.createElement('button');
+    // 用 div[role=button] 而非 <button>：WebKit(WKWebView/Safari) 对 <button> 直接做 flex 布局有怪癖
+    // （子元素被裹成匿名盒，space-between 失效、宽度还会塌缩导致内容被截断）。div 的 flex 布局各端一致可靠。
+    var btn = document.createElement('div');
     btn.className = 'cmd-trigger';
     btn.id = 'cmdTrigger';
-    btn.type = 'button';
+    btn.setAttribute('role', 'button');
+    btn.tabIndex = 0;
     btn.title = '快速跳转（Ctrl/Cmd + K）';
-    btn.innerHTML = '<span class="iconcool sousuo icon--cmd-trigger"></span><span>快速跳转</span><kbd class="cmd-kbd">⌘K</kbd>';
+    // 内层不再套 wrapper：div 自身直接做 flex 两端分布（放大镜贴左、⌘K 贴右）。
+    // 多层 inline-flex + flex:1 在收缩容器里会让 space-between 拿不到余量，故保持扁平结构。
+    btn.innerHTML =
+        '<span class="iconcool sousuo icon--cmd-trigger"></span>' +
+        '<span>快速跳转</span>' +
+        '<kbd class="cmd-kbd">⌘K</kbd>';
     btn.addEventListener('click', open);
+    // div 不像原生 button 会自动把 Enter/Space 转成 click，需手动补，保持键盘可达性
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
     right.insertBefore(btn, right.firstChild);
   }
 

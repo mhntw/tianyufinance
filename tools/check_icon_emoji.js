@@ -1,8 +1,18 @@
 'use strict';
-/* 图标 emoji 检查 —— UI 里不得用 emoji 当图标（2026-10-06）
+/* 图标检查 —— UI 里不得用 emoji 当图标，且图标体系只有一套（2026-10-06 立，2026-10-31 定案）
  *
- * 【为什么要这个脚本】项目图标体系统一为三档：① iconcool 字体字形（css/style.css 的 .xxx:before）；
- *   ② Unicode 字符（直写，缺字形会显示成方框、一眼可见）；③ 内联 SVG（左侧导航 / 首页常用功能）。
+ * 【图标体系统一结论（2026-10-31）】
+ *   ① **图形图标 = iconcool 字体，唯一来源**（css/style.css 的 @font-face + 字形类）。
+ *   ② **js/ty-menu-icons.js 不是第二套**：它存的是从同一套 iconcool 字体反解出来的 SVG path
+ *      （UPM=1000，见文件头说明），只服务首页「常用功能」——那里图标要随卡片缩放、要吃 currentColor，
+ *      用字体做不到。同一字形的两种落地，改字形仍需回到字体。
+ *   ③ **Unicode 文字符号**（‹ › ✓ ▶ ▼ × 等）是排版符号，不是图标资源：
+ *      它们**只在 CSS 里出现一次**（三角见「展开折叠三角唯一规范」，状态勾见 .settle-check-icon），
+ *      JS/HTML 只输出状态类，不裸写字符 —— 以前 ✓ / ▼ 散落在 Settle.js、SubjectTree.js、
+ *      ExpenseDetail.js、index.html 好几处，改色改字形要翻半个代码库。
+ *   ④ 不再引入第二套图标字体、图标库或 emoji。
+ *   本脚本守 ④（emoji）+ 字体唯一性（@font-face 只能 1 个）。
+ *
  *   emoji 混进来会同时踩两个坑：
  *     · **不随 CSS color 着色** —— emoji 自带配色（🔍 的金属质感、📎 的彩色），与旁边灰色字形对不上；
  *     · **跨平台字形不同** —— macOS / Windows 长相不一，桌面端观感不可控。
@@ -98,11 +108,22 @@ files.forEach(function (f) {
   });
 });
 
-console.log('图标 emoji 检查');
+console.log('图标检查');
 console.log('  扫描 ' + scanned + ' 个文件（index.html + js/ 全量 + css/style.css，注释已剥离）');
 
+/* 图标字体唯一性：@font-face 只允许 1 个（iconcool）。再引第二套图标字体 = 又一套体系。 */
+const cssRaw = fs.readFileSync(path.join(ROOT, 'css', 'style.css'), 'utf8');
+const fontFaces = (cssRaw.match(/@font-face\s*\{[\s\S]*?\n\}/g) || []);
+if (fontFaces.length > 1) {
+  violations.push({
+    rel: 'css/style.css', line: 0,
+    chars: ['@font-face × ' + fontFaces.length],
+    snippet: '图标字体应只有 iconcool 一套；新增字体前先确认是否真的缺字形',
+  });
+}
+
 if (!violations.length) {
-  console.log('\n✓ 通过：未发现用 emoji 当图标');
+  console.log('\n✓ 通过：未发现用 emoji 当图标；图标字体只有 1 套');
   process.exit(0);
 }
 

@@ -43,10 +43,12 @@ var selReopenMonth = currentPeriod(); // 反结账 tab 选中期（月份方块�
 // ===== 年份选择器（风格：3列网格 + 左右翻页） =====
 var yearPickerTarget = 'close'; // 'close' 或 'reopen'，标记当前为哪个面板服务
 var yearPickerBase = 2011; // 选择器起始年（每页15年：3列x5行）
+var _yearPickerTrigger = null; // 打开它的元素：Esc 关闭后把焦点还回去
 
 function showYearPicker(targetEl) {
   var picker = $('settleYearPicker');
   if (!picker || !targetEl) return;
+  _yearPickerTrigger = targetEl;
   yearPickerTarget = targetEl.getAttribute('data-target') || 'close';
   // 定位到年份栏下方
   var rect = targetEl.getBoundingClientRect();
@@ -57,6 +59,10 @@ function showYearPicker(targetEl) {
   picker.style.top = (rect.bottom + window.scrollY + 4) + 'px'; // 原 rect.bottom - prect.top + prect.top 抵消即 rect.bottom
   picker.style.display = '';
   renderYearPickerGrid();
+  // 打开即聚焦当前年格：键盘用户不必先 Tab 一轮
+  var cur = picker.querySelector('.settle-year-picker-item.active') ||
+            picker.querySelector('.settle-year-picker-item');
+  if (cur) { try { cur.focus(); } catch (e) {} }
 }
 
 function hideYearPicker() {
@@ -82,6 +88,10 @@ function renderYearPickerGrid() {
   }
   grid.innerHTML = out;
   grid.querySelectorAll('.settle-year-picker-item').forEach(function (el) {
+    // 年格是 div：补语义才能 Tab 到、Enter/Space 才能激活（全局激活委托统一处理）
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    el.setAttribute('data-kb-activate', '');
     el.addEventListener('click', function () {
       var ny = +this.getAttribute('data-y');
       pickYear(ny);
@@ -124,11 +134,26 @@ var pn = $('yearPickerNext');
 if (pp) pp.addEventListener('click', function (e) { e.stopPropagation(); yearPickerBase -= 15; renderYearPickerGrid(); });
 if (pn) pn.addEventListener('click', function (e) { e.stopPropagation(); yearPickerBase += 15; renderYearPickerGrid(); });
 
-// 点击外部关闭
-document.addEventListener('click', function (e) {
-  if (e.target.closest('#settleYearPicker') || e.target.closest('.settle-year-clickable')) return;
-  hideYearPicker();
-});
+// 点击外部关闭：统一走 TYKeyboard.bindOutsideClose（触发年份栏在 ignore 里；
+// 右箭头 #settleYearArrow 自己 stopPropagation，不会冒泡到这里）
+if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+  globalThis.TYKeyboard.bindOutsideClose({
+    el: function () { return $('settleYearPicker'); },
+    isOpen: function () { var p = $('settleYearPicker'); return !!(p && p.style.display !== 'none'); },
+    ignore: ['.settle-year-clickable'],
+    close: function () { hideYearPicker(); }
+  });
+}
+// 年份选择器：Esc 统一走全局 Esc 栈（关闭并把焦点还给触发它的年份栏）
+if (globalThis.TYKeyboard) {
+  globalThis.TYKeyboard.pushEsc(
+    function () { var p = $('settleYearPicker'); return !!(p && p.style.display !== 'none'); },
+    function () {
+      var t = _yearPickerTrigger; _yearPickerTrigger = null;
+      hideYearPicker();
+      if (t && document.contains(t) && typeof t.focus === 'function') { try { t.focus(); } catch (e) {} }
+    });
+}
 
 // 幂等绑定（元素可能晚于模块加载出现，故 refreshSettle 内重复调用安全）
 function onBtn(id, fn) {
@@ -690,7 +715,7 @@ function renderSettleChecklist(month, K, curDoneCount) {
     rows.forEach(function (r) {
       var cnt = curDoneCount(r.kind);
       var done = cnt > 0;
-      out += html`<div class="settle-check-item ${done ? 'is-ok' : 'is-warn'}" data-k="${r.k}"><span class="settle-check-icon">${done ? '✓' : '!'}</span><span class="settle-check-label">${r.name}</span><span class="settle-check-tip">${done ? ('已生成 ' + cnt + ' 张') : r.hint}</span></div>`;
+      out += html`<div class="settle-check-item ${done ? 'is-ok' : 'is-warn'}" data-k="${r.k}"><span class="settle-check-icon"></span><span class="settle-check-label">${r.name}</span><span class="settle-check-tip">${done ? ('已生成 ' + cnt + ' 张') : r.hint}</span></div>`;
     });
     // store 硬性检查项：全部展示（含 ok —— 通过项打勾绿色，一眼能看出「已核过」）。
     // ok=✓绿；warn=!黄（仅提醒）；fail=!红（会阻止结账，故与提醒区分开）。
@@ -699,7 +724,7 @@ function renderSettleChecklist(month, K, curDoneCount) {
       chk.forEach(function (c) {
         var st = c.status;
         var cls = st === 'ok' ? 'is-ok' : (st === 'fail' ? 'is-fail' : 'is-warn');
-        out += html`<div class="settle-check-item ${cls}" data-k="${c.key}"><span class="settle-check-icon">${st === 'ok' ? '✓' : '!'}</span><span class="settle-check-label">${c.label || ''}</span><span class="settle-check-tip">${c.tip || ''}</span></div>`;
+        out += html`<div class="settle-check-item ${cls}" data-k="${c.key}"><span class="settle-check-icon"></span><span class="settle-check-label">${c.label || ''}</span><span class="settle-check-tip">${c.tip || ''}</span></div>`;
       });
     } catch (e) { /* 检查项渲染失败不阻断页面 */ }
     cl.innerHTML = out;
@@ -1167,15 +1192,15 @@ function renderSettleTmplTree() {
   var enHtml = [], vchHtml = [], disHtml = [];
   settleTmplList.forEach(function (t) {
     var cls = 'stm-item' + (t.id === settleTmplSelectedId ? ' select' : '') + (t.custom ? ' stm-custom' : '');
-    var li = html`<li class="${cls}" data-id="${t.id}"><span class="stm-check">${t.enabled ? '✓' : ''}</span><span class="stm-name">${t.name}</span></li>`;
+    var li = html`<li class="${cls}" data-id="${t.id}"><span class="stm-check${t.enabled ? ' is-on' : ''}"></span><span class="stm-name">${t.name}</span></li>`;
     if (t.fromVchTpl) vchHtml.push(li);    // 录凭证页保存的模板 → 独立分组
     else if (t.enabled) enHtml.push(li);   // 启用
     else disHtml.push(li);                  // 禁用
   });
   // 三个分组都是 html`` 片段数组，空组改用常量占位项
-  if (enUl) { enUl.innerHTML = html`${enHtml.length ? enHtml : html`<li class="stm-empty">暂无启用的模板</li>`}`; bindTmplTreeItems(enUl); }
-  if (vchUl) { vchUl.innerHTML = html`${vchHtml.length ? vchHtml : html`<li class="stm-empty">暂无凭证模板</li>`}`; bindTmplTreeItems(vchUl); }
-  if (disUl) { disUl.innerHTML = html`${disHtml.length ? disHtml : html`<li class="stm-empty">暂无禁用的模板</li>`}`; bindTmplTreeItems(disUl); }
+  if (enUl) { enUl.innerHTML = html`${enHtml.length ? enHtml : html`<li class="empty-hint empty-hint-sm">暂无启用的模板</li>`}`; bindTmplTreeItems(enUl); }
+  if (vchUl) { vchUl.innerHTML = html`${vchHtml.length ? vchHtml : html`<li class="empty-hint empty-hint-sm">暂无凭证模板</li>`}`; bindTmplTreeItems(vchUl); }
+  if (disUl) { disUl.innerHTML = html`${disHtml.length ? disHtml : html`<li class="empty-hint empty-hint-sm">暂无禁用的模板</li>`}`; bindTmplTreeItems(disUl); }
 }
 
 function bindTmplTreeItems(ul) {
@@ -1884,7 +1909,7 @@ function saveSettleTmplForm() {
   showToast('已保存模板：' + t.name);
 }
 
-if ($('btnSettleTmplClose')) $('btnSettleTmplClose').addEventListener('click', closeSettleTemplateModal);
+// × 走全局 data-modal-close 委托；closeSettleTemplateModal 保留给代码内显式关闭调用
 // 弹窗启用开关：改了立即生效（persist + 刷新左侧分组 + 页面卡片）
 var _tmplEnCb = $('settleTmplFormEnabled');
 if (_tmplEnCb) _tmplEnCb.addEventListener('change', function () {
@@ -1898,7 +1923,7 @@ if (_tmplEnCb) _tmplEnCb.addEventListener('change', function () {
 });
 // 检查项设置弹窗
 if ($('btnSettleCheck')) $('btnSettleCheck').addEventListener('click', openSettleCheckModal);
-if ($('btnSettleCheckClose')) $('btnSettleCheckClose').addEventListener('click', closeSettleCheckModal);
+// × 走全局 data-modal-close 委托；底部「关闭」按钮仍有业务入口
 if ($('btnSettleCheckCancel')) $('btnSettleCheckCancel').addEventListener('click', closeSettleCheckModal);
 
 function openSettleCheckModal() {
@@ -1908,7 +1933,7 @@ function openSettleCheckModal() {
   var all = (typeof S.settleChecklist === 'function') ? S.settleChecklist(month) : [];
   var ov = (S.state.param && S.state.param.checkOverrides) || {};
   var out = html`<div class="scc-head">根据业务需求选择，选择「仅提醒」后该项不再拦截结账。</div>`;
-  if (!all.length) out += html`<div class="scc-empty">本期无检查项</div>`;
+  if (!all.length) out += html`<div class="empty-hint empty-hint-sm">本期无检查项</div>`;
   all.forEach(function (c) {
     var cur = ov[c.key] || (c.status === 'warn' ? 'warn' : 'block');
     if (cur === 'off') cur = 'block';

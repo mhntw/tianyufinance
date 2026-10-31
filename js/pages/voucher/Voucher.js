@@ -1504,7 +1504,7 @@ function renderVchTplList() {
   if (!mineF.length && !sysF.length) {
     out = html`<div class="empty-hint">${q ? '没有找到名称含「' + q + '」的模板' : '暂无可用模板'}</div>`;   /* 【2026-10-04】原先内联补 padding/居中/字色，因为空态规则只覆盖 td；现规则已覆盖 div，去掉内联（与 Asset.js 的空态写法一致） */
   } else if (!mine.length && !q) {
-    out = html`${out}<div class="vch-tpl-empty-my">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>`;
+    out = html`${out}<div class="empty-hint empty-hint-sm">暂无自定义模板：在凭证中录好常用分录后，点「模板 → 保存为凭证模板」加入这里。</div>`;
   }
   box.innerHTML = out;
 }
@@ -1583,8 +1583,16 @@ function applyVchTpl(t) {
       menu.hidden = !menu.hidden;
     });
   }
-  // 点击其它处关闭下拉
-  document.addEventListener('click', hideMenu);
+  // 点击其它处关闭下拉：统一走 TYKeyboard.bindOutsideClose
+  // （触发按钮与菜单项各自 stopPropagation，等价于"只有点外部才关"）
+  if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+    globalThis.TYKeyboard.bindOutsideClose({
+      el: function () { return $('vchMoreMenu'); },
+      isOpen: function () { var m = $('vchMoreMenu'); return !!(m && !m.hidden); },
+      ignore: ['#btnVchMore'],
+      close: hideMenu
+    });
+  }
   // 打印两项
   var printCur = $('vchMorePrintCurrent');
   if (printCur) printCur.addEventListener('click', function (e) {
@@ -1626,7 +1634,7 @@ function applyVchTpl(t) {
     showToast('已删除凭证');
     resetVoucherEdit();
   });
-  // 「保存为模板」面板
+  // 「保存为模板」面板（遮罩点击关闭由全局 data-backdrop 委托统一处理，不再单独绑）
   var saveModal = $('vchTplSaveModal');
   if (saveModal) {
     function hideSaveTpl() { closeModal('vchTplSaveModal'); }
@@ -1634,12 +1642,11 @@ function applyVchTpl(t) {
     if (bSaveOk) bSaveOk.addEventListener('click', commitVchTplSave);
     if (bSaveCls) bSaveCls.addEventListener('click', hideSaveTpl);
     if (bSaveCal) bSaveCal.addEventListener('click', hideSaveTpl);
-    saveModal.addEventListener('click', function (e) { if (e.target === saveModal) hideSaveTpl(); });
   }
   // 模板两项（形态）
   var sItem = $('vchMoreTplSave'); if (sItem) sItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); saveCurrentAsTpl(); });
   var uItem = $('vchMoreTplUse'); if (uItem) uItem.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideMenu(); openVchTpl(); });
-  var bClose = $('btnVchTplClose'); if (bClose) bClose.addEventListener('click', closeVchTpl);
+  // × 走全局 data-modal-close 委托（closeVchTpl 保留给「套用模板」后显式关闭）
   var tplSearch = $('vchTplSearch');
   if (tplSearch) tplSearch.addEventListener('input', function () { renderVchTplList(); });
   var list = $('vchTplList');
@@ -1694,8 +1701,7 @@ globalThis.__VOUCHER__ = {
   function closeRecycleBin() {
     closeModal('recycleBinModal');
   }
-  var x = document.getElementById('recycleBinClose');
-  if (x) x.addEventListener('click', closeRecycleBin);
+  // × 走全局 data-modal-close 委托，不再单独绑
   var x2 = document.getElementById('btnRecycleBinClose2');
   if (x2) x2.addEventListener('click', closeRecycleBin);
 })();

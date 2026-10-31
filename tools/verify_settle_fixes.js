@@ -112,7 +112,12 @@ const cssSrc = fs.readFileSync(path.resolve(__dirname, '../css/style.css'), 'utf
   ck(src.indexOf(cls) >= 0, 'JS 使用 ' + cls);
   ck(cssSrc.indexOf('.' + cls) >= 0, 'CSS 定义 .' + cls + '（避免静默无样式）');
 });
-ck(/settle-check-icon[\s\S]{0,80}?'✓'/.test(src) || /'✓'[\s\S]{0,40}?settle-check/.test(src), '通过项渲染为对勾 ✓');
+/* 【2026-10-31 字符来源统一后调整】JS 不再输出 ✓ 字符（只输出 is-ok/is-warn/is-fail 状态类），
+   字符由 CSS 按状态给 —— 所以这里断言两件事：JS 用 is-ok 表达"通过"，CSS 把 is-ok 映射成 ✓。
+   只断言 JS 里出现 ✓ 会变成"测试逼着字符回流到模板字符串"，与单一来源原则相反。 */
+ck(/is-ok/.test(src), '通过项用 is-ok 状态类表达（JS 不写字符）');
+ck(/\.settle-check-item\.is-ok \.settle-check-icon::before[\s\S]{0,40}content:\s*'✓'/.test(cssSrc),
+  'CSS 把 is-ok 映射为对勾 ✓');
 
 console.log('\n=== #10. renderCashChecklist null 兜底（已随出纳模块下线，断言移除）===');
 // 出纳模块已于 2026-09-05 整体下线，Settle.js 中已无 renderCashChecklist 函数，

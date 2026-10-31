@@ -347,14 +347,17 @@ function initEvents() {
       } else {
         openPop(wrap);
       }
-      return;
-    }
-    // 点击 popover 外部 → 关闭
-    var pop = getPop();
-    if (pop && !pop.hidden && !pop.contains(e.target)) {
-      closePop();
     }
   });
+  // 点击 popover 外部 → 关闭：统一走 TYKeyboard.bindOutsideClose（触发按钮在 ignore 里）
+  if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+    globalThis.TYKeyboard.bindOutsideClose({
+      el: function () { return getPop(); },
+      isOpen: function () { var p = getPop(); return !!(p && !p.hidden); },
+      ignore: ['.ty-period-trigger'],
+      close: function () { closePop(); }
+    });
+  }
 
   // 年份翻页
   document.addEventListener('click', function (e) {
@@ -382,13 +385,7 @@ function initEvents() {
       }
       return;
     }
-    var pop = getPop();
-    if (pop && !pop.hidden && e.key === 'Escape') {
-      e.preventDefault(); e.stopPropagation();
-      var w = state.wrap;
-      closePop();
-      if (w) { var t = w.querySelector('.ty-period-trigger'); if (t) t.focus(); }
-    }
+    // Esc 不在这里处理：已由 TYKeyboard 全局 Esc 栈统一（含关闭后焦点回触发器，见 initPeriodRangePicker）
   });
   // popover 内月份格：←/→/↑/↓ 在可用格间移动焦点（默认 12 格 3 列布局，上下跳 3 格）
   var pop = getPop();

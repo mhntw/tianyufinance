@@ -30,12 +30,29 @@ function closeSubjectPop() {
   }
 }
 
-document.addEventListener('mousedown', function (e) {
-  if (!openPop) return;
-  // 点浮层内部或触发按钮都不关闭（按钮自己处理 toggle）
-  if (openPop.contains(e.target) || e.target.classList.contains('subj-range-btn')) return;
-  closeSubjectPop();
-});
+// Esc 统一走全局 Esc 栈（模块级只注册一次；之前是每个输入框各挂一份 keydown，同一浮层 2 条 Esc 路径）
+let _escRegistered = false;
+function registerSubjectPopEsc() {
+  if (_escRegistered || !globalThis.TYKeyboard) return;
+  _escRegistered = true;
+  globalThis.TYKeyboard.pushEsc(function () { return !!openPop; }, function () { closeSubjectPop(); });
+}
+registerSubjectPopEsc();
+document.addEventListener('DOMContentLoaded', registerSubjectPopEsc);
+
+// 点外部关闭：统一走 TYKeyboard.bindOutsideClose（全站唯一实现）。
+// event 用 mousedown：抢在输入框 blur 之前判断，避免"刚点中科目行却被 blur 先关掉"。
+// ignore 里的 .subj-range-btn 是触发按钮（它自己处理 toggle，不该被当成外部点击）。
+if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+  globalThis.TYKeyboard.bindOutsideClose({
+    event: 'mousedown',
+    el: function () { return openPop; },
+    isOpen: function () { return !!openPop; },
+    // 触发按钮 / 当前浮层的触发输入框（pop._anchor）都不算"外部"
+    ignore: ['.subj-range-btn', function (t) { return !!(openPop && openPop._anchor === t); }],
+    close: function () { closeSubjectPop(); }
+  });
+}
 
 function buildSubjectPop(anchor, subs, onPick, opts) {
   opts = opts || {};
@@ -49,15 +66,11 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
   const pop = document.createElement('div');
   pop.className = 'subj-range-pop';
   pop._anchor = anchor; // 记录触发元素：bindSubjectPicker 以此判断「本输入框的弹层是否正开着」
-  Object.assign(pop.style, {
-    position: 'fixed', zIndex: '9999', background: '#fff',
-    border: '1px solid var(--ty-border)', borderRadius: '4px',
-    boxShadow: '0 6px 20px rgba(0,0,0,.14)', width: '300px',
-    fontSize: 'var(--fs-md)', color: 'var(--ty-text)', overflow: 'hidden'
-  });
+  // 外观（位置/层级/边框/圆角/阴影/宽度/字号）全部来自 CSS 的 .subj-range-pop，
+  // JS 只负责下面按触发框计算的 left/top —— 不再内联写一套样式。
 
   const list = document.createElement('div');
-  Object.assign(list.style, { maxHeight: '280px', overflowY: 'auto' });
+  list.className = 'subj-range-list';
 
   let rows = [];     // 当前可见科目（与渲染行一一对应）
   let active = -1;   // 键盘高亮行索引（-1 表示无）
@@ -116,7 +129,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
   render(''); // 打开弹层时始终显示全部，搜索靠 input 事件实时过滤（避免选完科目后再次打开被旧值锁死）
   // 内置搜索框的 input 监听随该死分支一并删除；过滤由外部 filterInput 的 input 事件承担（见下）
   if (filterInput) {
-    // 外部输入框驱动过滤 + 键盘导航：↑↓ 移动高亮、Enter 选中、Esc 关闭
+    // 外部输入框驱动过滤 + 键盘导航：↑↓ 移动高亮、Enter 选中（Esc 由全局 Esc 栈统一）
     filterInput._subjPopRender = render;
     filterInput.addEventListener('keydown', function (e) {
       if (openPop !== pop) return;       // 仅当本弹层打开时接管，关闭后让网格导航生效
@@ -129,7 +142,7 @@ function buildSubjectPop(anchor, subs, onPick, opts) {
           onPick(rows[active].code);
           closeSubjectPop();
         }
-      } else if (e.key === 'Escape') { closeSubjectPop(); }
+      }
     });
   }
   pop.appendChild(list);
@@ -217,9 +230,6 @@ export function bindSubjectPicker(input, opts) {
     setTimeout(function () {
       if (openPop && openPop._anchor === input && document.activeElement !== input) closeSubjectPop();
     }, 150);
-  });
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeSubjectPop(); }
   });
 }
 

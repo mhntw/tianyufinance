@@ -8,6 +8,7 @@ import { H, EX, $, S, U, money, num, showToast, currentPeriod, round2 } from '..
 // 自动转义标签模板（js/common/html.js）：本页所有含用户可编辑文本的渲染已迁移，插值默认转义。
 import { html } from '../../common/html.js?v=dev';
 import { bindSubjectPicker } from '../../components/SubjectPicker.js?v=dev';
+import { renderPager } from '../../common/pager.js?v=dev';
 
 // 起止期间取值统一走 app.js 单点实现（含默认值兜底）。
 const periodRangeValue = H.periodRangeValue;
@@ -244,10 +245,12 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       foot.appendChild(trf);
     }
     $('assetCount').textContent = '共 ' + total + ' 条';
-    $('aPageNo').textContent = _assetPage;
-    var pages = U.totalPages(total, _assetPageSize);
-    $('aPrev').parentNode.classList.toggle('disabled', _assetPage <= 1);
-    $('aNext').parentNode.classList.toggle('disabled', _assetPage >= pages);
+    // 分页统一走 common/pager.js（替代原先 aPrev/aPageNo/aNext 三个 id 的手工维护）
+    renderPager($('assetPages'), {
+      page: _assetPage,
+      total: pages,
+      onGo: function (p) { _assetPage = p; renderAssets(); }
+    });
     renderAssetReconcile();   // 卡片 ↔ 总账对账状态（一致则隐藏）
     updateAssetDeprTip();    // 折旧生成状态提示（取代原独立折旧凭证页的顶部提示）
   }
@@ -698,10 +701,15 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     // 此处仅负责点击后收起菜单，不再有 data-batch 分发。
     $('assetBatchMenu').hidden = true;
   });
-  document.addEventListener('click', function (e) {
-    var m = $('assetBatchMenu');
-    if (m && !m.hidden && !e.target.closest('#btnAssetBatch') && !e.target.closest('#assetBatchMenu')) m.hidden = true;
-  });
+  // 点击其它处关闭「更多」菜单：统一走 TYKeyboard.bindOutsideClose
+  if (globalThis.TYKeyboard && globalThis.TYKeyboard.bindOutsideClose) {
+    globalThis.TYKeyboard.bindOutsideClose({
+      el: function () { return $('assetBatchMenu'); },
+      isOpen: function () { var m = $('assetBatchMenu'); return !!(m && !m.hidden); },
+      ignore: ['#btnAssetBatch'],
+      close: function () { var m = $('assetBatchMenu'); if (m) m.hidden = true; }
+    });
+  }
   // 「计提折旧」：按左侧期间对【全部】应计提资产计提本月折旧并生成折旧凭证。
   // 为什么不吃勾选：准则要求对所有应计提折旧的固定资产按月计提，不能挑着提（漏提即账实不符），
   //   故本操作与勾选无关。但页面上「批量删除」遵循「勾了就只处理勾选的」，
@@ -721,11 +729,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     showToast('已计提 ' + month + ' 折旧，生成凭证 ' + ((r.voucher.word || '记') + '-' + r.voucher.no) + '，金额 ' + money(r.total) + '（' + r.count + ' 项资产）');
     renderAssets(); syncAll();
   });
-  $('aPrev').addEventListener('click', function () { if (_assetPage > 1) { _assetPage--; renderAssets(); } });
-  $('aNext').addEventListener('click', function () {
-    var pages = U.totalPages(_assetFiltered.length, _assetPageSize);   // 分页算术单点
-    if (_assetPage < pages) { _assetPage++; renderAssets(); }
-  });
+  // 上一页/下一页由 common/pager.js 的容器委托统一处理，不再单独绑 aPrev/aNext
   $('aPageSize').addEventListener('change', function () { _assetPageSize = num($('aPageSize').value); _assetPage = 1; renderAssets(); });
   $('aCheckAll').addEventListener('change', function (e) { document.querySelectorAll('.aChk').forEach(function (c) { c.checked = e.target.checked; }); });
   $('assetBody').addEventListener('click', async function (e) {
@@ -953,7 +957,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     renderAssets(); syncAll();
     showToast('已删除资产卡片', 'success');
   });
-  $('btnCloseAssetHistory').addEventListener('click', function () { closeModal('assetHistoryModal'); });
+  // × 走全局 data-modal-close 委托，不再单独绑
   $('btnCloseAssetHistory2').addEventListener('click', function () { closeModal('assetHistoryModal'); });
   // aAcq / aPeriodUsed 也挂上：这两个字段决定锚点月，变动时需即时刷新期初累计折旧的时点提示
   ['aOriginal', 'aSalvageRate', 'aLife', 'aAcq', 'aPeriodUsed'].forEach(function (id) {

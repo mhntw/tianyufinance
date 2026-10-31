@@ -68,10 +68,8 @@
           </div>
         </div>
       </header>
-    <!-- 左侧导航：由 app.js 依据 QUICK_MENU_ITEMS 单一数据源渲染（与常用功能设置弹窗同源，自动同步） -->
-        <div class="layout-body">
-      <nav class="sidenav" id="sidenav"></nav>
-
+    <!-- 左侧导航已整体移除：导航改由顶栏「快速跳转」(Ctrl/Cmd+K) 与首页常用功能承担 -->
+    <div class="layout-body">
     <main class="content" id="content">
 
 
@@ -390,7 +388,7 @@
       <!-- 从模板生成凭证（常用业务结构，按账套保存；只存科目/摘要/方向，金额留空待填） -->
       <div class="modal" id="vchTplModal">
         <div class="modal-box">
-          <div class="modal-title">从模板生成凭证<button class="modal-x" id="btnVchTplClose">×</button></div>
+          <div class="modal-title">从模板生成凭证<button class="modal-x" data-modal-close="1" id="btnVchTplClose">×</button></div>
           <div class="modal-body vch-tpl-body">
             <div class="vch-tpl-top">
               <div class="vch-tpl-searchbox">
@@ -404,7 +402,7 @@
       </div>
 
       <!-- 保存为凭证模板（摘要/科目必带，金额选填） -->
-      <div class="modal" id="vchTplSaveModal">
+      <div class="modal" id="vchTplSaveModal" data-backdrop="close">
         <div class="modal-box">
           <div class="modal-title">保存为凭证模板<button class="modal-x" id="btnVchTplSaveClose">×</button></div>
           <div class="modal-body">
@@ -430,7 +428,7 @@
       <!-- 凭证回收站（软删除还原入口）-->
       <div class="modal" id="recycleBinModal">
         <div class="modal-box modal-wide">
-          <div class="modal-title">凭证回收站 · 已删除凭证<button class="modal-x" id="recycleBinClose">×</button></div>
+          <div class="modal-title">凭证回收站 · 已删除凭证<button class="modal-x" data-modal-close="1" id="recycleBinClose">×</button></div>
           <div class="modal-body">
             <div class="table-box">
               <table class="recycle-table">
@@ -457,7 +455,7 @@
 
       <div class="modal" id="operatorModal">
         <div class="modal-box operator-box modal-compact">
-          <div class="modal-title">记账员设置<button class="modal-x" id="btnOpX">×</button></div>
+          <div class="modal-title">记账员设置<button class="modal-x" data-modal-close="1" id="btnOpX">×</button></div>
           <div class="modal-body">
             <div class="operator-guide">请填写你的真实姓名</div>
             <div class="form-row"><label>姓名</label><input id="opNameInput" class="inp" placeholder="如：张伟、李娜" maxlength="20"></div>
@@ -779,14 +777,11 @@
               <tfoot id="assetFoot"></tfoot>
             </table>
             </div>
-            <div class="orig-pagination">
-              <span class="orig-total" id="assetCount">共 0 条</span>
-              <ul class="orig-pages" id="assetPages">
-                <li class="disabled" title="上一页"><button id="aPrev"><i class="tyicon tyicon-arrow-left"></i></button></li>
-                <li class="active" title="1"><button id="aPageNo">1</button></li>
-                <li title="下一页"><button id="aNext"><i class="tyicon tyicon-arrow-right"></i></button></li>
-              </ul>
-              <div class="orig-page-size">
+            <!-- 分页：统一 .pager（渲染见 js/common/pager.js），不再各页写一套 -->
+            <div class="pager">
+              <span class="pager-total" id="assetCount">共 0 条</span>
+              <div class="pager-nav" id="assetPages"></div>
+              <div class="pager-size">
                 <select class="inp inp-sm" id="aPageSize"><option>500</option><option>200</option><option>100</option></select>
                 <span>条/页</span>
               </div>
@@ -914,7 +909,7 @@
             </div>
             <div class="settle-month-nav" id="settleMonthNav"></div>
             <div class="settle-close-ops">
-              <button class="btn btn-primary btn-close-period" id="btnClosePeriod">检查并结账</button>
+              <button class="btn btn-primary btn-settle-action" id="btnClosePeriod">检查并结账</button>
               <button class="btn btn-ghost" id="btnSettleCheck"><i class="ico ico-setting">&#9881;</i> 检查项设置</button>
             </div>
             <div class="settle-check-wrap" id="closeChecklist"></div>
@@ -927,7 +922,7 @@
               <span class="settle-year-val settle-year-clickable" id="reopenYearVal" data-target="reopen">2026年</span>
             </div>
             <div class="settle-month-nav" id="reopenMonthNav"></div>
-            <button class="btn btn-primary btn-reopen" id="btnReopenPeriod">反结账</button>
+            <button class="btn btn-primary btn-settle-action" id="btnReopenPeriod">反结账</button>
             <p class="settle-reopen-warn">反结账是违反会计法规的非正常操作，会影响历史报表数据，请慎用！</p>
             <p class="settle-reopen-hint" id="reopenPeriodHint"></p>
           </div>
@@ -948,21 +943,21 @@
 
       <div class="modal" id="settleTmplModal">
         <div class="modal-box settle-tmpl-box">
-          <div class="modal-title">结账凭证模板设置<button class="modal-x" id="btnSettleTmplClose">×</button></div>
+          <div class="modal-title">结账凭证模板设置<button class="modal-x" data-modal-close="1" id="btnSettleTmplClose">×</button></div>
           <div class="settle-tmpl-body">
 
             <div class="settle-tmpl-sider">
               <div class="settle-tmpl-tree">
                 <div class="settle-tmpl-node settle-tmpl-node-group settle-tmpl-node-open" id="settleTmplGroupEnabled">
-                  <span class="settle-tmpl-arrow">▶</span><span>启用模板</span>
+                  <span class="settle-tmpl-arrow"></span><span>启用模板</span>
                 </div>
                 <ul class="settle-tmpl-list" id="settleTmplEnabled"></ul>
                 <div class="settle-tmpl-node settle-tmpl-node-group settle-tmpl-node-open" id="settleTmplGroupVch">
-                  <span class="settle-tmpl-arrow">▶</span><span>凭证模板</span>
+                  <span class="settle-tmpl-arrow"></span><span>凭证模板</span>
                 </div>
                 <ul class="settle-tmpl-list" id="settleTmplVch"></ul>
                 <div class="settle-tmpl-node settle-tmpl-node-group" id="settleTmplGroupDisabled">
-                  <span class="settle-tmpl-arrow">▶</span><span>禁用模板</span>
+                  <span class="settle-tmpl-arrow"></span><span>禁用模板</span>
                 </div>
                 <ul class="settle-tmpl-list settle-tmpl-list-hidden" id="settleTmplDisabled"></ul>
               </div>
@@ -1087,7 +1082,7 @@
             </div>
             <div class="modal" id="settleCheckModal">
             <div class="modal-box settle-check-box">
-            <div class="modal-title">结账检查项设置<button class="modal-x" id="btnSettleCheckClose">×</button></div>
+            <div class="modal-title">结账检查项设置<button class="modal-x" data-modal-close="1" id="btnSettleCheckClose">×</button></div>
             <div class="settle-check-modal-body" id="settleCheckBody"></div>
             <div class="modal-actions">
             <button class="btn" id="btnSettleCheckCancel">关闭</button>
@@ -1189,14 +1184,10 @@
             <tbody id="edBody"></tbody>
             <tfoot id="edFoot"></tfoot>
           </table>
-          <div class="orig-pagination ed-pagination">
-            <span class="orig-total" id="edTotal">共 0 条</span>
-            <ul class="orig-pages" id="edPages">
-              <li class="disabled" title="上一页"><button><i class="tyicon tyicon-arrow-left"></i></button></li>
-              <li class="active" title="1"><button>1</button></li>
-              <li title="下一页"><button><i class="tyicon tyicon-arrow-right"></i></button></li>
-            </ul>
-            <div class="orig-page-size">
+          <div class="pager">
+            <span class="pager-total" id="edTotal">共 0 条</span>
+            <div class="pager-nav" id="edPages"></div>
+            <div class="pager-size">
               <select class="inp inp-sm" id="edPageSize"><option>500</option><option>200</option><option>100</option><option>50</option></select>
               <span>条/页</span>
             </div>
@@ -1518,17 +1509,16 @@
               <tbody id="logBody"></tbody>
             </table>
           </div>
-          <div class="card-foot">
-            <span class="log-count" id="logCount">共 0 条</span>
-            <div class="log-pager">
-              <button class="btn btn-second log-prev" id="logPrev">上一页</button>
-              <span class="log-page" id="logPage">1 / 1</span>
-              <button class="btn btn-second log-next" id="logNext">下一页</button>
-              <select id="logPageSize" class="log-pagesize">
-                <option value="20">20 条/页</option>
-                <option value="50" selected>50 条/页</option>
-                <option value="100">100 条/页</option>
+          <div class="pager">
+            <span class="pager-total" id="logCount">共 0 条</span>
+            <div class="pager-nav" id="logPages"></div>
+            <div class="pager-size">
+              <select class="inp inp-sm" id="logPageSize">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
               </select>
+              <span>条/页</span>
             </div>
           </div>
         </div>
@@ -1708,7 +1698,7 @@
 
   <div class="modal" id="assetHistoryModal">
     <div class="modal-box modal-wide">
-      <div class="modal-title" id="assetHistoryTitle">变动记录<button class="modal-x" id="btnCloseAssetHistory">×</button></div>
+      <div class="modal-title" id="assetHistoryTitle">变动记录<button class="modal-x" data-modal-close="1" id="btnCloseAssetHistory">×</button></div>
       <div class="modal-body" id="assetHistoryBody"></div>
       <div class="modal-actions">
         <button class="btn" id="btnCloseAssetHistory2">关闭</button>
@@ -1743,18 +1733,14 @@
   <script type="module" src="js/main.js?v=dev"></script>
   <script src="js/lock-screen.js?v=dev"></script>
 
-  <div class="quick-settings-overlay" id="quickSettingsOverlay" style="display:none">
-    <div class="quick-settings-modal" id="quickSettingsModal">
-      <div class="qs-header">
-        <span class="qs-title">常用功能设置</span>
-        <span class="qs-close" id="qsClose" tabindex="0" role="button" aria-label="关闭" data-kb-activate>&times;</span>
-      </div>
-      <div class="qs-body" id="qsBody">
-
-      </div>
-      <div class="qs-footer">
-        <button class="btn btn-primary" id="qsConfirm">确定</button>
+  <!-- 常用功能设置：走 .modal 统一体系（遮罩/宽档/标题栏 ×/Tab 陷阱/Esc/焦点还原全部复用） -->
+  <div class="modal" id="quickSettingsOverlay" data-backdrop="close">
+    <div class="modal-box modal-wide">
+      <div class="modal-title">常用功能设置<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button></div>
+      <div class="modal-body qs-body" id="qsBody"></div>
+      <div class="modal-actions">
         <button class="btn" id="qsReset">恢复默认</button>
+        <button class="btn btn-primary" id="qsConfirm">确定</button>
         <button class="btn" id="qsCancel">取消</button>
       </div>
     </div>

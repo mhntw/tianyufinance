@@ -154,6 +154,12 @@ function stripEsm(src) {
     .replace(/^\s*export\s+(function|const|let|var)\b/gm, '$1');
 }
 global.__XP_IMPORTS__ = {};   // 具体内容在 __TY_HELPERS__ 之后就位（见下）
+/* 分页器（common/pager.js）用真实源码装载：页面模块 import 它，缺了页面直接报
+   "renderPager is not a function"。不在此重写一份页码逻辑（那是自己验自己）。 */
+(function () {
+  let src = stripEsm(fs.readFileSync(path.join(ROOT, 'js', 'common', 'pager.js'), 'utf8'));
+  (0, eval)(src + '\n;globalThis.__XP_IMPORTS__.renderPager = renderPager;');
+})();
 function loadPage(rel, hookSrc) {
   /* 页面引导块已收口到 js/common/helpers.js：装载页面源码前先把它喂进 __XP_IMPORTS__
      （页面里的 import 会被 stripEsm 改写成 `var H = __XP_IMPORTS__['H']`）；

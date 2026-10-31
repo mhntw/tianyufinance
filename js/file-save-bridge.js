@@ -105,32 +105,38 @@
     // 展示带「打开文件夹」按钮的结果浮层，替代纯文本 toast，让用户能一键到达文件位置
     try {
       var d = document;
+      /* 【2026-10-31 收敛】本浮层原先整段内联写死（遮罩/10px 圆角/6px 按钮/自定义 z-index），
+         是全站最后一处"自成一派"的模态。现在与其它弹窗同一套：
+           .modal（遮罩 + 居中 + 动效）+ .modal-top（层级）+ data-backdrop（点遮罩关闭）
+           .modal-box（400 常规档 + 圆角 4 + 阴影）+ .modal-title（含 ×）+ .modal-body + .modal-actions
+         色值一律走 --ty-* 令牌（本浮层注入主文档，令牌可正常解析）。 */
       var overlay = d.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:2147483646;';
+      overlay.className = 'modal modal-top';
+      overlay.setAttribute('data-backdrop', 'close');
       var box = d.createElement('div');
-      box.style.cssText = 'background:var(--ty-white);border-radius:10px;max-width:520px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden;font-size:var(--fs-md);color:var(--ty-text-1);';
-      /* 【2026-10-04 去硬编码色】本浮层注入的是**主文档**（var d = document），
-         故 var(--ty-*) 令牌可正常解析，不必像打印件那样自带色值。
-         原先写死 #eee / #666 / #1565c0 / #e3f2fd / #ccd / #fff，与调色板脱节
-         （例：#1565c0 既非 --ty-blue 也非 --ty-blue-dark；#16a34a 那类"调色板外的绿"同理）。
-         映射：分隔线 → --ty-border；次要文字 → --ty-text-3；路径块 → --ty-blue-2 底 + --ty-blue-dark 字；
-               主按钮 → --ty-blue-dark 底 + --ty-white 字（白字在 --ty-blue #2f95ff 上仅 3.06:1 不达标，
-               故一律用深一档，见 check_css_tokens 的对比度说明）。 */
+      box.className = 'modal-box';
       box.innerHTML =
-        '<div style="padding:14px 18px;font-weight:600;border-bottom:1px solid var(--ty-border);">导出完成</div>' +
-        '<div style="padding:18px;word-break:break-all;line-height:1.6;">' +
+        '<div class="modal-title">导出完成' +
+          '<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button></div>' +
+        '<div class="modal-body" style="padding:var(--sp-4);word-break:break-all;line-height:1.6;">' +
           '<div style="color:var(--ty-text-3);margin-bottom:6px;">' + escHtml(o.desc || '文件已保存到：') + '</div>' +
-          '<div style="font-family:monospace;font-size:var(--fs-md);color:var(--ty-blue-dark);background:var(--ty-blue-2);padding:8px 10px;border-radius:6px;">' + escHtml(path) + '</div>' +
+          '<div style="font-family:monospace;font-size:var(--fs-md);color:var(--ty-blue-dark);background:var(--ty-blue-2);padding:8px 10px;border-radius:4px;">' + escHtml(path) + '</div>' +
         '</div>' +
-        '<div style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--ty-border);">' +
-          '<button class="ty-export-open" style="padding:7px 16px;border:1px solid var(--ty-blue-dark);background:var(--ty-blue-dark);color:var(--ty-white);border-radius:6px;cursor:pointer;font-size:var(--fs-md);">在文件夹中显示</button>' +
-          '<button class="ty-export-close" style="padding:7px 16px;border:1px solid var(--ty-border);background:var(--ty-white);border-radius:6px;cursor:pointer;font-size:var(--fs-md);">关闭</button>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary ty-export-open">在文件夹中显示</button>' +
+          '<button class="btn ty-export-close">关闭</button>' +
         '</div>';
       overlay.appendChild(box);
       d.body.appendChild(overlay);
-      function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+      // 关闭收尾只留"移除 DOM"；显示/焦点还原/Esc/遮罩/× 统一由 TYModal 处理
+      overlay.__onClose = function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+      function close() {
+        if (globalThis.TYModal) globalThis.TYModal.close(overlay);
+        else overlay.classList.remove('show');
+      }
       box.querySelector('.ty-export-close').onclick = close;
-      overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+      if (globalThis.TYModal) globalThis.TYModal.open(overlay);
+      else overlay.classList.add('show');
       box.querySelector('.ty-export-open').onclick = function () {
         close();
         var exportsPath = String(path);

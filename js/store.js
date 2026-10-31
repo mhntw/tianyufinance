@@ -227,9 +227,9 @@
   /* 分页总页数的**唯一算法**（2026-10-04 收口）：此前 5 处逐字手写
      `Math.max(1, Math.ceil(total / size))`。守卫 `Math.max(1, …)` 不能省：
      0 条数据时 Math.ceil(0/size) === 0，会渲染出"第 0 页 / 共 0 页"。
-     ⚠ 此处**只收口算术**，不统一分页控件 —— 三处分页 UI 的标记各不相同
-       （费用明细 <li>+tyicon 箭头 / 资产页 aPrev·aNext·aPageSize / 设置页 logPageSize），
-       合并 UI 属改外观（负优化），故不做。 */
+     ⚠ 此处只收口**算术**；分页控件的标记与外观已于 2026-10-31 统一到
+       js/common/pager.js（‹ 页码窗口 … › + 条/页），三处表格不再各写一套
+       （原先是：费用明细 <li> 全页码 / 资产页 aPrev·aNext·aPageNo / 设置页 logPage 文字按钮）。 */
   function totalPages(total, size) { return Math.max(1, Math.ceil(total / size)); }
   /* 期间文案的**唯一格式**（2026-10-04 收口、同日按用户口径修正）：`2026年09期` —— 补零、无「第」。
      收口前同一个月在界面上一共有三种写法：
@@ -1962,9 +1962,10 @@
       /* tabindex/role/data-kb-activate：三角本身是 <span>，无它则键盘 Tab 不到
          （Enter/Space 由 app.js 的 TYKeyboard 全局激活委托转为 click）。
          这一处是「全站树形三角的唯一出口」，改这里即同时修好科目表 / 科目余额表 / 费用明细主报表三处。 */
+      /* 字符不在这里写：▼/▶ 由 CSS 的「三角字符唯一来源」按 .collapsed 状态给 content
+         （见 css/style.css 文末「展开折叠三角唯一规范」），JS 只负责状态与语义。 */
       return '<span class="' + cls + '" data-code="' + code + '" data-c="' + code + '" title="' + title + '"' +
-        ' tabindex="0" role="button" data-kb-activate aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
-        (isOpen ? '▼' : '▶') + '</span>';
+        ' tabindex="0" role="button" data-kb-activate aria-expanded="' + (isOpen ? 'true' : 'false') + '"></span>';
     },
     // 科目编码 → 当前名称（显示层唯一入口）。
     // 口径：凭证/报表显示科目表实时名称，科目改名后历史单据显示同步更新；分录里存的 name 仅作兜底（科目已不存在时使用）。

@@ -22,12 +22,14 @@ function installDom() {
   function mkEl(tag) {
     const el = {
       tagName: tag, className: '', innerHTML: '', value: '', style: { cssText: '' },
-      parentNode: null, onclick: null, _q: {},
+      parentNode: null, onclick: null, _q: {}, _attrs: {},
       classList: {
         add(c) { if (el.className.split(/\s+/).indexOf(c) < 0) el.className = (el.className ? el.className + ' ' : '') + c; },
         remove(c) { el.className = el.className.split(/\s+/).filter((x) => x && x !== c).join(' '); },
         contains(c) { return el.className.split(/\s+/).indexOf(c) >= 0; }
       },
+      setAttribute(k, v) { el._attrs[k] = String(v); },
+      getAttribute(k) { return Object.prototype.hasOwnProperty.call(el._attrs, k) ? el._attrs[k] : null; },
       appendChild(c) { c.parentNode = el; },
       removeChild(c) { c.parentNode = null; },
       addEventListener() {},
@@ -79,15 +81,48 @@ async function run() {
   const made = installDom();
   global.window = {};
 
+  /* 全站统一入口 TYModal（app.js 提供）：dialog-bridge 现在依赖它完成显示/关闭/最上层判定。
+     Node 单测给一个同契约的最简实现，语义与 app.js 完全一致：
+       open  → 加 .show + 记打开序号
+       close → 去 .show + 触发 el.__onClose（业务收尾）
+       top   → 打开序号最大的那个 */
+  let _seq = 0;
+  global.TYModal = {
+    open(el) {
+      if (!el) return;
+      const was = el.classList.contains('show');
+      el.classList.add('show');
+      if (!was) el.__openSeq = ++_seq;
+    },
+    close(el) {
+      if (!el) return;
+      const was = el.classList.contains('show');
+      el.classList.remove('show');
+      el.__openSeq = 0;
+      if (was && typeof el.__onClose === 'function') {
+        const cb = el.__onClose; el.__onClose = null; cb();
+      }
+    },
+    top() {
+      let t = null;
+      made.overlays.forEach((m) => {
+        if (!m.classList.contains('show')) return;
+        if (!t || (m.__openSeq || 0) >= (t.__openSeq || 0)) t = m;
+      });
+      return t;
+    }
+  };
+
   // 场景2：确认框 —— 复用 .modal 体系 + 正文格式
   await step('确认框复用 .modal 体系（不再走系统原生框）', async () => {
     const p = confirmAsync('确认删除该凭证？');
     const ov = last(made);
     assert.ok(ov.className.indexOf('modal') >= 0, '应复用 .modal 类（与业务模态同一套外观）');
-    assert.ok(ov.className.indexOf('show') >= 0, '.modal 需带 .show 才可见');
+    assert.ok(ov.classList.contains('show'), '.modal 需带 .show 才可见');
+    assert.ok(ov.classList.contains('modal-top'), '层级用 .modal-top 类（不再内联 zIndex）');
     assert.ok(ov.innerHTML.indexOf('modal-box') >= 0 && ov.innerHTML.indexOf('modal-actions') >= 0,
       '应使用既有模态结构 modal-box / modal-actions');
-    assert.strictEqual(ov.style.zIndex, '2147483647', '层级应覆盖为最高（可盖住业务模态）');
+    assert.ok(ov.innerHTML.indexOf('data-modal-close') >= 0, '标题栏 × 走全局 data-modal-close 委托');
     assert.ok(/class="modal-body" style="[^"]*padding-left:1em/.test(ov.innerHTML),
       '正文容器应统一左缩进（不逐段判断，避免漏缩进）');
     ov._q['.ty-dlg-ok'].onclick();
@@ -175,9 +210,11 @@ async function run() {
   });
 
   // 场景4：键盘与嵌套
-  await step('Esc 取消、Enter 确认（document 级按键）', async () => {
+  // 【2026-10-31 收敛】Esc 已统一由 TYModal/全局 Esc 栈处理（不再在 bridge 里自写 keydown 分支），
+  // 所以这里走全局关闭路径验证 Promise 收尾；Enter 仍由 bridge 自己负责。
+  await step('Esc 取消（走统一 TYModal 关闭）、Enter 确认（document 级按键）', async () => {
     const pEsc = confirmAsync('esc 测试');
-    pressKey(made, 'Escape');
+    global.TYModal.close(global.TYModal.top());
     assert.strictEqual(await pEsc, false, 'Esc 应取消');
     const pEnter = confirmAsync('enter 测试');
     pressKey(made, 'Enter');
@@ -187,24 +224,25 @@ async function run() {
     pressKey(made, 'Enter');
     assert.strictEqual(await pInput, 'abc', '输入框回车应提交（挂 document，不依赖焦点）');
   });
-  await step('回车/ESC 在 keyCode 模式下同样生效（中文输入法 / 个别 webview 的 e.key 不可靠）', async () => {
-    // 实测回归：只认 e.key 时输入法组合状态下回车、Esc 会"没反应"，故必须双判定
+  await step('回车在 keyCode 模式下同样生效（中文输入法 / 个别 webview 的 e.key 不可靠）', async () => {
+    // 实测回归：只认 e.key 时输入法组合状态下回车会"没反应"，故 bridge 内保留双判定
     const p1 = confirmAsync('keyCode 回车');
     pressKey(made, { key: '', keyCode: 13, preventDefault() {} });
     assert.strictEqual(await p1, true, 'keyCode 13 应确认');
-    const p2 = confirmAsync('keyCode ESC');
-    pressKey(made, { key: 'Process', keyCode: 27, preventDefault() {} });
-    assert.strictEqual(await p2, false, 'keyCode 27 应取消');
+    // Esc 的双判定已归入全局 Esc 处理器（app.js），这里只验证统一关闭路径能正确 resolve false
+    const p2 = confirmAsync('关闭路径');
+    global.TYModal.close(global.TYModal.top());
+    assert.strictEqual(await p2, false, '统一关闭应取消');
   });
   await step('嵌套弹窗：一次按键只关最上层', async () => {
     const p1 = confirmAsync('第一层');
     const p2 = confirmAsync('第二层');
     assert.strictEqual(made.keyHandlers.length, 2, '两层各注册一个 keydown');
     pressKey(made, 'Enter');
-    assert.strictEqual(await p2, true, '第二层应被关闭');
+    assert.strictEqual(await p2, true, '第二层应被关闭（Enter 只作用于最上层）');
     assert.strictEqual(made.keyHandlers.length, 1, '第一层仍在，监听数应回到 1');
-    pressKey(made, 'Escape');
-    assert.strictEqual(await p1, false, '第一层随后由 Esc 关闭');
+    global.TYModal.close(global.TYModal.top());
+    assert.strictEqual(await p1, false, '第一层随后由统一关闭路径关闭（Esc 同路径）');
     assert.strictEqual(made.keyHandlers.length, 0, '全部关闭后无残留监听');
   });
   await step('重复关闭安全（连点确定+取消只生效一次）', async () => {
