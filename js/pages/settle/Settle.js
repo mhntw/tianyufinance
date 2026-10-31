@@ -304,10 +304,17 @@ async function onReopenPeriod() {
     // 反结账 tab 用自身月份导航 selReopenMonth；原代码误用 selMonth（结账 tab 选期），会在反结账页选 3 月却反结账结账 tab 选的月份。
     var month = selReopenMonth;
     if (!S.isPeriodClosed(month)) return showToast('该期未结账', 'error');
-    // 预检：仅允许反结账最近一期（在用户输入原因前先告知约束，避免输入完才被拒）
+    /* 预检：与 store.reopenPeriod 的两道硬规则逐条对应，先告知约束再让用户填原因
+       （否则填完一长段说明才被打回）。规则见 store.js 的 reopenPeriod 注释：
+       ① 只能反最近一期 ② 早于 reopenFloor 的期间已永久锁定，不允许逐期回退。 */
     var closeds = (S.state.closedPeriods || []).slice().sort();
-    if (closeds.length && month !== closeds[closeds.length - 1]) {
-      return showToast('仅允许反结账最近一期（' + closeds[closeds.length - 1] + '）；如需反结账更早期间，请先逐期反结账至目标期', 'error');
+    var latestClosed = closeds.length ? closeds[closeds.length - 1] : '';
+    var reopenFloor = (typeof S.state.reopenFloor === 'string') ? S.state.reopenFloor : '';
+    if (latestClosed && month !== latestClosed) {
+      return showToast('仅允许反结账最近一期（' + latestClosed + '）；更早的期间不可直接反结账', 'error');
+    }
+    if (reopenFloor && month < reopenFloor) {
+      return showToast('只能反结账 ' + reopenFloor + '；更早期间已永久锁定（如需更正请用红字冲销或调整期初）', 'error');
     }
     // 审计留痕：反结账前必须填写原因（如"X 月凭证 5001 金额输错"），写入操作日志 reason 字段
     // 文案里必须点出「红冲是更规范的替代」及其适用边界：否则用户会顺手用反结账去抹历史账，
@@ -812,9 +819,25 @@ function renderSettleButtons(vs, month, closed, curMonth, curVs, K, kindVs) {
   var btnReopen = $('btnReopenPeriod');
   if (btnReopen) {
     var reopenClosed = S.isPeriodClosed(selReopenMonth);
-    btnReopen.disabled = !reopenClosed;
-    btnReopen.textContent = reopenClosed ? '反结账' : '未结账';
-    btnReopen.title = selReopenMonth + (reopenClosed ? '（已结账，可反结账）' : '（未结账，无需反结账）');
+    // 【2026-10-31】永久下限：早于 reopenFloor 的期间已锁定 → 按钮直接置灰并写明原因，
+    // 不再让用户点下去才被 toast 打回（锁定是不可逆的产品规则，必须在按钮态上可见）。
+    var reopenFloor = (typeof S.state.reopenFloor === 'string') ? S.state.reopenFloor : '';
+    var reopenLocked = !!(reopenFloor && selReopenMonth < reopenFloor);
+    btnReopen.disabled = !reopenClosed || reopenLocked;
+    btnReopen.textContent = reopenLocked ? '已锁定' : (reopenClosed ? '反结账' : '未结账');
+    btnReopen.title = selReopenMonth + (reopenLocked
+      ? '（早于反结账下限 ' + reopenFloor + '，已永久锁定）'
+      : (reopenClosed ? '（已结账，可反结账）' : '（未结账，无需反结账）'));
+    // 页脚提示行（#reopenPeriodHint 此前只有 CSS、没有任何 JS 写入）：把当前锁定状态写出来，
+    // 否则用户只看到按钮变灰，不知道"锁在哪一期、为什么锁"。
+    var reopenHint = $('reopenPeriodHint');
+    if (reopenHint) {
+      reopenHint.textContent = reopenLocked
+        ? ('只能反结账 ' + reopenFloor + '；更早期间已永久锁定（如需更正请用红字冲销或调整期初余额）。')
+        : (reopenFloor
+          ? ('本账套反结账的边界是 ' + reopenFloor + '，更早期间永久不可反。')
+          : ('只能反结账最近一期；反过之后，更早期间将永久锁定。'));
+    }
   }
 
   // 结转损益按钮文案随状态切换：未结转→「结转损益」，已结转且未锁→「重新结转」，已结账→「已结转」（此前固定「重新结转」，未结转月点会弹删除 0 张旧凭证，语义误导）。

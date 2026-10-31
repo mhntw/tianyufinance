@@ -211,9 +211,13 @@
   display:flex; align-items:center; justify-content:center;
   font-size:var(--fs-md); font-weight:600;
 }
+/* 图标字形（与首页快捷区同一套 iconcool 字形，2026-10-31）：26px 方框内 15px 字形，
+   视觉重量与左侧「名称首字」兜底一致；着色沿用 .cmd-avatar 的 color 之外的 fill。 */
+.cmd-avatar svg{ width:15px; height:15px; display:block; fill:var(--ty-blue-dark); }
 .cmd-name{ flex:1; font-size:var(--fs-md); color:var(--ty-text); }
 .cmd-tag{ font-size:var(--fs-2xs); color:var(--ty-text-3); }
 .cmd-foot{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);
   padding:var(--sp-2) var(--sp-3); font-size:var(--fs-2xs); color:var(--ty-text-3);
   border-top:1px solid var(--ty-border);
 }
@@ -504,9 +508,10 @@ img, svg { display: block; max-width: 100%; }
  *   ② 超宽表格撑大 .page.active 的 scrollWidth → 页面横滚，符合「宽表横滚」预期
  *   ③ 不会出现「外层 page + 内层 容器」双滚动条（用户曾反馈过一长一短两条）
  *
- * 例外：带右侧栏的页面（资产卡片 .asset-grid-scroll、原单页 .orig-grid）必须保留
- * 局部滚动（flex:1 + min-height:0 + overflow:auto），否则超宽表格会把 .page 撑宽、
- * 把侧栏推到视口外。两种模式不可混用。 */
+ * 例外：固定资产卡片页的 .asset-grid-scroll 仍保留局部滚动（flex:1 + min-height:0 + overflow:auto）：
+ * 该页表格下方还有分页条，需要「表头吸顶 + 分页条固定」的冻结结构，不能改成整页滚动。
+ * 2026-10-31 该页右侧部门树已下线（筛选改首行下拉），表格因此吃满整行、滚动条也贴了窗口右缘，
+ * 但「局部滚动」这一点不变；整页滚动与局部滚动两种模式仍不可混用。 */
 .grid-wrap { display: block; width: 100%; max-width: 100%; vertical-align: top; overflow: visible; max-height: none; border: none; }
 /* grid-wrap 内的表格：宽度/布局一律走全局 .grid 标准，这里只去掉外边距。
    注：上方注释此前漏写结尾的注释闭合符，导致下面两条规则被当成注释吞掉（含 sticky 表头），现补上。 */
@@ -721,13 +726,20 @@ img, svg { display: block; max-width: 100%; }
 /* 工作区页面：在 .content(flex column, overflow:hidden) 内各自成为滚动区，
    「inner--38K5g overflow:hidden + 工作区自身滚动」——头部(标签栏)固定不滚 */
 .page { display: none; }
-/* 期末结账板块（结账/反结账两 tab 共用）：定宽 800，左对齐。
-   居中会在大屏左侧留出大片空白，故靠左贴内容区排列；右侧自然留白（工作台布局）。 */
+/* 期末结账板块（期末处理/结账/反结账三 tab 共用）：内容定宽 800，左对齐。
+   居中会在大屏左侧留出大片空白，故靠左贴内容区排列；右侧自然留白（工作台布局）。
+
+   【2026-10-31 修正】800 定宽必须挂在内层 `.settle-wrap` 上，**不能挂在 #page-settle 上**：
+   #page-settle 同时是 .page.active 的滚动容器（overflow:auto），一旦给它 max-width:800，
+   竖滚动条就画在 800px 处的右边缘而不是窗口最右边（三个 tab 都表现为"滚动条不在最右"）。
+   现在滚动容器保持全宽 → 滚动条贴窗口右缘；800 的版心由 .settle-wrap 承担，左对齐不变。 */
 #page-settle {
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto 0 0;          /* 左对齐：左侧无空白，右侧自然留白 */
   padding: var(--sp-4) var(--sp-5) var(--sp-3);     /* 与其他页一致 */
+}
+.settle-wrap {
+  max-width: 800px;
+  margin: 0;                   /* 左对齐：左侧无空白，右侧自然留白 */
 }
 .page.active { display: block; flex: 1; min-height: 0; overflow: auto; padding: var(--sp-4) var(--sp-5) var(--sp-3); }   /* 页面内容区留白（顶 16px 与标签栏拉开间距，左右 24px、底 12px） */
 
@@ -748,6 +760,34 @@ img, svg { display: block; max-width: 100%; }
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+/* 【2026-10-31】内层滚动容器右贴窗口：让滚动条落在窗口最右缘，而不是 .page 的 24px 右内边距处。
+   做法 = 负右边距把盒子推到窗口右缘 + 等量 padding-right 把内容退回来
+   （内容位置与改前完全一致，横向滚动条一并贴边，且滚动条浮在那 24px 空白上不压文字）。
+   仍不收敛的两种结构（它们"滚动条不在最右"是布局使然，不是缺陷）：
+   · 树面板旁（固定资产卡片 .orig-table-wrap > .asset-grid-scroll、明细账 .dl-layout > .dl-body）——
+     滚动条本就该落在表格区右缘；
+   · 凭证编辑视图（#vEditView 固定 1096px 凭证版心，保证打印版式）—— 强行贴边会把分录表拉宽、破坏版式。
+     它虽不是 .page 直接子元素（父级 #vEditView）而被选择器自然排除，但记录下来免得将来有人"顺手补全"。
+   注：这些页 .page.active 是 overflow:hidden，裁切边界是 padding box（= 窗口右缘），负边距不会被裁掉。 */
+.page.active > .scroll-area:not(.card) {
+  margin-right: calc(-1 * var(--sp-5));
+  padding-right: var(--sp-5);
+}
+/* 现金流量两页：滚动区被卡片"套"了一层，出血量要把卡片自身的 16px 内边距也算进去。
+   【更正 2026-10-31 早前的错误判断】当时写"卡片出血会顶到边框/越出边框"——实际 .card 只有
+   `padding: 0 16px 16px`，**没有 border / background / border-radius / box-shadow**，是一层看不见的
+   内边距壳，所以出血后无任何可见差异：
+   · 项目页：卡片自身就是滚动容器（.card.scroll-area）→ 只需抵掉页面 24px，内容靠 40px(16+24) 内距保住原位；
+   · 初始化页：卡片里再套 .cf-open-wrap.scroll-area → 需抵掉 40px(16+24)，再用 40px 内距把内容退回原位。
+   两页的内容右缘与改前完全一致，只有滚动条从 24/40px 处挪到窗口最右缘。 */
+.page.active > .card.scroll-area {
+  margin-right: calc(-1 * var(--sp-5));
+  padding-right: calc(var(--sp-4) + var(--sp-5));
+}
+.page.active > .card > .scroll-area {
+  margin-right: calc(-1 * (var(--sp-4) + var(--sp-5)));
+  padding-right: calc(var(--sp-4) + var(--sp-5));
 }
 /* 滚动区嵌在卡片里时（现金流量两页）：卡片自身变弹性列，让内部滚动区吃满剩余高度，
    于是"操作区/卡片头"固定不动，只有表格内容滚动，表头永远吸在滚动区顶部。
@@ -1288,13 +1328,30 @@ label.req::before {
    （.grid 的 width:100% + table-layout:auto），不再需要按容器补声明。 */
 
 /* 单元格单行截断：给 max-content 设上限，避免长文本把表格撑得极宽。
-   短内容（日期/编码/金额）远小于此值，不受影响；长内容截断为省略号。 */
+   短内容（日期/编码/金额）远小于此值，不受影响；长内容截断为省略号。
+   ⚠【2026-10-31 实测更正】下面 td 上的 max-width 在 table-layout:auto 下**不参与列宽计算**：
+     浏览器按单元格的 max-content 定列宽，而 td 的 max-width 不进这一步，所以它只对极少数引擎有效。
+     现象：固定资产卡片「备注」越长、整张表越宽（30 列本就宽，再加可变宽度就没边了）。
+     真正生效的是内层 `.cell-clip`（见下），前者保留只为兜住 ellipsis 所需的 overflow 上下文。 */
 .grid td,
 .grid th {
   max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 单元格内容宽度上限【唯一实现，改长文本列先读这里】
+   inline-block 的 max-width 会进入单元格的 max-content，于是列宽在这里就到顶；
+   超长内容由 td 的 ellipsis 兜底，鼠标悬停看 title 全文。
+   用法：`<td><span class="cell-clip" title="全文">文本</span></td>`
+   （固定资产卡片「备注」列首个使用；规格型号 / 存放地点若也出现撑宽，同样套这个类即可。） */
+.cell-clip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 /* 名称列最小宽度：统一由下方「全站表格列宽」约定的 .grid .col-name（140px）提供。
@@ -2595,7 +2652,7 @@ label.req::before {
 /* 固定资产卡片表容器：对齐同页结构里 .orig-grid 的滚动容器模式。
  *
  * 关键在 flex:1 + min-height:0 —— 它让本容器从父级 .orig-table-wrap
- * （flex column，高度由 .orig-body 的 stretch 决定）拿到**确定高度**，
+ * （flex column，2026-10-31 起直接作为 .page 弹性列的子项，`flex:1` 撑满剩余高度）拿到**确定高度**，
  * 再配 overflow:auto，容器自身就能横向 + 纵向滚动。这同时解决三件事：
  *   ① 表格 max-content（30 列，数千像素）被约束在容器内横滚，
  *      不会把 .page 撑宽，右侧 200px 侧栏（资产类别/部门树）也就不会被
@@ -2612,13 +2669,21 @@ label.req::before {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--grid-line);
   background: var(--ty-white);
+  /* 【2026-10-31】原这里画了 1px 外框（配合下方 #assetGrid{border:none} 去重），
+     侧栏下线后表格吃满整行，边框改回由 .grid 自身提供（全站口径，见 5929 行注释），
+     否则出血贴边时这条外框会变成窗口最右侧一根孤零零的竖线。 */
+}
+/* 滚动条贴窗口右缘（与 .scroll-area 同一做法）。此刻它已被 .page 的 24px 右内边距顶住，
+   负右边距把盒子推到窗口右缘，再用等量 padding-right 把表格内容退回原位；
+   表格外框由 .grid 提供（宽 = 内容宽），因此不会跟着贴到窗口边上。 */
+.page.active > .orig-table-wrap > .asset-grid-scroll {
+  margin-right: calc(-1 * var(--sp-5));
+  padding-right: var(--sp-5);
 }
 .asset-grid-scroll thead th { position: sticky; top: 0; z-index: 2; }
 #assetGrid {
   table-layout: auto;
-  border: none;
 }
 /* 全局 .grid td/th 已统一 nowrap + 省略号截断，此处不再重复声明。
    操作列 / 凭证列左对齐，金额列右对齐（与 th 类一致） */
@@ -4189,7 +4254,9 @@ label.req::before {
      顶栏自 2026-10-06 由 grid 改横向 flex 后，三个子块都从左依次排开 —— 品牌留在左端没问题，
      但账期/账套/搜索也贴左边，整条顶栏就成了"全左对齐"。
      auto margin 只吃掉「品牌」与「中列」之间的全部余量：中列内部仍是 flex-start 左排（账期→账套），
-     右列紧随中列，故三块之间的相对关系与窄屏收缩行为都不变。 */
+     右列紧随中列，故三块之间的相对关系与窄屏收缩行为都不变。
+     这是顶栏**唯一**的 auto 左边距（2026-10-31：右列曾也加 auto，导致余量被平分出两段空白，
+     已移除，理由见 .topbar-right 处注释）。 */
   margin-left: auto !important;
 }
 .topbar .right-menu {
@@ -4211,7 +4278,10 @@ label.req::before {
   align-items: center !important;
   padding: 0 !important;          /* 清零内距，期间↔账套间距统一交由 .right-menu 的 gap 控制 */
   color: var(--ty-text) !important;
-  cursor: pointer !important;
+  /* 【2026-10-31】pointer → default：本类同时套在「当前账期」纯展示块上，
+     给 pointer 会让一段点了没反应的文字显示手型（误导可点）。
+     真正可点的账套按钮是子元素 .topbar-acct-btn，它自带 cursor:pointer，不受本行影响。 */
+  cursor: default !important;
   outline: none !important;
   transition: background-color .3s !important;
   height: 48px !important;
@@ -4370,6 +4440,15 @@ label.req::before {
 .topbar .topbar-right {
   justify-content: flex-start;
   gap: var(--sp-3);
+  /* 【2026-10-31】此处曾写 margin-left:auto 把右列也推到窗口右侧。但中列（.topbar-center）
+     已有同一条 auto 左边距 —— 两个 auto 会**平分**「品牌之后」的余量，顶栏于是变成
+     品牌 ┊ 空白 ┊ 账期账套 ┊ 空白 ┊ 跳转+搜索 的三段式，两段空白各约 160px（1280 窗口）。
+     而 160px 既不够近（成不了一组）也不够远（分不成两个区），只像"漏了两块内容"。
+     现改回单一 auto：只由中列的 auto 吃掉全部余量、右列紧随其后 —— 空白整段落在
+     「品牌 ↔ 功能区」之间（约 330px），读作品牌留白；账期/账套/跳转/搜索四件连成一排贴右端。
+     下面用负 margin 把父级 .topbar 的 16px gap 折成 12px，与 .right-menu 内部 gap 对齐，
+     让这四项组内间距统一、看起来是一组（组间 16px > 组内 12px 才立得住）。 */
+  margin-left: calc(var(--sp-3) - var(--sp-4));   /* -4px：父 gap 16 → 实际组内 12 */
 }
 
 /* ============================================================
@@ -4381,15 +4460,22 @@ label.req::before {
 .cmd-trigger{
   display:inline-flex; align-items:center; gap:var(--sp-2);
   height:28px; box-sizing:border-box;
-  border:1px solid var(--ty-border-2); background:var(--ty-white);
-  color:var(--ty-text); border-radius:4px; padding:0 var(--sp-3);
+  /* 【2026-10-31】从「白底细描边」改为浅蓝实底按钮：原样式与旁边的搜索框同为白底小控件，
+     夹在中间时读起来像"第二个搜索框"，认不出它是跨页导航的唯一入口（侧栏已下线）。
+     改浅蓝底 + 深蓝字后，与素白的搜索框一眼分得开；hover 反过来变白底蓝边，仍有反馈。 */
+  border:1px solid var(--ty-blue-2); background:var(--ty-blue-2);
+  color:var(--ty-blue-dark); border-radius:4px; padding:0 var(--sp-3);
   font-size:var(--fs-md); cursor:pointer; font-family:var(--ty-font);
   white-space:nowrap;          /* 防止中文在顶栏被压缩时逐字折行成竖排 */
   flex-shrink:0;               /* 顶栏拥挤时不收缩，整词保持一行 */
+  transition: background .15s ease, border-color .15s ease;
 }
-.cmd-trigger:hover{ border-color:var(--ty-blue); color:var(--ty-blue-dark); }
+.cmd-trigger:hover{ background:var(--ty-white); border-color:var(--ty-blue); color:var(--ty-blue-dark); }
 .cmd-trigger:focus-visible{ outline:2px solid var(--ty-blue); outline-offset:2px; }
-.cmd-trigger .cmd-kbd{ flex-shrink:0; }
+/* ⌘K 徽标：在浅蓝底上改纯白底 + 蓝字，像一枚实体键帽；沿用 .cmd-kbd 的描边/字号，不另造一套 */
+.cmd-trigger .cmd-kbd{
+  flex-shrink:0; background:var(--ty-white); color:var(--ty-blue-dark); border-color:var(--ty-blue-2);
+}
 
 .topbar-search { position: relative; display: flex; align-items: center; }
 /* 🔍 提交按钮：位于搜索框内最右（复刻） */
@@ -5181,9 +5267,13 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   .page.active .page-actions { display: none; }
   /* 打印态：解除 flex 列与所有滚动区的裁切，整页内容完整输出 */
   .page.active { display: block !important; overflow: visible !important; height: auto !important; }
-  .scroll-area, .dl-main, .asset-grid-scroll, .orig-body, .orig-table-wrap,
+  .scroll-area, .dl-main, .asset-grid-scroll, .orig-table-wrap,
   .dl-layout, .dl-side {
     overflow: visible !important; height: auto !important; flex: none !important;
+  }
+  /* 长文本列：屏幕上为防表格变宽而限宽截断，打印时必须放开 —— 纸质件要看到完整备注 */
+  .cell-clip {
+    max-width: none !important; overflow: visible !important; white-space: normal !important;
   }
   /* 打印态移除 sticky + 固定高度：内容自然铺开，不出现吸顶或空白 */
   .page.active .page-actions,
@@ -5841,54 +5931,11 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .btn.ty-dropdown::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; }
 
-.orig-body { display: flex; align-items: stretch; flex: 1; min-height: 0; }
-/*  ykj-page1 wrapper 类 siderRight：侧栏（树）位于右侧，表格在左侧 */
-.orig-body-sider-right { flex-direction: row-reverse; }
-.orig-sider {
-  /* 可收起（照抄明细账 .dl-panel 范式，见下）：宽度交给 transition 过渡，收窄到 30px 时裁掉内容。
-     ⚠ 滚动必须从「整栏滚动」下移到 .orig-sider-body：否则收起态下 30px 竖把里会套一个滚动容器，
-     且展开时头部会跟着内容滚走（头部应固定，只有类别/部门两个列表滚动）。 */
-  position: relative;                 /* .dl-panel-restore 是 position:absolute; inset:0，需要定位上下文 */
-  /* 底色改用白：原先是 --ty-blue-2 浅蓝，与左侧表格的斑马纹/悬浮同色系，
-     一整条蓝底既抢视线又压过内容（2026-09-22 反馈"背景颜色太深"）。
-     与卡片表格同为白底后，层级靠**左侧 1px 分隔线**区分，观感干净且与其他页面一致。 */
-  width: 200px; flex: 0 0 200px; border-left: 1px solid var(--ty-border); background: var(--ty-white); padding: 0;
-  display: flex; flex-direction: column; min-height: 0;
-  overflow: hidden;
-  transition: width .15s ease, flex-basis .15s ease;   /* 与明细账面板同款过渡时长 */
-}
-.orig-sider .dl-panel-head { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
-/* 收起态：宽 30px（.dl-panel-closed 已给出 width/min/max，这里补 flex-basis —— 本栏宽由 flex 决定，
-   只改 width 无效）；体内两个列表隐藏，只留铺满竖把的 « 展开按钮。 */
-.orig-sider.dl-panel-closed { flex: 0 0 30px !important; }
-.orig-sider.dl-panel-closed .orig-sider-body { display: none; }
-.orig-sider-body { flex: 1; min-height: 0; overflow-y: auto; }
-/*  table-left-box / bottom-box：上=资产类别树，下=部门树，各有小标题 */
-.orig-sider-box { padding: var(--sp-2) 0; }
-/* 「资产类别 / 部门」两组的分隔线：原先是 --ty-blue-2，在旧蓝底上几乎看不见；
-   白底后改用 --ty-border（与页面分隔线同款），层级清楚又可辨。 */
-.orig-sider-box-bottom { border-top: 1px solid var(--ty-border); }
-.orig-sider-title { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); font-weight: 400; color: var(--ty-text-2); }
-/* 树对齐参考实现 ty-tree：节点高32px、hover浅蓝、选中斑马纹浅蓝+加粗、根节点带展开箭头、子节点缩进 */
-.orig-tree { list-style: none; margin: 0; padding: 0; font-size: var(--fs-md); }
-.orig-tree li { height: 32px; line-height: var(--lh-1); padding: 0 var(--sp-3); cursor: pointer; color: var(--ty-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.orig-tree li:hover { background: var(--ty-row-hover); }
-/* 选中行：**斑马纹那档浅蓝**（--ty-row-alt）+ 正文深色 + 加粗。
-   【演变史，别走回头路】
-     ① 「白字 + --ty-blue 亮蓝底」：对比度仅 **3.06:1**，不达标（WCAG 正文要 4.5:1）；
-     ② 「金底深字」：对比度 5.93:1 ✓，但金色与全站的"警示 / 提示 / 当前科目"语义撞车，
-        且用户反馈偏重；
-     ③ 现按用户要求改为 --ty-row-alt（#f4f8ff，比 hover 的 --ty-row-hover 更淡一档）。
-   ⚠ 这档蓝很淡，光靠底色**不足以分辨"选中 vs 未选中"** —— 故叠加**加粗**作第二重标识
-     （不引入新颜色）。鼠标扫过选中行时再升到 --ty-row-hover，保证悬浮仍有反馈。 */
-.orig-tree li.selected { background: var(--ty-row-alt); color: var(--ty-text); font-weight: 600; }
-.orig-tree li.selected:hover { background: var(--ty-row-hover); }
-.orig-tree .tree-parent { font-weight: 400; }
-/* 提示（保留未删，2026-10-04 审查）：上面这条与下面 .tree-child 那条的选择器**写的是 tree-parent /
-   tree-child**，而本树 li 实际类名是 orig-tree-parent / orig-tree-child（Asset.js:49/60），
-   即这两条从不匹配 —— 是"意图还在、选择器写错"，改它会**改变现在的外观**，故不擅自动，
-   待你定：修选择器（父级不再加粗 / 子级转浅灰）还是删掉。 */
-.orig-tree .tree-child { color: var(--ty-text-2); font-weight: 400; }   /* 缩进走全站统一 .indent-3（32px），原 padding-left:32px 已移除 */
+/* 【2026-10-31 删除】.orig-body / .orig-body-sider-right / .orig-sider* / .orig-tree*：
+   固定资产卡片页右侧「部门」筛选树（200px + 可收起竖把）整块下线，筛选改到首行 #aDeptFilter 下拉，
+   DOM 里已没有这些类（index.html 与 js/ 全仓 0 命中）。原来的行宽只剩表格，故外层 .orig-body
+   的 flex 行容器也一并删除，.orig-table-wrap 直接作为 .page 的弹性列子项。
+   ⚠ .dl-panel-* 是明细账科目树在用的另一套通用类，不受影响，勿连带删除。 */
 
 .orig-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 /* 「原始凭证」表已于 2026-09-18 收敛为全站标准单表格（scroll-area > grid-wrap > table.grid），
@@ -6304,7 +6351,8 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 /* ============ 展开/折叠三角【全站唯一外观规范，改三角先读这里】 ============
  * 覆盖：科目表 #subjBody、科目余额表 #tbBody、明细账快速切换树 .dl-arrow、
  *       费用明细表内 .ed-tree-arrow、费用明细科目弹层 .ed-subj-toggle、
- *       原始凭证分类树 .orig-tree 父级三角、结算模板科目组 .settle-tmpl-arrow。
+ *       结算模板科目组 .settle-tmpl-arrow。
+ *       （2026-10-31：原覆盖项「原始凭证分类树 .orig-tree 父级三角」已随该树整块下线，见文末注释）
  * 口径（唯一，2026-09 定）：
  *   盒 12×12px、字号 10px 的实心 ▶（折叠）/ ▼（展开），由 store.subjectArrowHTML 统一输出；
  *   默认色 --ty-text-3（浅灰，不抢眼）；鼠标悬停【只变蓝】，不加底色；
@@ -6338,9 +6386,10 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ed-tree-arrow:not(.expanded)::before, .ed-subj-toggle:not(.expanded)::before { content: '▶'; }
 .settle-tmpl-arrow::before { content: '▶'; }   /* 折叠模板组：▶ 展开时整体 rotate(90deg) */
 
-/* 原「原始凭证父级三角」规则（.orig-tree .tree-parent .tree-arrow）已于 2026-10-04 删除：
-   该树 li 的类名是 orig-tree-parent（不是 tree-parent），且树是平铺的、**不输出**三角元素
-   （Asset.js:49-53 已注明「无展开/折叠，故不再输出三角占位」）→ 选择器从不匹配，属废弃规格。 */
+/* 「原始凭证父级三角」历史：曾写 .orig-tree .tree-parent .tree-arrow，但该树 li 的类名是
+   orig-tree-parent（不是 tree-parent），且树是平铺的、从不输出三角元素 → 选择器从未匹配，属废弃规格，
+   2026-10-04 删除；2026-10-31 该部门树连 DOM 一起下线（筛选改首行 #aDeptFilter 下拉），
+   相关类名 .orig-tree* / .orig-sider* / .orig-body* 已全站 0 残留。 */
 
 /* ===== 关于卡（设置页最后一张）===== */
 .about-box { padding: var(--sp-3) 0 0; }

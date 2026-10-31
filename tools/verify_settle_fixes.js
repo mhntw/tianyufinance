@@ -432,8 +432,47 @@ const settleSrcBal = fs.readFileSync(path.resolve(__dirname, '../js/pages/settle
 ck(!/Math\.abs\(\s*r\.bal\b/.test(settleSrcBal), 'Settle.js 不再用 Math.abs(r.bal) 取金额（注释提及不算）');
 ck(/r\.amount/.test(settleSrcBal), 'Settle.js 改读 r.amount');
 
+/* ============================================================
+ * #14 反结账彻底收紧（2026-10-31 产品决策）
+ *
+ * 规则：① 只能反结账最近一期；② 首次反结账写下永久下限 state.reopenFloor，
+ *      早于下限的期间此后一律拒绝 —— 重新结账也不解锁。
+ * 【为什么单独立段】原先只有 ①，而反掉 08 之后 07 就自动变成"最近一期"，
+ *   于是"逐期反结账"可以一路回退改写历史报表，① 形同虚设。
+ *   ② 是本次唯一的行为变更，必须有用例盯住"下限永不清除"——否则将来有人
+ *   顺手加一句"重新结账时重置下限"，硬顶就会静默失效。
+ * ============================================================ */
+console.log('\n=== #14. 反结账硬顶（只能退一层，下限永久）===');
+baseState();
+S.state.closedPeriods = ['2025-11', '2025-12'];
+S.state.reopenFloor = '';
+const rNotLatest = S.reopenPeriod('2025-11', '测试：非最近一期');
+ck(rNotLatest.ok === false && /最近一期/.test(rNotLatest.msg || ''), '规则①：非最近一期被拒');
+ck(!S.state.reopenFloor, '被拒时不得写下限');
+const rFirstReopen = S.reopenPeriod('2025-12', '测试：首次反结账');
+ck(rFirstReopen.ok === true, '最近一期反结账成功');
+ck(S.state.reopenFloor === '2025-12', '首次反结账写下限 = 2025-12');
+// 此刻 2025-11 已是"最近一期"，但它低于下限 → 必须被拒（这就是"不能逐期反"）
+const rWalkBack = S.reopenPeriod('2025-11', '测试：逐期回退');
+ck(rWalkBack.ok === false && /永久锁定/.test(rWalkBack.msg || ''), '规则②：逐期回退被拒，提命运久锁定');
+ck(S.state.reopenFloor === '2025-12', '被拒后下限不变');
+// 重新结账该期后再反：允许（等于下限），且下限不清除
+S.state.closedPeriods.push('2025-12');
+S.state.closedPeriods.sort();
+const rAgain = S.reopenPeriod('2025-12', '测试：重新结账后再反同一期');
+ck(rAgain.ok === true, '重新结账后仍可反同一期（等于下限，不算回退）');
+ck(S.state.reopenFloor === '2025-12', '重新结账不会清除/移动下限');
+// 页面层：锁定必须在按钮态与页脚提示上可见（Node 里无法渲染，只校验代码路径存在）
+const settleSrcLock = fs.readFileSync(path.resolve(__dirname, '../js/pages/settle/Settle.js'), 'utf8');
+ck(/reopenLocked/.test(settleSrcLock) && /已锁定/.test(settleSrcLock), 'Settle.js 反结账按钮有「已锁定」态');
+ck(/reopenPeriodHint/.test(settleSrcLock), 'Settle.js 写页脚锁定提示（#reopenPeriodHint 此前是死元素）');
+ck(!/请先逐期反结账至目标期/.test(settleSrcLock), 'Settle.js 不再教用户「逐期反结账至目标期」');
+const storeSrcLock = fs.readFileSync(path.resolve(__dirname, '../js/store.js'), 'utf8');
+ck(!/请先逐期反结账至目标期/.test(storeSrcLock), 'store.js 不再教用户「逐期反结账至目标期」');
+ck(/reopenFloor/.test(storeSrcLock), 'store.js 记录反结账下限 reopenFloor');
+
 console.log('\n============================');
 console.log(bad === 0
-  ? '全部通过：#5查重/#8年末结转接入/#9硬性检查展示/#11结转金额口径/#12结转目标科目单点/#13年结识别/#13b利润分配/#13c版式对齐/#13d还原防重复/#13e年末结转金额口径'
+  ? '全部通过：#5查重/#8年末结转接入/#9硬性检查展示/#11结转金额口径/#12结转目标科目单点/#13年结识别/#13b利润分配/#13c版式对齐/#13d还原防重复/#13e年末结转金额口径/#14反结账硬顶'
   : '存在 ' + bad + ' 处不符');
 process.exitCode = bad === 0 ? 0 : 1;

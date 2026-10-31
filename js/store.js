@@ -566,6 +566,10 @@
             problems.push(at + '.deprReverted 应为数组');
           }
         }
+      } else if (k === 'reopenFloor') {
+        // 【2026-10-31】反结账下限是期间字符串（空串合法）；非字符串一律拒收，
+        // 否则重新导入后 `month < floor` 的字符串比较会静默错判。
+        if (typeof v !== 'string') problems.push('reopenFloor 应为期间字符串（YYYY-MM 或空串）');
       } else if (def[k] && typeof def[k] === 'object') {
         if (!v || typeof v !== 'object' || Array.isArray(v)) problems.push(k + ' 应为对象');
       }
@@ -604,6 +608,12 @@
       subjectCashFlowMap: {}, // 科目→现金流量主表项目映射 { code: { credit:'项目id', debit:'项目id' } }
       operationLogs: [],      // 操作日志 [{ time, user, action, detail }]
       closedPeriods: [],     // 已结账月份列表 ['YYYY-MM', ...]
+      /* 【2026-10-31 新增】反结账永久下限（'YYYY-MM'，空串 = 从未反结账过）。
+         首次反结账时写入被反的那一期，此后**早于该月**的期间永久不可再反结账
+         —— 连"把该期重新结账"也不解锁，杜绝「逐期反结账」一路回退改写历史报表。
+         老账套没有该键 → 一律视为 ''（懒初始化，见 reopenPeriod），不 bump schemaVersion、无需迁移。
+         没有解除入口（产品决策，2026-10-31）：真要救急只能改账套 json 里的这个值。 */
+      reopenFloor: '',
       voucherWords: [
         { name: '记', title: '记账凭证', enabled: true },
         { name: '收', title: '收款凭证', enabled: false },
@@ -3898,15 +3908,30 @@
       return { ok: true, checks: checks, warns: warns };
     },
     reopenPeriod: function (month, reason) {
-      // 风险控制：仅允许反结账「最近一期」（已结账期间的最新月）。
-      // 财务规范：跨期反结账会破坏多期账务的连续性，且历史报表已被引用/报税时影响面更大。
-      // 如确需反结账更早期间，须先逐期反结账至目标期。
+      /* 【2026-10-31 彻底收紧】两道硬规则，缺一不可：
+         ① 只能反结账「最近一期」（已结账期间的最新月）。
+         ② 每本账套只能往后退**一层**：首次反结账时把该月写进 state.reopenFloor 作为永久下限，
+            此后早于下限的任何期间都不再允许反结账 —— 即使把那一期重新结账，下限也不清除。
+         为什么加 ②：只有 ① 时，"反掉 08 → 07 就变成最近一期" 可以一路逐期回退改写历史报表。
+         ② 把这条路封死。代价是跨期错误（期初余额录错、科目体系要调整）在软件内无法更正，
+         只能靠红字冲销或期初重录 —— 这是 2026-10-31 明确的产品决策，不是缺陷。
+         下限**没有解除入口**（用户要求"永久生效"）；真需要救急只能改账套 json 的 reopenFloor。 */
       if (!this.state.closedPeriods || !this.state.closedPeriods.length)
         return { ok: false, msg: '无可反结账期间' };
       var latest = this.state.closedPeriods.slice().sort().pop();
       if (month !== latest) {
-        return { ok: false, msg: '仅允许反结账最近一期（' + latest + '）；如需反结账更早期间，请先逐期反结账至目标期' };
+        return { ok: false, msg: '仅允许反结账最近一期（' + latest + '）；更早的期间不可直接反结账' };
       }
+      // 老账套没有该键 → 懒初始化成空串（不迁移、不 bump schemaVersion）
+      if (typeof this.state.reopenFloor !== 'string') this.state.reopenFloor = '';
+      var floor = this.state.reopenFloor;
+      if (floor && month < floor) {
+        return {
+          ok: false,
+          msg: '只能反结账 ' + floor + '；更早期间已永久锁定（如需更正请用红字冲销或调整期初）'
+        };
+      }
+      if (!floor) this.state.reopenFloor = month;   // 首次反结账才写下限；之后只会永远等于它
       this.state.closedPeriods = this.state.closedPeriods.filter(function (m) { return m !== month; });
       this.persist();
       // 反结账审计留痕：reason 字段独立于 detail，便于操作日志页红标醒目展示

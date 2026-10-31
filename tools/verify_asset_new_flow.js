@@ -107,12 +107,26 @@ ck(/function _deprGroups\(month, showCleaned, startMonth\)/.test(ASSET) && !/byD
   'D1c 折旧分组固定按部门（byDept 死参数已清除）');
 ck(!/id="btnAssetCatMgr"/.test(HTML) && !/id="assetCatListModal"/.test(HTML) && !/id="catModal"/.test(HTML),
   'D2 类别维护弹窗 / 类别编辑弹窗 / 工具条入口 均已删除');
-ck(!/id="assetCatTree"/.test(HTML), 'D3 左树类别筛选已删除（只保留部门树）');
+ck(!/id="assetCatTree"/.test(HTML), 'D3 左树类别筛选已删除');
+/* 只查真实标记（class/id 属性），不查注释里的类名提及 —— 注释里保留 .orig-sider 字样是有意的溯源说明 */
+ck(!/class="orig-sider|id="assetSider"|id="assetDeptTree"/.test(HTML), 'D3b 右侧部门树面板整体下线（2026-10-31，筛选改首行下拉）');
+ck(/id="aDeptFilter"/.test(HTML) && /function renderAssetDeptFilter/.test(ASSET), 'D3c 首行部门下拉存在且有渲染函数');
 ck(!/assetCats\(\)/.test(ASSET), 'D4 前端不再读取类别档案');
 ck(!/normalizeAssetCategory\s*:\s*function/.test(STORE), 'D5 store 不再有「编码↔名称」归一方法');
 ck(/function migrateAssetCategoryToName/.test(STORE) && /migrateAssetCategoryToName\(this\.state\)/.test(STORE),
   'D6 store 在 normalizeState 里调用幂等迁移（编码 → 名称）');
 ck(/assetCats: \[\],/.test(STORE), 'D7 emptyState 保留 assetCats 空数组键（旧版本回退时的兼容位）');
+
+console.log('\n=== E. 长文本列不撑宽表格（2026-10-31）===');
+/* 背景：.grid td 上的 max-width 在 table-layout:auto 下不参与列宽计算，
+   备注一长整张表就跟着变宽。真正生效的是内层 .cell-clip（inline-block 的 max-width
+   会进入单元格 max-content）。这两条断言锁住"别再退回只用 td max-width"的写法。 */
+ck(/<td><span class="cell-clip" title="\$\{fa\.memo \|\| ''\}">\$\{fa\.memo \|\| ''\}<\/span><\/td>/.test(ASSET),
+  'E1 备注列内容包在 .cell-clip 内并带 title 全文');
+const clipRule = (CSS.match(/\.cell-clip\s*\{[^}]*\}/) || [''])[0];
+ck(/max-width:\s*220px/.test(clipRule), 'E2 .cell-clip 有 max-width（否则列宽仍随内容增长）');
+ck(/display:\s*inline-block/.test(clipRule) && /text-overflow:\s*ellipsis/.test(clipRule),
+  'E3 .cell-clip 是 inline-block 且超长省略号');
 
 console.log('\n结果：通过 ' + pass + ' / 失败 ' + fail);
 process.exit(fail ? 1 : 0);

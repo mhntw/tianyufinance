@@ -711,6 +711,8 @@
                它只影响「计提折旧 / 清理」的记账期间，而表格的「期末累计折旧」却固定读 currentPeriod()，
                于是改期间时表格数字不变、看起来像失效。现统一为一个期间源（data-period="asset"）。 -->
           <div data-period="asset" data-default="currentPeriod" data-on-change="__renderAssets"></div>
+          <!-- 部门筛选：2026-10-31 从右侧树面板移到首行（原树是平铺的「全部+各部门」，无层级，见 Asset.js） -->
+          <div class="filter-item"><label for="aDeptFilter">部门</label><select id="aDeptFilter"></select></div>
           <label style="display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-sm);"><input type="checkbox" id="fShowCleanedTop"> 显示已清理资产</label>
           <span class="orig-btn-sep"></span>
           <button class="btn btn-primary" id="btnNewAsset">新增</button>
@@ -743,25 +745,12 @@
              因它是「操作引导」而非「异常告警」。默认隐藏；由 renderAssets() 填充。 -->
         <div class="k-tip" id="assetDeprTip" hidden></div>
 
-        <div class="orig-body orig-body-sider-right">
-          <div class="orig-sider" id="assetSider">
-            <!-- 收起 / 展开：复用明细账科目快速切换栏的通用类（.dl-panel-head / -min / -restore），
-                 不另造一套。收起后只剩 30px 竖把，表格多出 200px。状态由 Asset.js
-                 的 initAssetSiderCollapse() 存 localStorage（键 assetFilterPanel.closed）。 -->
-            <div class="dl-panel-head">
-              <span>筛选</span>
-              <button type="button" class="dl-panel-min" id="assetSiderMin" title="收起筛选栏">»</button>
-            </div>
-            <button type="button" class="dl-panel-restore" id="assetSiderRestore" title="展开筛选（部门）">«</button>
-            <div class="orig-sider-body">
-              <!-- 类别树已随「资产类别档案」下线（2026-10-27），筛选栏只保留部门 -->
-              <div class="orig-sider-box orig-sider-box-bottom">
-                <div class="orig-sider-title">部门</div>
-                <ul class="orig-tree" id="assetDeptTree"></ul>
-              </div>
-            </div>
-          </div>
-          <div class="orig-table-wrap">
+        <!-- 【2026-10-31】右侧「部门」筛选树（.orig-sider，200px + 可收起竖把）已移除：
+             该树从来就是平铺的（「全部」+ 各部门末级，无层级、无展开折叠），树形没有任何信息增量，
+             却白占 200px 把表格挤窄、滚动条也顶在窗口右缘内侧。现改为首行 #aDeptFilter 下拉，
+             表格吃满整行，滚动条得以贴窗口右缘（配套样式见 .asset-grid-scroll）。
+             随之下线：折叠态与其 localStorage 键 assetFilterPanel.closed。 -->
+        <div class="orig-table-wrap">
             <div class="asset-grid-scroll">
             <table class="grid" id="assetGrid">
               <thead><tr>
@@ -787,7 +776,6 @@
               </div>
             </div>
           </div>
-        </div>
       </section>
 
       <!-- 资产板块独立分页（原 page-asset-depr 宿主内页 Tab 拆出）：
@@ -830,6 +818,8 @@
 
       <section class="page" id="page-settle">
         <!-- 结账页：Tab 切换 期末处理 / 结账 / 反结账 -->
+        <!-- .settle-wrap 承载 800px 版心（原写在 #page-settle 上会让滚动条落在 800px 处，见 style.css 注释） -->
+        <div class="settle-wrap">
         <div class="settle-tabs" id="settleTabs">
           <label class="settle-tab active" data-tab="process">
             <input type="radio" name="settleTab" value="0" checked />期末处理
@@ -938,6 +928,7 @@
             <div class="settle-year-picker-grid" id="yearPickerGrid"></div>
           </div>
         </div>
+        </div><!-- /.settle-wrap -->
 
       </section>
 

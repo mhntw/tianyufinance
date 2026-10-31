@@ -431,7 +431,19 @@ function opReopen() {
   const closed = (S.state.closedPeriods || []).slice().sort();
   if (!closed.length) return;
   const m = closed[closed.length - 1];
+  /* 【2026-10-31 反结账硬顶】store.reopenPeriod 新增永久下限 state.reopenFloor：
+     首次反结账写下限后，**早于下限**的期间（即使它是当前"最近一期"）必须被拒。
+     原先这里无条件断言"最近一期一定反成功"，硬顶上线后该断言只在未锁定分支成立，
+     故按分支分别断言 —— 两种结果都仍是有效覆盖，"被拒"那条正是新规则的守门用例。 */
+  const floor = (typeof S.state.reopenFloor === 'string') ? S.state.reopenFloor : '';
+  const locked = !!(floor && m < floor);
   const r = S.reopenPeriod(m, 'fuzz 反结账');
+  if (locked) {
+    check('低于反结账下限的期间被拒（永久锁定）',
+      r && r.ok === false && /永久锁定/.test(r.msg || ''), JSON.stringify(r));
+    check('被拒后该期仍是已结账', S.isPeriodClosed(m));
+    return;
+  }
   if (!check('仅最近一期可反结账（本步即最近一期）', r && r.ok === true, JSON.stringify(r))) return;
   stats.reopen++;
   check('反结账后该期不再是已结账', !S.isPeriodClosed(m));

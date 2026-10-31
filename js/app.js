@@ -1650,12 +1650,24 @@
   }, 300);
 
   // 下拉为 fixed 顶层浮层：显示前按搜索栏当前屏幕位置定位（顶栏不随内容滚动，仅窗口变化时重算）
+  /* 【2026-10-31】搜索框贴顶栏右端后的溢出防护：
+     常规情况下不会越界 —— 全局 border-box，下拉宽度取搜索栏 r.width（含边框）后
+     右缘与搜索栏右缘严格重合，而搜索栏外还有 .topbar 的 16px 右内距。
+     但顶栏是 flex 且各控件 flex-shrink:0，窗口收到最小宽 900px 时整排控件可能刚好顶出去，
+     搜索栏被推到视口外（或贴着边缘），下拉就会跟着出界。故按视口做一次 clamp：
+     右缘最多留 8px、左缘最少留 8px；宽度同步收到可用宽度内，避免窄窗时右侧被切掉。
+     只影响极端宽度，常规宽度下计算结果与原来完全一致。 */
   function placeSearchDropdown() {
     if (!searchBar || !searchDropdown) return;
     var r = searchBar.getBoundingClientRect();
-    searchDropdown.style.left = r.left + 'px';
+    var gap = 8;
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var w = r.width;
+    if (vw > gap * 2) w = Math.min(w, vw - gap * 2);
+    var left = Math.max(gap, Math.min(r.left, vw - gap - w));
+    searchDropdown.style.left = left + 'px';
     searchDropdown.style.top = (r.bottom + 2) + 'px';
-    searchDropdown.style.width = r.width + 'px';
+    searchDropdown.style.width = w + 'px';
   }
   function openSearch() {
     placeSearchDropdown();
@@ -2295,4 +2307,8 @@
   globalThis.locateVoucherInQuery = locateVoucherInQuery;
   // 暴露菜单数据源给命令面板（Ctrl/Cmd+K 快速跳转）与首页常用功能，两处共用同一份数据
   globalThis.QUICK_MENU_ITEMS = QUICK_MENU_ITEMS;
+  /* 【2026-10-31】命令面板置顶「常用功能」用：与首页快捷区读**同一份配置**
+     （含默认集、录凭证固定项、老账套默认集升级逻辑），面板里不另算一套，
+     否则用户在首页勾选/取消后，面板显示会对不上。 */
+  globalThis.getQuickMenuKeys = getSavedQuickKeys;
 })();

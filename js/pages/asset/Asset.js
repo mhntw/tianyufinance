@@ -19,51 +19,43 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   /* ============================================================
    * 固定资产
    * ============================================================ */
-  /* 固定资产卡片（ykj-page1：过滤条 / 工具条 / 左树(类别+部门)+右表） */
+  /* 固定资产卡片（ykj-page1：工具条 / 首行「期间+部门」筛选 / 满行表格） */
   var _assetPage = 1, _assetPageSize = 500, _assetFiltered = [];
-  // 左树/筛选选中的部门**名称**（''=全部）。⚠️ 部门存的是名称、不是编码：
+  // 部门筛选选中的部门**名称**（''=全部）。⚠️ 部门存的是名称、不是编码：
   // 卡片表单的「使用部门」是自由文本输入，store 里 addFixedAsset 也无「部门编码」契约，
-  // 全库消费方（本树 / fDept 筛选 / 折旧汇总表按部门汇总）都按名称比。
+  // 全库消费方（本筛选 / 折旧汇总表按部门汇总）都按名称比。
   // 原先这里传/比的是 d.code → 卡片里写的「客房」永远匹配不上下拉的「002」，按部门筛选恒为 0 张。
   var _assetDeptSel = '';
-  // 左侧栏只剩部门树（类别树随档案体系下线，2026-10-27）
-  function _buildAssetTree(ulId, selCode, onPick) {
-    var ul = $(ulId); if (!ul) return;
-    ul.innerHTML = '';
-    ul.appendChild(_assetTreeRoot('全部', selCode === '', onPick));
+  /* ---------- 部门筛选（2026-10-31 由右侧树面板改为首行下拉） ----------
+     原实现是右侧 200px 的「部门」树 + 可收起竖把（.orig-sider）。但该树从来就是**平铺**的
+     （「全部」+ 各部门末级，没有层级、没有展开折叠），树形结构没有任何信息增量，
+     却白占 200px 把表格挤窄、滚动条也顶在窗口右缘内侧。
+     换成首行 <select> 后语义完全等价（同样是「全部 / 某部门」单选），省掉整栏，
+     表格吃满整行，滚动条得以贴窗口右缘（配套样式见 .asset-grid-scroll）。
+     仍按部门**名称**筛选，不要传 d.code（见上方 _assetDeptSel 的注释）。 */
+  function renderAssetDeptFilter() {
+    var sel = $('aDeptFilter'); if (!sel) return;
+    var names = S.depts().map(function (d) { return d.name; });
+    // 选中的部门被删掉后回落到「全部」：否则下拉显示空白、筛选却仍按旧名过滤 → 恒 0 张
+    if (_assetDeptSel && names.indexOf(_assetDeptSel) < 0) _assetDeptSel = '';
+    sel.innerHTML = '';
+    var optAll = document.createElement('option');
+    optAll.value = ''; optAll.textContent = '全部';
+    sel.appendChild(optAll);
+    names.forEach(function (n) {
+      var o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      sel.appendChild(o);
+    });
+    sel.value = _assetDeptSel;
   }
-  /* 树项是 <li>：不补语义则键盘 Tab 不到（只有 click 委托）。
-     统一补 tabindex/role/data-kb-activate —— Enter/Space 由 app.js 的 TYKeyboard 全局激活委托转为 click。 */
-  function _kbTreeItem(li, selected) {
-    li.setAttribute('tabindex', '0');
-    li.setAttribute('role', 'treeitem');
-    li.setAttribute('aria-selected', selected ? 'true' : 'false');
-    li.setAttribute('data-kb-activate', '');
-    return li;
-  }
-  function _assetTreeRoot(name, selected, onPick) {
-    var li = _kbTreeItem(document.createElement('li'), selected);
-    li.className = 'orig-tree-parent' + (selected ? ' selected' : '');
-    // 本树是平铺的（「全部」+ 末级），无展开/折叠，故不再输出三角占位。
-    // 原 <span class="tree-arrow"></span> 是空标签：画三角的 CSS 选择器为
-    // .orig-tree .tree-parent .tree-arrow，而本树 li 的类名是 orig-tree-parent
-    // （不是 tree-parent）→ 选择器从不匹配，既无字符也无 CSS 三角，纯废弃标记。
-    li.innerHTML = html`${name}`;
-    li.addEventListener('click', function () { onPick(''); });
-    return li;
-  }
-  function _assetTreeLeaf(name, selected, onPick, code) {
-    var li = _kbTreeItem(document.createElement('li'), selected);
-    li.className = 'orig-tree-child' + (selected ? ' selected' : '');
-    li.innerHTML = html`${name}`;
-    li.addEventListener('click', function () { onPick(code); });
-    return li;
-  }
-  function renderAssetTree() {
-    _buildAssetTree('assetDeptTree', _assetDeptSel, function (name) { _assetDeptSel = name; _assetPage = 1; renderAssetTree(); renderAssets(); });
-    // 部门树按**名称**选中/回传（与卡片 fa.dept 同口径），不要传 d.code
-    S.depts().forEach(function (d) {
-      $('assetDeptTree').appendChild(_assetTreeLeaf(d.name, d.name === _assetDeptSel, function (name) { _assetDeptSel = name; _assetPage = 1; renderAssetTree(); renderAssets(); }, d.name));
+  function initAssetDeptFilter() {
+    var sel = $('aDeptFilter'); if (!sel || sel.__deptBound) return;
+    sel.__deptBound = true;   // 一次性绑定：refreshAssets 每次进页都会调
+    sel.addEventListener('change', function () {
+      _assetDeptSel = sel.value;
+      _assetPage = 1;
+      renderAssets();
     });
   }
   /* 固定资产页的「期间」单点来源：全站统一的期间选择器组件（index.html 里 data-period="asset"，
@@ -75,43 +67,18 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function _assetPeriod() { return periodRangeValue('assetPeriod') || currentPeriod(); }
   function refreshAssets() {
     // 期间选择器的默认值由组件按 data-default="currentPeriod" 自行回填，此处无需再处理。
-    // 类别 / 部门下拉已随「过滤」面板一并移除；这两个维度的筛选改由左侧树承担（点击即筛）。
-    initAssetSiderCollapse();
-    renderAssetTree();
+    initAssetDeptFilter();
+    renderAssetDeptFilter();
     renderAssets();
   }
-  /* ---------- 右侧筛选栏（资产类别 / 部门）的收起 / 展开 ----------
-   * 【为什么】这两个维度用得很少（2026-09-22 反馈），却常占 200px 宽，卡片表本身就宽。
-   *   照抄明细账「科目快速切换栏」那套既有范式（全站唯一）：收起成 30px 竖把、中间一个
-   *   « 铺满整条可点开，展开态右上角 » 收起；宽度过渡与观感全部复用 .dl-panel-* 类，
-   *   不另造一套 —— 否则又是"同一功能两套实现"。
-   * 状态存 localStorage。⚠ 键名与科目树（dlSubjTree.closed）**必须分开**：
-   *   共用键会让"收起明细账科目树"顺手把资产的筛选栏也收掉（或反之），两处互串状态。 */
-  var ASSET_SIDER_KEY = 'assetFilterPanel.closed';
-  var _astSt = globalThis.localStorage || { getItem: function () { return null; }, setItem: function () { } };
-  function _setAssetSiderClosed(v, save) {
-    var box = $('assetSider'); if (!box) return;
-    box.classList.toggle('dl-panel-closed', !!v);
-    if (save) { try { _astSt.setItem(ASSET_SIDER_KEY, v ? '1' : '0'); } catch (e) { } }
-  }
-  function initAssetSiderCollapse() {
-    var box = $('assetSider'); if (!box) return;
-    if (!globalThis.__assetSiderBound) {
-      globalThis.__assetSiderBound = true;   // 一次性绑定：refreshAssets 每次进页都会调
-      var min = $('assetSiderMin'), restore = $('assetSiderRestore');
-      if (min) min.addEventListener('click', function () { _setAssetSiderClosed(true, true); });
-      if (restore) restore.addEventListener('click', function () { _setAssetSiderClosed(false, true); });
-    }
-    // HTML 里默认是展开态，故每次进页都要按本地记忆**显式回放**一遍，
-    // 否则"上次收起"在切页回来后就丢了（这类持久化必须回放，不能只在点击时写）。
-    var closed = false;
-    try { closed = _astSt.getItem(ASSET_SIDER_KEY) === '1'; } catch (e) { }
-    _setAssetSiderClosed(closed, false);
-  }
-  /* 卡片筛选：只剩两个来源 —— 左侧部门树（点击即筛，类别树已随档案体系下线）与顶部「显示已清理资产」。
+  /* 【2026-10-31 删除】右侧筛选栏的收起 / 展开（initAssetSiderCollapse / _setAssetSiderClosed /
+     ASSET_SIDER_KEY='assetFilterPanel.closed'）：该栏连同 .orig-sider 结构一并下线，
+     筛选改由首行 #aDeptFilter 承担，不再需要折叠态，localStorage 键也不再写入。 */
+  /* 卡片筛选：只剩两个来源 —— 首行「部门」下拉（2026-10-31 起；原为右侧部门树，类别树已随档案体系下线）
+     与顶部「显示已清理资产」。
      2026-09-18 按用户要求移除了「过滤」折叠面板及其 11 项组合条件（编码、名称、日期区间、
      折旧方法、凭证与否…）：本软件卡片量级小，那些条件几乎用不到，却带来"点了没反应"一类
-     的问题与无谓的维护负担。筛选逻辑本身保留 —— 左侧树仍要通过它生效。 */
+     的问题与无谓的维护负担。筛选逻辑本身保留 —— 部门下拉仍要通过它生效。 */
   function _assetFilterList() {
     var dept = _assetDeptSel;
     var sw = $('fShowCleanedTop');
@@ -195,7 +162,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var accumEnd = _accumDeprAt(fa, pEnd, md);
     var netBegin = Math.max(0, num(fa.original) - accumBegin - num(fa.impairment));
     var netEnd = Math.max(0, num(fa.original) - accumEnd - num(fa.impairment));
-    return html`<td class="mono">${fa.code || ''}</td><td>${fa.name || ''}</td><td>${fa.dept || ''}</td><td>${fa.acqDate || ''}</td><td class="ta-r mono">${money(fa.original)}</td><td class="ta-r mono">${money(accumBegin)}</td><td class="ta-r mono">${money(accumEnd)}</td><td class="ta-r mono">${money(md)}</td><td>${fa.life ? fa.life + '年' : ''}</td><td>${fa.periodUsed || ''}</td><td class="ta-r mono">${money(fa.salvage)}</td><td class="ta-r mono">${num(fa.salvageRate).toFixed(2)}</td><td class="ta-r mono">${money(fa.impairment)}</td><td class="ta-r mono">${money(netBegin)}</td><td class="ta-r mono">${money(netEnd)}</td><td>${fa.method || ''}</td><td>${fa.status || '正常'}</td><td class="ta-r">${fa.qty || ''}</td><td>${fa.spec || ''}</td><td>${fa.location || ''}</td><td>${fa.user || ''}</td><td>${fa.cleanPeriod || ''}</td><td class="mono">${_addVoucherCell(fa)}</td><td class="mono">${fa.cleanVoucher || ''}</td><td>${fa.memo || ''}</td>`;
+    return html`<td class="mono">${fa.code || ''}</td><td>${fa.name || ''}</td><td>${fa.dept || ''}</td><td>${fa.acqDate || ''}</td><td class="ta-r mono">${money(fa.original)}</td><td class="ta-r mono">${money(accumBegin)}</td><td class="ta-r mono">${money(accumEnd)}</td><td class="ta-r mono">${money(md)}</td><td>${fa.life ? fa.life + '年' : ''}</td><td>${fa.periodUsed || ''}</td><td class="ta-r mono">${money(fa.salvage)}</td><td class="ta-r mono">${num(fa.salvageRate).toFixed(2)}</td><td class="ta-r mono">${money(fa.impairment)}</td><td class="ta-r mono">${money(netBegin)}</td><td class="ta-r mono">${money(netEnd)}</td><td>${fa.method || ''}</td><td>${fa.status || '正常'}</td><td class="ta-r">${fa.qty || ''}</td><td>${fa.spec || ''}</td><td>${fa.location || ''}</td><td>${fa.user || ''}</td><td>${fa.cleanPeriod || ''}</td><td class="mono">${_addVoucherCell(fa)}</td><td class="mono">${fa.cleanVoucher || ''}</td><td><span class="cell-clip" title="${fa.memo || ''}">${fa.memo || ''}</span></td>`;
   }
   function renderAssets() {
     _assetFiltered = _assetFilterList();
@@ -257,7 +224,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   // 工具条
   $('btnNewAsset').addEventListener('click', function () { _openAssetModal(null); });
   $('btnAssetHistory').addEventListener('click', showAllFaHistory);
-  // 左树（类别/部门）点击筛选已在 renderAssetTree 内绑定
+  // 部门筛选的 change 已在 initAssetDeptFilter 内一次性绑定
   // 顶部「显示已清理资产」：原先还要与折叠面板里的同名勾选框互相同步，面板已移除，只留其一
   $('fShowCleanedTop').addEventListener('change', function () { _assetPage = 1; renderAssets(); });
   $('btnAssetExport').addEventListener('click', function () {
@@ -672,11 +639,11 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
           // 【导入体检】不阻断导入，把"会静默出错"的项报出来（提示条 + 操作日志）
           var warns = _assetImportCheck(listAdd);
           listAdd.forEach(function (fa) { delete fa.monthDeprRef; delete fa.accumDeprRef; S.addFixedAsset(fa); });
-          // 导入后清空左树筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
+          // 导入后清空部门筛选并回到首页，确保新卡片可见；含非「正常」状态则自动开启「显示已清理资产」
           _assetDeptSel = ''; _assetPage = 1;
           var hasNonNormal = listAdd.some(function (fa) { return (fa.status || '正常') !== '正常'; });
           var swTop = $('fShowCleanedTop'); if (swTop) swTop.checked = hasNonNormal;
-          renderAssetTree(); renderAssets(); syncAll();
+          renderAssetDeptFilter(); renderAssets(); syncAll();
           renderAssetImportCheck(warns, listAdd.length, listDup.length);
           var msg = listAdd.length
             ? ('已导入 ' + listAdd.length + ' 张卡片')

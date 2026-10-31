@@ -35,6 +35,7 @@ const WRITABLE = {
   /* 【2026-10-31 删除】'tyNavCollapsed'：侧边导航折叠状态。侧栏已整体移除，js/ 下已无任何
      getItem/setItem 主体，白名单里留着等于给一个不存在的写入方发许可证。 */
   'cloud_sync_last': '上次云同步时间/目录/条数（本机路径）',
+  'cmd_recent_pages': '命令面板「最近访问」的页面名列表（最多 6 条，本机 UI 偏好，只存页面名不碰账套数据）',
   'ty_update_check': '更新检查缓存（本机）',
   'ty_update_notified': '更新提示已读标记（本机）'
 };
