@@ -3860,7 +3860,48 @@ label.req::before {
   box-sizing: border-box;
 }
 /* 应收应付明细条目多时锁定高度、卡内滚动，避免撑破固定高的卡片。 */
-.arap-body { max-height: 210px; overflow-y: auto; }
+/* 应收应付明细：单层滚动（原「外层 .arap-body + 内层 .arap-items」双滚动已合为一层）。
+   容器右边界外扩到卡片右缘、内容仍留卡内距 → 滚动条贴卡片右边；
+   合计行 .fv1 用 sticky 固定，滚动明细时不随之上移消失。 */
+.arap-body {
+  max-height: 210px;
+  overflow-y: auto;
+  margin-right: calc(-1 * var(--card-pad-x));
+  padding-right: var(--card-pad-x);
+  /* 【2026-11-01】收起滚动条（滚轮/触控板仍可滚，只是看不见条）：
+     :root 的 scrollbar-width/thin + scrollbar-color 会让 WebKit 把 macOS 的悬浮条切成
+     **常驻**细条，本卡明细一多就一直挂着一条，故在类上覆盖为 none。
+     走标准属性（可继承、类选择器覆盖有效），**不要**补 ::-webkit-scrollbar ——
+     WKWebView 不认（见文末「滚动条」注释的历史教训）。
+     兼容：不支持 scrollbar-width 的旧 WebKit 会直接忽略 → 回落系统悬浮条（滚动时才对出现），
+     同样不是常驻条，无副作用。上面那对负 margin/padding 保留：万一某平台仍出条，条也贴卡片右缘。 */
+  scrollbar-width: none;
+}
+.arap-body .fv1 {
+  position: sticky;
+  top: 0;
+  background: var(--ty-white);
+  z-index: 1;
+  /* 遮罩高度须 ≥ .arap-items 的 margin-top(12px)：滚动时明细从这段透明间隙穿过，
+     遮罩不够高就会在合计行下方露出半行文字。 */
+  box-shadow: 0 var(--sp-3) 0 var(--ty-white);
+}
+/* 【2026-11-01】隐藏滚动条后补一个「下面还有」的暗示：底部 8px 白色渐隐。
+   纯 CSS —— 不用图片、不加图标、不加 JS、不监听滚动：
+   ::after 是滚动容器的最后一个 in-flow 子元素，用 sticky 钉在滚动端口底边，
+   内容不足一屏时它停在流末尾，且 .arap-items 已垫了 8px padding-bottom，
+   负 margin 让它正好叠在那段空白上 → 一个像素都不遮字、平时完全看不见。
+   pointer-events:none 是必须的：金额是可点击下钻的，遮罩不能吃掉这 8px 的点击。 */
+.arap-body::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: var(--sp-2);
+  margin-top: calc(-1 * var(--sp-2));
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--ty-white));
+  pointer-events: none;
+}
 
 /* 卡片头部（metric-card-head：44px 高、圆角上 8px、两端对齐，
    header 自身无 padding，左右内距由 .title / 右侧控件各自的 10px 20px 承担）
@@ -4086,7 +4127,8 @@ label.req::before {
    的 padding-top) = 16px，与 .fv2 明细行（margin-top:16px、无 padding）在四张卡上完全等距。
    行与行之间仍保留 8px（4+4）的紧凑密度：这是不定长、可滚动的科目明细列表，不是 .fv2 那种
    固定 3 行的构成项。 */
-.arap-items { margin-top: var(--sp-3); max-height: 200px; overflow-y: auto; }
+/* padding-bottom：给下方 8px 渐隐遮罩垫出空白，保证遮罩盖住的永远是空白而不是最后一行字。 */
+.arap-items { margin-top: var(--sp-3); padding-bottom: var(--sp-2); }   /* 不再单层滚动：由外层 .arap-body 统一滚动，消除嵌套双滚动条 */
 /* （滚动条原先在此单独写 4px 灰，且 Firefox 侧刻意为透明（几乎看不见）——
     已收口到文末「全站滚动条」唯一规范，与其余页面同款。） */
 /* 【2026-10-04】原带 `border-bottom: 1px dashed var(--ty-border)` —— 整页只有这一处
