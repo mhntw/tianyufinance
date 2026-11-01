@@ -30,7 +30,6 @@
   --ty-blue:        #2f95ff;   /* 添钰主色（主题蓝 #2f95ff） */
   --ty-blue-dark:   #3a66d4;   /* 深一档，用于 hover/active */
   --ty-blue-2:      #dfeafc;   /* 蓝·高亮：hover / 表头 / 选中 / 导航激活底（净化彩度，去脏感） */
-  --ty-blue-3:      var(--ty-blue-2);   /* 合并别名：与 --ty-blue-2 同值 */
   /* 侧栏底/文字复用通用令牌：原先各自写死 #fff / #022433，与 --ty-white / --ty-text 完全同值，
      属纯冗余 —— 同一色值两处维护，调色时必漏一处。语义未变，只是指向统一来源。 */
   --ty-border:      #d6e2f3;   /* 蓝·线：边框/分隔线（与蓝画布同阶，调浅） */
@@ -405,7 +404,7 @@ img, svg { display: block; max-width: 100%; }
   /* 侧栏纯白后与内容区同白，用右侧细竖线分隔（色用功能区灰缝同族 var(--ty-border)），
      避免白+白边界模糊；不用粗 8px 缝以保持紧凑 */
   border-right: 1px solid var(--ty-border);
-  padding: var(--sp-2) 0 0;          /* 顶部留 7px（滚动只发生在菜单区 .nav-menu-scroll） */
+  padding: 0 0 0;                    /* 顶部留白收敛为 0：左栏首个分组标题与右侧标签栏同基线齐平（两侧容器内各有 12px 上留白，文字顶自然对齐） */
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -639,33 +638,28 @@ img, svg { display: block; max-width: 100%; }
    内部文字 padding 左 4px 贴边、右 24px 与卡片右缘对齐（因无"管理"按钮，右侧留白用 24px）。 */
 .content-toolbar {
   display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-5) var(--sp-1) var(--sp-1);   /*  wrapper--3kKIA: padding:4px 120px 1px 4px —— 灰底通栏贴左右边缘，左4px贴边、右24px与卡片右缘对齐（右120px为"管理"按钮留白，本项目无该按钮用24px） */
-  height: 36px;
+  align-items: stretch;             /* 让 .tab-bar 撑满 36px 高度（标签再在内部底部对齐） */
+  height: 36px;                     /* 全站统一高度：36px（含 border-top），标签撑满、激活白块贴底 */
+  padding: 0 var(--sp-5) 0 7px;   /* 上下 0 / 右24 / 左7：左侧留 7px 让主页左脚（6px）完整显示、不被 overflow 裁切（1px 抗锯齿余量） */
   box-sizing: border-box;
-  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-surface-2（中性灰）。
-     上方来源注释原文已写明参考实现是「灰底 #eff3f6」，本项目复刻时写成主色浅蓝，
-     是「整页发蓝」的源头之一。底线同样改中性，让 36px 通栏条与下方白卡自然分层。 */
+  /* 中性灰底（参考实现 #eff3f6），与下方白卡自然分层。 */
   background: var(--ty-surface-2);
   border-top: 1px solid var(--ty-border);
   position: relative;
+  overflow: hidden;               /* 裁掉激活标签「脚」box-shadow 向下/向外溢出的白，避免遮挡下方提示内容 */
   flex-shrink: 0;
 }
 .tab-bar {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);   /* 6px：标签间适度留白，不读成散落胶囊 */
+  align-items: flex-end;   /* 标签不撑满：底部贴内容区，顶部留出灰底边界 */
+  gap: 0;   /* 金蝶式：标签间无缝隙、融合为一条（非独立胶囊）；文字间距由标签自身左右 padding 提供 */
   flex: 1;
-  /* 不出现横向滚动：标签过多时由子项 flex 收缩 + 文字省略号自动变窄（浏览器标签栏式），
-     而非横向滚动条。overflow:hidden 保证既不滚动也不溢出窗口，所有标签始终可见；
-     上下留白让激活标签的柔和阴影有呼吸空间、不被裁切。 */
-  overflow: hidden;
+  /* 标签过多时由子项 flex 收缩 + 文字省略号自动变窄（浏览器标签栏式），不出现横向滚动条。 */
+  overflow: visible;   /* 让激活标签底部两侧的外圆角「脚」能露出、盖住相邻区域（横向溢出由 .content-toolbar 兜底裁切） */
   min-width: 0;
-  /* Chrome 式层次：浅灰底让白底激活标签「浮起」、非激活标签自然融入；底部细线分隔内容区 */
+  /* Chrome 式层次：浅灰底让白底激活标签「浮起」、非激活标签自然融入；不画底边线，激活标签与内容区连成一体 */
   background: var(--ty-surface-2);
-  padding: var(--sp-1) var(--sp-2);
-  border-bottom: 1px solid var(--ty-border);
+  padding: 2px var(--sp-2) 0;   /* 上 2px / 左右 8px / 下 0：底部 0 让激活标签贴住内容区 */
 }
 
 
@@ -861,23 +855,19 @@ img, svg { display: block; max-width: 100%; }
 #sumGrid th.ta-r { text-align: right; }
 /* 报表中心固定左列（项目/行次）。费用明细表已删除「操作」列，名称列改自适应宽度，
    不再设置 sticky 固定列，所有列随表格自身横向滚动，避免自适应宽度与固定列 left 值冲突。 */
-/* 辅助核算子行 */
-.row-aux { font-size: var(--fs-md); color: var(--ty-text-3); margin-top: var(--sp-1); }
-/* 【2026-10-04 标签栏改版（用户决定：借鉴新版 Chrome）】原样式是"平顶圆角 4px + 左右 padding 4px
-   + 标签间 16px 缝" —— 读起来像散落的胶囊；且激活块既没融进下方内容、也没成为独立元件（半吊子）。
-   现按新版 Chrome（CR2023）的"圆角悬浮"范式：非激活=透明（次要文字色）、hover=半透明白块、
-   激活=**纯白四角圆角 + 轻投影**（靠底色与投影表达激活，不再用蓝色文字）。 */
+
+/* 标签栏（对齐金蝶 / Chrome 式页签，2026-11-01 定稿）：
+   非激活 = 灰底上的次要色文字（无独立形状）；激活 / hover = 白块（顶部 6px 外圆角 + 底部两侧外圆角「脚」，
+   与下方内容区连成一体、无底边线），激活文字用主色亮蓝作为当前页亮点。 */
 .tab-item {
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-3);         /* 左右 4 → 10：旧版文字几乎顶到边缘 */
+  padding: 5px 18px 5px var(--sp-4);   /* 上5 / 右18（为绝对定位的 × 留 2px 间隙）/ 下5 / 左16；标签高约 30px */
   font-size: var(--fs-md);   /* 标签页文字 14px（全站标准，不动） */
-  color: var(--ty-text-2);   /* 非激活走次要色，让"激活"靠底色取胜而不是靠字色 */
-  border-radius: 8px;        /* 更柔和圆角（Chrome 式浮起卡片） */
+  color: var(--ty-text-2);   /* 非激活走次要色，让「激活」靠白底 + 亮蓝字取胜 */
   cursor: pointer;
   white-space: nowrap;
-  transition: color .15s, background .15s, box-shadow .15s;
+  transition: color .15s, background .15s;
   /* 不写死宽度：按内容宽度显示；标签多、空间不足时自动收缩、文字省略号，不出现横向滚动。
      max-width 是单标签宽度上限，防止个别超长名称把标签撑得过宽。 */
   flex: 0 1 auto;
@@ -892,42 +882,76 @@ img, svg { display: block; max-width: 100%; }
   white-space: nowrap;
   min-width: 0;
 }
-.tab-item:hover { background: rgba(0,0,0,.05); color: var(--ty-text-1); }   /* 柔和浅灰 hover，文字提亮到主色 */
-.tab-item.active {
-  color: var(--ty-text-1);   /* 激活文字近黑，清晰 */
-  font-weight: 500;          /* 略加粗提升可读性 */
+/* 激活 / hover：Chrome 式标签形状（对齐金蝶）——
+   顶部外圆角（从灰标签栏底色看是内圆角）、底部两侧外圆角「脚」与内容区连成一体、无底边线。 */
+.tab-item.active,
+.tab-item:hover {
+  color: var(--ty-blue);   /* 激活页文字用主色亮蓝，作为当前页的视觉亮点 */
   background: var(--ty-white);
-  border-radius: 8px;        /* 与 hover 同款圆角，浮起胶囊 */
-  /* 柔和浮起：多层轻阴影 + 1px 描边，白底在灰栏上清晰分层（Chrome 式） */
-  box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04);
+  border-radius: 6px 6px 0 0;   /* 顶部外圆角：6px */
+  z-index: 1;                      /* 白块与其「脚」压在相邻标签之上（基础规则已有 position:relative） */
 }
-/* 主页标签（固定、不可关闭）：标签栏已不横向滚动（overflow:hidden + flex 自动缩短），
-   故旧版 sticky 吸附 / 同色背景盖条 / ::after 遮挡全部失去意义，已移除 —— 直接复用普通标签样式，
-   仅锁定内容宽、不参与业务标签伸缩；字重略加以区别于一般打开的页。激活 / hover 走 .tab-item 规则。 */
+.tab-item.active { font-weight: 500; }
+/* 底部外圆角「脚」：小方块留出圆角 + box-shadow 白色填充，形成向外翻的弧线，盖住灰底 */
+.tab-item.active::before,
+.tab-item.active::after,
+.tab-item:hover::before,
+.tab-item:hover::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+.tab-item.active::before,
+.tab-item:hover::before {
+  left: -6px;
+  border-bottom-right-radius: 6px;
+  box-shadow: 3px 3px 0 3px var(--ty-white);
+}
+.tab-item.active::after,
+.tab-item:hover::after {
+  right: -6px;
+  border-bottom-left-radius: 6px;
+  box-shadow: -3px 3px 0 3px var(--ty-white);
+}
+/* 主页标签（固定、不可关闭、纯图标）：house 图标直接落在标签栏，与其他业务标签「统一」——
+   激活 / hover 均走 .tab-item.active / .tab-item:hover 默认规则（白色背景 + 圆角），不再单独透明。
+   点击回首页走通用 [data-page] 委托。 */
 .tab-item-home {
   flex: 0 0 auto;
   min-width: 0;
   font-weight: 500;
+  padding: 5px var(--sp-3);   /* 上下与业务标签一致（5px），左右收窄；避免主页白块比相邻标签高出一截 */
 }
+.tab-item-home svg { width: 18px; height: 18px; display: block; }
 /* 【2026-11-01 删除】标签栏固定区与「全部功能」菜单的全部样式
    （.tab-pin-group / .tab-item-pinned / .tab-more / .tab-more-arrow / .tab-more-pop / .tm-*）：
    导航已回到左侧 .sidenav，标签栏只列已打开的页面，不再承担导航与全部功能入口。
    原居中命令面板与钉住弹窗的样式也一并删除（详见文件头 .cmd-* 段落说明）。 */
 
 .tab-close {
-  flex-shrink: 0;        /* 关闭按钮不被标签收缩挤压 */
+  position: absolute;        /* 脱离文档流：hover 显示/隐藏不改变标签宽度，消除抖动 */
+  right: 2px;                /* 浮于标签右侧 padding 区内：右留 2px、与文字留 2px 间隙（padding-right:18px） */
+  top: 50%;
+  transform: translateY(-50%);
   font-size: var(--fs-md);
   line-height: var(--lh-1);
   color: var(--ty-text-3);
-  margin-left: var(--sp-1);
   /* 圆形热区：hover 时浅灰底 + 红字（Chrome 式精致关闭键） */
-  width: 18px; height: 18px;
+  width: 14px; height: 14px;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%;
   padding: 0;
   transition: background .15s, color .15s;
 }
 .tab-close:hover { background: rgba(0,0,0,.1); color: var(--ty-red); }
+/* 金蝶式：只有激活标签显示关闭键；非激活标签是纯文字（hover 也不出 ×，严格"仅当前标签可关"）。
+   display:none 同时保证不可聚焦，键盘 Tab 不会停在隐藏的 × 上。 */
+.tab-item:not(.active) .tab-close { display: none; }
+/* hover 任意非激活标签时，预览其关闭键（与激活态一致） */
+.tab-item:not(.active):hover .tab-close { display: inline-flex; }
 
 
 
@@ -2601,6 +2625,46 @@ label.req::before {
 
 .modal.show { display: flex; }
 
+/* 录凭证悬浮主行动按钮（FAB，全站常驻）：固定在右侧中段（垂直 60%），圆形主题蓝、白图标，
+   hover 放大并出 tooltip；点击 / Enter·Space（data-kb-activate）/ Cmd·Ctrl+Enter 直达录凭证。
+   层级：高于内容区(100)、低于模态(2147483647)与弹层(1100)，弹窗打开时被自然遮住。 */
+.fab {
+  position: fixed;
+  right: 24px;
+  top: 60%;
+  transform: translateY(-50%);
+  z-index: 1000;
+  width: 52px; height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ty-btn);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.04);
+  transition: transform .15s, box-shadow .15s, background .15s;
+  outline: none;
+}
+.fab:hover { transform: translateY(-50%) scale(1.06); box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+.fab:active { transform: translateY(-50%) scale(.96); }
+.fab:focus-visible { box-shadow: 0 0 0 3px rgba(47,149,255,.45); }
+.fab-ico { width: 24px; height: 24px; display: inline-flex; }
+.fab-ico svg { width: 24px; height: 24px; display: block; fill: currentColor; }
+.fab-tip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,.78);
+  color: #fff;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity .15s;
+}
+.fab:hover .fab-tip, .fab:focus-visible .fab-tip { opacity: 1; }
+
 /* 层级修饰（2026-10-31 收敛，2026-11-01 精简）：全站只保留这一档，动态浮层也一律用类，
    不再各写 style.zIndex。
     .modal-top : 必须盖住任何已打开的业务模态（确认/输入框、导出结果）
@@ -2684,11 +2748,7 @@ label.req::before {
    只有固定资产卡片弹窗例外（9 字标签，由 #assetModal 给 134px）。 */
 
 .modal-box .form-row .inp { flex: 1; width: auto; min-width: 0; font-size: var(--fs-md); }
-/* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行，label 与内容需在一行内由
-   内容区弹性换行——checkbox 组/组合 span 作为 flex:1 容器内部换行，label 保持在行首。
-   不能对整行 flex-wrap（会把 label 和内容拆开导致「外币核算」断行）。 */
-/* 新增科目弹窗：辅助核算(6复选框)/数量/外币等多控件行的内容统一用 .chk-group 容器
-   （flex:1 弹性换行），label 固定在行首不参与换行，避免「外币核算」断行、控件挤压。 */
+
 /* 【2026-10-27 统一】原紧凑弹窗（.modal-compact）用「label 左对齐 + 冒号 + 宽度自适应」，
    与常规弹窗的右对齐并存，显得杂乱；现已删除这组覆盖，所有弹窗统一 96px 右对齐。
    实测弹窗内最长标签 5 字（服务器地址），96px 足够。 */
@@ -3519,12 +3579,9 @@ label.req::before {
 .toast.warn { background: rgba(217, 119, 6, .95); }
 .toast.success { background: rgba(22, 163, 74, .95); }
 
-/* 科目属性标识 / 弹窗内辅助核算复选组 */
 .subjBody .flags, #subjBody .flags { color: var(--ty-text-2); font-size: var(--fs-md); }
 .chk-group { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: center; }
 .chk-group label { font-size: var(--fs-md); color: var(--ty-text); }
-.aux-inline { margin-left: var(--sp-3); color: var(--ty-text-2); font-size: var(--fs-md); }
-.aux-inline input[type=text], .aux-inline .inp { width: 90px; }
 
 /* 凭证分录：数量/核算项目列宽度收敛 */
 #vRows .v-qty { width: 78px; }
@@ -3584,7 +3641,6 @@ label.req::before {
   padding-left: var(--sp-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #vRows .v-subj-bal:empty { display: none; }
-#vRows .v-aux { width: 140px; }
 
 /* 数据与安全-数据恢复（原基础功能区 backup-list，tool-card 系已随 #page-tools 删除） */
 .backup-list { margin-top: var(--sp-3); }
@@ -3758,9 +3814,10 @@ label.req::before {
 /* 【2026-10-06 响应式铺满】财务指标块随窗口全宽；卡片由 .metric-grid-row 的
  *   grid auto-fit 自动增减列数（minmax(min(100%,300px),1fr)），窗口越宽列越多、卡片保持舒适尺寸，
  *   不再限宽居中导致两侧留白；窄屏自动降列、不溢出。 */
-/* 【2026-11-01】上内距由 var(--sp-5) 提到 32px：标题行（「财务指标」四字 + margin-bottom:16px）
-   已删除，原先"标题撑起的那截呼吸"需要由内距补回来，否则卡片会紧贴提醒条/页面顶。 */
-.home-section-metrics { padding: 32px var(--sp-5) var(--sp-5); }
+/* 【2026-11-01】上内距收敛为 var(--sp-1)（4px）：标签栏到卡片空白 = .home-tips 提示槽（min-height 26px，
+   有/无提示一致） + 此处 4px 呼吸 = 30px。原先删标题行时把内距提到 32px 补呼吸，
+   与提示槽占位叠加后空白近 60px、过大 —— 两段间距只留提示槽 + 4px。 */
+.home-section-metrics { padding: var(--sp-1) var(--sp-5) var(--sp-5); }
 /* 【2026-11-01 删除】「财务指标」标题行相关规则（.home-section-title ul / ul li）——
    标题本身已从首页移除（首页只剩这一个板块，标题等于重复自己），这些规则全仓零命中。 */
 /* 【2026-10-04 删除】此处原有两条死规则（已 grep 确认 HTML/JS 全仓零引用）：
@@ -5585,14 +5642,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .ok-tag { display: inline-block; padding: 0 var(--sp-2); margin-left: var(--sp-1); font-size: var(--fs-2xs); line-height: var(--lh-tight);
   color: var(--ty-blue); background: var(--ty-blue-2); border-radius: 3px; border: 1px solid var(--ty-deco); }
 
-/* 辅助核算：左侧类别 + 右侧档案 */
-.aux-layout { display: flex; gap: var(--sp-4); align-items: flex-start; }
-.aux-types { width: 150px; flex: 0 0 150px; border: 1px solid var(--ty-border); border-radius: 4px; overflow: hidden; background: var(--ty-white); }
-.aux-type-item { padding: var(--sp-3) var(--sp-3); font-size: var(--fs-md); color: var(--ty-text); cursor: pointer; border-bottom: 1px solid var(--ty-border-2); }
-.aux-type-item:last-child { border-bottom: none; }
-.aux-type-item:hover { background: var(--ty-blue-2); }
-.aux-type-item.active { background: var(--ty-blue-3); color: var(--ty-blue-dark); font-weight: 400; }
-.aux-main { flex: 1 1 auto; min-width: 0; }
+
 
 /* 通用数据表格：外观统一吃全局 .grid（白底灰线、常规字重），此处仅表头左对齐差异 + 字号 + 内容修饰 */
 .std-table { border-collapse: separate; border-spacing: 0; }   /* 宽度走全局 .grid 标准 */
@@ -5763,11 +5813,17 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint, li.empty-hint {
    动作/关闭按钮由 id 选择器（#btnBackupTipGo / #btnBackupTipClose）改为 .tip-go / .tip-close ——
    原先写死 id，新提醒没法复用同一套配色，只能复制一份样式。两条提醒同现时依次竖排，间距取下方 margin-top。 */
 /* 三条提醒的横向容器：桌面空间足够时排成一行；窄屏自动换行（优雅降级，不挤压） */
-.home-tips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); margin: var(--sp-3) var(--sp-5) 0 var(--sp-5); }
+.home-tips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); margin: 0 var(--sp-5) 0 var(--sp-5);
+  /* 固定「提示槽」高度 = 单行提示本身（约 26px）；上间距收敛为 0，不再额外叠加 12px 上间距导致整体占位过高。
+     三条提醒全隐（display:none）时容器仍占此高，避免下方内容随提示有无而跳动。
+     与 .home-tip 自然高度同源计算（字号×行高 + 上下 padding + 上下 border），与字号解耦。 */
+  min-height: calc(var(--fs-2xs) * var(--lh-tight) + 2 * var(--sp-1) + 2px); }
 .home-tip {
   display: flex; align-items: center; gap: var(--sp-2);
   width: fit-content;
   margin: 0;   /* 外边距/缩进改由 .home-tips 容器统一负责，避免每条各自留白导致竖排 */
+  /* 锁定单行高度，与 .home-tips 的 min-height 同源（均按提示自身字号 fs-2xs 计算），确保「有提示/无提示」两态一致 */
+  min-height: calc(var(--fs-2xs) * var(--lh-tight) + 2 * var(--sp-1) + 2px);
   padding: var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-3);
   background: var(--st-warn-bg);
   border: 1px solid var(--st-warn-bg);

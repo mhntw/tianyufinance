@@ -4429,8 +4429,7 @@
           rows.push({
             date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
             dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
-            qtyDr: num(e.qtyDr), qtyCr: num(e.qtyCr), aux: e.aux || null,
-            entryCode: e.code
+            qtyDr: num(e.qtyDr), qtyCr: num(e.qtyCr), entryCode: e.code
           });
         });
       });
@@ -4471,8 +4470,7 @@
             rows.push({
               date: v.date || voucherMonth(v), word: v.word, no: v.no, summary: e.summary || v.summary,
               dr: num(e.dr), cr: num(e.cr), bal: bal, dir: dir,
-              qtyDr: num(e.qtyDr), qtyCr: num(e.qtyCr), aux: e.aux || null,
-              entryCode: e.code
+              qtyDr: num(e.qtyDr), qtyCr: num(e.qtyCr), entryCode: e.code
             });
           });
         });
@@ -6021,7 +6019,7 @@
       ytdDr: 'num', ytdCr: 'num', rows: 'array' },
       row: { date: 'str', word: 'str', no: 'any', summary: 'str',
         dr: 'num', cr: 'num', bal: 'num', dir: 'str',
-        qtyDr: 'num', qtyCr: 'num', aux: 'any?', entryCode: 'str' } },
+        qtyDr: 'num', qtyCr: 'num', entryCode: 'str' } },
     profitStatement: { self: { totalRevenue: 'num', totalExpense: 'num', netProfit: 'num' },
       row: { code: 'str', name: 'str', cur: 'num', ytd: 'num' } },
     taxDetail: { row: { level: 'num', name: 'str', rowNum: 'num', cur: 'num', ytd: 'num', bold: 'bool' } },

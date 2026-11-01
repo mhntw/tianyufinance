@@ -31,7 +31,6 @@ const TY_CAT_MAP = {
   '营业成本及税金': 'expense', '其他损失': 'expense', '期间费用': 'expense', '所得税': 'expense',
   '以前年度损益调整': 'expense'
 };
-const TY_AUX_MAP = { '客户': 'customer', '供应商': 'supplier', '存货': 'inventory' };
 
 function subject(code) { return subjects.find(s => s.code === code) || null; }
 function addSubject(code, name, cls, extra) {
@@ -47,7 +46,7 @@ function addSubject(code, name, cls, extra) {
   if (!ACCOUNT_CLASSES[cls2]) return { ok: false, msg: '类别无效' };
   const e = extra || {};
   subjects.push({ code, name, cls: cls2, normal: ACCOUNT_CLASSES[cls2].normal, level, parent: parent ? parent.code : '',
-    aux: e.aux || [], qty: !!e.qty, unit: e.unit || '', foreign: !!e.foreign, adjust: !!e.adjust, currency: e.currency || '' });
+    qty: !!e.qty, unit: e.unit || '' });
   return { ok: true };
 }
 
@@ -69,13 +68,9 @@ rows.forEach(r => {
   if (!code || !name) return;
   let cls = TY_CAT_MAP[String(r['类别'] || '').trim()];
   if (!cls) cls = (String(r['余额方向'] || '') === '贷') ? 'liability' : 'asset';
-  const auxStr = String(r['辅助核算类别'] || '');
-  const aux = [];
-  if (auxStr) auxStr.split(/[\/、]/).forEach(a => { const k = TY_AUX_MAP[a.trim()]; if (k && aux.indexOf(k) < 0) aux.push(k); });
   const isQty = String(r['数量核算'] || '') === '√' || /^\d+$/.test(String(r['数量核算'] || '').trim());
-  const isFgn = /^(?!RMB$)/.test(String(r['外币核算'] || 'RMB').trim());
   attempted++;   // 供「不丢行」恒等式断言用（见下方）
-  const res = addSubject(code, name, cls, { aux, qty: isQty, foreign: isFgn });
+  const res = addSubject(code, name, cls, { qty: isQty });
   if (res.ok) ok++; else { skipped++; if (!firstErr) firstErr = code + ':' + res.msg; }
 });
 
@@ -94,9 +89,7 @@ T('段式编码: 100101 level=1', subject('100101') && subject('100101').level =
 T('类别映射: 库存现金→asset', subject('1001') && subject('1001').cls === 'asset');
 T('成本类: 某成本科目→cost', subjects.some(s => s.cls === 'cost'));
 
-// 类别/aux 校验
-const auxSubject = subjects.find(s => (s.aux || []).length > 0);
-T('辅助核算映射(customer/supplier/inventory)', !auxSubject || auxSubject.aux.some(a => ['customer','supplier','inventory'].includes(a)));
+
 
 console.log(`\n结果: ${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

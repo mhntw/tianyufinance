@@ -60,7 +60,9 @@ T('A4 CSS 里已无 .cmd-* / .modal-cmd 活规则（注释里的删除留痕不�
   !/\.cmd-[a-z-]+/.test(CSS_CODE) && !/\.modal-cmd/.test(CSS_CODE));
 
 T('A5 不再有 Ctrl/Cmd + K 唤起（唯一入口已随导航回到侧栏而删除）',
-  !/metaKey\s*\|\|\s*e\.ctrlKey/.test(APP_CODE) && !/KEY_K|'K'\s*==/.test(APP_CODE));
+  // 收紧：必须「修饰键 且 含 K 键」才算命令面板唤起 —— 避免误杀其它合法快捷键（如 Cmd/Ctrl+Enter 录凭证）。
+  // 命令面板的 Cmd/Ctrl+K 必然同时含这两者，故仍能精确监督其删除。
+  !( /metaKey\s*\|\|\s*e\.ctrlKey/.test(APP_CODE) && /KEY_K|'K'\s*==/.test(APP_CODE) ));
 
 T('A6 顶栏不再有「快速跳转 / 全部功能」按钮（无 #cmdTrigger）',
   !/cmdTrigger/.test(HTML) && !/cmdTrigger/.test(APP_CODE));

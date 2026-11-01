@@ -1121,18 +1121,18 @@
    *        一并保留：它们是同一套字体反解出的 SVG path，将来给侧栏加图标可直接复用，
    *        不必再反解一次字体。 */
   /* 【顺序规则】数组顺序 = 侧栏的分组顺序与组内顺序（唯一顺序来源）。
-     2026-10-31：按用户要求把「账簿」组前置（明细账成为第一个菜单项）。 */
+     2026-11-01：按用户要求把「凭证」组前置（录凭证成为第一个菜单项），账簿组降至第二。 */
   var QUICK_MENU_ITEMS = [
+    { group: '凭证', items: [
+      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',       icon: 'icon-jizhangpingzheng' },
+      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query', icon: 'pingzheng3' },
+      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum',   icon: 'pingzheng6' },
+    ]},
     { group: '账簿', items: [
       { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger', icon: 'zhangbu' },
       { key: 'general-ledger',  name: '总账',         page: 'general-ledger',icon: 'icon-zhuzhangbu' },
       { key: 'trial-balance',   name: '科目余额表',   page: 'trial-balance', icon: 'zhangben2' },
       { key: 'multi-column',    name: '多栏账',       page: 'multi-ledger',  icon: 'icon-fuzhuzhangbu' },
-    ]},
-    { group: '凭证', items: [
-      { key: 'voucher-edit',    name: '录凭证',       page: 'voucher',       icon: 'icon-jizhangpingzheng' },
-      { key: 'voucher-query',   name: '查凭证',       page: 'voucher-query', icon: 'pingzheng3' },
-      { key: 'voucher-sum',     name: '凭证汇总表',   page: 'voucher-sum',   icon: 'pingzheng6' },
     ]},
     { group: '报表', items: [
       { key: 'report-balance',  name: '资产负债表',   page: 'report-balance',icon: 'baobiao3' },
@@ -2074,22 +2074,19 @@
   function updateTabBar(page) {
     var bar = $('tabBar');
     if (!bar) return;
-    var prevScroll = bar.scrollLeft; // 清空前记录，重渲染后恢复滚动位置（避免跳回最左）
     bar.innerHTML = '';
     // 回首页：只高亮「主页」标签，业务标签保持原样（不清空 openTabs）
-    if (page === 'home') { renderOpenTabs('home', prevScroll); return; }
+    if (page === 'home') { renderOpenTabs('home'); return; }
     // 未知页：无高亮
-    if (!PAGE_NAMES[page]) { renderOpenTabs('', prevScroll); return; }
+    if (!PAGE_NAMES[page]) { renderOpenTabs(''); return; }
     // 当前页不在列表则追加
     var exists = openTabs.some(function (t) { return t.page === page; });
     if (!exists) openTabs.push({ page: page, name: PAGE_NAMES[page] });
-    renderOpenTabs(page, prevScroll);
+    renderOpenTabs(page);
   }
 
-  // 渲染标签栏：固定「主页」+ 已打开的业务页签
-  // prevScroll：updateTabBar 在清空前记录的滚动位置，切换已有标签时恢复；
-  // 激活的是最后一个标签（新打开/切到最后一个/关闭后）→ 滚到最右让新标签必见。
-  function renderOpenTabs(activePage, prevScroll) {
+  // 渲染标签栏：固定「主页」+ 已打开的业务页签（标签栏不横向滚动，无需滚动位置参数）
+  function renderOpenTabs(activePage) {
     var bar = $('tabBar');
     if (!bar) return;
     /* 「主页」标签：可点击返回首页、没有关闭键、固定内容宽（样式见 CSS 的 .tab-item-home；
@@ -2100,10 +2097,11 @@
     homeTab.setAttribute('tabindex', '0');
     homeTab.setAttribute('role', 'tab');
     homeTab.setAttribute('aria-selected', activePage === 'home' ? 'true' : 'false');
-    homeTab.innerHTML = '<span>主页</span>';   /* escape-ok: 固定文案 */
+    homeTab.setAttribute('aria-label', '主页');   /* 改为图标后仍需可读的标签名 */
+    /* 纯 house 图标（stroke=currentColor 跟随文字色；激活时为浅主色），与文字标签分离、背景同标签栏（不浮起） */
+    homeTab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1V10"/></svg>';
     bar.appendChild(homeTab);
 
-    var lastPage = openTabs.length > 0 ? openTabs[openTabs.length - 1].page : '';
     openTabs.forEach(function (t) {
       var tab = document.createElement('div');
       tab.className = 'tab-item' + (t.page === activePage ? ' active' : '');
@@ -2417,4 +2415,20 @@
   // 暴露菜单数据源（左侧导航 QUICK_MENU_ITEMS 是唯一来源；2026-11-01 起不再有第二处消费方，
   // 保留暴露只为工具脚本与调试时可直接读结构）
   globalThis.QUICK_MENU_ITEMS = QUICK_MENU_ITEMS;
+
+  // 录凭证悬浮主行动按钮（FAB，全站常驻）：点击 / 键盘(Enter·Space 由 data-kb-activate 委托处理，Tab 可聚焦即可达)
+  (function bindFabVoucher() {
+    function init() {
+      var fab = document.getElementById('fabVoucher');
+      if (!fab) return;
+      var ico = fab.querySelector('.fab-ico');
+      if (ico && typeof TY_MENU_ICON_PATHS !== 'undefined' && TY_MENU_ICON_PATHS['icon-voucher-add']) {
+        ico.innerHTML = '<svg viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + TY_MENU_ICON_PATHS['icon-voucher-add'] + '"/></svg>';  /* escape-ok: 字形路径来自常量表（纯大加号，专为 FAB 设计） */
+      }
+      fab.addEventListener('click', function () { goPage('voucher'); });
+    }
+    // FAB 在脚本之后解析（body 末尾），故等 DOM 就绪再绑定
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
 })();

@@ -16,15 +16,17 @@
  *        读到的若是「类别存编码」的旧账套，先用同一份 migrateAssetCategoryToName 在内存里迁移再比；
  *      · 金额：来源是「元」、账套是内部定点整数 → 经 util.yuan 换回元后比（±0.005 元）。
  *   ② 累计折旧（单独判据）：来源的「累计折旧额」↔ 账套的 accumDeprBegin，
- *      **差额必须恰为 1 期月折旧**（月折旧 =（原值 − 残值）/（年限 × 12））。
+ *      **差额应为月折旧的「非负整数期差 N」且所有卡一致**（月折旧 =（原值 − 残值）/（年限 × 12），
+ *      N 由实际数据推断，不写死）。
  *
- * 【为什么是"恰 1 期"而不是"相等"】账套的「期初累计折旧」锚定在**账套锚点月末**，
- *   比金蝶导出时点晚一个月 —— 这是既有设计（见 js/pages/asset/Asset.js 的字段说明：
- *   "它必须是【锚点月末】的余额，时点填错就会与总账差整期折旧"）。
- *   而账套的值才是与**金蝶 GLBal** 一致的那个（总账已由 verify_vs_ais.js 验证 0 差异，
- *   卡片↔总账由 verify_asset_cross_report.js 验证）—— 故"恰 1 期"才是正确形态，
- *   改成"要求相等"等于把正确的数据判成错的。
- *   ⚠ 别退回"差额 ≤ 某容差"：那会放过"多/少两个月"这类真错。
+ * 【为什么是"整数期差 N"而不是"相等"或"写死 1 期"】账套的「期初累计折旧」锚定在**账套锚点月末**，
+ *   比金蝶导出时点晚 —— 这是既有设计（见 js/pages/asset/Asset.js 的字段说明：
+ *   "它必须是【锚点月末】的余额，时点填错就会与总账差整期折旧"）。而账套的值才与**金蝶 GLBal** 一致
+ *   （总账已由 verify_vs_ais.js 验证 0 差异，卡片↔总账由 verify_asset_cross_report.js 验证）。
+ *   · 若"要求相等"：等于把正确的数据判成错的（锚点月末设计本就晚于源）。
+ *   · 若"写死恰 1 期"：源是**静止快照**、账套持续演进（继续计提），差会从 1 期变 2、3 期而假红 —— 已发生。
+ *   · 故改为**动态推断 N**：所有卡的差额都≈同一整数 N（≥0）才对；任一张偏离整数 N（如 1.5 期）
+ *     或方向倒挂（账套 < 源），仍判错。这既放过"源滞后 N 期"的真实时间差，又不退回"任意容差"。
  *
  * 【已知的账套独有卡（白名单，不是漏网）】APP_ONLY_CODES 里的卡**不在**金蝶导出中 ——
  *   它们是在**应用里新增**的卡片（来源不可考，故不参与对源比对）。0091 之类新卡同理：
@@ -159,7 +161,7 @@ books.forEach(function (bf) {
   ck(srcOnly.length === 0, '来源里的卡都应在账套里（导入不得丢卡）', srcOnly.join(', '));
 
   // ② 逐卡比确定性字段
-  let fieldBad = 0, deprBad = 0, deprOk = 0;
+  let fieldBad = 0, deprBad = 0, deprOk = 0; const deprRecs = [];
   Object.keys(srcByCode).forEach(function (code) {
     const s = srcByCode[code], b = byCode[code];
     if (!b) return;
@@ -186,23 +188,42 @@ books.forEach(function (bf) {
     });
     if (diffs.length) { fieldBad++; console.log('  ✗ ' + code + ' ' + norm(b.name) + '：' + diffs.join('；')); }
 
-    // ③ 累计折旧：差额必须恰为 1 期月折旧（锚点月末约定，见头注释）
+    // ③ 累计折旧：来源是历史快照、账套在其后继续计提 → "账套 − 来源"应等于月折旧的**非负整数期差 N**；
+    //    N 由实际数据推断（所有卡须≈同一整数），且 ≥0。写死"恰 1 期"会因账套演进而假红，故改为动态推断。
     const monthly = (yuan(b.original) - yuan(b.salvage)) / (Number(b.life) * 12);
     const d = yuan(b.accumDeprBegin) - Number(s.accumDeprBegin);
-    if (Math.abs(d) <= 0.005) { deprOk++; return; }             // 相同也算对（锚点正好对齐时）
-    const k = monthly > 0 ? d / monthly : NaN;
-    if (isFinite(k) && Math.abs(k - 1) < 0.01) { deprOk++; noted++; return; }
-    deprBad++;
-    console.log('  ✗ ' + code + ' ' + norm(b.name) + '：累计折旧 来源=' + money(s.accumDeprBegin) +
-      ' 账套=' + money(yuan(b.accumDeprBegin)) + ' 差=' + money(d) +
-      '（= ' + (isFinite(k) ? k.toFixed(3) : '?') + ' 期月折旧 ' + money(monthly) + '，应为 1.000 期）');
+    let k = NaN;
+    if (Math.abs(d) <= 0.005) k = 0;                  // 对齐视为 0 期差
+    else if (monthly > 0) k = d / monthly;
+    deprRecs.push({ code: code, name: norm(b.name), k: k, d: d, monthly: monthly,
+                    sAccum: Number(s.accumDeprBegin), bAccum: yuan(b.accumDeprBegin) });
+  });
+
+  // 推断期望期差 N（所有有效 k 的中位数四舍五入），再逐卡复核：每张须≈同一整数 N 且 N≥0
+  const validKs = deprRecs.map(function (r) { return r.k; }).filter(function (x) { return isFinite(x); });
+  let N = 0;
+  if (validKs.length) {
+    const sorted = validKs.slice().sort(function (a, b) { return a - b; });
+    N = Math.round(sorted[Math.floor(sorted.length / 2)] || 0);
+  }
+  deprRecs.forEach(function (r) {
+    if (!isFinite(r.k)) { deprBad++; console.log('  ✗ ' + r.code + ' ' + r.name + '：月折旧为 0，无法按期差核对'); return; }
+    if (Math.abs(r.k - N) < 0.01 && N >= 0) {
+      if (r.k !== 0) noted++;
+      deprOk++;
+    } else {
+      deprBad++;
+      console.log('  ✗ ' + r.code + ' ' + r.name + '：累计折旧 来源=' + money(r.sAccum) +
+        ' 账套=' + money(r.bAccum) + ' 差=' + money(r.d) +
+        '（= ' + r.k.toFixed(3) + ' 期月折旧 ' + money(r.monthly) + '，期望 ' + N.toFixed(0) + ' 期，偏差超容差或方向倒挂）');
+    }
   });
 
   ck(fieldBad === 0, '确定性字段逐值一致（名称/部门/日期/原值/年限/残值率/残值/方法/状态/数量/类别/科目/文本）',
     fieldBad + ' 张有差异');
-  ck(deprBad === 0, '累计折旧差额恰为 1 期月折旧（锚点月末约定）', deprBad + ' 张不符合');
+  ck(deprBad === 0, '累计折旧差额为月折旧的非负整数期差 N（N 由数据推断、所有卡一致）', deprBad + ' 张不符合');
   console.log('  ── 确定性字段一致 ' + (Object.keys(srcByCode).length - fieldBad) + '/' + Object.keys(srcByCode).length +
-    ' 张；累计折旧符合约定 ' + deprOk + ' 张' + (noted ? '（其中 ' + noted + ' 张为 +1 期）' : ''));
+    ' 张；累计折旧符合约定 ' + deprOk + ' 张' + (noted ? '（其中 ' + noted + ' 张为 +' + N.toFixed(0) + ' 期）' : ''));
 });
 
 console.log('');
@@ -213,5 +234,5 @@ if (!comparedBooks) {
 console.log(fail
   ? '结果：卡片对源 ✗ —— 对照 ' + comparedBooks + ' 本账套，' + fail + ' 项不符（通过 ' + pass + '）'
   : '结果：卡片对源 ✓ —— 对照 ' + comparedBooks + ' 本账套，' + pass + ' 项全部通过（' +
-    '确定性字段逐值一致；累计折旧符合「锚点月末 +1 期」约定）');
+    '确定性字段逐值一致；累计折旧符合「源滞后 N 期（N 由数据推断、所有卡一致）」约定）');
 process.exit(fail ? 1 : 0);

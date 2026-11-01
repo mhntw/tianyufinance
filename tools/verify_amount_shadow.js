@@ -180,8 +180,11 @@ function compareAt(path_, key, oldV, newV) {
     if (typeof oldV !== 'object' || typeof newV !== 'object') {
       stat.diffs.push({ path: path_, old: oldV, new: newV, why: '对象类型不一致' }); return;
     }
-    const keys = Object.keys(oldV);
-    Object.keys(newV).forEach(k => { if (keys.indexOf(k) < 0) keys.push(k); });
+    // 已下线的「辅助核算」字段（aux）：旧实现基线尚输出 aux:null，新实现已彻底移除该键。
+    // 它不参与金额与核心逻辑，对照中应忽略，否则会因「null vs 键缺失」空值差异假红。
+    const SKIP = { aux: 1 };
+    const keys = Object.keys(oldV).filter(k => !SKIP[k]);
+    Object.keys(newV).forEach(k => { if (keys.indexOf(k) < 0 && !SKIP[k]) keys.push(k); });
     keys.forEach(k => compareAt(path_ + '.' + k, k, oldV[k], newV[k]));
     return;
   }

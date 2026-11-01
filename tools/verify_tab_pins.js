@@ -36,7 +36,7 @@ function sliceFn(src, signature) {
   const j = src.indexOf('\n  }\n', i);
   return j < 0 ? src.slice(i) : src.slice(i, j);
 }
-const RENDER = sliceFn(APP_CODE, 'function renderOpenTabs(activePage, prevScroll)');
+const RENDER = sliceFn(APP_CODE, 'function renderOpenTabs(activePage)');
 
 let pass = 0, fail = 0;
 function T(name, cond, detail) {
@@ -70,9 +70,9 @@ console.log('\n=== B. 标签栏回到单一职责：只列已打开的页面 ===
 T('B1 renderOpenTabs 里不再有钉住 / 更多 的分支',
   RENDER.length > 0 && !/pinned|tab-more|moreMenu|quick/i.test(RENDER));
 
-T('B2 「主页」标签固定渲染且不可关闭（.tab-item-home、无 tab-close）',
+T('B2 「主页」标签固定渲染且不可关闭（.tab-item-home + house 图标、无 tab-close）',
   /tab-item-home/.test(RENDER) &&
-  /homeTab\.innerHTML = '<span>主页<\/span>'/.test(RENDER) &&
+  /homeTab\.innerHTML = '<svg/.test(RENDER) &&
   !/homeTab[\s\S]{0,400}?tab-close/.test(RENDER));
 
 T('B3 业务标签带关闭键（.tab-close 仍由 openTabs 渲染）',
