@@ -12,6 +12,7 @@
     "grp-label": "js/pages/report/Report.js:116",
     "history-detail": "js/pages/asset/Asset.js:1225",
     "ml-last": "js/pages/ledger/Ledger.js:597",
+    "nav-group-direct": "js/app.js:1286",
     "ok-row": "js/pages/settings/Settings.js:442",
     "open-cr": "js/pages/settings/Opening.js:32",
     "open-dr": "js/pages/settings/Opening.js:32",

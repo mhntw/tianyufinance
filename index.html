@@ -68,8 +68,15 @@
           </div>
         </div>
       </header>
-    <!-- 左侧导航已整体移除：导航改由顶栏「快速跳转」(Ctrl/Cmd+K) 与首页常用功能承担 -->
+    <!-- 左侧导航（2026-11-01 恢复；固定宽度、不做收起）：
+         6 个分组 + 22 个页面，由 js/app.js 的 renderSideNav() 按 QUICK_MENU_ITEMS 渲染；
+         当前页自动高亮并展开所属分组（点分组标题可展开/收起）。
+         标签栏因此回到单一职责：只列"已打开的页面"（主页固定）。
+         演进记录：10-31 删侧栏 → 同日导航被塞进标签栏（钉住 + 更多 ▾）→ 11-01 收回侧栏。
+         教训：钉住上限、溢出怎么办、要不要收缩成图标……这些问题全部源于"标签栏在兼职导航"；
+         导航有专属位置后，它们一并消失。 -->
     <div class="layout-body">
+    <nav class="sidenav" id="sideNav" aria-label="主菜单"></nav>
     <main class="content" id="content">
 
 
@@ -120,37 +127,16 @@
         </div><!-- /.home-tips -->
 
 
-        <div class="home-section home-section-quick">
-          <!-- 常用功能：整行标题栏已删除，设置图标下移到网格右上角（.home-quick-edit 绝对定位） -->
-          <div class="home-section-content home-content">
-          <div class="home-quick">
-            <button type="button" class="home-edit-btn is-link home-section-edit home-quick-edit" title="自定义常用功能">
-              <i class="iconcool zidingyi"></i>
-            </button>
-
-            <button type="button" class="qk-newvoucher" data-page="voucher">
-              <div class="qk-new-ico">
-                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </div>
-              <div class="qk-new-text">
-                <div class="qk-new-title">新增凭证</div>
-                <div class="qk-new-sub">立即录入</div>
-              </div>
-            </button>
-
-            <div class="home-quick-grid">
-            </div>
-          </div>
-          </div>
-        </div>
+        <!-- 【2026-11-01 下线】首页「常用功能」板块（新增凭证大卡 + 页面格子 + 自定义齿轮）整块删除：
+             同一批"我常去哪里"的入口改为**标签栏固定区**常驻（见 app.js 的 renderOpenTabs），
+             好处是全站任何页面一点即到，而不是必须先回首页；配置入口随之迁到标签栏「更多 ▾ → 钉住常用页…」。
+             首页因此只剩仪表盘职责（提醒条 / 财务指标 / 图表），首屏重心不再被导航按钮占据。 -->
 
         <div class="home-section">
           <div class="home-section-metrics">
-            <div class="home-section-title" style="margin-bottom: 16px;">
-              <ul class="">
-                <li>财务指标</li>
-              </ul>
-            </div>
+            <!-- 【2026-11-01 下线】原「财务指标」标题行（.home-section-title + ul>li）删除：
+                 首页只剩这一个板块，标题只是重复自己；卡片本身已各自带标题（资金余额/…），
+                 去掉后首屏直接进入数据。留白由 .home-section-metrics 的上内距承担。 -->
             <div>
               <div style="display: block;">
                 <div class="metric-grid">
@@ -1334,7 +1320,7 @@
             <label>公司名称</label>
             <span class="set-value" id="sysNameVal"></span>
           </div>
-          <!-- 记账员：2026-10-07 由顶栏迁入（顶栏只留账期/账套/搜索/快速跳转，不再常驻低频设置入口）。
+          <!-- 记账员：2026-10-07 由顶栏迁入（顶栏只留账期/账套/搜索，不再常驻低频设置入口）。
                它同时是凭证「制单人」与操作日志操作人的来源 —— 存 company.bookkeeper。 -->
           <div class="set-row">
             <label>记账员</label>
@@ -1719,23 +1705,13 @@
   <script src="js/dialog-bridge.js?v=dev"></script>
   <script src="js/file-save-bridge.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>
-  <script src="js/command-palette.js?v=dev"></script>
   <script src="js/update.js?v=dev"></script>
   <script type="module" src="js/main.js?v=dev"></script>
   <script src="js/lock-screen.js?v=dev"></script>
 
-  <!-- 常用功能设置：走 .modal 统一体系（遮罩/宽档/标题栏 ×/Tab 陷阱/Esc/焦点还原全部复用） -->
-  <div class="modal" id="quickSettingsOverlay" data-backdrop="close">
-    <div class="modal-box modal-wide">
-      <div class="modal-title">常用功能设置<button class="modal-x" data-modal-close="1" aria-label="关闭">×</button></div>
-      <div class="modal-body qs-body" id="qsBody"></div>
-      <div class="modal-actions">
-        <button class="btn" id="qsReset">恢复默认</button>
-        <button class="btn btn-primary" id="qsConfirm">确定</button>
-        <button class="btn" id="qsCancel">取消</button>
-      </div>
-    </div>
-  </div>
+  <!-- 【2026-11-01 删除】「钉住常用页」弹窗（#quickSettingsOverlay / qsBody / qsConfirm…）：
+       "钉住"这套概念随标签栏固定区一并下线 —— 导航已回到左侧固定菜单（.sidenav），
+       全部 22 页常驻可见，不再需要"挑几个钉在标签栏"。 -->
 
   <div class="ty-period-range-pop" id="kdPeriodRangePop" hidden>
     <div class="ty-period-panel">

@@ -31,11 +31,14 @@ const WRITABLE = {
   'kis_cur': '上次打开的账套指针（本机）',
   'kis_bk_remind': '上次备份提醒日期（本机）',
   'kis_ui_scale': '界面缩放比例（本机）',
-  'quick_menu_keys': '快捷菜单配置（本机）',
-  /* 【2026-10-31 删除】'tyNavCollapsed'：侧边导航折叠状态。侧栏已整体移除，js/ 下已无任何
-     getItem/setItem 主体，白名单里留着等于给一个不存在的写入方发许可证。 */
+  /* 【2026-11-01 删除】'quick_menu_keys' 与 'cmd_recent_pages'：
+     前者是「钉住常用页」的勾选结果（弹窗与标签栏固定区一并下线），后者是命令面板的
+     「最近访问」列表（js/command-palette.js 已删）。两者在 js/ 下都已无 getItem/setItem
+     主体，白名单里留着等于给不存在的写入方发许可证。 */
+  /* 【2026-11-01 恢复】'tyNavCollapsed'：侧边导航折叠状态（0/1）。侧栏原样恢复后，
+     「收起导航」按钮又会读写此键（见 app.js renderSideNav 的 applyNavCollapsed），故收回白名单。 */
+  'tyNavCollapsed': '侧边导航折叠状态（本机 UI 偏好：0/1，侧栏收起为仅图标宽 50px）',
   'cloud_sync_last': '上次云同步时间/目录/条数（本机路径）',
-  'cmd_recent_pages': '命令面板「最近访问」的页面名列表（最多 6 条，本机 UI 偏好，只存页面名不碰账套数据）',
   'ty_update_check': '更新检查缓存（本机）',
   'ty_update_notified': '更新提示已读标记（本机）'
 };

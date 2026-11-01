@@ -160,6 +160,14 @@
   --grid-text:      var(--ty-text);   /* 表格正文主色（复用 --ty-text） */
 
   --topbar-h: 60px;   /* 方案 C：加高以容纳完整品牌标题（原 48px 紧凑高度，品牌搬进顶栏后放宽） */
+
+  /* 左侧导航（2026-11-01 恢复）：侧栏专属令牌，与全站蓝白体系一致 */
+  --ty-nav-bg:        var(--ty-white);
+  --ty-nav-text:      var(--ty-text);
+  --ty-nav-active-bg: var(--ty-blue-2);   /* 菜单 hover/active 底（蓝·高亮） */
+  --ty-nav-active:    #3a66d4;            /* 菜单选中文字：品牌蓝，白底清晰 */
+  --nav-w: 120px;     /* 侧栏展开宽（旧版 JS 初始化时也强制设 120px，此处为 CSS 默认/兜底） */
+  --nav-w-active: var(--nav-w);           /* 当前侧栏宽（JS 收起时切为 50px） */
   --ty-white: #fff;   /* 纯白（背景/文字/边框通用），收敛原先散落的 #fff 字面量 */
   --ty-scrim: 28, 40, 60;  /* 暗色遮罩/阴影统一色相（墨蓝），供 rgba(var(--ty-scrim), a) 使用；替代散落的 20,28,38 / 2,36,51 / 40,46,56 */
  /* 纯黑（阴影/描边等），收敛原 6 处 #000 */
@@ -175,58 +183,20 @@
 }
 
 /* ============================================================
- * 命令面板（Ctrl/Cmd + K 快速跳转）
+ * 全部功能菜单（Ctrl/Cmd + K 唤起；可视入口在标签栏「更多 ▾」）
  * 复用现有令牌，保持与全站一致的蓝灰专业调性；不做花哨动效。
  * ============================================================ */
-/* 【2026-10-31 收敛】原 .cmd-overlay 是自成一派的遮罩层（自定义 z-index/背景/对齐），
-   现在面板整体走 .modal 体系：外层 class="modal modal-cmd"，内容 .modal-box.cmd-box。
-   这里只保留命令面板特有的「顶部对齐」与内容容器尺寸，遮罩/圆角/阴影/层级全部继承。 */
-.modal.modal-cmd{ align-items:flex-start; padding-top:12vh; }
-/* 宽度归入弹窗「列表选择器」档 650；overflow:hidden 让圆角裁住输入行底边 */
-.cmd-box{ width:min(650px,calc(100vw - 32px)); overflow:hidden; }
-.cmd-input-row{
-  display:flex; align-items:center; gap:var(--sp-3);
-  padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--ty-border);
-}
-.icon--cmd{ font-size:var(--fs-xl); color:var(--ty-text-3); line-height: var(--lh-1); }
-.cmd-input{
-  flex:1; border:0; outline:0; background:transparent;
-  font-size:var(--fs-md); color:var(--ty-text); font-family:var(--ty-font);
-}
-.cmd-kbd{
-  font-size:var(--fs-2xs); color:var(--ty-text-3);
-  border:1px solid var(--ty-border); border-radius:5px;
-  padding:var(--sp-1) var(--sp-2); background:var(--ty-content-bg); font-family:var(--ty-font);
-}
-.cmd-results{ max-height:46vh; overflow:auto; padding:var(--sp-2); }
-.cmd-group{ font-size:var(--fs-2xs); color:var(--ty-text-3); padding:var(--sp-2) var(--sp-3) var(--sp-1); }
-.cmd-item{
-  display:flex; align-items:center; gap:var(--sp-3);
-  padding:var(--sp-3) var(--sp-3); border-radius:9px; cursor:pointer;
-}
-.cmd-item.active{ background:var(--ty-blue-2); }
-.cmd-avatar{
-  width:26px; height:26px; flex:0 0 26px; border-radius:7px;
-  background:var(--ty-th-bg); color:var(--ty-blue-dark);
-  display:flex; align-items:center; justify-content:center;
-  font-size:var(--fs-md); font-weight:600;
-}
-/* 图标字形（与首页快捷区同一套 iconcool 字形，2026-10-31）：26px 方框内 15px 字形，
-   视觉重量与左侧「名称首字」兜底一致；着色沿用 .cmd-avatar 的 color 之外的 fill。 */
-.cmd-avatar svg{ width:15px; height:15px; display:block; fill:var(--ty-blue-dark); }
-.cmd-name{ flex:1; font-size:var(--fs-md); color:var(--ty-text); }
-.cmd-tag{ font-size:var(--fs-2xs); color:var(--ty-text-3); }
-.cmd-foot{
-  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);
-  padding:var(--sp-2) var(--sp-3); font-size:var(--fs-2xs); color:var(--ty-text-3);
-  border-top:1px solid var(--ty-border);
-}
-/* 顶栏"快速跳转"入口 */
+/* 【2026-11-01 全部删除】命令面板 /「全部功能」菜单时期的样式已无消费者：
+   · 居中面板：.modal.modal-cmd / .cmd-box / .cmd-input-row / .cmd-input / .cmd-results /
+     .cmd-group / .cmd-item / .cmd-avatar / .cmd-name / .cmd-tag / .cmd-foot / .icon--cmd；
+   · 顶栏按钮：.cmd-trigger / .cmd-kbd / .icon--cmd-trigger；
+   · 标签栏下拉：.tab-more-pop / .tm-*；
+   · Ctrl/Cmd+K 唤起器（js/command-palette.js 文件已删除）。
+   导航现在只在左侧 .sidenav 一处（见文件开头的侧栏一节）。
+   下面 .icon--topbar-search 是搜索框自己的字形，仍在用。 */
 
-/* 【2026-10-06】搜索图标统一为 iconcool「sousuo」字形（\e692）：
-   原先搜索框用 emoji 🔍、快速跳转用 Unicode ⌕，两者字形完全不同（前者带金属质感、后者是细小空心环）。
-   iconcool 字形在本 em 框内留白较大，故 17px ≈ 原 15px 的 🔍 视觉重量；两处用同一字形同一字号，严格一致。 */
-.icon--cmd-trigger{ font-size:var(--fs-xl); line-height: var(--lh-1); flex-shrink:0; }
+/* 【2026-10-06】搜索图标统一为 iconcool「sousuo」字形（\e692）。
+  iconcool 字形在本 em 框内留白较大，故 17px ≈ 原 15px 的 🔍 视觉重量。 */
 .icon--topbar-search{ font-size:var(--fs-xl); line-height: var(--lh-1); }
 
 *, *::before, *::after { box-sizing: border-box; }   /* 原 jdy-base.css 并入：伪元素同样 border-box */
@@ -274,16 +244,13 @@ body {
   speak: none;
 }
 
-.guolv:before { content: "\e6e4"; }
-.huiyuanmanyidu:before { content: "\e6da"; }
-.shezhi2:before { content: "\e66d"; }
-.shuaxin2:before { content: "\e686"; }
+/* 【2026-11-01 删除】字体附带字形映射里 0 消费者的 9 条
+   （.guolv / .huiyuanmanyidu / .shezhi2 / .shuaxin2 / .tianjia / .wenti /
+   .xiaochengxubeifen / .zhengyan / .zidingyi）：全仓 index.html 只有
+   `<i class="iconcool sousuo">` 两处（顶栏搜索框、凭证模板搜索框），其余字形名
+   仅出现在 js/ty-menu-icons.js 的 SVG path 表里（走 path 不走字体），CSS 侧无消费者。
+   保留 .sousuo 一条即可，新增字形类时按需补。 */
 .sousuo:before { content: "\e692"; }
-.tianjia:before { content: "\e687"; }
-.wenti:before { content: "\e699"; }
-.xiaochengxubeifen:before { content: "\e74e"; }
-.zhengyan:before { content: "\e681"; }
-.zidingyi:before { content: "\e682"; }
 
 /* ---------- 分页箭头 ----------
  * 【2026-10-31】.tyicon / .tyicon-arrow-left / .tyicon-arrow-right 已删：分页控件并入统一
@@ -422,6 +389,231 @@ img, svg { display: block; max-width: 100%; }
   position: relative;
 }
 
+/* ---------- 左侧导航（.wrapper--3k7gc：flex 子项，非 fixed，与内容区同级平排） ----------
+   2026-11-01 原样还原 dd9dc69 之前的侧栏：分组标题（图标 + 居中大字）+ 鼠标悬停右侧浮层二级菜单。
+   6 组 / 22 页由 js/app.js 的 renderSideNav() 按 QUICK_MENU_ITEMS 渲染；
+   「结账」组 direct:true，点标题直接进页面（不弹浮层）。 */
+.sidenav {
+  /* 清理：去掉与内容区交界的「同色实心 box-shadow 向右延伸」（原卡片式分层视觉）。
+     布局已是通栏直角平铺风格，侧栏作为固定左列、内容区在其右侧，二者干净直角相邻，
+     不再需要阴影过渡 / 圆角对比。 */
+  width: var(--nav-w-active);
+  min-width: var(--nav-w-active);
+  height: 100%;              /* 撑满父级 .layout-body，到顶到底 */
+  flex-shrink: 0;            /* 防止被内容区压缩 */
+  background: var(--ty-nav-bg);
+  /* 侧栏纯白后与内容区同白，用右侧细竖线分隔（色用功能区灰缝同族 var(--ty-border)），
+     避免白+白边界模糊；不用粗 8px 缝以保持紧凑 */
+  border-right: 1px solid var(--ty-border);
+  padding: var(--sp-2) 0 0;          /* 顶部留 7px（滚动只发生在菜单区 .nav-menu-scroll） */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  position: relative;
+  transition: width .2s ease;   /* 「收起导航」平滑收窄 */
+}
+
+/* 菜单滚动区：flex:1 撑满中间高度，溢出自动滚动；菜单不足整屏时紧凑靠上排列（非 space-evenly 拉开） */
+.nav-menu-scroll {
+  flex: 1 1 auto;
+  min-height: 0;          /* flex 子项可收缩到内容以下，使 overflow-y:auto 生效 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  /* 菜单块之间的呼吸间距（2026-09-19 优化「7 大板块上下拥挤」）：用 flex gap 在块之间补出真实间隙，
+     只在块之间生效（首项前/末项后不加），且不影响 position:fixed 的浮层。 */
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);   /* 左右 4→6px：与条目 10px 圆角相衬，蓝块两侧不再贴边 */
+}
+
+/* 收起（宽 50px）：菜单文字 JS 隐藏，仅留图标居中；标题本身必须保留（text-align:center 让图标水平居中） */
+.sidenav.collapsed .nav-group-title,
+.sidenav.collapsed .nav-direct-title { text-align: center; }
+.sidenav.collapsed .nav-text { display: none; }   /* 收起后只留图标，与参考实现一致 */
+.sidenav.collapsed .nav-group { justify-content: center; }
+.sidenav.collapsed .nav-header { justify-content: center; padding-left: 0; padding-right: 0; }
+.sidenav.collapsed .nav-company,
+.sidenav.collapsed .nav-period { display: none; }
+
+/* 侧栏底部操作区（含「收起导航」按钮，旧版另有浅色模式按钮，已随暗色模式删除） */
+.nav-op-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0 var(--sp-1);
+  margin-top: auto;          /* 贴侧栏底部 */
+}
+.sidenav.collapsed .nav-op-wrapper {
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.nav-op-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--ty-nav-text);
+  transition: background .15s, color .15s;
+}
+.nav-op-btn:hover { background: var(--ty-nav-active-bg); }
+.nav-op-ico {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* 导航分组（账簿 / 报表） */
+.nav-group:first-child { margin-top: 0; }
+.nav-group:first-child .nav-group-title { margin-top: 0; }
+
+/* 菜单项：分组标题（图标 + 居中大字），上下 padding 14px；hover/active 高亮由下方规则控制 */
+.nav-group-title {
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-3);
+  font-size: var(--fs-xl);   /* 原为 var(--fs-2xl)：旧版取 17px，当前 --fs-2xl 已升 19px，改走 --fs-xl 维持 17px 大字 */
+  line-height: var(--lh-1);
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 400;
+  color: var(--ty-nav-text);
+  cursor: pointer;
+  border-radius: 10px;
+  transition: .12s;
+}
+
+.nav-group-title:hover {
+  background: var(--ty-nav-active-bg);
+  border-radius: 10px;
+  color: var(--ty-nav-active);
+  z-index: 2;
+}
+/* hover 双图标切换：普通字形隐藏、激活字形（青蓝渐变 SVG fill）显示 + 蓝字 */
+.nav-group-title:hover .nav-ico svg.nav-ico-normal { display: none; }
+.nav-group-title:hover .nav-ico svg.nav-ico-active { display: inline-block; }
+
+.nav-group-title.active {
+  background: var(--ty-nav-active-bg);
+  color: var(--ty-nav-active);
+}
+.nav-group-title.active .nav-ico svg.nav-ico-normal,
+.nav-group.open .nav-group-title .nav-ico svg.nav-ico-normal { display: none; }
+.nav-group-title.active .nav-ico svg.nav-ico-active,
+.nav-group.open .nav-group-title .nav-ico svg.nav-ico-active { display: inline-block; }
+
+/* 展开态（hover/点击触发）与 hover 同款高亮，使标题在浮层显示期间保持高亮 */
+.nav-group.open .nav-group-title {
+  background: var(--ty-nav-active-bg);
+  border-radius: 8px;
+  color: var(--ty-nav-active);
+  z-index: 2;
+}
+
+/* 菜单字形图标：普通/激活双 SVG，默认仅普通字形可见；激活字形带青蓝渐变 fill（在 JS 生成时写死） */
+.nav-ico {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  line-height: var(--lh-1);
+  text-align: center;
+  vertical-align: middle;
+  margin-top: -var(--sp-1);
+  color: var(--ty-nav-text);
+}
+.nav-ico svg {
+  width: 22px;
+  height: 22px;
+}
+.nav-ico svg.nav-ico-normal { display: inline-block; }
+.nav-ico svg.nav-ico-active { display: none; }
+.nav-ico-normal path { fill: currentColor; }
+
+.nav-text {
+  display: inline-block;
+  font-size: var(--fs-xl);
+  margin: var(--sp-1);
+  vertical-align: middle;
+}
+
+/* 二级菜单：右侧悬浮面板（侧栏 popper——浅色悬浮卡，
+ * 不挤占侧栏文档流，杜绝 push-down 造成的「两个菜单同时高亮」） */
+.nav-group { position: static; }
+
+/* 悬浮面板：fixed 脱离侧栏 overflow，显示在侧栏右侧（left/top 由 JS 定位到当前条目） */
+.nav-pop {
+  display: none;
+  position: fixed;
+  background: var(--ty-white);
+  border: 1px solid var(--ty-blue-2);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.12);
+  padding: var(--sp-2) 0;
+  min-width: 168px;
+  max-width: 220px;
+  z-index: 1050;
+}
+
+/* 单例浮层：display 完全由 JS inline style 控制，不依赖 .nav-group.open */
+
+/* 子菜单整体缩进一列 */
+.nav-pop-grid {
+  padding: 0;
+}
+
+.nav-pop-col {
+  /* 每一列 */
+}
+
+/* 分组标题行（面包屑用，隐藏不显示） */
+.nav-pop-title {
+  display: none;
+}
+
+/* 圆形图标（对照： subMenuItemTitleIcon，保留类定义以备将来） */
+.nav-pop-title-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ty-blue-2);
+  color: var(--ty-blue);
+  font-size: var(--fs-2xl);
+  flex-shrink: 0;
+}
+
+/* 子菜单项（浅色悬浮卡内，hover / active 用蓝系高亮） */
+.nav-pop-item {
+  display: block;
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--ty-text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  text-decoration: none;
+  cursor: pointer;
+  transition: .1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-pop-item:hover {
+  color: var(--ty-text);
+  background: var(--ty-content-bg);
+}
+
+.nav-pop-item.active {
+  color: var(--ty-blue);
+  background: var(--ty-blue-2);
+}
+
 /* ---------- 内容区 ---------- */
 /* 「：内容区顶部标签页栏直接贴顶部页头下方（wrapper--3kKIA 高 36px，
    位于 page-container-content 之上，content--34Eg6 本身 padding:0px），
@@ -463,12 +655,17 @@ img, svg { display: block; max-width: 100%; }
 .tab-bar {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);   /* 【2026-10-04 标签栏改版】16 → 6：16px 大缝让"标签条"被读成若干散落胶囊 */
+  gap: var(--sp-2);   /* 6px：标签间适度留白，不读成散落胶囊 */
   flex: 1;
-  overflow-x: auto;
-  /* （2026-09-22 移除：原先在此刻意隐藏滚动条。按"全部恢复系统默认"的要求一并去掉。
-     若标签栏横滑时出现滚动条影响观感，只在此处恢复 `display:none` 即可 ——
-     它属于"标签栏不露条"的刻意设计，与"滚动条美化"不是一回事。） */
+  /* 不出现横向滚动：标签过多时由子项 flex 收缩 + 文字省略号自动变窄（浏览器标签栏式），
+     而非横向滚动条。overflow:hidden 保证既不滚动也不溢出窗口，所有标签始终可见；
+     上下留白让激活标签的柔和阴影有呼吸空间、不被裁切。 */
+  overflow: hidden;
+  min-width: 0;
+  /* Chrome 式层次：浅灰底让白底激活标签「浮起」、非激活标签自然融入；底部细线分隔内容区 */
+  background: var(--ty-surface-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--ty-border);
 }
 
 
@@ -677,51 +874,62 @@ img, svg { display: block; max-width: 100%; }
   padding: var(--sp-2) var(--sp-3);         /* 左右 4 → 10：旧版文字几乎顶到边缘 */
   font-size: var(--fs-md);   /* 标签页文字 14px（全站标准，不动） */
   color: var(--ty-text-2);   /* 非激活走次要色，让"激活"靠底色取胜而不是靠字色 */
-  border-radius: 6px;        /* 四角圆（旧版是 4px 4px 0 0 平顶） */
+  border-radius: 8px;        /* 更柔和圆角（Chrome 式浮起卡片） */
   cursor: pointer;
   white-space: nowrap;
   transition: color .15s, background .15s, box-shadow .15s;
-  flex-shrink: 0;
+  /* 不写死宽度：按内容宽度显示；标签多、空间不足时自动收缩、文字省略号，不出现横向滚动。
+     max-width 是单标签宽度上限，防止个别超长名称把标签撑得过宽。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 200px;
   position: relative;
 }
-.tab-item:hover { background: rgba(255,255,255,.55); }   /* 与激活的"纯白"拉开差（旧版 .65 太接近） */
+/* 标签文字：与关闭按钮共存，溢出时省略（关闭按钮 flex-shrink:0 不被挤） */
+.tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tab-item:hover { background: rgba(0,0,0,.05); color: var(--ty-text-1); }   /* 柔和浅灰 hover，文字提亮到主色 */
 .tab-item.active {
-  color: var(--ty-text-1);   /* 激活文字 = 正文深灰（旧版用主题蓝） */
-  font-weight: 400;
+  color: var(--ty-text-1);   /* 激活文字近黑，清晰 */
+  font-weight: 500;          /* 略加粗提升可读性 */
   background: var(--ty-white);
-  border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+  border-radius: 8px;        /* 与 hover 同款圆角，浮起胶囊 */
+  /* 柔和浮起：多层轻阴影 + 1px 描边，白底在灰栏上清晰分层（Chrome 式） */
+  box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04);
 }
-/* 固定「主页」标签（2026-10-31）：吸附在标签栏最左，业务标签横向滚动时不会被挤走。
-   两个要点：
-     ① sticky 元素必须有**不透明底色** —— 通用 .tab-item:hover 是半透明白，不覆盖会透出
-        从它下面滚过去的业务标签；
-     ② 标签栏 gap 是 8px，纯 sticky 会在 gap 里露出滚动内容，故用 ::after 补一条同宽盖条。 */
+/* 主页标签（固定、不可关闭）：标签栏已不横向滚动（overflow:hidden + flex 自动缩短），
+   故旧版 sticky 吸附 / 同色背景盖条 / ::after 遮挡全部失去意义，已移除 —— 直接复用普通标签样式，
+   仅锁定内容宽、不参与业务标签伸缩；字重略加以区别于一般打开的页。激活 / hover 走 .tab-item 规则。 */
 .tab-item-home {
-  position: sticky; left: 0; z-index: 2;
-  background: var(--ty-surface-2);
-  box-shadow: inset -1px 0 0 var(--ty-border-2);
+  flex: 0 0 auto;
+  min-width: 0;
+  font-weight: 500;
 }
-.tab-item-home:hover, .tab-item-home.active { background: var(--ty-white); }
-.tab-item-home::after {
-  content: '';
-  position: absolute; top: 0; bottom: 0; right: calc(-1 * var(--sp-2)); width: var(--sp-2);
-  background: var(--ty-surface-2);
-  pointer-events: none;
-}
-.tab-item-home:hover::after, .tab-item-home.active::after { background: var(--ty-white); }
+/* 【2026-11-01 删除】标签栏固定区与「全部功能」菜单的全部样式
+   （.tab-pin-group / .tab-item-pinned / .tab-more / .tab-more-arrow / .tab-more-pop / .tm-*）：
+   导航已回到左侧 .sidenav，标签栏只列已打开的页面，不再承担导航与全部功能入口。
+   原居中命令面板与钉住弹窗的样式也一并删除（详见文件头 .cmd-* 段落说明）。 */
 
 .tab-close {
+  flex-shrink: 0;        /* 关闭按钮不被标签收缩挤压 */
   font-size: var(--fs-md);
   line-height: var(--lh-1);
-  /* 【2026-10-04 修正】原先写的是 --ty-content-bg —— 拿"背景色令牌"当文字色（#f5f7f9 的 ×
-     落在 #eff1f4 灰条上几乎看不见）。改用三级文字色（对比度达标），hover 仍转红。 */
   color: var(--ty-text-3);
   margin-left: var(--sp-1);
-  padding: 0 var(--sp-1);
-  transition: all .15s;
+  /* 圆形热区：hover 时浅灰底 + 红字（Chrome 式精致关闭键） */
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+  transition: background .15s, color .15s;
 }
-.tab-close:hover { color: var(--ty-red); }
+.tab-close:hover { background: rgba(0,0,0,.1); color: var(--ty-red); }
+
+
 
 /* 工作区页面：在 .content(flex column, overflow:hidden) 内各自成为滚动区，
    「inner--38K5g overflow:hidden + 工作区自身滚动」——头部(标签栏)固定不滚 */
@@ -2373,7 +2581,8 @@ label.req::before {
      200   顶栏 .topbar
     1000   页面内下拉/浮层（搜索 1000 / 账套 1300）
     1100   ★模态弹窗 .modal —— 必须高于顶栏与页面下拉，否则遮罩盖不住顶栏、顶栏还能点
-    1200   全局命令面板 .modal.modal-cmd（可从任意弹窗跳走）
+    1200   （已腾空：原全局命令面板 .modal.modal-cmd 于 2026-11-01 并入标签栏「更多 ▾」下拉，
+            不再有"能从弹窗之上跳走"的第二套面板；其下拉层级仍走 1000 这一档）
     9999   需要浮在弹窗之上的业务浮层（科目选择 .subj-range-pop、模板浮层）
    10001   轻提示 .toast
   2147483647  确认/输入对话框（dialog-bridge 动态创建，必须盖住任何已打开模态）
@@ -2392,11 +2601,12 @@ label.req::before {
 
 .modal.show { display: flex; }
 
-/* 层级修饰（2026-10-31 收敛）：全站只保留这几档，动态浮层也一律用类，不再各写 style.zIndex。
-     .modal-top : 必须盖住任何已打开的业务模态（确认/输入框、导出结果）
-     .modal-cmd : 命令面板，可从任意弹窗跳走 */
+/* 层级修饰（2026-10-31 收敛，2026-11-01 精简）：全站只保留这一档，动态浮层也一律用类，
+   不再各写 style.zIndex。
+    .modal-top : 必须盖住任何已打开的业务模态（确认/输入框、导出结果）
+   【2026-11-01】删除 .modal-cmd（z-index:1200）：命令面板已并入标签栏「更多 ▾」下拉，
+   那个下拉是 fixed 浮层（1000 档），不再是"能从任意弹窗跳走"的模态，本层级无消费者。 */
 .modal-top { z-index: 2147483647; }
-.modal-cmd { z-index: 1200; }
 
 /* 【2026-10-04 窄窗口/高缩放守卫】补上基类的尺寸上限 —— 与 .modal-box.modal-wide（见下方 820px 那条）
    既有写法完全一致：那里早就有 max-width: calc(100vw - 32px) + max-height: calc(100vh - 64px)，
@@ -3452,40 +3662,8 @@ label.req::before {
  * 首页 - 参考产品风格完整复刻
  * ============================================================ */
 
-/* ---- 顶部 Tab 栏（明细账 / 计算导出 / 备份与恢复）---- */
-.home-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-1);
-  margin-bottom: var(--sp-4);
-}
-.home-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-4) var(--sp-2);
-  font-size: var(--fs-md);
-  color: var(--ty-text);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all .15s;
-  min-width: 72px;
-}
-.tab-ico {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-}
-.tab-ico svg { width: 22px; height: 22px; }
-.home-tab:hover { background: rgba(47, 149, 255,.06); }
-.home-tab.active {
-  background: var(--ty-white);
-  color: var(--ty-blue);
-  font-weight: 400;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
-}
-.home-tab.active .tab-ico { color: var(--ty-blue); }
+/* 【2026-11-01 删除】首页顶部 Tab 栏（.home-tabs / .home-tab / .tab-ico 22px）：
+   该板块已下线（见 verify_tab_pins C1，JS/HTML 零消费方）；.tab-ico 类名现无复用方，标签栏保持纯文字。 */
 .home-tab-help {
   margin-left: auto;
   width: 28px; height: 28px;
@@ -3510,11 +3688,12 @@ label.req::before {
    padding 与 .contentRItemWrapper--WHucT{padding:20px 24px} 一致 */
 /* 实证：.home-section 本身【无 padding、无 background】，
    仅由相邻兄弟 border-top:8px 分隔。
-   两块各自的外层留白容器不同，但【水平内缩都=24px】，故标题左缘对齐：
-   · 常用功能块：外层挂 home-section-quick（padding:20px 24px 0）→ 左 24px
-   · 财务指标块：内层挂 home-section-metrics（padding:20px 24px 24px）→ 左 24px
-   故本项目常用功能块只挂 home-section-quick（不挂 ifBdg），与字节级一致；
-   下方 .home-section-quick 规则即原值，保证两块水平缩进同为 24px。 */
+   【2026-11-01 更新】原注释描述"两块"（常用功能块 + 财务指标块）的水平内缩。
+   首页常用功能块已下线（.home-section-quick 规则一并删除），现在只剩财务指标块：
+   由内层 .home-section-metrics（padding:20px 24px 24px）提供水平内缩 24px。
+   原对照关系保留在此以便追溯：
+   · 常用功能块：外层 home-section-quick（padding:20px 24px 0）→ 左 24px
+   · 财务指标块：内层 home-section-metrics（padding:20px 24px 24px）→ 左 24px */
 .home-section {
   background: var(--ty-white);
   padding: 0;
@@ -3532,164 +3711,15 @@ label.req::before {
 .home-section .home-section-content {
   font-size: var(--fs-md);
 }
-/* 常用功能块外层容器（来源 main chunk.css 原值）：水平 padding 与
-   home-section-metrics 同为 24px，确保"常用功能"标题左缘与"财务指标"对齐。
-   注意：本项目常用功能块只挂此类（不挂 ifBdg），与结构一致。 */
-/* 常用功能块：随窗口全宽铺开（不再限宽 1240 居中），最大化时利用整屏宽度；
- * 内部图标网格 .home-quick-grid 为 flex-wrap，自然换行填充。与财务指标块同全宽、左缘对齐。 */
-.home-section-quick {
-  padding: var(--sp-4) var(--sp-5) 0;
-  min-height: 130px;
-  overflow: hidden;   /* 原值：清内部 contentL/contentR 子浮动 */
-}
-/* 标题右侧自定义按钮（home-edit-btn：font-size:22px 深色，hover 变蓝） */
-.home-section-edit.home-edit-btn {
-  margin-left: auto;
-  padding: 0;              /* 原生 button 需显式归零 UA padding */
-  color: var(--ty-text);
-  font-size: var(--fs-xl);
-  line-height: var(--lh-1);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  transition: color .15s;
-}
-.home-section-edit.home-edit-btn:hover { color: var(--ty-blue); }
-
-/* ---- 常用功能（外层 home-section 已是白底卡片，此处仅 flex 行布局）---- */
-/* 内容行（home-section-content：display:flex;flex-direction:row）
-   position:relative 作为右上角设置图标的定位参考 */
-.home-quick {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-/* 设置图标：标题栏整行删除后，下移到内容区右上角（悬浮于图标网格右上，z-index 高于网格） */
-.home-quick .home-quick-edit {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 5;
-  margin-left: 0;      /* 覆盖 editBtn 的 margin-left:auto（absolute 定位不需要） */
-}
-/* 左侧：新增凭证卡（voucherBtn--2Rk7H：width:176px;height:64px，
-   浅蓝渐变底，蓝圆 + 号图标 + 两行文字） */
-.qk-newvoucher {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 176px;
-  height: 64px;
-  padding: 0 var(--sp-4);
-  box-sizing: border-box;
-  /* 【2026-10-04】原为整块 --ty-blue-2 浅蓝底（理由写的是"与页签条/卡片头同色"）。
-     改「白底 + 中性边框」：这是首页唯一的主 CTA，靠**结构**（边框 + 38px 蓝色圆图标 +
-     悬停阴影）表达，而不是靠大色块；页面也因此不再整片发蓝 —— 主色只留在那个圆图标上。 */
-  background: var(--ty-white);
-  border: 1px solid var(--ty-border);
-  border-radius: 12px;
-  cursor: pointer;
-  color: var(--ty-text);
-  flex-shrink: 0;
-  transition: all .15s ease;
-}
-.qk-newvoucher:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-.qk-new-ico {
-  width: 38px; height: 38px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--ty-blue);
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.qk-new-ico svg { width: 20px; height: 20px; stroke: var(--ty-white) !important; }
-.qk-new-title { font-size: var(--fs-md); font-weight: 400; color: var(--ty-text); }
-/* 【来源备案：jdy 原值，**不是当前值**】voucherBtn span 原 font-size:var(--fs-2xs) / color:#8e9ca1。
-   当前值见下方 .qk-new-sub（走令牌 --fs-md / --ty-blue-dark）。
-   提示：备案值与现值不一致时极易被误读成"已实现"，改口径时请同步更新或删除本注释。 */
-/* 【2026-10-04 对比度修正】原 color: var(--ty-blue)（#2f95ff）：12px 小字在白底仅 3.06:1，
-   **不达 WCAG AA 正文 4.5:1**（该色只适合 ≥19px 大字号或纯图标）。改 --ty-blue-dark
-   （#3a66d4，白底 ≈5.2:1 ✓）—— 色相不变，只是压深一档，观感仍是"蓝的小字"。 */
-.qk-new-sub { font-size: var(--fs-md); color: var(--ty-blue-dark); margin-top: var(--sp-1); }
-
-/* 右侧：图标网格（contentR---qyET，最多 10 个图标，超出自动换行） */
-.home-quick-grid {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 0 0 0 var(--sp-5);
-}
-.home-quick-grid .qk {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-1);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all .15s;
-  text-decoration: none;
-  color: var(--ty-text);
-  flex: none;
-  width: 95px;   /*  linkItem--1iqtm 同款宽度 */
-}
-/* 【2026-10-06】hover 效果改版：去掉浅蓝背景块，改为轻微上浮（-3px）。
-   参考金蝶常用功能栏：图标 hover 只做位移浮动、不铺底色，观感更轻。
-   位移用 transform（不触发重排），.qk 已有 transition:all .15s 负责过渡。 */
-.home-quick-grid .qk:hover { background: none; transform: translateY(-3px); }
-/* 图标（linkItem img：32×32 圆角方块，margin-bottom:8px;margin-top:4px） */
-.qk-circle {
-  width: 40px; height: 40px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 10px;
-  font-size: var(--fs-md);
-  font-weight: 400;
-  /* 【2026-09-22】底色改为全站统一，不再逐项指定颜色（原先 24 项十几种色，反馈"太杂太复杂"）。
-     背景从内联 style 收回 CSS：以后调色只改这一处，不会再出现"同一色值散落 20 多处、调色必漏"。
-     【2026-10-04 改版（用户决定）】从"饱和实底 + 白字形"改为"**浅蓝底 + 蓝字形**"：
-       根因不是色号 —— 上一版用 --ty-blue-dark(#3a66d4) 是为了白字形的对比度达标（白字在
-       --ty-blue #2f95ff 上仅 3.06:1 ✗，在 #3a66d4 上 5.21:1 ✓），**调浅底色会牺牲对比度**；
-       真正的问题是**模式**：最多 15 个饱和实底方块当作装饰，与项目自己的两条约定冲突 ——
-         · --ty-blue-dark 的定义原文是"深一档，用于 hover/active"，此处却在做静态装饰底；
-         · 去蓝工作的原则是"主色只留给可交互/选中态"；
-         · 同屏左侧导航用的是线形蓝字形（无填充），两处语言不一致。
-       现改为浅底 + 蓝字形：字形色也**同步翻过来**（浅底上必须用深一档的蓝，不能再用白色）。
-       实测对比度：--ty-blue-dark 字形在 --ty-blue-2(#e8f1ff) 底上达标 ✓。 */
-  background: transparent;   /* 【2026-10-06】去掉浅蓝方块底，改为纯线条字形图标（无背景） */
-  color: var(--ty-blue-dark);
-  box-shadow: none;
-  margin-top: var(--sp-1);
-  margin-bottom: var(--sp-2);
-}
-/* 图标字形（取自 js/ty-menu-icons.js 的 TY_MENU_ICON_PATHS；24 项按功能就近复用，见 app.js 的 QUICK_MENU_ITEMS.icon）
-   字形为 fill 型 path；【2026-10-04】底色改浅后填充同步改为 --ty-blue-dark（深蓝字形 + 浅蓝底，
-   对比度达标 ✓）。上一版是"白填充 + 深蓝底"，本注释随之更新，避免与代码打架。
-   18px：字形实际占位约 viewBox 的 81%，落在 32px 圆角方块里四周留白均衡。 */
-.qk-circle svg { width: 28px; height: 28px; display: block; }
-.qk-circle svg path { fill: var(--ty-blue-dark); }   /* 【2026-10-04】浅蓝底上用深蓝字形，对比度达标 ✓ */
-/* 文字（linkItem p：单行 + 省略号截断，长名称不换行不重叠）
-   【2026-10-31 两处修正】
-   ① margin-top 原写 `-var(--sp-1)` —— 负号不能直接贴在 var() 前，是**无效值**，整条被浏览器丢弃
-      （图标到文字的间距实际 = .qk-circle margin-bottom 8px + .qk gap 8px = 16px，而非预期的 12px）。
-      改为 calc(-1 * var(--sp-1)) 恢复原意。
-   ② 加 max-width:100% —— .qk 是 flex column + align-items:center，.qk-label 作交叉轴子项按
-      fit-content 定宽、**可以超出父宽**，此时 overflow:hidden 没有可裁边界，text-overflow 不生效，
-      长名称会溢到相邻图标位置。max-width 给到 .qk 内容宽（95 - 4*2 = 87px）后省略号才真正起作用。 */
-.qk-label {
-  font-size: var(--fs-md); line-height: var(--lh-tight); text-align: center;
-  color: var(--ty-text); font-weight: 400; margin-top: calc(-1 * var(--sp-1));
-  max-width: 100%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* 「全部功能」入口（常用网格末尾）：虚线圆角框 + 浅灰字形，与常用图标区分；
-   点击复用全局命令面板（按分组列出全部模块、可搜索），不占首页版面。 */
-.home-quick-grid .qk-allfunc .qk-circle {
-  border: 1px dashed var(--ty-border-2);
-}
-.home-quick-grid .qk-allfunc .qk-circle svg path { fill: var(--ty-text-3); }
+/* 【2026-11-01 删除】首页「常用功能」整块样式：.home-section-quick / .home-section-edit
+   （自定义齿轮）/ .home-quick / .home-quick-edit —— 该板块已整体下线，DOM 里不再有这些节点
+   （index.html 与 js/ 全仓 0 命中）。导航现由左侧 .sidenav 常驻承担，"钉住"概念已整体下线。 */
+/* 【2026-11-01 删除】「新增凭证」大卡与常用功能图标网格（.qk-newvoucher / .qk-new-* /
+   .home-quick-grid / .qk）—— 板块下线后全仓 0 命中。
+   「录凭证」入口现在由标签栏固定区第一个标签承担（FIXED_QUICK_KEY='voucher-edit' 保证它一定被钉住、
+   不可取消），全站任何页面一点即到，比"必须先回首页点大卡"更强。 */
+/* 【2026-11-01 删除】.qk-circle / .qk-circle svg / .qk-label / .qk-allfunc —— 常用功能图标格的
+   图标与文字样式，随板块下线（DOM 与 JS 均已无这些节点；只有命令面板 .cmd-avatar 用 svg 图标，走它自己的规则）。 */
 
 /* ============================================================
  * 财务指标首页（严格复刻参考产品 grid-square 卡片体系）
@@ -3728,15 +3758,11 @@ label.req::before {
 /* 【2026-10-06 响应式铺满】财务指标块随窗口全宽；卡片由 .metric-grid-row 的
  *   grid auto-fit 自动增减列数（minmax(min(100%,300px),1fr)），窗口越宽列越多、卡片保持舒适尺寸，
  *   不再限宽居中导致两侧留白；窄屏自动降列、不溢出。 */
-.home-section-metrics { padding: var(--sp-5) var(--sp-5) var(--sp-5); }   /* 财务指标区块上下边距调大 */
-/*  chunk.css 全局 reset：,ul{margin:0;padding:0}。
-   浏览器默认 ul 有 padding-left:40px，导致"财务指标/行业对标"tab 文字比
-   "常用功能"标题右移 40px 不对齐。此处显式清零与参考实现一致。 */
-.home-section-metrics .home-section-title ul { display: inline-block; margin: 0; padding: 0; list-style: none; }
-.home-section-metrics .home-section-title ul li {
-  position: relative; margin-right: var(--sp-5); display: inline-block;
-  font-size: var(--fs-xl); font-weight: 400; padding-bottom: var(--sp-1); cursor: default;
-}
+/* 【2026-11-01】上内距由 var(--sp-5) 提到 32px：标题行（「财务指标」四字 + margin-bottom:16px）
+   已删除，原先"标题撑起的那截呼吸"需要由内距补回来，否则卡片会紧贴提醒条/页面顶。 */
+.home-section-metrics { padding: 32px var(--sp-5) var(--sp-5); }
+/* 【2026-11-01 删除】「财务指标」标题行相关规则（.home-section-title ul / ul li）——
+   标题本身已从首页移除（首页只剩这一个板块，标题等于重复自己），这些规则全仓零命中。 */
 /* 【2026-10-04 删除】此处原有两条死规则（已 grep 确认 HTML/JS 全仓零引用）：
      li.active--1OT3M{color} / li.active--1OT3M:after{下划线 2px} —— 复刻时"财务指标/行业对标"
        tab 的选中态；本项目标题行只有一个 li（<li>财务指标</li>），既无 active--1OT3M 也无第二个 tab。
@@ -3910,18 +3936,9 @@ label.req::before {
 }
 /* 财务指标标题栏：左「财务指标」+ 右期间选择（flex 两端对齐）。
    期间下拉从卡片头移到此处后，卡片头只剩标题 —— 6 列窄卡下标题不会再被右侧控件挤掉。 */
-.home-section-metrics .home-section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-/* 标题栏内的期间下拉：字号与标题(16px)一致，且不带卡片头专用的右侧内距 */
-.home-section-metrics .home-section-title .ty-select.select-period {
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 0;
-  font-size: var(--fs-xl);
-}
+/* 【2026-11-01 删除】.home-section-metrics .home-section-title（标题行的 flex 布局）
+   与其中「期间下拉」的覆盖规则 —— 标题行已从首页移除，二者全仓零命中。
+   卡片的期间下拉在 .metric-card-head 内，走各自的 .card-period 样式，不受影响。 */
 
 /* 【已彻底下线：首页隐私打码（金额打码成 ****）】（2026-10-04 用户确认）
    原 61 条 body.ty-privacy 规则已删除（提交 e37a8ae）。它自始就是 kd-* 时代（去金蝶化之前）
@@ -4311,7 +4328,7 @@ label.req::before {
   margin: 0 !important;
 }
 
-/* 账套块：与顶栏「快速跳转」「搜索框」统一成同一套带框控件（高 28px / 边框 --ty-border-2 / 圆角 6px） */
+/* 账套块：与顶栏「搜索框」统一成同一套带框控件（高 28px / 边框 --ty-border-2 / 圆角 6px） */
 .topbar .acct-book-block .topbar-acct-btn {
   display: inline-flex !important;
   flex-direction: row !important;
@@ -4336,7 +4353,7 @@ label.req::before {
   width: auto !important;
   position: relative !important;
 }
-/* 框控件：悬停/聚焦时边框与文字转品牌蓝，提示可点（与快速跳转一致） */
+/* 框控件：悬停/聚焦时边框与文字转品牌蓝，提示可点（与搜索框一致） */
 .topbar .acct-book-block .topbar-acct-btn:hover {
   border-color: var(--ty-blue) !important;
   color: var(--ty-blue-dark) !important;
@@ -4435,7 +4452,7 @@ label.req::before {
   white-space: nowrap;
 }
 
-/* ——— 右列（快速跳转 + 搜索框）：随 .topbar-center 的 margin-left:auto 一起整体右对齐，
+/* ——— 右列（搜索框）：随 .topbar-center 的 margin-left:auto 一起整体右对齐，
    列内元素左排、间距统一（顶栏布局模型：brand 固定于最左，其余内容整体靠右、各自自适应宽度） ——— */
 .topbar .topbar-right {
   justify-content: flex-start;
@@ -4454,28 +4471,10 @@ label.req::before {
 /* ============================================================
  * 顶部栏：全局搜索（kp-layout-search 复刻）
  * ============================================================ */
-/* 顶栏「快速跳转」入口（command-palette.js 动态注入，id=cmdTrigger）。
-   最简形态：宽度完全由内容（放大镜 + 文字 + ⌘K）自适应，不设固定/min-width、不做两端分布。
-   注意这是 <div role="button"> 而非 <button>（WebKit 对 button 直接设 flex 有怪癖，会塌缩/截断）。 */
-.cmd-trigger{
-  display:inline-flex; align-items:center; gap:var(--sp-2);
-  height:28px; box-sizing:border-box;
-  /* 【2026-10-31】从「白底细描边」改为浅蓝实底按钮：原样式与旁边的搜索框同为白底小控件，
-     夹在中间时读起来像"第二个搜索框"，认不出它是跨页导航的唯一入口（侧栏已下线）。
-     改浅蓝底 + 深蓝字后，与素白的搜索框一眼分得开；hover 反过来变白底蓝边，仍有反馈。 */
-  border:1px solid var(--ty-blue-2); background:var(--ty-blue-2);
-  color:var(--ty-blue-dark); border-radius:4px; padding:0 var(--sp-3);
-  font-size:var(--fs-md); cursor:pointer; font-family:var(--ty-font);
-  white-space:nowrap;          /* 防止中文在顶栏被压缩时逐字折行成竖排 */
-  flex-shrink:0;               /* 顶栏拥挤时不收缩，整词保持一行 */
-  transition: background .15s ease, border-color .15s ease;
-}
-.cmd-trigger:hover{ background:var(--ty-white); border-color:var(--ty-blue); color:var(--ty-blue-dark); }
-.cmd-trigger:focus-visible{ outline:2px solid var(--ty-blue); outline-offset:2px; }
-/* ⌘K 徽标：在浅蓝底上改纯白底 + 蓝字，像一枚实体键帽；沿用 .cmd-kbd 的描边/字号，不另造一套 */
-.cmd-trigger .cmd-kbd{
-  flex-shrink:0; background:var(--ty-white); color:var(--ty-blue-dark); border-color:var(--ty-blue-2);
-}
+/* 【2026-11-01 删除】顶栏「快速跳转 / 全部功能」入口（.cmd-trigger + 内部 .cmd-kbd 键帽）。
+   该按钮是侧栏下线后跨页导航的唯一可见入口才存在的；现在"全部功能"的可见入口是标签栏
+   「更多 ▾」（常驻、就在标签栏里），按钮与它完全重复且顶栏右侧已够满，故整体撤除。
+   Ctrl/Cmd + K 快捷键保留（js/command-palette.js 只剩这一条职责），没有可见按钮了。 */
 
 .topbar-search { position: relative; display: flex; align-items: center; }
 /* 🔍 提交按钮：位于搜索框内最右（复刻） */
@@ -5163,58 +5162,10 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   margin: var(--sp-1) 0 var(--sp-4);
 }
 
-/* ---- 常用功能设置弹窗 ----
-   【2026-10-27 全站收敛】此前只有"尺寸对齐"：外壳仍是自写的
-   .quick-settings-overlay（自定义遮罩 / z-index 9999 / style.display 开关）+
-   .quick-settings-modal + .qs-header/.qs-title/.qs-close/.qs-footer。
-   因为它不是 .modal，走不到模态框那套统一键盘处理（Esc / Tab 陷阱 / 焦点移入与还原），
-   只能在 app.js 里再补一份重复实现 —— 结构层并未收敛。
-   现整块并入 .modal 体系：
-     外壳  .modal > .modal-box.modal-wide（780 宽档）
-     标题  .modal-title + .modal-x[data-modal-close]（全局委托关闭）
-     正文  .modal-body.qs-body（统一 max-height:60vh + 滚动）
-     按钮  .modal-actions（16px 内距 / 8px 间距 / 只一个 .btn-primary）
-   本段只保留纯业务样式（分组、三列网格、固定项标识），外壳一律不再重复定义。 */
-.qs-body {
-  padding: var(--sp-4);
-  flex: 1;
-  min-height: 0;
-}
-.qs-group { margin-bottom: var(--sp-4); }
-.qs-group:last-child { margin-bottom: 0; }
-.qs-group-title {
-  font-size: var(--fs-md); font-weight: 400; color: var(--ty-text);
-  margin-bottom: var(--sp-2);
-}
-.qs-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2) var(--sp-4); align-items: start; }
-.qs-item {
-  display: flex; align-items: flex-start; gap: var(--sp-2);
-  font-size: var(--fs-md); color: var(--ty-text-2);
-  cursor: pointer; user-select: none;
-  padding: var(--sp-1) 0;
-}
-.qs-item input[type="checkbox"] {
-  accent-color: var(--ty-blue);
-  width: 15px; height: 15px; cursor: pointer; flex-shrink: 0;
-  margin-top: var(--sp-1);
-}
-.qs-item label { cursor: pointer; line-height: var(--lh-tight); }
-/* 常用功能设置：顶部说明 + 固定项（录凭证）标识 */
-.qs-tip {
-  font-size: var(--fs-md); color: var(--ty-text-3); line-height: var(--lh-base);
-  padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-3);
-  background: var(--ty-blue-2); border: 1px solid var(--ty-blue-2); border-radius: 4px;
-}
-.qs-item-fixed { cursor: default; }
-.qs-item-fixed input[type="checkbox"] { cursor: not-allowed; }
-.qs-item-fixed input[type="checkbox"]:disabled { opacity: .55; }
-.qs-item-fixed label { cursor: default; color: var(--ty-text); }
-.qs-fixed-tag {
-  display: inline-block; margin-left: var(--sp-2); padding: 0 var(--sp-1);
-  font-size: var(--fs-2xs); line-height: var(--lh-tight); color: var(--ty-blue-dark);
-  background: var(--ty-blue-2); border-radius: 3px; vertical-align: 1px;
-}
-/* 底部按钮区已改用 .modal-actions 与全局 .btn-primary，本段不再保留任何覆盖。 */
+/* 【2026-11-01 删除】「常用功能/钉住设置」弹窗的业务样式
+   （.qs-body / .qs-group / .qs-group-title / .qs-items / .qs-item / .qs-item-fixed / .qs-tip / .qs-fixed-tag）：
+   弹窗 #quickSettingsOverlay 已随钉住概念下线，全仓 0 命中。
+   注意 .modal-body 那条注释里提到过 .qs-body（作为内容自带内边距的例子），历史说明保留即可。 */
 
 /* ============================================================
  * 打印样式（记账凭证纸质输出）

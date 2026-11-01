@@ -1066,7 +1066,7 @@
     if (btn) { e.preventDefault(); tyPrint(btn); }
   });
 
-  /* ---------- 首页按钮事件委托（qk / qk-newvoucher / 工具栏 / 标签页） ---------- */
+  /* ---------- 内容区事件委托（标签页 / 钉住标签 / 「更多」菜单 / 首页按钮） ---------- */
   (function () {
     var homePage = $('page-home');
     if (!homePage) return;
@@ -1083,13 +1083,12 @@
         else goPage('home');
         return;
       }
-      // 常用功能 / 标签页点击（data-page 跳转）
+      // 标签页点击（data-page 跳转）。
+      // 注：侧栏在 .layout-body 内、不在 #content 内，它的事件由 bindSideNav 单独绑（见 renderSideNav 之后）。
       var qk = e.target.closest('[data-page]');
       if (qk) { e.preventDefault(); goPage(qk.getAttribute('data-page')); return; }
-      // 编辑按钮 → 打开常用功能设置弹窗
-      if (e.target.closest('.home-section-edit')) { openQuickSettings(); return; }
     });
-    // 键盘委托：标签页栏（Enter 打开 / Delete 关闭 / ←→/Home/End 移动）、常用功能图标与新增凭证卡（Enter 跳转）、编辑按钮
+    // 键盘委托：标签页栏（Enter 打开 / Delete 关闭 / ←→/Home/End 移动）
     document.getElementById('content').addEventListener('keydown', function (e) {
       var isActivate = (e.key === 'Enter' || e.key === ' ');
       var closeBtn = e.target.closest('.tab-close[data-close]');
@@ -1106,22 +1105,23 @@
         else if (e.key === 'End') { e.preventDefault(); if (items[items.length - 1]) items[items.length - 1].focus(); }
         return;
       }
-      // 常用功能图标 / 新增凭证卡 / 自定义按钮已改原生 <button>：Enter 自带 click → 走上面的 click 委托，无需此处处理
+      // 【2026-11-01】原此处说明「常用功能图标 / 新增凭证卡 / 自定义按钮已改原生 <button>」——
+      // 这三类元素随首页板块下线已不存在，只剩标签栏与「更多」菜单（都走上面的 click 委托）。
     });
   })();
 
   /* ============================================================
-   * 常用功能设置（弹窗分类 checkbox，可增减图标）
+   * 左侧导航的菜单数据源（QUICK_MENU_ITEMS，渲染见 renderSideNav）
    * ============================================================ */
 
-  /** 所有可选菜单项（按功能分类）
+  /** 全部菜单项（按功能分组）
    *  icon：iconcool 字形名（键见 js/ty-menu-icons.js 的 TY_MENU_ICON_PATHS）。
-   *        库内共 29 个字形，24 个功能项已做到「一项一图」，无重复引用；
-   *        取不到字形时 renderQuickIcons 自动回退为「名称首字」，故 icon 缺失不会渲染空白。 */
-  /* 【顺序规则】数组顺序 = 设置弹窗的分组顺序 = 首页图标的展示顺序（唯一顺序来源）。
-     存档只记录"选了哪些"，不记录"先选的哪个"：不选不显示，选了就出现在本表对应位置。
-     例如只选「明细账」时，它就是第一格 —— 不会因为点击先后而变。
-     2026-10-31：按用户要求把「账簿」组前置（明细账成为第一个可选图标）。 */
+   *        【2026-11-01 现状】侧栏只输出文字、不画图标，因此 icon 字段当前**无消费方**
+   *        —— 原先读它的命令面板与「更多 ▾」菜单都已删除。字段与 ty-menu-icons.js 的字形表
+   *        一并保留：它们是同一套字体反解出的 SVG path，将来给侧栏加图标可直接复用，
+   *        不必再反解一次字体。 */
+  /* 【顺序规则】数组顺序 = 侧栏的分组顺序与组内顺序（唯一顺序来源）。
+     2026-10-31：按用户要求把「账簿」组前置（明细账成为第一个菜单项）。 */
   var QUICK_MENU_ITEMS = [
     { group: '账簿', items: [
       { key: 'detail-ledger',   name: '明细账',       page: 'detail-ledger', icon: 'zhangbu' },
@@ -1143,9 +1143,9 @@
     ]},
     /* 结账组：只有一个模块（期末处理），页面内含「期末处理/反结账」Tab。
        【2026-10-31 清理】原写法 `{ group:'结账', direct:true, page:'settle', … }` 里的
-       `direct` 与组级 `page` 是侧栏时代的语义（"无子菜单、点组名直进该页"），唯一消费方
-       js/command-palette.js 只读 g.group 与 it.page / it.name / it.key，两字段全仓零读取，已删。 */
-    { group: '结账', items: [
+       `direct` 与组级 `page`：标记「无子菜单、点组名直进该页」（旧版"结账"组如此；其余组点标题弹浮层）。
+       2026-11-01 侧栏原样恢复，direct 重新成为分组标题的渲染分支（见 renderSideNav 的 nav-group-direct）。 */
+    { group: '结账', direct: true, page: 'settle', items: [
       { key: 'settle-close', name: '期末处理', page: 'settle', icon: 'jiezhang2' },
     ]},
     { group: '资产', items: [
@@ -1167,204 +1167,304 @@
     ]},
   ];
 
-  /** 默认勾选的菜单项（key 列表；录凭证为固定项，另计大卡片不占 15 个名额）
-   *  注意：**数组顺序不决定展示顺序**，展示顺序一律由 QUICK_MENU_ITEMS 决定（见 orderedQuickKeys）。
-   *  默认：明细账 → 总账 → 科目余额表 → 查凭证 → 录凭证（大卡片）→ 资产负债表 → 利润表
-   *        → 期末处理 → 固定资产卡片 → 系统设置
-   *  【2026-10-31】依据两本真实账套使用痕迹调整：期末处理（结账）每月必用（两账套已结账 18/30 期）、
-   *  固定资产卡片 29 张在册在用，二者原不在默认里；「费用明细表」降为可选项。侧栏移除后常用功能区承担主导航。
-   *  同日追加「系统设置」：侧栏撤销后它没有任何常驻入口（只能靠命令面板/首页齿轮找），
-   *  而备份、账套管理、锁屏密码、数据安全都在该页，属每月必进 → 进默认。
-   *  「系统设置」是**普通默认项**，不是固定项：用户可以自由取消。
-   *  注意：默认值只影响「从未保存过常用功能」的账套。已保存过、但内容仍等于上一版默认集
-   *  （LEGACY_DEFAULT_QUICK_KEYS，9 项逐项相同）的老账套，由 getSavedQuickKeys 升到本默认集；
-   *  用户自定义过的配置一律不动（增删任何一项即视为自定义）。 */
-  var DEFAULT_QUICK_KEYS = ['detail-ledger','general-ledger','trial-balance','voucher-query','voucher-edit','report-balance','report-profit','settle-close','asset-card','system-settings'];
-  /* 固定项：始终勾选、不可取消（录凭证是日常第一入口，取消会造成首页无凭证入口）。
-     注：只有录凭证是固定项；「系统设置」只是普通默认项，用户可以自由取消。 */
-  var FIXED_QUICK_KEY = 'voucher-edit';
-
-  /* 上一版默认集（2026-10-31 早前，9 项）。用途：把「从没自定义过」的老账套平滑升到当前默认集。
-     只做逐项精确匹配 —— 用户只要增删过任何一项就视为自定义，一律不动。 */
-  var LEGACY_DEFAULT_QUICK_KEYS = ['voucher-edit','voucher-query','detail-ledger','general-ledger','trial-balance','report-balance','report-profit','settle-close','asset-card'];
-
-  /* 展示顺序归一化（"简单稳定"的核心）：
-     只按 QUICK_MENU_ITEMS 的列表顺序输出，存档只表达"选了哪些"、不表达"先选哪个"。
-     于是：不选不显示；选了就固定在列表中的位置（只选明细账 → 它就是第一格）；
-     旧存档或外部写入的乱序数组，渲染时也会被重排，不会出现"顺序看运气"。 */
-  function orderedQuickKeys(keys) {
-    var want = {};
-    (keys || []).forEach(function (k) { want[k] = 1; });
-    var out = [];
-    QUICK_MENU_ITEMS.forEach(function (g) {
-      g.items.forEach(function (it) { if (want[it.key]) out.push(it.key); });
-    });
-    return out;
-  }
-
-  function getSavedQuickKeys() {
-    var keys = null;
-    try {
-      var s = localStorage.getItem('quick_menu_keys');
-      if (s) keys = JSON.parse(s);
-    } catch (e) {}
-    if (!Array.isArray(keys)) return orderedQuickKeys(DEFAULT_QUICK_KEYS);
-    // 老账套存的还是上一版默认集（说明从未自定义过）→ 升到当前默认集（多出「系统设置」）
-    if (keys.length === LEGACY_DEFAULT_QUICK_KEYS.length &&
-        keys.every(function (k, i) { return k === LEGACY_DEFAULT_QUICK_KEYS[i]; })) {
-      keys = DEFAULT_QUICK_KEYS.slice();
-      try { localStorage.setItem('quick_menu_keys', JSON.stringify(keys)); } catch (e) {}
-    }
-    return orderedQuickKeys(keys);
-  }
-  function saveQuickKeys(keys) {
-    try { localStorage.setItem('quick_menu_keys', JSON.stringify(keys)); } catch(e){}
-  }
-  function findQuickItem(key) {
-    // 旧「折旧凭证」菜单键 → 固定资产卡片（折旧凭证已合并进卡片页）
-    if (key === 'asset-depr' || key === 'asset-depr-voucher') key = 'asset-card';
-    for (var i = 0; i < QUICK_MENU_ITEMS.length; i++) {
-      for (var j = 0; j < QUICK_MENU_ITEMS[i].items.length; j++) {
-        if (QUICK_MENU_ITEMS[i].items[j].key === key) return QUICK_MENU_ITEMS[i].items[j];
-      }
-    }
-    return null;
-  }
-
-  // 「常用功能设置」已并入 .modal 统一体系（2026-10-27）：
-  // 遮罩、780 宽档、标题栏 ×、Tab 焦点陷阱、Esc 关闭、打开/关闭的焦点移入与还原
-  // 全部由 openModal/closeModal 那套统一处理，这里只负责渲染内容与保存结果。
-  function openQuickSettings() {
-    var body = $('qsBody');
-    if (!body) return;
-    var savedKeys = getSavedQuickKeys();
-    var html = '<div class="qs-tip">「录凭证」为固定功能，默认勾选且不可取消；其余功能可自由勾选（最多 15 个）。</div>';
-    QUICK_MENU_ITEMS.forEach(function (group) {
-      html += '<div class="qs-group">';
-      html += '<div class="qs-group-title">' + group.group + '</div>';   /* escape-ok: QUICK_MENU_ITEMS 常量表的分组名 */
-      html += '<div class="qs-items">';
-      group.items.forEach(function (item) {
-        var fixed = item.key === FIXED_QUICK_KEY;
-        var checked = (fixed || savedKeys.indexOf(item.key) >= 0) ? 'checked' : '';
-        var lockAttr = fixed ? ' disabled title="录凭证为固定功能，不可取消"' : '';
-        html += '<div class="qs-item' + (fixed ? ' qs-item-fixed' : '') + '">'
-          + '<input type="checkbox" id="qsk_' + item.key + '" value="' + item.key + '" ' + checked + lockAttr + '/>'
-          + '<label for="qsk_' + item.key + '">' + item.name
-          + (fixed ? '<span class="qs-fixed-tag">固定</span>' : '') + '</label></div>';
-      });
-      html += '</div></div>';
-    });
-    body.innerHTML = html;
-    // 限制常用功能最多 15 个网格图标（不含录凭证大卡片，按非 voucher-edit 计数）
-    body.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        if (cb.value === FIXED_QUICK_KEY) { cb.checked = true; return; } // 固定项兜底：不可取消
-        var iconCount = 0;
-        body.querySelectorAll('input[type="checkbox"]:checked').forEach(function (c) {
-          if (c.value !== FIXED_QUICK_KEY) iconCount++;
-        });
-        if (iconCount > 15) {
-          cb.checked = false;
-          showToast('常用功能最多添加 15 个');
-        }
-      });
-    });
-    openModal('quickSettingsOverlay');
-  }
-
-  function closeQuickSettings() {
-    closeModal('quickSettingsOverlay');
-  }
-
-  // 其他科目指标 swiper 滚动（scrollSubject）已迁入 js/pages/home/Home.js
-
-  function confirmQuickSettings() {
-    var body = $('qsBody');
-    if (!body) return;
-    var cbs = body.querySelectorAll('input[type="checkbox"]:checked');
-    var checked = [];
-    cbs.forEach(function(cb){ checked.push(cb.value); });
-    // 顺序一律按 QUICK_MENU_ITEMS 的固定顺序重排，不保留勾选先后
-    var icons = orderedQuickKeys(checked).filter(function (k) { return k !== FIXED_QUICK_KEY; });
-    // 兜底：网格图标（非录凭证）最多 15 个，超出截断（保留列表靠前的）
-    if (icons.length > 15) {
-      icons = icons.slice(0, 15);
-      showToast('常用功能最多添加 15 个，已保留前 15 个');
-    }
-    // 录凭证固定项必须始终在存档里；最后再按固定顺序归一化一次
-    saveQuickKeys(orderedQuickKeys([FIXED_QUICK_KEY].concat(icons)));
-    closeQuickSettings();
-    renderQuickIcons(keys);
-  }
-
-  function renderQuickIcons(keys) {
-    var grid = document.querySelector('.home-quick-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    // 图标字形库（ty-menu-icons.js，load 早于本文件）；取不到时回退「名称首字」
-    var paths = (typeof TY_MENU_ICON_PATHS !== 'undefined') ? TY_MENU_ICON_PATHS : null;
-    // 再归一化一次：无论调用方传什么顺序，网格永远按固定列表排列
-    var iconKeys = orderedQuickKeys(keys).filter(function(k){ return k !== FIXED_QUICK_KEY; });
-    iconKeys.forEach(function (key) {
-      var item = findQuickItem(key);
-      if (!item) return;
-      var a = document.createElement('button');
-      a.type = 'button';                     // 原生 <button>：可聚焦、Enter/Space 自带 click，无需补 tabindex/role
-      a.className = 'qk';
-      a.setAttribute('data-page', item.page);
-      // 图标：优先用 QUICK_MENU_ITEMS 上声明的字形（取自 js/ty-menu-icons.js 的 TY_MENU_ICON_PATHS）；
-      // 缺字形时回退「名称首字」，保证任何情况下圆点里都不是空白。
-      var d = (paths && item.icon && paths[item.icon]) || '';
-      var circle = d
-        ? '<svg viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + d + '"/></svg>'
-        : item.name.charAt(0);
-      // 圆点底色统一交给 CSS 的 .qk-circle（--ty-blue-2 浅蓝底 + --ty-blue-dark 蓝字形），
-      // 改色只改样式表一处（单一数据源风格，避免"十几种色太杂"）。
-      // circle（字形 path）来自 ty-menu-icons.js 的硬编码字形表，item.name 来自本文件
-      // QUICK_MENU_ITEMS 的硬编码字面量 —— 两者都不是用户输入或导入数据，无注入面。
-      /* escape-ok: circle 与 item.name 均为硬编码常量，不含用户输入 */
-      a.innerHTML = '<span class="qk-circle">' + circle + '</span><span class="qk-label">' + item.name + '</span>';
-      grid.appendChild(a);
-    });
-    // 末尾固定追加「全部功能」入口：复用全局命令面板（按分组列出全部模块、可搜索跳转）。
-    // 零新增算法/存储/弹窗；首页只多一个图标格，不占版面，内容固定可预期。
-    var all = document.createElement('button');
-    all.type = 'button';
-    all.className = 'qk qk-allfunc';
-    all.title = '全部功能（Ctrl/Cmd+K）';
-    all.innerHTML =
-      '<span class="qk-circle"><svg viewBox="0 0 24 24" aria-hidden="true">' +
-        '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>' +
-      '</svg></span><span class="qk-label">全部功能</span>';
-    // stopPropagation：避免被首页 .qk 点击委托接管（那会用 data-page 调 goPage）
-    all.addEventListener('click', function (e) {
-      e.stopPropagation();
+  /* 【2026-11-01 删除】「常用功能 / 钉住」配置体系整块下线：
+     DEFAULT_QUICK_KEYS / FIXED_QUICK_KEY / PIN_MAX / LEGACY_DEFAULT_QUICK_KEYS /
+     orderedQuickKeys / getSavedQuickKeys / saveQuickKeys / findQuickItem，以及「常用功能设置」弹窗
+     （#quickSettingsOverlay）与 localStorage 的 quick_menu_keys 键。
+     侧栏常驻列出全部 22 页后，挑几个钉起来这件事本身就不成立了 ——
+     这也是它两度改形态（首页格子 → 标签栏固定区）后最终被删的原因。
+     QUICK_MENU_ITEMS 保留：它现在是侧栏的唯一数据源（分组 + 页面 + 图标）。 */
+  /* ============================================================
+   * 左侧导航（2026-11-01 还原 dd9dc69 之前的形态）
+   *
+   * 【为什么回到侧栏】10-31 去掉侧栏后，导航先后被塞进「首页常用功能格子」和「标签栏固定区」，
+   *   随之冒出一批只有导航才会遇到的问题：钉住上限几个、溢出怎么办、要不要收缩成图标、右键关闭其他…
+   *   它们的共同来源是"标签栏在兼职导航"。导航回到专属位置后，标签栏只剩"已打开的页面"，
+   *   这批问题一并消失 —— 这也解释了为什么"加机制"一直治不好它。
+   *
+   * 数据源是 QUICK_MENU_ITEMS（6 组 22 页）。renderSideNav 按分组渲染标题（双态 SVG 图标 + 居中大字）：
+   *   · 普通组 —— 鼠标移到标题上，在侧栏右侧弹出「单例浮层」列出二级页面（同一时刻只一个，杜绝双层白底重叠）；
+   *   · 「结账」组是 direct，点标题直接 goPage 不弹浮层。
+   * 底部「收起导航」把侧栏收窄到 50px 只留图标，状态存 localStorage( tyNavCollapsed )。
+   * 实现见下方 renderSideNav / ensureNavPop / showNavPopover / bindNavPopClick；active 同步在 goPage 调 syncSideNav。
+   * ============================================================ */
+  /* ---------- 全局：导航分组悬浮预览（「单例 popover」机制） ----------
+   * 源码（云会计_files/main.cf2e18af.chunk.js）每个主菜单包一个受控气泡组件
+   *   K.a({placement:"rightTop",mouseEnterDelay:.001,mouseLeaveDelay:.001,arrow:!1,trigger:"hover",tip:...})
+   * 气泡显隐由组件库托管，物理上同一时刻只有一个浮层，hover 切换时旧浮层自动卸载，不会重叠。
+   * 本项目纯 JS 无框架，取其本质：sidenav 下只挂「一个」浮层容器 #navPopover，
+   * hover 哪个组就把该组子菜单渲染进这唯一容器并定位到标题右侧；离开才隐藏。
+   * 因为只有一个 DOM 节点，从根上杜绝「双层白底重叠」。 */
+  var NAV_POP = null;            // 单例浮层容器
+  function ensureNavPop() {
+    if (NAV_POP) return NAV_POP;
+    NAV_POP = document.createElement('div');
+    NAV_POP.id = 'navPopover';
+    NAV_POP.className = 'nav-pop';
+    NAV_POP.style.display = 'none';
+    document.body.appendChild(NAV_POP);
+    // 浮层自身也是 hover 命中区：进入取消关闭，离开才关
+    NAV_POP.addEventListener('mouseenter', cancelNavClose);
+    NAV_POP.addEventListener('mouseleave', scheduleNavClose);
+    // 子项点击：统一走 goPage（单例创建时绑定一次，不依赖外部初始化顺序）
+    // 修复：首屏 goPage 经 syncSideNav 提前渲染侧栏后，2159 懒加载不再触发 bindNavPopClick，
+    // 若 click 只绑在 bindNavPopClick 内，二级菜单会"点不动"。故改在此处必绑。
+    NAV_POP.addEventListener('click', function (e) {
+      var a = e.target.closest('.nav-pop-item');
+      if (!a) return;
       e.preventDefault();
-      if (globalThis.openCommandPalette) globalThis.openCommandPalette();
+      var page = a.getAttribute('data-page');
+      hideNavPopover();
+      goPage(page);
     });
-    grid.appendChild(all);
+    return NAV_POP;
+  }
+  var navCloseTimer = null;
+  function cancelNavClose() { if (navCloseTimer) { clearTimeout(navCloseTimer); navCloseTimer = null; } }
+  function scheduleNavClose() {
+    cancelNavClose();
+    navCloseTimer = setTimeout(hideNavPopover, 120);
+  }
+  // 把某个分组的子菜单渲染进单例浮层并定位到其标题右侧
+  function showNavPopover(group) {
+    cancelNavClose();
+    var title = group.querySelector('.nav-group-title');
+    if (!title) return;
+    var data = group.__navData;
+    if (!data) return;
+    var pop = ensureNavPop();
+    var itemsHtml = (data.items || []).map(function (it) {   /* escape-ok: QUICK_MENU_ITEMS 常量表，page/name 全为硬编码 */
+      return '<a class="nav-pop-item" data-page="' + it.page + '" tabindex="0" role="menuitem">' + it.name + '</a>';
+    }).join('');
+    /* escape-ok: data / items / it.page / it.name 全部来自 QUICK_MENU_ITEMS 常量表（本文件内硬编码） */
+    pop.innerHTML = '<div class="nav-pop-grid"><div class="nav-pop-col">' +
+      '<div class="nav-pop-title" style="display:none">' + data.group + '</div>' + itemsHtml + '</div></div>';
+    // 定位（右侧 + 视口下边界夹取）
+    var r = title.getBoundingClientRect();
+    pop.style.display = 'block';
+    pop.style.left = r.right + 'px';
+    var ph = pop.offsetHeight || 0;
+    var top = r.top;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - ph);
+    pop.style.top = top + 'px';
+    // 重新绑定子项点击（事件用委托在侧栏已统一处理，这里无需重复）
+  }
+  function hideNavPopover() {
+    cancelNavClose();
+    if (NAV_POP) NAV_POP.style.display = 'none';
+    document.querySelectorAll('.nav-group.open').forEach(function (g) { g.classList.remove('open'); });
   }
 
-  // 弹窗事件绑定（标题栏 × 走 data-modal-close 全局委托，不再单独绑）
-  document.addEventListener('DOMContentLoaded', function () {
-    var qsCancel = $('qsCancel');
-    if (qsCancel) qsCancel.addEventListener('click', closeQuickSettings);
-    var qsConfirm = $('qsConfirm');
-    if (qsConfirm) qsConfirm.addEventListener('click', confirmQuickSettings);
-    // 「恢复默认」：把弹窗内勾选重置为系统默认（不立即保存，用户点「确定」才生效；点「取消」可放弃）
-    var qsReset = $('qsReset');
-    if (qsReset) qsReset.addEventListener('click', function () {
-      var body = $('qsBody');
-      if (!body) return;
-      body.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-        cb.checked = DEFAULT_QUICK_KEYS.indexOf(cb.value) >= 0;
-      });
-      showToast('已恢复默认常用功能，点「确定」生效');
+  /** 左侧导航：依据同一份 QUICK_MENU_ITEMS 数据源渲染，与设置弹窗自动同步 */
+  function renderSideNav() {
+    var nav = $('sideNav');
+    if (!nav) return;
+    var html = '';
+    // 侧栏顶部 logo：已彻底移除（品牌统一在顶栏 TY 图标 + 「添钰财务管理系统」）。
+    // 菜单字形图标：普通/激活双态 SVG（hover/active 时 CSS 切换 display，激活字形带青蓝渐变 fill）
+    function navIconHtml(groupName, idx) {
+      var pairs = (typeof TY_MENU_ICON_PAIRS !== 'undefined') ? TY_MENU_ICON_PAIRS : null;
+      var paths = (typeof TY_MENU_ICON_PATHS !== 'undefined') ? TY_MENU_ICON_PATHS : null;
+      if (!pairs || !paths || !pairs[groupName]) {
+        return '<span class="nav-ico">' + groupName.charAt(0) + '</span>';
+      }
+      var normal = paths[pairs[groupName][0]] || '';
+      var active = paths[pairs[groupName][1]] || normal;
+      var gid = 'navGrad' + idx;
+      return '<span class="nav-ico">' +
+        '<svg class="nav-ico-normal" viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + normal + '"/></svg>' +
+        '<svg class="nav-ico-active" viewBox="0 0 1000 1000" aria-hidden="true">' +
+          '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="1" y2="1">' +
+            '<stop offset="3%" stop-color="#27e6e1"/><stop offset="100%" stop-color="#2f95ff"/>' +
+          '</linearGradient></defs>' +
+          '<path d="' + active + '" fill="url(#' + gid + ')"/>' +
+        '</svg>' +
+      '</span>';
+    }
+    QUICK_MENU_ITEMS.forEach(function (group, gi) {
+      var icoHtml = navIconHtml(group.group, gi);
+      // 结账等 direct 分组：直接点击进入页面，无子菜单弹出
+      if (group.direct) {
+        html += '<div class="nav-group nav-group-direct" data-page="' + group.page + '">';   /* escape-ok: 常量分组（page 为固定页面标识） */
+        html += '<div class="nav-group-title nav-direct-title" tabindex="0" role="button">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';   /* escape-ok: icoHtml 由 TY_MENU_ICON 常量路径生成，group 名是常量 */
+        html += '</div>';
+        return;
+      }
+      // 仅渲染标题；子菜单内容由「单例浮层」在 hover 时按需渲染，
+      // 不再为每个组各生成一个 .nav-pop（避免多节点残留重叠）。
+      // tabindex/role：键盘可聚焦并用 Enter/Space/→ 展开（见下方侧栏 keydown）
+      html += '<div class="nav-group">';
+      html += '<div class="nav-group-title" tabindex="0" role="button" aria-haspopup="true">' + icoHtml + '<span class="nav-text">' + group.group + '</span></div>';   /* escape-ok: 同上，icoHtml 与分组名均为常量 */
+      html += '</div>';
     });
-    // 遮罩点击关闭由 app.js 的全局委托统一处理（根节点写了 data-backdrop="close"）
-    // 常用功能图标来自 QUICK_MENU_ITEMS（左侧导航已整体移除）
-    renderQuickIcons(getSavedQuickKeys());
-    // 顶栏品牌（TY 图标 + 「添钰财务管理系统」）点击返回首页（侧栏 logo 早已随侧栏移除，故只认 #topbarBrand）
+    // 菜单区包进滚动容器，使底部 .nav-op-wrapper 的 margin-top:auto 在菜单超长时仍吸底。
+    html = '<div class="nav-menu-scroll">' + html + '</div>';
+    nav.innerHTML = html;
+    // 侧栏底部操作区（仅保留「收起导航」按钮，暗色模式按钮已删除）
+    var op = document.createElement('div');
+    op.className = 'nav-op-wrapper';
+    op.innerHTML =
+      '<div class="nav-op-btn" id="navCollapseBtn" title="收起导航" tabindex="0" role="button" data-kb-activate>' +
+        '<svg class="nav-op-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="12" x2="3" y2="12"/><polyline points="8,7 3,12 8,17"/></svg>' +
+      '</div>';
+    nav.appendChild(op);
+    // hover 绑定：进入标题即把该组数据交给单例浮层渲染显示，离开再延时隐藏。
+    nav.querySelectorAll('.nav-group').forEach(function (group, idx) {
+      // direct 分组（结账）：点击直接进页面，不弹子菜单
+      if (group.classList.contains('nav-group-direct')) {
+        group.addEventListener('click', function () {
+          var pg = group.getAttribute('data-page');
+          if (pg) goPage(pg);
+        });
+        return;
+      }
+      // 把菜单数据挂到 DOM 上，hover 时单例浮层取用
+      group.__navData = QUICK_MENU_ITEMS[idx];
+      function enter() { cancelNavClose(); group.classList.add('open'); showNavPopover(group); }
+      function leave() { group.classList.remove('open'); scheduleNavClose(); }
+      group.addEventListener('mouseenter', enter);
+      group.addEventListener('mouseleave', leave);
+    });
+    // 离开整条导航栏才隐藏浮层（浮层自身 hover 时由 ensureNavPop 内的监听接管）
+    nav.addEventListener('mouseleave', function () { groupLeaveAll(); });
+
+    // 收起导航：切换 .sidenav.collapsed，侧栏收窄到仅图标宽、隐藏菜单文字，状态持久化。
+    var navEl = nav;
+    var collapseBtn = $('navCollapseBtn');
+    var collapseIco = collapseBtn ? collapseBtn.querySelector('.nav-op-ico') : null;
+    function applyNavCollapsed(collapsed) {
+      var root = document.documentElement;
+      if (collapsed) {
+        navEl.classList.add('collapsed');
+        root.style.setProperty('--nav-w-active', '50px');
+        if (collapseIco) collapseIco.style.transform = 'rotate(180deg)';
+        if (collapseBtn) collapseBtn.title = '展开导航';
+      } else {
+        navEl.classList.remove('collapsed');
+        root.style.setProperty('--nav-w-active', '120px');
+        if (collapseIco) collapseIco.style.transform = '';
+        if (collapseBtn) collapseBtn.title = '收起导航';
+      }
+      try { localStorage.setItem('tyNavCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+    }
+    // 初始恢复上次状态
+    var savedCollapsed = '0';
+    try { savedCollapsed = localStorage.getItem('tyNavCollapsed') || '0'; } catch (e) {}
+    applyNavCollapsed(savedCollapsed === '1');
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', function () {
+        applyNavCollapsed(!navEl.classList.contains('collapsed'));
+      });
+    }
+
+    // 删除暗色模式功能（曾由 kdThemeDark 切换 <html>.ty-theme-dark）：
+    // 已移除主题按钮与 applyTheme 逻辑；此处清理历史可能残留的 localStorage 键，
+    // 并确保 <html> 不残留暗色类（防止旧数据导致侧栏深色样式残留在新界面）。
+    try {
+      localStorage.removeItem('kdThemeDark');
+      document.documentElement.classList.remove('ty-theme-dark');
+    } catch (e) {}
+  }
+  function groupLeaveAll() {
+    document.querySelectorAll('.nav-group.open').forEach(function (g) { g.classList.remove('open'); });
+    scheduleNavClose();
+  }
+
+  /* goPage 之后同步：当前项加 .active、所属组确保展开、必要时滚到可见。
+     不重建整棵侧栏 —— 每次切页重建会让侧栏闪一下，也会把用户刚展开的其他组收回去。 */
+  function syncSideNav(page) {
+    var nav = $('sideNav');
+    if (!nav) return;
+    if (!nav.children.length) renderSideNav();   // 首次调用（或导航被清空过）先确保已渲染
+    // 同步导航 active 状态（nav-group-title / nav-pop-item）
+    document.querySelectorAll('.nav-group-title, .nav-pop-item').forEach(function (el) {
+      el.classList.toggle('active', el.getAttribute('data-page') === page);
+    });
+    // 子页面激活时，也高亮其所属分组标题
+    document.querySelectorAll('.nav-group').forEach(function (g) {
+      var title = g.querySelector('.nav-group-title');
+      var hasActiveChild = g.querySelector('.nav-pop-item.active');
+      if (title) title.classList.toggle('active', !!hasActiveChild);
+    });
+    // 跳转后收起所有分组浮层（单例浮层一并隐藏，避免残留）
+    hideNavPopover();
+  }
+
+  /* ---------- 导航：左侧菜单，点击 / 键盘均可展开子菜单（单例浮层） ---------- */
+  // 展开/收起某分组（鼠标 hover 与键盘共用同一套显隐）
+  function toggleNavGroup(group) {
+    if (!group) return;
+    if (group.classList.contains('open')) { hideNavPopover(); return; }
+    document.querySelectorAll('.nav-group.open').forEach(function (g) { g.classList.remove('open'); });
+    group.classList.add('open');
+    showNavPopover(group);
+  }
+  function focusFirstNavPopItem() {
+    var pop = ensureNavPop();
+    var first = pop.querySelector('.nav-pop-item');
+    if (first) first.focus();
+  }
+  document.getElementById('sideNav').addEventListener('click', function (e) {
+    var title = e.target.closest('.nav-group-title');
+    if (title) {
+      // 点击主菜单：互斥展开 / 收起当前组（复用单例浮层）
+      var group = title.closest('.nav-group');
+      if (group.classList.contains('nav-group-direct')) return; // direct 分组由 click 进页面
+      toggleNavGroup(group);
+    }
+    // 子菜单项渲染在单例浮层（挂在 body），sidenav 内不出现，故此处仅处理标题点击
+  });
+  // 键盘：标题 Enter/Space/→ 展开并聚焦首个子项，Esc 收起
+  document.getElementById('sideNav').addEventListener('keydown', function (e) {
+    var title = e.target.closest('.nav-group-title');
+    if (!title) return;
+    var group = title.closest('.nav-group');
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (group.classList.contains('nav-group-direct')) {
+        var pg = group.getAttribute('data-page');
+        if (pg) { hideNavPopover(); goPage(pg); }
+        return;
+      }
+      if (group.classList.contains('open')) hideNavPopover();
+      else { toggleNavGroup(group); focusFirstNavPopItem(); }
+    } else if (e.key === 'Escape') {
+      hideNavPopover();
+    }
+  });
+  // 单例浮层内的子菜单项点击：统一走 goPage
+  var _navPopKeyboardBound = false;   // 键盘/聚焦/Esc 栈只绑一次（ensureNavPop 创建时已绑 click）
+  function bindNavPopClick() {
+    var pop = ensureNavPop();
+    if (_navPopKeyboardBound) return;   // 防重复绑定（2159 懒加载与 hover 首次 showNavPopover 都可能触发）
+    _navPopKeyboardBound = true;
+    // 键盘：浮层内子项 ↑/↓/Home/End 移动焦点，Enter/Space 激活，Esc 收起并回到当前标题
+    globalThis.TYKeyboard.bindRovingList(pop, {
+      itemSelector: '.nav-pop-item',
+      onEscape: function () {
+        var openTitle = document.querySelector('.nav-group.open .nav-group-title');
+        hideNavPopover();
+        if (openTitle) openTitle.focus();
+      }
+    });
+    // 焦点从浮层移到其它地方（Tab 离开）时收起
+    pop.addEventListener('focusout', function (e) {
+      var to = e.relatedTarget;
+      if (to && (pop.contains(to) || (to.closest && to.closest('.nav-group-title')))) return;
+      scheduleNavClose();
+    });
+    // 导航浮层压入全局 Esc 栈：关闭并把焦点还给当前分组标题（自愈：关闭后自动剔除）
+    // 注意：此处注册（而非 hideNavPopover 定义处）——那里在 TYKeyboard 定义之前，会过早调用。
+    globalThis.TYKeyboard.pushEsc(function () { return !!(NAV_POP && NAV_POP.style.display !== 'none'); }, function () {
+      var openTitle = document.querySelector('.nav-group.open .nav-group-title');
+      hideNavPopover();
+      if (openTitle) openTitle.focus();
+    });
+  }
+
+  /* 页面初始化（原 DOMContentLoaded 回调；随钉住弹窗一并删除的还有 qsConfirm/qsReset/qsCancel 绑定） */
+  document.addEventListener('DOMContentLoaded', function () {
+    // 顶栏品牌（TY 图标 + 「添钰财务管理系统」）点击返回首页（logo 在顶栏，侧栏顶部不放 logo）
     document.addEventListener('click', function (e) {
       var brand = (e.target && e.target.closest) ? e.target.closest('#topbarBrand') : null;
       if (!brand) return;
@@ -1407,7 +1507,7 @@
   // 系统设置 →「基本信息 → 记账员」：纯本地单机版，显示当前账套的记账员（不依赖云端账号）
   // 【2026-10-07 迁址】原在顶栏右上角（`#topUser` 按钮 + `#topOperator` 文本）。
   //   顶栏是常驻位置，而记账员是一次性设置（会计换人/离职才改）——常驻一个低频入口不划算，
-  //   且顶栏经轻量化收敛后只保留账期/账套/搜索/快速跳转。故迁入系统设置，与公司名称、启用期间同列。
+  //   且顶栏经轻量化收敛后只保留账期/账套/搜索。故迁入系统设置，与公司名称、启用期间同列。
   // 点击可改名：用于会计换人/离职场景。保存到 company.bookkeeper 并持久化，
   // 之后新录凭证的制单人、新操作日志的操作人都按新名字记录；
   // 历史凭证 maker 已固化、不受影响（可追溯离职前操作人）。
@@ -1926,7 +2026,7 @@
     if (page === 'settle-close') page = 'settle';
     var sec = document.getElementById('page-' + page);
     if (sec) sec.classList.add('active');
-    // 已激活页且非强制刷新：跳过重渲染，仅做标签栏同步（侧栏已移除，无导航高亮可同步）
+    // 已激活页且非强制刷新：跳过重渲染，只做标签栏与侧栏的同步
     var alreadyActive = wasActive && !force;
     // 报表/凭证子页面
     if (page === 'expense-detail') { if (globalThis.__renderExpenseDetail) globalThis.__renderExpenseDetail(); }
@@ -1939,6 +2039,8 @@
     if (!alreadyActive && refreshers[page]) refreshers[page]();
     // 更新标签页栏（多标签页模式）
     updateTabBar(page);
+    // 同步左侧导航高亮（当前页加粗变蓝、所属分组自动展开）——2026-11-01 侧栏恢复后重新接上
+    syncSideNav(page);
   }
 
   // 表头吸顶已由方案 C（纯结构：操作栏为滚动区的静态兄弟、表头 sticky top:0）彻底解决，
@@ -1964,8 +2066,10 @@
     'settle-close':'期末处理'
   };
   // 已打开的业务页签列表。
-  // 【2026-10-31】「主页」标签固定渲染在标签栏最左（见 renderOpenTabs），不在 openTabs 里
-  // —— 它不可关闭，也就不该被关闭逻辑（filter/长度判断）碰到。
+  // 「主页」标签固定渲染在标签栏最左（见 renderOpenTabs），不在 openTabs 里 —— 它不可关闭，
+  // 也就不该被关闭逻辑（filter/长度判断）碰到。
+  // 【2026-11-01】导航回到左侧 .sidenav 后，标签栏回到单一职责：只列"已打开的页面"；
+  // 钉住区与「更多 ▾」菜单（导航兼职期间的两个补丁）随之整体删除。
   var openTabs = [];
   function updateTabBar(page) {
     var bar = $('tabBar');
@@ -1982,14 +2086,14 @@
     renderOpenTabs(page, prevScroll);
   }
 
-  // 渲染已打开的业务页签（home 时 activePage 传 ''，使无标签高亮）
+  // 渲染标签栏：固定「主页」+ 已打开的业务页签
   // prevScroll：updateTabBar 在清空前记录的滚动位置，切换已有标签时恢复；
   // 激活的是最后一个标签（新打开/切到最后一个/关闭后）→ 滚到最右让新标签必见。
   function renderOpenTabs(activePage, prevScroll) {
     var bar = $('tabBar');
     if (!bar) return;
-    /* 固定「主页」标签（2026-10-31）：可点击返回首页、没有关闭键、横向滚动时吸附在左端。
-       标签文案用「主页」（用户口径）；内部 page 键仍是 home，与 PAGE_NAMES / goPage 一致。 */
+    /* 「主页」标签：可点击返回首页、没有关闭键、固定内容宽（样式见 CSS 的 .tab-item-home；
+       标签栏不再横向滚动，故无吸附）。标签文案用「主页」（用户口径）；内部 page 键仍是 home。 */
     var homeTab = document.createElement('div');
     homeTab.className = 'tab-item tab-item-home' + (activePage === 'home' ? ' active' : '');
     homeTab.setAttribute('data-page', 'home');
@@ -1998,6 +2102,7 @@
     homeTab.setAttribute('aria-selected', activePage === 'home' ? 'true' : 'false');
     homeTab.innerHTML = '<span>主页</span>';   /* escape-ok: 固定文案 */
     bar.appendChild(homeTab);
+
     var lastPage = openTabs.length > 0 ? openTabs[openTabs.length - 1].page : '';
     openTabs.forEach(function (t) {
       var tab = document.createElement('div');
@@ -2006,26 +2111,30 @@
       tab.setAttribute('tabindex', '0');
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', t.page === activePage ? 'true' : 'false');
-      tab.innerHTML = '<span>' + t.name + '</span>';   /* escape-ok: t.name 来自 PAGE_NAMES 常量表，不含用户输入 */
+      tab.innerHTML = '<span class="tab-label">' + t.name + '</span>';   /* escape-ok: t.name 来自 PAGE_NAMES 常量表，不含用户输入 */
       tab.innerHTML += '<span class="tab-close" role="button" tabindex="0" data-close="' + esc(t.page) + '">×</span>';
       bar.appendChild(tab);
     });
-    // 激活的是最后一个标签（新打开/切到最后一个/关闭后）→ 滚到最右让新标签必见；
-    // 否则恢复原滚动位置（滚动条隐藏，靠这里维持标签不跳变）
-    if (activePage && activePage === lastPage) {
-      bar.scrollLeft = bar.scrollWidth;
-    } else {
-      bar.scrollLeft = prevScroll;
-    }
+    /* 标签栏不再横向滚动（overflow:hidden + flex 自动缩短），新标签天然在容器内可见，无需 scrollLeft 调整 */
   }
 
-  /* 启动即渲染标签栏（2026-10-31）：首页不走 goPage —— main.js 的兜底是直接调 __renderHome()，
-     所以 updateTabBar 从未被调用，标签栏一直是空的，固定「主页」标签也就永远不出现。
-     这里补一次；若带 hash 直达，main.js 随后的 goPage(h) 会重渲染并高亮对应业务标签。 */
+  /* 【2026-11-01 删除】标签栏「更多 ▾」= 全部功能的整套实现
+     （moreFiltered / moreActive / moreAnchor / RECENT_KEY / readRecentPages / pushRecentPage /
+     itemByPage / moreMatch / moreIcon / ensureMoreMenu / placeMoreMenu / setMoreActive / moveMore /
+     renderMoreMenu / activateMore / openMoreMenu / toggleMoreMenu / closeMoreMenu，以及 globalThis 暴露）。
+     导航已回到左侧 .sidenav（6 组 22 页常驻可见），标签栏只列已打开的页面；
+     同时删掉的还有 js/command-palette.js（Ctrl/Cmd+K）及其在 index.html 的引用。
+     教训写在 .sidenav 的注释里：筛选、最近访问、钉住、溢出这一批机制，
+     本来都是标签栏兼职导航的补丁。 */
+
+  /* 启动即渲染标签栏与侧栏（2026-10-31 起）：首页不走 goPage —— main.js 的兜底是直接调 __renderHome()，
+     所以 updateTabBar 从未被调用，标签栏一直是空的；侧栏同理需要一个初始渲染（按当前页展开对应分组）。
+     若带 hash 直达，main.js 随后的 goPage(h) 会重渲染并高亮对应标签 / 菜单项。 */
   document.addEventListener('DOMContentLoaded', function () {
     var bar = $('tabBar');
-    if (!bar || bar.children.length) return;
-    updateTabBar('home');
+    if (bar && !bar.children.length) updateTabBar('home');
+    var nav = $('sideNav');
+    if (nav && !nav.children.length) { renderSideNav(); bindNavPopClick(); }
   });
 
   /* ============================================================
@@ -2305,10 +2414,7 @@
   globalThis.goPage = goPage;
   globalThis.gotoLedgerWithCode = gotoLedgerWithCode;
   globalThis.locateVoucherInQuery = locateVoucherInQuery;
-  // 暴露菜单数据源给命令面板（Ctrl/Cmd+K 快速跳转）与首页常用功能，两处共用同一份数据
+  // 暴露菜单数据源（左侧导航 QUICK_MENU_ITEMS 是唯一来源；2026-11-01 起不再有第二处消费方，
+  // 保留暴露只为工具脚本与调试时可直接读结构）
   globalThis.QUICK_MENU_ITEMS = QUICK_MENU_ITEMS;
-  /* 【2026-10-31】命令面板置顶「常用功能」用：与首页快捷区读**同一份配置**
-     （含默认集、录凭证固定项、老账套默认集升级逻辑），面板里不另算一套，
-     否则用户在首页勾选/取消后，面板显示会对不上。 */
-  globalThis.getQuickMenuKeys = getSavedQuickKeys;
 })();
