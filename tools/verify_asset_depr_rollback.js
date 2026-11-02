@@ -311,5 +311,218 @@ S.state.closedPeriods = [];
 
 // 注：批量清理功能已于 2026-10-28 从「更多」菜单移除，原 F10「批量清理回滚范围收窄」回归点随之撤销。
 
+/* ============ G. 折旧快照回滚（2026-11-02）：末月 / 删中间期 / 跨月同号 ============
+ * 旧实现按「记-N 字号」匹配卡片 + 用 assetMonthlyDepr 现场重算，三个实测缺陷：
+ *   ① 末月提满后 assetMonthlyDepr 返回 0（remainingMonths=0）→ 该卡整期漏回滚，
+ *      差额又被「并入最后一张卡」扣到别的卡上（真实账套实测把 4,251.11 从电视机挪到客房餐厅用品）；
+ *   ② 卡片只存最后一张凭证号，删中间某一期匹配不上 → 不回滚（卡片比总账多一期）；
+ *   ③ 凭证号按月重编（每月从 记-1 起），跨月同号无法区分 → 回滚错期、误清别的期的引用。
+ * 现改为：计提时把各卡实提额挂到凭证（v.deprLines），删除时按「卡片 id + 实提额」精确回滚；
+ * 卡片另存含月份的凭证 id（deprVoucherId），引用清理与守卫都不再依赖会重号的 记-N。 */
+console.log('\n=== G. 折旧快照回滚：末月 / 删中间期 / 跨月同号 ===');
+S.state = {};
+S.normalizeState();
+S.state.subjects = [
+  { code: '1122', name: '应收账款', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+  { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+  { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+];
+S.state.company = Object.assign({}, S.state.company, { startMonth: '2025-01', bookkeeper: '测试' });
+S.state.closedPeriods = [];
+S.state.vouchers = [];
+S.state.fixedAssets = [{
+  id: 'faG', code: 'G1', name: '末月设备', acqDate: '2025-01-01', status: '在用',
+  original: 12000, salvage: 0, life: 1, periodUsed: 11, accumDepr: 11000, accumDeprBegin: 11000,
+  deprMonth: '2025-11', depFeeAcct: '6602', accDeprAcct: '1602'
+}];
+S._glCache = {};
+const rG = S.depreciateMonth('2025-12');
+ck(rG.ok === true, 'G1 末月（第 12 期）计提成功' + (rG.ok ? '' : '（' + (rG.msg || '') + '）'));
+const vG = rG.ok ? vById(rG.voucher.id) : null;
+ck(!!(vG && vG.deprLines && vG.deprLines.length === 1 && num(vG.deprLines[0].amt) === 1000),
+  'G2 凭证挂上实提额快照 deprLines（末月补足 1000）');
+if (rG.ok) {
+  const accBeforeG = num(S.state.fixedAssets[0].accumDepr);
+  ck(accBeforeG === 12000, 'G3 计提后卡片已提满 12000（原值-残值）');
+  S.removeVoucher(rG.voucher.id);
+  ck(num(S.state.fixedAssets[0].accumDepr) === 11000,
+    'G4 删除末月凭证精确回滚到 11000（旧实现停在 12000 —— 末月卡漏回滚）');
+  ck(num(S.state.fixedAssets[0].periodUsed) === 11, 'G5 已折旧期间回退为 11');
+  ck(!S.state.fixedAssets[0].deprVoucher && !S.state.fixedAssets[0].deprVoucherId, 'G6 凭证引用（字号与 id）已清空');
+  S.restoreVoucher(rG.voucher.id);
+  ck(num(S.state.fixedAssets[0].accumDepr) === accBeforeG, 'G7 还原后精确回到 ' + accBeforeG);
+}
+
+// 跨月同号场景：1 月先插一张普通凭证占号，使三个月的折旧凭证号为 记-2 / 记-1 / 记-1
+S.state = {};
+S.normalizeState();
+S.state.subjects = [
+  { code: '1122', name: '应收账款', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+  { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+  { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+];
+S.state.company = Object.assign({}, S.state.company, { startMonth: '2025-01', bookkeeper: '测试' });
+S.state.closedPeriods = [];
+S.state.vouchers = [];
+S.state.fixedAssets = [{
+  id: 'faG2', code: 'G2', name: '跨月设备', acqDate: '2024-12-01', status: '在用',
+  original: 24000, salvage: 0, life: 2, periodUsed: 0, accumDepr: 0, accumDeprBegin: 0,
+  depFeeAcct: '6602', accDeprAcct: '1602'
+}];
+S._glCache = {};
+S.addVoucher({ date: '2025-01-05', word: '记', summary: '占号', entries: [
+  { code: '1122', name: '应收账款', summary: '占号', dr: 100, cr: 0 },
+  { code: '6602', name: '管理费用', summary: '占号', dr: 0, cr: 100 }
+] });
+const g1 = S.depreciateMonth('2025-01');   // 记-2
+const g2 = S.depreciateMonth('2025-02');   // 记-1
+const g3 = S.depreciateMonth('2025-03');   // 记-1（与 2 月同号）
+ck(g1.ok && g2.ok && g3.ok, 'G8 连续三期计提成功（记-2 / 记-1 / 记-1）');
+const faG2 = S.state.fixedAssets[0];
+ck(num(faG2.accumDepr) === 3000 && num(faG2.periodUsed) === 3, 'G9 三期累计 3000、已折旧期间 3');
+ck(faG2.deprVoucher === '记-1' && faG2.deprVoucherId === g3.voucher.id,
+  'G10 卡片引用指向最新一期（记-1 @2025-03，含月份 id）');
+S.removeVoucher(g1.voucher.id);
+ck(num(S.state.fixedAssets[0].accumDepr) === 2000,
+  'G11 删除 1 月（记-2，非最新期）精确回滚到 2000（旧实现匹配不上 → 停在 3000）');
+ck(num(S.state.fixedAssets[0].periodUsed) === 2, 'G12 已折旧期间 3 → 2');
+ck(S.state.fixedAssets[0].deprVoucher === '记-1' && S.state.fixedAssets[0].deprVoucherId === g3.voucher.id,
+  'G13 最新一期引用未被误清（旧实现按字号会误判）');
+S.removeVoucher(g2.voucher.id);
+ck(num(S.state.fixedAssets[0].accumDepr) === 1000,
+  'G14 删除 2 月（与 3 月同为 记-1，跨月同号）精确回滚到 1000');
+ck(S.state.fixedAssets[0].deprVoucherId === g3.voucher.id, 'G15 仍指向 3 月凭证（同号未误清）');
+S.restoreVoucher(g2.voucher.id);
+ck(num(S.state.fixedAssets[0].accumDepr) === 2000, 'G16 还原 2 月凭证后回到 2000（快照对称）');
+
+/* ============ H. 清理凭证回滚（2026-11-02）：跨月同号 ============
+ * 与 G 组同源缺陷：卡片只存「记-N」字号，而凭证号按月从 记-1 重编。原实现两处：
+ *   ① _revertAssetClean 按字号匹配 → 删乙的清理凭证会把同号月份的甲一起改回「正常」
+ *      （甲账上还挂着清理凭证 → 账实不符）；
+ *   ② cancelCleanFixedAsset 按字号找凭证且不过滤月份 → 取消甲的清理可能删掉乙那一期的凭证。
+ * 现改为「清理凭证 id 优先，老数据按 字号 + 清理期间月份 兜底」。 */
+console.log('\n=== H. 清理凭证回滚：跨月同号 ===');
+function cleanSetup() {
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1601', name: '固定资产', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '1606', name: '固定资产清理', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2026-01', bookkeeper: '测试' });
+  S.state.closedPeriods = [];
+  S.state.vouchers = [];
+  S.state.fixedAssets = [
+    { id: 'faA', code: 'A', name: '甲资产', acqDate: '2025-01-01', status: '正常', original: 12000, salvage: 0,
+      life: 10, periodUsed: 1, accumDepr: 100, accumDeprBegin: 100, depFeeAcct: '6602', accDeprAcct: '1602', assetAcct: '1601' },
+    { id: 'faB', code: 'B', name: '乙资产', acqDate: '2025-01-01', status: '正常', original: 24000, salvage: 0,
+      life: 10, periodUsed: 1, accumDepr: 200, accumDeprBegin: 200, depFeeAcct: '6602', accDeprAcct: '1602', assetAcct: '1601' }
+  ];
+  S._glCache = {};
+}
+function cleanOne(id, month) {
+  S.cleanFixedAsset(id, month);
+  return S.genCleanVoucher([id], month);
+}
+function faById(id) { return S.state.fixedAssets.filter(function (f) { return f.id === id; })[0]; }
+function vAlive(id) { return S.state.vouchers.some(function (v) { return v.id === id && v.deleted !== 'y'; }); }
+
+cleanSetup();
+const cA = cleanOne('faA', '2026-01');   // 记-1
+const cB = cleanOne('faB', '2026-03');   // 记-1（同号）
+ck(cA.ok && cB.ok, 'H1 两卡分别在 1 月 / 3 月清理并生成凭证（都为 记-1）');
+ck(faById('faA').cleanVoucherId === cA.voucher.id && faById('faB').cleanVoucherId === cB.voucher.id,
+  'H2 卡片各存含月份的清理凭证 id');
+S.removeVoucher(cB.voucher.id);
+ck(faById('faB').status === '正常', 'H3 删乙的清理凭证 → 乙回到「正常」');
+ck(faById('faA').status === '清理', 'H4 甲仍为「清理」，未被同号误伤（旧实现会把甲一起改成正常）');
+ck(vAlive(cA.voucher.id), 'H5 甲的清理凭证仍在账上（账实相符）');
+S.restoreVoucher(cB.voucher.id);
+ck(faById('faB').status === '清理' && faById('faB').cleanVoucherId === cB.voucher.id,
+  'H6 还原后乙回到「清理」并恢复凭证 id（快照对称）');
+
+// 反向布置：乙 1 月清理、甲 3 月清理，取消甲的清理不应删到乙的凭证
+cleanSetup();
+const cB2 = cleanOne('faB', '2026-01');  // 记-1 @2026-01
+const cA2 = cleanOne('faA', '2026-03');  // 记-1 @2026-03
+ck(cB2.ok && cA2.ok, 'H7 反向布置：乙 1 月、甲 3 月（同为 记-1）');
+const rcH = S.cancelCleanFixedAsset('faA');
+ck(rcH && rcH.ok !== false, 'H8 取消甲的清理成功');
+ck(vAlive(cB2.voucher.id), 'H9 乙的 1 月凭证仍在（旧实现会误删它）');
+ck(!vAlive(cA2.voucher.id), 'H10 被删掉的是甲自己的 3 月凭证');
+ck(faById('faA').status === '正常', 'H11 甲回到「正常」');
+ck(faById('faB').status === '清理', 'H12 乙仍为「清理」（未被同号连带）');
+
+// 老数据兼容：抹掉 id 模拟 2026-11-02 之前的账套，靠「字号 + 清理期间月份」兜底
+cleanSetup();
+const oA = cleanOne('faA', '2026-01');
+const oB = cleanOne('faB', '2026-03');
+S.state.fixedAssets.forEach(function (fa) { delete fa.cleanVoucherId; });
+S.removeVoucher(oB.voucher.id);
+ck(faById('faA').status === '清理' && faById('faB').status === '正常' && vAlive(oA.voucher.id),
+  'H13 老数据（无 id）按「字号 + 清理期间」兜底，同样不误伤同号卡片');
+
+/* ============ I. 红字冲销守卫（2026-11-02）：同号凭证不再被误拦 ============
+ * reverseVoucher 原来只比「记-N」字号就断定"这张是折旧/清理凭证"，跨月同号时会把**普通凭证**也拦下，
+ * 用户会遇到"一张普通凭证莫名不能红冲"。现按凭证 id 判，老数据按「字号 + 计提/清理月份」判。
+ * 注意反向要求：真正的折旧/清理凭证仍必须被拦（红冲不会回退卡片，账实脱节）。 */
+console.log('\n=== I. 红字冲销守卫：跨月同号 ===');
+function guardSetup() {
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1122', name: '应收账款', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+    { code: '1601', name: '固定资产', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '1606', name: '固定资产清理', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2026-01', bookkeeper: '测试' });
+  S.state.closedPeriods = [];
+  S.state.vouchers = [];
+  S.state.fixedAssets = [{
+    id: 'faI', code: 'I1', name: '守卫设备', acqDate: '2025-01-01', status: '正常',
+    original: 12000, salvage: 0, life: 1, periodUsed: 0, accumDepr: 0, accumDeprBegin: 0,
+    depFeeAcct: '6602', accDeprAcct: '1602', assetAcct: '1601'
+  }];
+  S._glCache = {};
+}
+function ordinaryVoucher(date) {
+  return S.addVoucher({ date: date, word: '记', summary: '普通业务', entries: [
+    { code: '6602', name: '管理费用', summary: '普通业务', dr: 100, cr: 0 },
+    { code: '1122', name: '应收账款', summary: '普通业务', dr: 0, cr: 100 }
+  ] });
+}
+
+guardSetup();
+const gd = S.depreciateMonth('2026-01');          // 记-1 @2026-01（折旧）
+const gOrd = ordinaryVoucher('2026-03-05');       // 记-1 @2026-03（普通）
+ck(gd.ok && gOrd && gOrd.no === gd.voucher.no, 'I1 折旧凭证与普通凭证同为 记-1（跨月同号）');
+ck(S.reverseVoucher(gOrd.id, { month: '2026-03' }).ok === true,
+  'I2 普通凭证可以红冲（旧实现被误判为折旧凭证而拦下）');
+ck(S.reverseVoucher(gd.voucher.id, { month: '2026-03' }).ok === false,
+  'I3 真正的折旧凭证仍被拦（红冲不回退卡片）');
+
+// 清理凭证同理
+guardSetup();
+S.cleanFixedAsset('faI', '2026-04');
+const gc = S.genCleanVoucher(['faI'], '2026-04');  // 记-1 @2026-04（清理）
+const gOrd2 = ordinaryVoucher('2026-05-05');       // 记-1 @2026-05（普通）
+ck(gc.ok && gOrd2 && gOrd2.no === gc.voucher.no, 'I4 清理凭证与普通凭证同为 记-1（跨月同号）');
+ck(S.reverseVoucher(gOrd2.id, { month: '2026-05' }).ok === true, 'I5 普通凭证可以红冲（不被清理凭证误拦）');
+ck(S.reverseVoucher(gc.voucher.id, { month: '2026-05' }).ok === false, 'I6 真正的清理凭证仍被拦');
+
+// 老数据：抹掉 id 后退回「字号 + 月份」，月份不同即放行
+guardSetup();
+const gd3 = S.depreciateMonth('2026-01');
+const gOrd3 = ordinaryVoucher('2026-03-05');
+S.state.fixedAssets.forEach(function (fa) { delete fa.deprVoucherId; });
+ck(S.reverseVoucher(gOrd3.id, { month: '2026-03' }).ok === true,
+  'I7 老数据（无 id）按「字号 + 计提月份」判定，同号不同月不再误拦');
+ck(S.reverseVoucher(gd3.voucher.id, { month: '2026-03' }).ok === false,
+  'I8 老数据下真正的折旧凭证仍被拦（月份相同）');
+
 console.log('\n' + (bad ? '\u2717 \u6709 ' + bad + ' \u9879\u672a\u901a\u8fc7' : '\u2713 \u5168\u90e8\u901a\u8fc7'));
 process.exit(bad ? 1 : 0);

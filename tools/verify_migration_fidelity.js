@@ -54,6 +54,8 @@ function isMoneyPath(p) {
   if (/^fixedAssets\[\d+\]/.test(p)) return MONEY_LEAF.indexOf(last) >= 0;
   if (/^vouchers\[\d+\]\.entries\[\d+\]/.test(p)) return last === 'dr' || last === 'cr';
   if (/^vouchers\[\d+\]\.deprReverted\[\d+\]/.test(p)) return last === 'amt';
+  // 折旧实提额快照（2026-11-02 新增，与 deprReverted 同为定点整数，migrateAmountsToV6 已纳入换算）
+  if (/^vouchers\[\d+\]\.deprLines\[\d+\]/.test(p)) return last === 'amt';
   if (/^openingBalances\./.test(p)) return ['dr', 'cr', 'yb', 'ytdDr', 'ytdCr'].indexOf(last) >= 0;
   if (/^payrolls\[\d+\]/.test(p)) return last === 'should' || last === 'real';
   if (/^cashFlowOpening\./.test(p)) return last === 'ytd';

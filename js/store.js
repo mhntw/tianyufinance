@@ -565,6 +565,14 @@
           if (k === 'vouchers' && x.deprReverted != null && !Array.isArray(x.deprReverted)) {
             problems.push(at + '.deprReverted 应为数组');
           }
+          // 折旧实提额快照（2026-11-02 新增）：同理由迁移与删除回滚直接 .forEach，非数组同样致命
+          if (k === 'vouchers' && x.deprLines != null && !Array.isArray(x.deprLines)) {
+            problems.push(at + '.deprLines 应为数组');
+          }
+          // 清理回退快照：restoreVoucher 会读 .length，非数组会让还原流程抛错
+          if (k === 'vouchers' && x.cleanReverted != null && !Array.isArray(x.cleanReverted)) {
+            problems.push(at + '.cleanReverted 应为数组');
+          }
         }
       } else if (k === 'reopenFloor') {
         // 【2026-10-31】反结账下限是期间字符串（空串合法）；非字符串一律拒收，
@@ -668,7 +676,7 @@
    *
    * 【只乘白名单字段，绝不递归】递归会把 schemaVersion / 期间 / 比率 / 科目编码一起乘，必炸。
    *   乘 10000：凭证分录金额、期初余额、固定资产金额字段、工资金额、现金流量初始余额、
-   *             凭证上的折旧回滚快照（v.deprReverted[].amt）。
+   *             凭证上的折旧回滚快照（v.deprReverted[].amt）、折旧实提额快照（v.deprLines[].amt）。
    *   不乘：schemaVersion、no/word、subjects[].level、assetCats/卡片 的 life/salvageRate/
    *         periodUsed/qty、company.startMonth、param、closedPeriods、reportRules 全部。
    *   模板（vchTemplates / settleTemplates）：它们的金额是**界面预置值（元）**，
@@ -687,11 +695,14 @@
       if (!o) return;
       keys.forEach(function (k) { if (o[k] != null) o[k] = mul(o[k]); });
     };
-    // 1) 凭证分录金额 + 折旧回滚快照
+    // 1) 凭证分录金额 + 折旧回滚快照 + 折旧实提额快照
     (book.vouchers || []).forEach(function (v) {
       if (!v) return;
       (v.entries || []).forEach(function (e) { if (e) { e.dr = mul(e.dr); e.cr = mul(e.cr); } });
       (v.deprReverted || []).forEach(function (s) { if (s && s.amt != null) s.amt = mul(s.amt); });
+      // deprLines 是 2026-11-02 起才写入的定点整数；v5 账套不可能带它，但「无 schemaVersion
+      // 的 .json 备份再导入」会走本迁移 —— 漏乘就会让删除折旧凭证时回滚额小 10000 倍。
+      (v.deprLines || []).forEach(function (s) { if (s && s.amt != null) s.amt = mul(s.amt); });
     });
     // 2) 期初余额 { code: {dr,cr,yb,ytdDr,ytdCr} }
     var ob = book.openingBalances || {};
@@ -2397,6 +2408,14 @@
      * 定位依据：fa.deprVoucher === 凭证号（计提时单点写入，不依赖凭证 kind，外部导入凭证同样适用）。
      * 金额校验：回滚总额与凭证内「累计折旧贷方合计」不符时，差额并入最后一张卡片，保证账实严格一致。 */
     _revertAssetDepr: function (v) {
+      /* 【2026-11-02】优先按「计提时挂在凭证上的实提额快照」精确回滚（见 _revertAssetDeprByLines）。
+       * 旧逻辑（下方）用「记-N 字号匹配 + assetMonthlyDepr 现场重算」，有三个实测缺陷：
+       *   ① 凭证号按月重编，跨月同号无法区分（删 1 月的记-1 会命中 2 月的记-1）；
+       *   ② 卡片只存最后一张凭证号，删中间某一期根本匹配不上 → 不回滚；
+       *   ③ 末月提满后 assetMonthlyDepr 返回 0（remainingMonths=0）→ 该卡漏回滚，
+       *      差额又被「并入最后一张卡」扣到别的卡上（实测 4,251.11 从电视机挪到客房餐厅用品）。
+       * 老凭证（导入账套、本次改动之前生成的）没有 deprLines，继续走旧逻辑，行为不变。 */
+      if (v.deprLines && v.deprLines.length) return this._revertAssetDeprByLines(v);
       var self = this;
       var vno = (v.word || '') + '-' + (v.no != null ? v.no : '');
       var month = voucherMonth(v);
@@ -2447,6 +2466,42 @@
       });
       return snaps.length ? snaps : null;
     },
+    /* 按凭证上的实提额快照（v.deprLines = [{id, amt}]）精确回滚卡片。
+     * 与旧逻辑的区别：卡片定位用「卡片 id」（不看凭证号，故跨月同号/删中间期都不受影响），
+     * 金额用「当时实际计提额」（不再现场重算，故末月补足、卡片中途改过数据也精确）。
+     * 快照里的 amt 是定点整数（与 entries 同域）；deprReverted 由 removeVoucher 挂回凭证，
+     * 供还原时按同一金额加回 —— 删除/还原双向严格对称。 */
+    _revertAssetDeprByLines: function (v) {
+      var self = this;
+      var vno = (v.word || '') + '-' + (v.no != null ? v.no : '');
+      var month = voucherMonth(v);
+      var snaps = [];
+      (v.deprLines || []).forEach(function (l) {
+        if (!l || l.id == null) return;
+        var fa = (self.state.fixedAssets || []).filter(function (x) { return x.id === l.id; })[0];
+        if (!fa) return;                      // 卡片已被删除/清理：无可回滚
+        var amt = round2(num(l.amt));
+        if (amt <= 0) return;
+        snaps.push({ id: fa.id, code: fa.code, name: fa.name, amt: amt,
+          anchor: fa.deprMonth || '', vno: vno, vid: fa.deprVoucherId || '' });
+        fa.accumDepr = Math.max(0, round2(num(fa.accumDepr) - amt));
+        fa.accumDeprBegin = fa.accumDepr;
+        fa.periodUsed = Math.max(0, num(fa.periodUsed || 0) - 1);
+        fa.yearDepr = Math.max(0, round2(num(fa.yearDepr || 0) - amt));
+        fa.netValueEnd = Math.max(0, round2(num(fa.original) - num(fa.accumDepr) - num(fa.impairment)));
+        fa.netValueBegin = fa.netValueEnd;
+        // 引用清理必须按【凭证 id】判断：按字号判断会在跨月同号时把另一期的引用也清掉
+        // （实测删 10 月「记-1」把指向 11 月「记-1」的引用清空）。deprVoucher 一并兜底清理。
+        if (fa.deprVoucherId === v.id) delete fa.deprVoucherId;
+        if (fa.deprVoucher === vno && !fa.deprVoucherId) delete fa.deprVoucher;
+        // 锚点回退：仅当卡片的计提月正是被删的这一期才回退，删中间期不动锚点（与旧逻辑一致）。
+        if (month && fa.deprMonth && String(fa.deprMonth) === String(month)) {
+          if (fa.acqDate) delete fa.deprMonth;
+          else fa.deprMonth = prevMonth(month);
+        }
+      });
+      return snaps.length ? snaps : null;
+    },
     // 还原凭证时按删除时留下的快照把卡片折旧加回（与 _revertAssetDepr 严格对称）
     _restoreAssetDepr: function (snaps) {
       if (!snaps || !snaps.length) return;
@@ -2462,6 +2517,9 @@
         fa.netValueBegin = fa.netValueEnd;
         if (s.anchor) fa.deprMonth = s.anchor;
         if (s.vno) fa.deprVoucher = s.vno;
+        // 2026-11-02：连同「含月份的凭证 id」一起恢复，否则删除→还原后卡片失去精确引用，
+        // 下次再删同一张凭证又退回按字号匹配（跨月同号会误清引用）。
+        if (s.vid) fa.deprVoucherId = s.vid;
       });
     },
     /* ---------- 清理凭证 ⇄ 固定资产卡片 联动回退（2026-09-18） ----------
@@ -2475,14 +2533,31 @@
      *   - 清理期间及之后漏提的折旧**不自动补提**：是否补提属会计政策判断，软件不擅自替会计决定。 */
     _revertAssetClean: function (v) {
       var vno = (v.word || '') + '-' + (v.no != null ? v.no : '');
+      var month = voucherMonth(v);
       var snaps = [];
-      (this.state.fixedAssets || []).forEach(function (fa) {
-        if (!fa.cleanVoucher || fa.cleanVoucher !== vno) return;
+      /* 【2026-11-02】卡片定位：**凭证 id 优先，字号 + 清理期间月份兜底**。
+       * 原实现只比 fa.cleanVoucher === vno，而凭证号按月从 记-1 重编（_calcVoucherId 注释已写明）：
+       *   实测 甲 2026-01 清理（记-1）、乙 2026-03 清理（记-1），删乙的凭证会把甲一起改回「正常」，
+       *   而甲的清理凭证仍在账上 —— 账实不符。与 _revertAssetDepr 是同一类缺陷，这里一并收口。 */
+      var byId = (this.state.fixedAssets || []).filter(function (fa) {
+        return fa.cleanVoucherId && fa.cleanVoucherId === v.id;
+      });
+      var targets = byId.length ? byId : (this.state.fixedAssets || []).filter(function (fa) {
+        if (!fa.cleanVoucher || fa.cleanVoucher !== vno) return false;
+        if (fa.cleanVoucherId && fa.cleanVoucherId !== v.id) return false;   // 已带 id 但指向别的凭证 → 不碰
+        // 老数据（无 id）：再卡一道「清理期间 == 凭证所属月份」，杜绝跨月同号误伤；
+        // cleanPeriod 缺失的历史脏数据退回纯字号匹配（与旧行为一致，不额外制造不可操作的状态）。
+        if (fa.cleanPeriod && month) return String(fa.cleanPeriod) === String(month);
+        return true;
+      });
+      targets.forEach(function (fa) {
         snaps.push({ id: fa.id, code: fa.code, name: fa.name,
-          status: fa.status || '\u6b63\u5e38', cleanPeriod: fa.cleanPeriod || '', vno: vno });
-        fa.status = '\u6b63\u5e38';
+          status: fa.status || '正常', cleanPeriod: fa.cleanPeriod || '', vno: vno,
+          vid: fa.cleanVoucherId || '' });
+        fa.status = '正常';
         fa.cleanPeriod = '';
         delete fa.cleanVoucher;
+        if (fa.cleanVoucherId === v.id) delete fa.cleanVoucherId;
       });
       return snaps.length ? snaps : null;
     },
@@ -2496,6 +2571,8 @@
         if (s.status) fa.status = s.status;
         if (s.cleanPeriod) fa.cleanPeriod = s.cleanPeriod;
         if (s.vno) fa.cleanVoucher = s.vno;
+        // 2026-11-02：连同「含月份的凭证 id」一起恢复，删除↔还原双向对称
+        if (s.vid) fa.cleanVoucherId = s.vid;
       });
     },
     _voucherRefs: function (id) {
@@ -2682,8 +2759,9 @@
       // ---------- 凭什么凭证不能手工红字冲销：按【来源】逐类判定，不能只看 kind ----------
       // 本软件里「凭证由哪个业务模块生成」有多套标记，只认一套必漏（同类教训见 _voucherRefs 注释）：
       //   ① 期末处理类 —— v.kind（结转损益/本年利润/成本/折旧/利润分配/工资计提发放）
-      //   ② 固定资产   —— 卡片上的 deprVoucher / cleanVoucher 存【凭证号 word-no】，与 kind 无关
-      //                   （外部导入的折旧凭证没有 kind，但卡片有 deprVoucher）
+      //   ② 固定资产   —— 卡片上的 deprVoucherId / cleanVoucherId（2026-11-02 起，含月份、唯一）；
+      //                   老数据与导入卡只有 deprVoucher / cleanVoucher 字号，需再对月份才能定论。
+      //                   与 kind 无关（外部导入的折旧凭证没有 kind，但卡片有 deprVoucher）
       //   （工资模块 2026-10-27 下线后不再有第三类：v.payroll 标记的凭证按普通凭证处理，可正常红冲，
       //     因为「重新生成」这个官方入口已随模块消失，红冲成为唯一更正途径。）
       // 两类都不该手工红字冲销，但【理由不同】：
@@ -2693,14 +2771,27 @@
       //     （_revertAssetDepr / _revertAssetClean）。红字冲销后卡片的累计折旧、清理状态
       //     会与总账脱节，账实不符。
       var vno = (orig.word || '记') + '-' + (orig.no != null ? orig.no : '');
+      var vmon = voucherMonth(orig);
       var assets = this.state.fixedAssets || [];
-      var faDepr = assets.filter(function (f) { return f.deprVoucher === vno; })[0];
+      /* 【2026-11-02】判定必须用**含月份的凭证 id**：凭证号按月从 记-1 重编，「记-N」跨月会重号。
+       * 实测：1 月折旧凭证（记-1@2026-01）与 3 月普通凭证（记-1@2026-03）同号时，普通凭证被误判成
+       * 折旧凭证，连红字冲销都被拒（只会误拦、不损数据，但用户会遇到一张普通凭证莫名不能红冲）。
+       * 老数据（无 id）退回「字号 + 计提月份」，月份缺失才退回纯字号（保持旧行为，宁拦不漏）。 */
+      var faDepr = assets.filter(function (f) {
+        if (f.deprVoucherId) return f.deprVoucherId === orig.id;
+        if (f.deprVoucher !== vno) return false;
+        return f.deprMonth ? String(f.deprMonth) === vmon : true;
+      })[0];
       if (faDepr) {
         return { ok: false, msg: '该凭证是固定资产「计提折旧」凭证（卡片 ' + (faDepr.code || '') + '）。'
           + '红字冲销不会回退卡片的累计折旧，会造成账实不符。如需更正，请到「期末处理」用「计提折旧」重新生成'
           + '（会先删原凭证、再按最新数据重算，同时回退卡片）' };
       }
-      var faClean = assets.filter(function (f) { return f.cleanVoucher === vno; })[0];
+      var faClean = assets.filter(function (f) {
+        if (f.cleanVoucherId) return f.cleanVoucherId === orig.id;
+        if (f.cleanVoucher !== vno) return false;
+        return f.cleanPeriod ? String(f.cleanPeriod) === vmon : true;
+      })[0];
       if (faClean) {
         return { ok: false, msg: '该凭证是固定资产「清理」凭证（卡片 ' + (faClean.code || '') + '）。'
           + '红字冲销不会撤销处置业务，会造成账实不符。请先到「固定资产」对该卡片执行「取消清理」，'
@@ -3785,13 +3876,21 @@
       // 【模板禁用时不加入清单】：禁用意味着用户不打算用这个期末项，
       // 再显示一条「模板已禁用」既无可操作信息、又占坑，属噪音（此前会加一个 ok 项）。
       if (self.settleTplEnabled('dep')) {
-        var faNeed = self.state.fixedAssets.filter(function (fa) {
-          return fa.status !== '清理' && fa.deprMonth !== month && self.assetMonthlyDepr(fa) > 40;   // 40 个最小单位 = 0.004 元
-        });
+        /* 【2026-11-02】判据改为与「实际计提」同源的单点 assetDeprDue —— 它已含全部跳过条件
+         * （本月已计提→0 的幂等保护、次月起提、本月新购不提、已提满、已清理、无购置日）。
+         * 旧写法自己拼 status + deprMonth + assetMonthlyDepr>40，与 assetDeprDue 口径分叉：
+         * 实测「本月新购」的卡被清单算作待计提（19 项），点计提却只提 18 项，两句提示互相打架
+         * （与结转损益此前「一句说已结转、一句说未结转」是同一类缺陷）。 */
+        var faDue = self.state.fixedAssets.filter(function (fa) { return self.assetDeprDue(fa, month) > 0; });
         var depCnt = kindCount(self.VOUCHER_KINDS.DEPR);
-        if (!faNeed.length) add('dep', '计提折旧', 'ok', '本期无待折旧资产');
-        else add('dep', '计提折旧', depCnt ? 'ok' : 'warn',
-          depCnt ? ('折旧已计提 ' + depCnt + ' 张') : ('本期有 ' + faNeed.length + ' 项资产待计提折旧'));
+        if (!faDue.length) {
+          add('dep', '计提折旧', 'ok', depCnt ? ('折旧已计提 ' + depCnt + ' 张') : '本期无待折旧资产');
+        } else {
+          // 已计提但仍有余量（中途新增卡片、补提历史月份）：两句都说，避免从"误报"变成"漏报"
+          add('dep', '计提折旧', 'warn', depCnt
+            ? ('折旧已计提 ' + depCnt + ' 张，另有 ' + faDue.length + ' 项资产待计提折旧')
+            : ('本期有 ' + faDue.length + ' 项资产待计提折旧'));
+        }
       }
 
       // 4.（原期末调汇提示项已随外币功能下线移除，序号不再回填以免历史规则错位）
@@ -5457,18 +5556,28 @@
       var fa = this.state.fixedAssets.filter(function (x) { return x.id === id; })[0];
       if (!fa) return { ok: false, msg: '卡片不存在' };
       var vno = fa.cleanVoucher;
-      if (vno) {
-        var v = (this.state.vouchers || []).filter(function (x) {
-          return ((x.word || '记') + '-' + x.no) === vno && x.deleted !== 'y';
-        })[0];
+      var vid = fa.cleanVoucherId;
+      if (vno || vid) {
+        /* 【2026-11-02】凭证定位：id 优先，老数据按「字号 + 清理期间月份」兜底。
+         * 原实现只比字号、且完全不过滤月份 —— 实测 乙 2026-01 清理（记-1）、甲 2026-03 清理（记-1）
+         * 时，点「取消甲的清理」实际删掉的是乙 1 月那张凭证，甲乙还双双被改回「正常」。 */
+        var m = fa.cleanPeriod || '';
+        var v = vid
+          ? (this.state.vouchers || []).filter(function (x) { return x.id === vid && x.deleted !== 'y'; })[0]
+          : (this.state.vouchers || []).filter(function (x) {
+              if (x.deleted === 'y') return false;
+              if (((x.word || '记') + '-' + x.no) !== vno) return false;
+              return m ? voucherMonth(x) === m : true;   // 老数据必须再对上清理期间
+            })[0];
         if (v) {
           var r = this.removeVoucher(v.id); // 内部 _revertAssetClean 负责把卡片恢复为「正常」
           if (!r || r.ok === false) return { ok: false, msg: '无法取消清理：' + ((r && r.msg) || '清理凭证未删除成功') };
           this._pushAssetHistory(fa, '取消清理', { cleanVoucher: '—', cleanPeriod: '—', status: '正常' });
           this.persist();
-          return { ok: true, removedVoucher: vno };
+          return { ok: true, removedVoucher: vno || ((v.word || '记') + '-' + v.no) };
         }
         delete fa.cleanVoucher; // 凭证已不在账上（历史脏数据）→ 清掉悬空引用再恢复卡片
+        delete fa.cleanVoucherId;
       }
       fa.status = '正常';
       fa.cleanPeriod = '';
@@ -5525,6 +5634,8 @@
       }
       done.forEach(function (fa) {
         fa.cleanVoucher = saved.word + '-' + saved.no;
+        // 2026-11-02：同折旧凭证 —— 凭证号按月重编，「记-N」不唯一，引用必须再存含月份的 id
+        fa.cleanVoucherId = saved.id;
       });
       var self2 = this;
       done.forEach(function (fa) {
@@ -5705,6 +5816,12 @@
       // 更新卡片已计提月份与累计折旧，并记录折旧凭证号（供删除凭证时引用校验）
       // 月末滚转：accumDeprBegin / netValueBegin ← 上月期末，然后本月折旧累加；netValueEnd / netValueBegin 用恒等式重算
       var dvno = (saved.word || '转') + '-' + (saved.no != null ? saved.no : '');
+      /* 【2026-11-02】把「本期各卡实提额」作为快照挂到凭证上（deprLines）。
+       * 删除凭证时按 id + 实提额精确回滚，不再用「每月重编的 记-N 字号」匹配卡片、
+       * 也不再用 assetMonthlyDepr 现场重算 —— 后者对已提满的卡返回 0，导致末月那期
+       * 整张卡漏回滚，差额又被「并入最后一张卡」的逻辑扣到别的卡上（实测把 4,251.11
+       * 从电视机挪到客房餐厅用品）。快照是定点整数，与 entries 同域。 */
+      saved.deprLines = assetLines.map(function (al) { return { id: al.id, amt: al.amt }; });
       assetLines.forEach(function (al) {
         self.state.fixedAssets.forEach(function (fa) {
           if (fa.id === al.id) {
@@ -5717,6 +5834,9 @@
             fa.netValueEnd = Math.max(0, num(fa.original) - num(fa.accumDepr) - num(fa.impairment));
             fa.netValueBegin = fa.netValueEnd;
             fa.deprVoucher = dvno;
+            // 凭证号按月重编（10 月与 11 月都叫「记-1」），故引用必须再存一份**含月份的凭证 id**，
+            // 删除/还原据此判断「卡片当前指向的是不是这张凭证」。deprVoucher 仍留给界面显示。
+            fa.deprVoucherId = saved.id;
           }
         });
       });
