@@ -82,14 +82,14 @@ function makeEnv(bookId, state) {
       S._persists++;
       return true;
     },
-    /* 与 store.js 的 settleTplDefaultEnabled 同口径（dep/profit 默认开、其它 id 默认关；
-       cost 已于 2026-11-03 下线，不再有默认启用态） */
+    /* 与 store.js 的 settleTplDefaultEnabled 同口径（profit 默认开、其它 id 默认关；
+       cost 2026-11-03 下线、dep 2026-11-03 从模板设置移除，均不再有默认启用态） */
     settleTplEnabled: function (id) {
       const tpls = S.state.settleTemplates;
       if (Array.isArray(tpls)) {
         for (const t of tpls) { if (t && t.id === id) return t.enabled !== false; }
       }
-      return ['dep', 'profit'].indexOf(id) >= 0;
+      return id === 'profit';
     }
   };
   S.state = state || {};
@@ -119,11 +119,12 @@ console.log('① 双账套互不覆盖');
   A.S.bookId = 'B'; A.S.state = { settleTemplates: [] };
   A.api.reload();
   check(!has(A.api.cur(), 'c1'), 'B 账套不应看到 A 的自定义模板（账套隔离）');
-  // 2026-11-03：原用 cost（已下线），改用 dep 验证「只改启用态也不许抹掉别的账套的定义」
-  find(A.api.cur(), 'dep').enabled = false;
+  // 2026-11-03：原用 cost（已下线）、dep（2026-11-03 从模板设置移除），改用 profit
+  // 验证「只改启用态也不许抹掉别的账套的定义」
+  find(A.api.cur(), 'profit').enabled = false;
   A.api.persist();
-  check(has(A.S.state.settleTemplates, 'dep'), 'B 保存后：B 的账套里应有 dep 记录');
-  check(find(A.S.state.settleTemplates, 'dep').enabled === false, 'B 保存后：dep 启用状态应落进 B 账套');
+  check(has(A.S.state.settleTemplates, 'profit'), 'B 保存后：B 的账套里应有 profit 记录');
+  check(find(A.S.state.settleTemplates, 'profit').enabled === false, 'B 保存后：profit 启用状态应落进 B 账套');
 
   // 切回 A
   A.S.bookId = 'A';
@@ -148,7 +149,8 @@ console.log('② 清空 localStorage 后仍不丢');
 console.log('③ 旧版迁移');
 {
   const legacy = [
-    { id: 'dep', name: '计提折旧', enabled: false, summary: '旧摘要', template: [] },
+    { id: 'profit', name: '结转损益', enabled: false, summary: '旧摘要', template: [] },
+    { id: 'dep', name: '计提折旧', enabled: true, summary: '旧摘要', template: [] },
     { id: 'c9', name: '旧自定义', custom: true, enabled: true, bookId: 'L', template: tplDef('1801', 9) },
     { id: 'cx', name: '别的账套', custom: true, enabled: true, bookId: 'OTHER', template: tplDef('1801', 8) },
     { id: 'fx', name: '期末调汇', custom: true, enabled: true, template: tplDef('1001', 1) }
@@ -163,7 +165,8 @@ console.log('③ 旧版迁移');
   check(st.filter(t => t.id === 'c9').length === 1, 'c9 不应产生重复记录', '条数 ' + st.filter(t => t.id === 'c9').length);
   check(!has(st, 'cx'), '归属其它账套(bookId=OTHER)的模板不得并入当前账套');
   check(!has(st, 'fx'), '已下线的 fx 模板不得迁移进来');
-  check(find(st, 'dep').enabled === false, '系统模板：enabled 应保留账套值（这里是账套没有记录 → 补缺用旧值 false）');
+  check(find(st, 'profit').enabled === false, '系统模板：enabled 应保留账套值（这里是账套没有记录 → 补缺用旧值 false）');
+  check(!has(st, 'dep'), 'dep（计提折旧）模板 2026-11-03 已移除，迁移时不得从旧键复活');
 
   const before = JSON.stringify(E.S.state.settleTemplates), pBefore = E.S._persists;
   E.api.migrate();
@@ -184,7 +187,8 @@ console.log('⑤ 空壳记录不渲染');
   const E = makeEnv('X', { settleTemplates: [{ id: 'ghost', custom: true, enabled: true }] });
   E.api.reload();
   check(!has(E.api.cur(), 'ghost'), '账套里只有 {id,enabled} 而没有分录定义的自定义模板不应进列表');
-  check(has(E.api.cur(), 'dep') && has(E.api.cur(), 'profit'), '系统模板仍应正常在列表里');
+  check(has(E.api.cur(), 'profit'), '系统模板（结转损益）仍应正常在列表里');
+  check(!has(E.api.cur(), 'dep'), 'dep（计提折旧）模板 2026-11-03 移除后不得再出现在模板列表里');
 }
 
 /* ========== ⑥ 账套已有定义不被旧值覆盖 ========== */
@@ -203,16 +207,16 @@ console.log('⑦ 字段完整性');
 {
   const E = makeEnv('A', { settleTemplates: [] });
   E.api.reload();
-  /* 2026-11-03：cost 模板已下线，改用 dep + 两个「当前未知的字段」验证整体保留语义 ——
+  /* 2026-11-03：cost / dep 模板均已下线，改用 profit + 两个「当前未知的字段」验证整体保留语义 ——
      这才是这条断言的原始目的（拒绝字段白名单），不再绑定某个具体模板的字段名。 */
-  const tpl = find(E.api.cur(), 'dep');
+  const tpl = find(E.api.cur(), 'profit');
   Object.assign(tpl, {
-    summaryText: '计提{month}折旧', voucherDate: 'period',
+    summaryText: '结转{month}损益（自定义摘要）', voucherDate: 'period',
     futureFieldA: 'v1', futureFieldB: 42
   });
   E.api.persist();
-  const r = find(E.S.state.settleTemplates, 'dep') || {};
-  check(r.summaryText === '计提{month}折旧' && r.voucherDate === 'period'
+  const r = find(E.S.state.settleTemplates, 'profit') || {};
+  check(r.summaryText === '结转{month}损益（自定义摘要）' && r.voucherDate === 'period'
     && r.futureFieldA === 'v1' && r.futureFieldB === 42,
     '模板业务字段（含当前未知字段）必须整体存进账套（拒绝字段白名单，宁可多存不可少存）', JSON.stringify(r));
 }

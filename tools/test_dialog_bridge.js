@@ -128,6 +128,25 @@ async function run() {
     ov._q['.ty-dlg-ok'].onclick();
     assert.strictEqual(await p, true);
   });
+  /* 【2026-11-03 回归】标题两种传法都必须正确渲染。
+     事故：app.js 的 askConfirm 把页面传来的 { title } 又包了一层成 { title: { title } }，
+     esc() 把对象 String 化 → 标题栏显示「[object Object]×」，全站确认框皆中招
+     （资产页「折旧基准对齐」「重新计提折旧」、结账/删除账套等十余处）。 */
+  await step('标题：{ title } 与纯字符串两种传法都渲染正确（回归「[object Object]」）', async () => {
+    const p1 = confirmAsync('正文', { title: '折旧基准对齐' });
+    let ov = last(made);
+    assert.ok(ov.innerHTML.indexOf('>折旧基准对齐<') >= 0, '{ title } 形式应渲染出标题文本');
+    assert.ok(ov.innerHTML.indexOf('[object Object]') < 0, '标题不得出现 [object Object]');
+    ov._q['.ty-dlg-ok'].onclick();
+    assert.strictEqual(await p1, true);
+
+    const p2 = confirmAsync('正文', '添钰财务管理系统');
+    ov = last(made);
+    assert.ok(ov.innerHTML.indexOf('>添钰财务管理系统<') >= 0, '纯字符串标题也应渲染正确');
+    assert.ok(ov.innerHTML.indexOf('[object Object]') < 0, '标题不得出现 [object Object]');
+    ov._q['.ty-dlg-ok'].onclick();
+    assert.strictEqual(await p2, true);
+  });
   await step('正文 \n 转换行、超长可滚动', async () => {
     const p = confirmAsync('第一段\n第二段', { title: '格式' });
     const body = last(made).innerHTML;

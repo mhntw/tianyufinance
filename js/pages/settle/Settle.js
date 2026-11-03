@@ -27,8 +27,9 @@ const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 
 // 取卡片对应的模板 id：系统卡用固定 id 映射，预置摊销/自定义卡用 data-id 属性
 function cardTplId(card) {
-  // vat / surTax / incTax 三个模板已下线（2026-09-18）；cost（结转销售成本）2026-11-03 下线
-  var map = { cardDepr: 'dep', cardProfit: 'profit' };
+  // vat / surTax / incTax 三个模板已下线（2026-09-18）；cost（结转销售成本）2026-11-03 下线；
+  // cardDepr（计提折旧卡）2026-11-03 移除 —— 计提折旧只保留在「固定资产」页，期末处理页不再有该卡。
+  var map = { cardProfit: 'profit' };
   if (card.id && map[card.id]) return map[card.id];
   var did = card.getAttribute('data-id');
   return did || null;
@@ -169,18 +170,9 @@ function onBtn(id, fn) {
  * 可用"行多重集比对"证明（搬迁前后该文件的行集合只差包装行）。
  */
 
-/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
-   按钮 btnDepVoucher 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
-function onDepVoucher() {
-    var month = selMonth;
-    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'dep'; })[0] || {};
-    var r = S.depreciateMonth(month, { word: tpl.word, summary: tplSummary(tpl, month), date: tmplVoucherDate(month, tpl) });
-    if (!r.ok) return showToast(r.msg, 'error');
-    // 【2026-11-03】与固定资产页同一口径：aligned>0 说明本期计提前先把往期未并入卡片的折旧补进了卡片基准
-    var alignedTip = r.aligned > 0 ? '，其中 ' + money(r.aligned) + ' 元为往期折旧并入卡片基准' : '';
-    showToast('已生成折旧凭证：' + money(r.total) + '（' + r.count + ' 项资产' + alignedTip + '）');
-    refreshSettle(); syncAll();
-}
+/* 「计提折旧」的期末处理卡与 btnDepVoucher 处理函数已于 2026-11-03 移除：
+   计提折旧只保留在「固定资产」页（index.html 的 btnAssetGenVoucher → S.depreciateMonth），
+   期末处理页不再提供生成入口，避免同一业务两个入口、两套提示口径。 */
 
 /* 「结转销售成本」功能已于 2026-11-03 整体下线（onCarryCost 一并删除）。
  * 下线依据见 store.js 中 costVoucherEstimate 处的说明：两本真实账套从未使用，且
@@ -326,95 +318,6 @@ async function onReopenPeriod() {
     refreshSettle(); syncAll();
 }
 
-/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
-   按钮 settleCheckAll 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
-function onSettleCheckAll() {
-    var cb = $('settleCheckAll');
-    var checked = cb.checked;
-    document.querySelectorAll('#settleProcessCards .settle-card').forEach(function (card) {
-      if (card.style.display === 'none' || card.classList.contains('settle-add-card')) return;
-      var inpp = card.querySelector('input[type=checkbox]');
-      if (inpp && !inpp.disabled) {
-        inpp.checked = checked;
-        card.classList.toggle('settle-card-checked', checked);
-      }
-    });
-}
-
-/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
-   按钮 btnSettleRecalc 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
-function onSettleRecalc() {
-    // 重新测算 = 强制刷新卡片状态（已结转/未结转金额来自 store，无额外测算逻辑）
-    showToast('已刷新测算');
-    refreshSettle();
-}
-
-/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
-   按钮 btnSettleBatchGen 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
-async function onSettleBatchGen() {
-    // 批量生成：遍历所有勾选的卡片，逐个生成凭证
-    var cards = document.querySelectorAll('#settleProcessCards .settle-card input[type=checkbox]:checked');
-    if (!cards.length) return showToast('请先勾选要生成凭证的卡片', 'warn');
-    var month = selMonth;
-    if (S.isPeriodClosed(month)) return showToast('该期已结账，请先反结账', 'error');
-    var okCount = 0, skipCount = 0, errCount = 0, msgs = [];
-    // 收集勾选的模板（去重，因为自定义卡和系统卡都走 settleTplList）
-    var doneIds = {};
-    var toGenerate = [];
-    cards.forEach(function (cb) {
-      var card = cb.closest('.settle-card');
-      var id = cardTplId(card);
-      if (!id || doneIds[id]) return;
-      doneIds[id] = true;
-      toGenerate.push({ id: id, card: card });
-    });
-    if (!toGenerate.length) return showToast('没有可生成的卡片', 'warn');
-    for (var i = 0; i < toGenerate.length; i++) {
-      var g = toGenerate[i];
-      // vat / surTax / incTax 已下线（2026-09-18）；cost（结转销售成本）2026-11-03 下线
-      var sysMap = { dep: 'btnDepVoucher', profit: 'btnReCarryForward' };
-      if (sysMap[g.id]) {
-        // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑。
-        // 结转损益的「是否已生成」走单点四态（carryForwardStatus().exists），页面不再自行按 kind 过滤 ——
-        // 同一口径多份实现正是「各消费方结论相反」那类缺陷的温床（见 check_single_source.js 的 carry-state-fork 规则）。
-        var carrySt = g.id === 'profit' ? S.carryForwardStatus(month) : null;
-        var existed = carrySt ? carrySt.exists : (S.periodVouchersOfKind(month, S.VOUCHER_KINDS.DEPR).length > 0);
-        if (existed) {
-          // 结转损益的凭证可能"过时"（其后损益凭证被删改，本期净额不再为零）：此时不能静默跳过，
-          // 否则结账检查报 blocking fail、批处理却说"跳过"，用户找不到出口。
-          // 批处理**不自动删凭证**（勾选式批处理无声删账的风险过高），只把跳过改成明确提示。
-          if (carrySt && carrySt.state === 'stale') {
-            errCount++; msgs.push('结转损益：本期结转凭证与当前损益发生额不一致，请点「重新结转损益」重新生成');
-          } else { skipCount++; }
-          continue;
-        }
-        // 直接调各按钮的处理函数（复用已有逻辑）
-        var tpl = getSettleTemplates().filter(function (t) { return t.id === g.id; })[0] || {};
-        if (g.id === 'profit') {
-          var rPL = S.carryForwardProfit(month, { word: tpl.word, targetSubj: tpl.targetSubj, summary: tplSummary(tpl, month), separate: tpl.separate !== false, date: tmplVoucherDate(month, tpl) });
-          if (rPL.ok) okCount++; else { errCount++; msgs.push('结转损益：' + rPL.msg); }
-        } else if (g.id === 'dep') {
-          var rD = S.depreciateMonth(month, { word: tpl.word, summary: tplSummary(tpl, month), date: tmplVoucherDate(month, tpl) });
-          if (rD.ok) okCount++; else { errCount++; msgs.push('计提折旧：' + rD.msg); }
-        }
-        // cost（结转销售成本）分支随功能下线删除（2026-11-03）
-      } else {
-        // 预置摊销/自定义模板：走 genVoucherFromTpl
-        var tpl = findSettleTemplate(g.id);
-        if (!tpl) { errCount++; msgs.push('模板「' + g.id + '」不存在'); continue; }
-        var oldCust = S.periodVouchersOfKind(month, 'settleTpl:' + tpl.id);
-        if (oldCust.length) { skipCount++; continue; }
-        var ok = genVoucherFromTpl(tpl, true); // 静默模式，不弹 toast
-        if (ok) okCount++; else { errCount++; }
-      }
-    }
-    refreshSettle(); syncAll();
-    // 汇总结果
-    var summary = '批量完成：成功 ' + okCount + ' 张，跳过 ' + skipCount + ' 张，失败 ' + errCount + ' 张';
-    showToast(summary, errCount > 0 ? 'warn' : 'success');
-    if (msgs.length) showToast(msgs.slice(0, 3).join('；'), 'error');
-}
-
 // 按钮绑定（结账/期末处理/反结账 主按钮，静态元素）
 function bindSettleEvents() {
   // 设置弹窗：启用 / 凭证模板 / 禁用 三个分组均可折叠
@@ -448,7 +351,7 @@ function bindSettleEvents() {
       refreshSettle();
     });
   });
-  onBtn('btnDepVoucher', onDepVoucher);
+  // 计提折旧卡与 btnDepVoucher 的绑定已随卡片移除（2026-11-03，入口只在「固定资产」页）
   // 结转销售成本按钮的事件绑定已随功能下线移除（2026-11-03）
   // 「转出未交增值税 / 计提附加税 / 计提所得税」三个按钮已随模板下线（2026-09-18）。
   // 真实账套从未使用增值税转出；附加税与所得税按「利润×税率」测算的金额与申报口径不符，
@@ -459,50 +362,14 @@ function bindSettleEvents() {
   onBtn('btnProfitDist', onProfitDist);
   onBtn('btnClosePeriod', onClosePeriod);
   onBtn('btnReopenPeriod', onReopenPeriod);
-
-  // ===== 顶部批量操作按钮 =====
-  onBtn('settleCheckAll', onSettleCheckAll);
-  onBtn('btnSettleRecalc', onSettleRecalc);
-  onBtn('btnSettleBatchGen', onSettleBatchGen);
 }
-// 同步全选 checkbox 状态：所有可见卡片都勾选 = 全选勾选；部分勾选 = 半选(indeterminate)；都不勾 = 不勾
-function syncCheckAllState() {
-  var ca = $('settleCheckAll');
-  if (!ca) return;
-  var visibleCbs = [];
-  document.querySelectorAll('#settleProcessCards .settle-card').forEach(function (card) {
-    if (card.style.display !== 'none' && !card.classList.contains('settle-add-card')) {
-      var cb = card.querySelector('.settle-card-check input');
-      if (cb) visibleCbs.push(cb);
-    }
-  });
-  if (!visibleCbs.length) { ca.checked = false; ca.indeterminate = false; return; }
-  var allChecked = visibleCbs.every(function (cb) { return cb.checked; });
-  var someChecked = visibleCbs.some(function (cb) { return cb.checked; });
-  ca.checked = allChecked;
-  ca.indeterminate = !allChecked && someChecked;
-}
-// 卡片 checkbox / 设置按钮（innerHTML 重建后需每次重绑）
+// 卡片「设置 / 生成凭证」按钮（innerHTML 重建后需每次重绑）
 function bindSettleCards() {
   document.querySelectorAll('.settle-card').forEach(function (card) {
     var id = cardTplId(card);
     if (!id) return;
-    // 单个 checkbox 勾选联动卡片高亮 + 同步全选状态
-    var cb = card.querySelector('.settle-card-check input');
-    if (cb && !cb._bound) {
-      cb._bound = true;
-      cb.addEventListener('change', function () {
-        card.classList.toggle('settle-card-checked', cb.checked);
-        syncCheckAllState();
-      });
-    }
     card.querySelectorAll('[data-act]').forEach(function (el) {
       var act = el.getAttribute('data-act');
-      // 禁用/启用：链接文案随模板启用状态切换（每次 refresh 更新）
-      if (act === 'disable') {
-        var cur = findSettleTemplate(id);
-        if (cur) el.textContent = cur.enabled ? '禁用' : '启用';
-      }
       if (el._bound) return;
       el._bound = true;
       if (act === 'setting') {
@@ -510,32 +377,6 @@ function bindSettleCards() {
           e.preventDefault(); e.stopPropagation();
           selectSettleTemplate(id);
           openSettleTemplateModal();
-        });
-      } else if (act === 'disable') {
-        el.addEventListener('click', function (e) {
-          e.preventDefault(); e.stopPropagation();
-          var t = findSettleTemplate(id);
-          if (!t) return;
-          t.enabled = !t.enabled;
-          persistSettleTemplates();
-          refreshSettle();
-        });
-      } else if (act === 'delete') {
-        el.addEventListener('click', async function (e) {
-          e.preventDefault(); e.stopPropagation();
-          var t = findSettleTemplate(id);
-          if (!t) return;
-          if (!t.custom) return showToast('系统模板不可删除', 'warn');
-          if (!(await H.confirmAsync('确认删除自定义模板「' + t.name + '」？', { title: '删除模板' }))) return;
-          settleTmplList = settleTmplList.filter(function (x) { return x !== t; });
-          /* 不再写 localStorage 的 dismissed 列表：模板定义已随账套存放，删除即从账套移除；
-             而且代码里已不存在"重新生成预置模板"的逻辑，删掉不会复活。
-             （旧的 settle_preset_dismissed 键是全局的，id 却是账套内的 → 在 A 账套删掉的预置模板
-              会让 B 账套也不显示，属跨账套串台。该键现已无任何读者，仅历史残留。） */
-          persistSettleTemplates();
-          // 删除对应 DOM 卡片并重新渲染（自定义卡按 data-id 定位，系统卡无此属性不动）
-          if (card.getAttribute('data-custom')) card.remove();
-          refreshSettle();
         });
       } else if (act === 'gen') {
         el.addEventListener('click', function (e) {
@@ -591,35 +432,29 @@ function renderCustomCards(procList, profitCard) {
           ? html`<a href="#" class="link-voucher" data-id="${done[0].id}">${(done[0].word || '记') + '-' + done[0].no}</a>`
           : html`${(done[0].word || '记') + '-' + done[0].no}`)
       : (totalDr > 0 ? '未结转' : '未设置分录金额');
-    var cardBodyHtml;
+    var card;
     if (done.length || totalDr > 0) {
-      // 有金额/已生成：显示已结转/未结转 两行统计
-      cardBodyHtml = html`<div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val">${money(carried)}</span></div><div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val">${money(todo)}</span></div>`;
+      // 有金额/已生成：显示已结转/未结转 两行统计（与系统卡同一套 .settle-stat 模板）
+      card = buildSettleCard({
+        dataCustom: true, dataId: t.id, name: t.name, help: t.summary || t.name, preset: t.preset,
+        disabled: !enabled,
+        stats: [
+          { label: '已结转：', valText: money(carried) },
+          { label: '未结转：', valText: money(todo) }
+        ],
+        vchText: vchTxt,
+        footButtons: [{ text: '生成凭证', cls: 'btn-ghost', dataAct: 'gen' }]
+      });
     } else {
-      // 空模板：提示语
-      cardBodyHtml = html`<div class="settle-card-sub" style="color:var(--ty-text-3)">${t.summary || t.name}（请设置分录金额）</div>`;
+      // 空模板：正文替换为单行提示（仍走同一卡片外壳，仅 body 内容不同）
+      card = buildSettleCard({
+        dataCustom: true, dataId: t.id, name: t.name, help: t.summary || t.name, preset: t.preset,
+        disabled: !enabled,
+        bodyHtml: html`<div class="settle-card-sub" style="color:var(--ty-text-3)">${t.summary || t.name}（请设置分录金额）</div>`,
+        vchText: vchTxt,
+        footButtons: [{ text: '生成凭证', cls: 'btn-ghost', dataAct: 'gen' }]
+      });
     }
-    var card = document.createElement('div');
-    card.className = 'settle-card' + (enabled ? '' : ' settle-card-disabled');
-    card.setAttribute('data-custom', '1');
-    card.setAttribute('data-id', t.id);
-    var presetTag = t.preset ? html`<span class="settle-card-preset-tag">预置</span>` : '';
-    card.innerHTML =
-      html`<div class="settle-card-head">` +
-        html`<label class="settle-card-check"><input type="checkbox" /></label>` +
-        html`<span class="settle-card-name">${t.name}</span>${presetTag}` +
-        html`<i class="settle-card-help" title="${t.summary || t.name}">?</i>` +
-        html`<span class="settle-card-op">` +
-          html`<a class="settle-link" data-act="disable">${enabled ? '禁用' : '启用'}</a>` +
-          html`<a class="settle-link" data-act="setting">设置</a>` +
-          html`<a class="settle-link btn-link-danger" data-act="delete">删除</a>` +
-        html`</span>` +
-      html`</div>` +
-      html`<div class="settle-card-body">${cardBodyHtml}</div>` +
-      html`<div class="settle-card-foot">` +
-        html`<span class="settle-vch">${vchTxt}</span>` +
-        html`<button class="btn btn-sm btn-ghost" data-act="gen">生成凭证</button>` +
-      html`</div>`;
     if (insertAnchor && insertAnchor.nextSibling) procList.insertBefore(card, insertAnchor.nextSibling);
     else procList.appendChild(card);
     insertAnchor = card;
@@ -646,32 +481,107 @@ function renderCustomCards(procList, profitCard) {
  * 可用"行多重集比对"证明；调用顺序与原先逐行顺序一致（渲染相之间有隐式顺序依赖，勿调换）。
  */
 
-/* 期末处理卡片：启用状态 → 显示/隐藏、勾选框复位、凭证卡排首位、自定义卡渲染 */
-function renderSettleCards() {
-  // 期末处理卡片：checkbox 绑定模板启用状态（每张卡的启用开关）
-  var cardTplMap = {
-    cardDepr: 'dep', cardProfit: 'profit'   // cost 卡片已随结转销售成本功能下线（2026-11-03）
-  };
-  Object.keys(cardTplMap).forEach(function (cid) {
-    var card = $(cid);
-    if (!card) return;
-    var enabled = S.settleTplEnabled(cardTplMap[cid]);
-    var cb = card.querySelector('.settle-card-check input');
-    if (cb) { cb.checked = false; cb.disabled = false; } // 默认全不勾选，由用户手动选
-    // 禁用即隐藏（基本设置）：期末处理页只呈现启用中的模板。
-    // 重新启用的入口在「模板设置」弹窗的「禁用」分组（renderSettleTmplTree → settleTmplDisabled），
-    // 故隐藏不会让禁用变成单向不可逆操作。
-    card.style.display = enabled ? '' : 'none';
-    card.classList.toggle('settle-card-disabled', !enabled);
-  });
-  // 保证顺序：结转损益永远在模板列表第一个，启用的卡片按固定 DOM 顺序连续排列
-  var procList = $('settleProcessCards');
-  var profitCard = $('cardProfit');
-  if (procList && profitCard && procList.firstElementChild !== profitCard) {
-    procList.insertBefore(profitCard, procList.firstElementChild);
+/* ============================================================
+ * 卡片统一模板 buildSettleCard：期末处理页所有卡片（结转损益 / 自定义·预置摊销）
+ * 共用同一套外壳，彻底消除「默认卡写死静态 HTML、自建卡 JS 动态生成」导致的格式漂移。
+ * 内部统计/凭证字号/按钮的内部 ID 全部沿用旧静态卡的 ID（profitDone/profitTodo/profitVchNo、
+ * btnReCarryForward…），故 renderSettleProfitCard / renderSettleVchNos /
+ * renderSettleButtons 等既有填充逻辑一行都不必改。
+ * 【2026-11-03】计提折旧卡已移除（该业务只在「固定资产」页，卡片与按钮一并删除）。
+ * opts: { id?, system?, dataCustom?, dataId?, name, help?, preset?, disabled?,
+ *         stats?:[{label,valId?,valText}], bodyHtml?, vchId?, vchText?,
+ *         footButtons?:[{id?,text,cls?,dataAct?,display?}] }
+ */
+function buildSettleCard(opts) {
+  var card = document.createElement('div');
+  card.className = 'settle-card' + (opts.disabled ? ' settle-card-disabled' : '');
+  if (opts.id) card.id = opts.id;
+  if (opts.system) card.setAttribute('data-system', '1');
+  if (opts.dataCustom) card.setAttribute('data-custom', '1');
+  if (opts.dataId) card.setAttribute('data-id', opts.dataId);
+  // 注意：html 模板标签会对 ${...} 内所有插值做 HTML 转义；
+  // presetTag / bodyHtml / footBtns / 各属性子串（vid/vchId/id/da/st）都是「已成型 HTML 字符串」，
+  // 必须用 + 原样拼接，绝不能放进 ${} 再被 html 二次转义，否则会出现
+  // &lt;div&gt;…&lt;/div&gt;、data-act=&quot;gen&quot; 这类失效（已被 verify_page_domain.js 抓到）。
+  var presetTag = opts.preset ? html`<span class="settle-card-preset-tag">预置</span>` : '';
+  var bodyHtml;
+  if (opts.bodyHtml != null) {
+    bodyHtml = opts.bodyHtml;   // 外部传入的合法 HTML，原样拼接
+  } else {
+    bodyHtml = (opts.stats || []).map(function (s) {
+      // 纯文本（label/valText）走 html 转义；属性子串 vid 用 + 原样拼接
+      var vid = s.valId ? (' id="' + s.valId + '"') : '';
+      return '<div class="settle-stat"><span class="settle-stat-label">' + html`${s.label}` +
+        '</span><span class="val"' + vid + '>' + html`${s.valText}` + '</span></div>';
+    }).join('');
   }
-  // 动态渲染自定义模板卡片（新增后能在期末处理页显示，并支持删除）
+  var footBtns = (opts.footButtons || []).map(function (b) {
+    // 纯文本（text）走 html 转义；属性子串（id/da/st）用 + 原样拼接
+    var id = b.id ? (' id="' + b.id + '"') : '';
+    var da = b.dataAct ? (' data-act="' + b.dataAct + '"') : '';
+    var st = b.display === 'none' ? ' style="display:none"' : '';
+    return '<button class="btn btn-sm ' + (b.cls || '') + '"' + id + da + st + '>' + html`${b.text}` + '</button>';
+  }).join('');
+  var vchId = opts.vchId ? (' id="' + opts.vchId + '"') : '';
+  var headHtml =
+    html`<div class="settle-card-head">` +
+      html`<span class="settle-card-name">${opts.name}</span>` + presetTag +
+      html`<i class="settle-card-help" title="${opts.help || opts.name}">?</i>` +
+      html`<span class="settle-card-op">` + html`<a class="settle-link" data-act="setting">设置</a>` + html`</span>` +
+    html`</div>`;
+  var footHtml =
+    '<div class="settle-card-foot"><span class="settle-vch"' + vchId + '>' + html`${opts.vchText || ''}` + '</span>' + footBtns + '</div>';
+  // escape-ok: headHtml/bodyHtml/footHtml 均由本函数内逐段经 html`` 转义拼接（仅结构串为常量）
+  card.innerHTML = headHtml + '<div class="settle-card-body">' + bodyHtml + '</div>' + footHtml;
+  return card;
+}
+
+/* 系统卡启用 → 显示/隐藏（与自定义卡「启用才出卡」同一口径） */
+function applyCardEnabled(card, enabled) {
+  if (!card) return;
+  card.style.display = enabled ? '' : 'none';
+  card.classList.toggle('settle-card-disabled', !enabled);
+}
+
+/* 系统卡按钮：卡片由 buildSettleCard 动态生成、每次刷新重建，故在 renderSettleCards 内补绑。
+   onBtn 按元素 _bound 幂等，重建后的新元素自动重绑，旧元素已丢弃不会重复触发。
+   （bindSettleEvents 在主流程里先于 renderSettleCards 执行，彼时卡片尚未生成，bindSettleEvents
+    里的 onBtn 调用会落空，必须在此补绑，否则 重新结转/结转本年利润/利润分配 无响应。） */
+function bindSystemCardButtons() {
+  onBtn('btnReCarryForward', onReCarryForward);
+  onBtn('btnCarryYearEnd', onCarryYearEnd);
+  onBtn('btnProfitDist', onProfitDist);
+}
+
+/* 期末处理卡片：系统卡（结转损益）与自定义卡共用 buildSettleCard 统一模板，
+   每次刷新重建（新元素由 bindSettleEvents/bindSettleCards 自动重绑，旧元素丢弃，不会重复触发）。 */
+function renderSettleCards() {
+  var procList = $('settleProcessCards');
+  if (!procList) return;
+  // 移除上一次渲染的系统卡（避免重复叠加；自定义卡的清理在 renderCustomCards 内）
+  procList.querySelectorAll('.settle-card[data-system]').forEach(function (el) { el.remove(); });
+
+  var profitCard = buildSettleCard({
+    id: 'cardProfit', system: true, name: '结转损益', help: '结转损益',
+    stats: [
+      { label: '已结转：', valId: 'profitDone', valText: '0.00' },
+      { label: '未结转：', valId: 'profitTodo', valText: '0.00' }
+    ],
+    vchId: 'profitVchNo', vchText: '',
+    footButtons: [
+      { id: 'btnReCarryForward', text: '重新结转', cls: 'btn-primary' },
+      { id: 'btnCarryYearEnd', text: '结转本年利润', cls: '', display: 'none' },
+      { id: 'btnProfitDist', text: '利润分配', cls: '', display: 'none' }
+    ]
+  });
+  // 顺序：结转损益首位，其次自定义/预置摊销（原生「结转损益永远在首位」语义保持不变）
+  // 【2026-11-03】计提折旧卡已移除（入口只在「固定资产」页），系统卡只剩结转损益。
+  procList.insertBefore(profitCard, procList.firstElementChild);
+  applyCardEnabled(profitCard, S.settleTplEnabled('profit'));
+  // 动态渲染自定义/预置摊销模板卡片（插入到系统卡之后）
   renderCustomCards(procList, profitCard);
+  // 系统卡按钮在卡片重建后才存在，于此处补绑（见 bindSystemCardButtons 注释）
+  bindSystemCardButtons();
 }
 
 /* 反结账页年份标签 */
@@ -680,17 +590,18 @@ function renderReopenYearLabel() {
   if (rv) rv.textContent = selReopenMonth.slice(0, 4) + '年';
 }
 
-/* 检查项清单：系统三项（已生成打勾/未生成叹号）+ store 硬性检查项 */
+/* 检查项清单：系统卡项（已生成打勾/未生成叹号）+ store 硬性检查项 */
 function renderSettleChecklist(month, K, curDoneCount) {
-  // 期末处理 tab：检查项列表（结账页 7 项）
+  // 结账 tab：检查项列表
   var cl = $('closeChecklist');
   if (cl) {
     // 只列出「已启用」的模板项：模板被禁用后应从检查清单里消失。
     // 此前是硬编码 3 项、不看启用状态 —— 于是「结转销售成本」禁用后仍挂在清单上，
     // 看起来像禁用没生效。数据层 settleChecklist 已采用同一口径（禁用则不加入）。
-    // cost（结转销售成本）项已随功能下线移除（2026-11-03）
+    // cost（结转销售成本）项已随功能下线移除（2026-11-03）；
+    // dep（计提折旧）行 2026-11-03 移除：页面不再重复展示，改由下方 store.settleChecklist 的
+    // 'dep' 项统一给出（该项已改为无条件检查，且带「待计提资产数」这一更准确的口径）。
     var rows = [
-      { k: 'dep', name: '计提折旧', kind: K.DEPR, hint: '固定资产折旧凭证' },
       { k: 'profit', name: '结转损益', kind: K.CARRY_PL, hint: '损益类科目结转' }
     ].filter(function (r) { return S.settleTplEnabled(r.k); });
     var out = '';
@@ -735,11 +646,10 @@ function renderSettleVchNos(vs, K, kindVs) {
       return html`<a href="#" class="link-voucher" data-id="${v.id}">${no}</a>`;
     }).join('、');
   };
-  // id 必须与 index.html 完全一致（曾用 depVoucherNo / costVoucherNo / profitVoucherNo，
-  // 而 HTML 里是 depVchNo / profitVchNo —— 不匹配导致 $() 取不到元素、
-  // 凭证字号永远不显示，且不报任何错。tools/_diag_settle_tpl.js 已加契约检查防回归。
-  filler('depVchNo', K.DEPR);
-  filler('profitVchNo', K.CARRY_PL);   // costVchNo 已随结转销售成本下线移除
+  // id 必须与卡片模板里的 vchId 完全一致（曾用 profitVoucherNo，而 HTML 里是 profitVchNo ——
+  // 不匹配导致 $() 取不到元素、凭证字号永远不显示，且不报任何错）。
+  // depVchNo / costVchNo 已随对应卡片/功能移除（2026-11-03）。
+  filler('profitVchNo', K.CARRY_PL);
 }
 
 /* 结转损益：已结转/应结转额 + 利润卡状态类 */
@@ -878,7 +788,7 @@ function refreshSettle() {
     selMonth = currentPeriod();
   }
   var month = selMonth;
-  // 期末处理（结转损益/折旧/调汇/税费等）与结账统一跟随「结账 tab 选期 selMonth」，
+  // 期末处理（结转损益/自定义摊销等）与结账统一跟随「结账 tab 选期 selMonth」，
   // 避免用户选历史期却对当前期误操作。store 侧各方法均有 isPeriodClosed 拦截，对已结账历史期安全。
   var curMonth = month;
   var closed = S.isPeriodClosed(month);
@@ -903,8 +813,6 @@ function refreshSettle() {
   renderSettleVchNos(vs, K, kindVs);
   renderSettleProfitCard(curEst, curMonth);
   renderSettleButtons(vs, month, closed, curMonth, curVs, K, kindVs);
-  // 同步全选 checkbox 状态（刷新后可见卡片集合可能变了）
-  syncCheckAllState();
 }
 
 
@@ -1068,10 +976,13 @@ function stateSettleTemplates() {
 }
 
 function defaultSettleTemplates() {
-  // 系统模板共 2 个（dep / profit）；各自的默认启用状态由 store.settleTplDefaultEnabled 决定，
-  // 此处 enabled 仅作为「账套里没有该模板记录」时的兜底初值。用户可在模板设置里停用/启用。
+  // 系统模板只剩「结转损益」一个。enabled 仅作为「账套里没有该模板记录」时的兜底初值。
+  /* 【dep 已于 2026-11-03 从模板设置移除】期末处理页的「计提折旧」卡先被删掉（生成折旧凭证的
+     唯一入口是「固定资产 → 计提折旧」，store.depreciateMonth 自带默认摘要，不读模板的
+     word/summaryText），模板里已无任何可配置项；再留在设置列表里只会让人以为这里还能生成折旧凭证。
+     结账清单里的「计提折旧」提示项**不再受模板开关控制**（store.settleChecklist 已改为无条件检查），
+     所以删掉模板不会让这条提醒消失，也不会留下没有消费者的开关。 */
   return [
-    { id: 'dep', name: '计提折旧', enabled: true, summary: '计提本月固定资产折旧', template: [], hasEntries: false, summaryText: '计提折旧费用' },
     // cost（结转销售成本）默认模板已下线（2026-11-03），不再预置
     // vat / surTax / incTax 三个默认模板已下线（2026-09-18），不再预置
     // targetSubj 留空 = 用「本年利润」科目角色（store.settleProfitTargetCode 解析，回退 3103）。
@@ -1080,10 +991,10 @@ function defaultSettleTemplates() {
   ];
 }
 
-// 系统模板（dep/profit 共 2 个，跟账套无关；cost 已于 2026-11-03 下线）；
+// 系统模板（仅 profit，跟账套无关；dep 2026-11-03 移除，cost 同日下线）；
 // 其余模板随账套存放（存于 state.settleTemplates，删账套即随之消失）
 function isSystemSettleTmpl(t) {
-  return ['dep', 'profit'].indexOf(t && t.id) >= 0;
+  return (t && t.id) === 'profit';
 }
 // 结账检查清单（store.settleChecklist）按它判断、卡片 checkbox 显示也按它，两处从此一致。
 function syncTplEnabledFromStore() {
@@ -1110,10 +1021,11 @@ function migrateLegacySettleTemplates() {
   if (Array.isArray(legacy) && legacy.length) {
     legacy.forEach(function (s) {
       if (!s || !s.id || s.id === 'fx') return;
+      if (s.id === 'dep') return;   // dep 模板 2026-11-03 移除：旧 localStorage 里的记录也不许复活
       var snap = snapshotSettleTemplate(s);
       var idx = idxOf(s.id);
       if (isSystemSettleTmpl(s)) {
-        /* 系统模板：旧值里可能有用户设置（cost 的科目/比例、profit 的结转科目、dep 的摘要）。
+        /* 系统模板：旧值里可能有用户设置（profit 的结转科目、摘要等）。
            账套优先、**只补缺**：账套已写过的字段不覆盖，缺的字段从旧值补进来。 */
         if (idx < 0) { arr.push(snap); return; }
         Object.keys(snap).forEach(function (k) {
@@ -1140,6 +1052,10 @@ function loadSettleTemplates() {
   list.forEach(function (t) { byId[t.id] = t; });
   stateSettleTemplates().forEach(function (st) {
     if (!st || !st.id || st.id === 'fx') return;
+    /* dep 模板 2026-11-03 移除：账套里若还留着历史记录（添钰来客 enabled=true、绅蓝之星
+       enabled=false），一律不进列表 —— 否则会被下面「自定义模板」分支或默认骨架重新渲染出来。
+       记录本身不动（下次保存模板时会随之落盘，属自然淘汰，不影响 schemaVersion）。 */
+    if (st.id === 'dep') return;
     var cur = byId[st.id];
     if (cur) {
       // 系统模板：默认值为骨架，业务参数取账套；enabled 也以账套为准（没写过则保留默认）
@@ -1239,10 +1155,10 @@ function selectSettleTemplate(id, t0) {
     var custExtra2 = $('settleTmplCustomExtra'); if (custExtra2) custExtra2.style.display = 'none';
     var sysExtra = $('settleTmplSystemExtra'); if (sysExtra) sysExtra.style.display = '';
     // 全部子项先隐藏，再按模板 id 逐个显示
-    // 只有 profit / dep 有系统参数区；vat/surTax/incTax（2026-09-18）、cost（2026-11-03）已下线
+    // 只有 profit 还有系统参数区；vat/surTax/incTax（2026-09-18）、cost（2026-11-03）、
+    // dep（2026-11-03 从模板设置移除）均已下线
     var show = {
-      profit: { profitTarget: true, summaryText: true, separate: true },
-      dep: { summaryText: true }
+      profit: { profitTarget: true, summaryText: true, separate: true }
     }[t.id] || {};
     function toggle(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
     toggle('settleTmplProfitParams', !!show.profitTarget);

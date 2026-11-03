@@ -149,9 +149,16 @@ function showDialog(opts) {
   });
 }
 
-// message: 提示文本（支持 \n 换行）；opts: { title? }；返回 Promise<boolean>
+// message: 提示文本（支持 \n 换行）；opts: { title? } **或直接给标题字符串**；返回 Promise<boolean>
 function confirmAsync(message, opts) {
-  return showDialog({ title: opts && opts.title, message: message });
+  /* 【2026-11-03】两种传法都收（调用点历史上就是混用的，别逼它们统一）：
+       confirmAsync(msg, { title: '删除账套' })   ← 页面模块（十余处）
+       confirmAsync(msg, '添钰财务管理系统')       ← app.js 的 askConfirm（内部调用点）
+     曾经 app.js 把 { title } 又包一层 → 标题被 esc(Object) 渲染成「[object Object]×」。
+     这里再做一层防御性解包，保证任何一层传错都不会把对象印到标题栏。 */
+  var title = (opts && typeof opts === 'object') ? opts.title : opts;
+  if (title && typeof title === 'object') title = title.title;
+  return showDialog({ title: title, message: message });
 }
 
 // message: 提示文本；def: 默认值；opts: { title? }；返回 Promise<string|null>

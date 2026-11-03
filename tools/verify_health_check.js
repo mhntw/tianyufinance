@@ -181,9 +181,12 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
     return store.slice(i, j > i ? j : store.length);
   }
   const rsBody = methodBody('runSelfTest'), fhBody = methodBody('financialHealthCheck');
-  check(/bs\.totalAsset\s*!==\s*bs\.totalAll/.test(rsBody),
-    'D8a runSelfTest 的 BS 判据应是整数严格比较（bs.totalAsset !== bs.totalAll）',
-    (rsBody.match(/totalAll\)\s*[!=]==?[^)]*/) || ['未找到'])[0]);
+  /* 【2026-11-03】判据从「整数严格比较」改为「按分比较」：差额先经 _toAmtUnits 归一到最小单位，
+     再与 AMT_CENT（1 分）比。原因见 store.js 的 AMT_CENT：源账套 4 位小数（绅蓝 记-21 差 0.0008 元）
+     在分位上是平的，严格比较会把精度残差永久报成"不平"，且与凭证页「借贷平衡」自相矛盾。 */
+  check(/_toAmtUnits\(bsDiff\)\)\s*>=\s*AMT_CENT/.test(rsBody),
+    'D8a runSelfTest 的 BS 判据应按「分」比较（_toAmtUnits(bsDiff) >= AMT_CENT）',
+    (rsBody.match(/totalAll[^;]*/) || ['未找到'])[0]);
   // UI 必须走 store 的设计口径（自适应 TOP-N），不得再传固定 largeVoucher 把它顶掉
   const fhCall = (settings.match(/financialHealthCheck\(\{[^}]*\}\)/) || [''])[0];
   check(fhCall.indexOf('largeVoucher') < 0,
@@ -191,9 +194,9 @@ const bsItemsOf = r => (r && r.items ? r.items : []).filter(x => /资产负债�
   check(/keySubject/.test(fhCall), 'D11 该按钮应传 keySubject（跨年/关键科目阈值口径）', fhCall);
   check(store.indexOf('total: checks.length') < 0,
     'D9 summary.total 不得再直接取 checks.length（那是"分类数"，会把参考项也算成风险点）');
-  check(/\bdiff\s*!==\s*0\b/.test(fhBody),
-    'D8b financialHealthCheck 的 BS 判据应是整数严格比较（diff !== 0，与 runSelfTest 同口径）',
-    (fhBody.match(/diff\s*[!=]==?[^;\n]*/) || ['未找到'])[0]);
+  check(/_toAmtUnits\(diff\)\)\s*>=\s*AMT_CENT/.test(fhBody),
+    'D8b financialHealthCheck 的 BS 判据应与 runSelfTest 同口径（_toAmtUnits(diff) >= AMT_CENT）',
+    (fhBody.match(/diff[^;\n]*&&|_toAmtUnits\(diff\)[^;]*/) || ['未找到'])[0]);
 })();
 
 if (fail) {

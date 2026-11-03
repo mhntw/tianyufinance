@@ -140,7 +140,10 @@ const afterBS = S.balanceSheet(MON);
    totalEquity / totalAll），经 num() 归一后全是 0，于是 0-0-0=0 恒真，等于没断言。
    现改为产品自身结账检查所用的口径：资产合计 vs (负债+权益) 合计。 */
 const bsDiff = num(afterBS.totalAsset) - num(afterBS.totalAll);
-ok('录入后资产负债表平衡', eq(bsDiff, 0),
+/* 【2026-11-03】判平口径 = 分（store 的 AMT_CENT）：<1 分（100 个单位）是源账套 4 位小数精度残差
+   （绅蓝「记-21」实测 8 个单位），不是不平衡；≥1 分才算。原先要求严格 0，遇到这类账套会误报。 */
+const BS_CENT = 100;
+ok('录入后资产负债表平衡', Math.abs(bsDiff) < BS_CENT,
   '差=' + yuan(bsDiff) + '  资产=' + yuan(num(afterBS.totalAsset)) + '  负债及权益=' + yuan(num(afterBS.totalAll)));
 
 console.log('--- 场景7：利润表联动（用真实 pl.items 字段）---');

@@ -131,18 +131,22 @@ function run(bookPath) {
   console.log('测试期间：' + monthList.join(', '));
   console.log('');
 
-  /* --- I1：每张凭证借贷平衡 --- */
+  /* --- I1：每张凭证借贷平衡 ---
+     【2026-11-03】判平口径 = 分（store.voucherBalance().centBalanced，见 store 的 AMT_CENT）：
+     源账套 4 位小数会留 <1 分残差（绅蓝 记-21 差 8 个单位），分位上是平的，不算不平。
+     阈值 100 个单位 = 1 分；以下 I2~I4 同此口径（金额域是 0.0001 元整数）。 */
+  const CENT = 100;
   console.log('--- I1: 凭证借贷平衡 ---');
   let badV = 0;
   (data.vouchers || []).forEach(v => {
     const r = S.voucherBalance(v.entries);
-    if (!r.balanced) {
+    if (!r.centBalanced) {
       badV++;
       console.log('    不平：' + (v.word || '') + '-' + (v.no != null ? v.no : '') +
         ' ' + (v.date || '') + '  借=' + round2(r.dr) + ' 贷=' + round2(r.cr) + ' 差=' + round2(r.dr - r.cr));
     }
   });
-  report('I1', '凭证借贷平衡', badV === 0, badV ? 'FAIL ' + badV + ' 张凭证不平' : '');
+  report('I1', '凭证借贷平衡', badV === 0, badV ? 'FAIL ' + badV + ' 张凭证不平（≥1 分）' : '');
 
   /* --- I2：任意月份试算平衡（借方期末合计=贷方期末合计） --- */
   console.log('--- I2: 试算平衡（各月期末） ---');
@@ -158,7 +162,7 @@ function run(bookPath) {
       }
     });
     const diff = Math.abs(totalDr - totalCr);
-    if (diff >= 0.01) {
+    if (diff >= CENT) {
       i2ok = false;
       console.log('    ' + m + '：借方合计=' + round2(totalDr) + ' 贷方合计=' + round2(totalCr) + ' 差额=' + round2(diff));
     }
@@ -171,7 +175,7 @@ function run(bookPath) {
   monthList.forEach(m => {
     const bs = S.balanceSheet(m);
     const diff = bs.totalAsset - bs.totalAll;
-    if (Math.abs(diff) >= 0.01) {
+    if (Math.abs(diff) >= CENT) {
       // 检查是否可由未结转损益解释
       let netProfit = 0;
       try { netProfit = S.profitStatement(m).netProfit; } catch (e) {}
@@ -194,7 +198,7 @@ function run(bookPath) {
     const cf = S.cashFlow(m);
     const netSum = cf.opening + cf.operating + cf.investing + cf.financing + cf.exchange;
     const diff = Math.abs(netSum - cf.ending);
-    if (diff >= 0.01) {
+    if (diff >= CENT) {
       i4ok = false;
       console.log('    ' + m + '：期初=' + round2(cf.opening) + ' 经营=' + round2(cf.operating) +
         ' 投资=' + round2(cf.investing) + ' 筹资=' + round2(cf.financing) + ' 汇率=' + round2(cf.exchange) +

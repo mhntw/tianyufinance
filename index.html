@@ -820,52 +820,13 @@
 
         <div class="settle-tab-pane" id="settlePaneProcess">
 
-          <div class="settle-process-bar">
-            <label class="settle-checkall"><input type="checkbox" id="settleCheckAll"> 全选</label>
-            <div class="settle-process-bar-right">
-              <button class="btn btn-ghost" id="btnSettleRecalc">重新测算</button>
-              <button class="btn btn-primary" id="btnSettleBatchGen">生成凭证</button>
-            </div>
-          </div>
-
           <div class="settle-card-list" id="settleProcessCards">
-
-            <div class="settle-card" id="cardProfit">
-              <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" /></label>
-                <span class="settle-card-name">结转损益</span>
-                <i class="settle-card-help" title="结转损益">?</i>
-                <span class="settle-card-op"><a class="settle-link" data-act="setting">设置</a></span>
-              </div>
-              <div class="settle-card-body settle-card-body-row">
-                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="profitDone">0.00</span></div>
-                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="profitTodo">0.00</span></div>
-              </div>
-              <div class="settle-card-foot">
-                <span class="settle-vch" id="profitVchNo"></span>
-                <button class="btn btn-sm btn-primary" id="btnReCarryForward">重新结转</button>
-                <!-- 年末结转本年利润（3103 → 3104 未分配利润）：仅 12 月显示 -->
-                <button class="btn btn-sm" id="btnCarryYearEnd" style="display:none" title="将本年利润余额结转至利润分配-未分配利润，避免跨年未分配利润失真">结转本年利润</button>
-                <button class="btn btn-sm" id="btnProfitDist" style="display:none" title="按净利润提取盈余公积并分配股利（默认比例）">利润分配</button>
-              </div>
-            </div>
-            <div class="settle-card" id="cardDepr">
-              <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" /></label>
-                <span class="settle-card-name">计提折旧</span>
-                <i class="settle-card-help" title="折旧计提">?</i>
-                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
-              </div>
-              <div class="settle-card-body">
-                <div class="settle-stat"><span class="settle-stat-label">已结转：</span><span class="val" id="depDone">0.00</span></div>
-                <div class="settle-stat"><span class="settle-stat-label">未结转：</span><span class="val" id="depTodo">0.00</span></div>
-              </div>
-              <div class="settle-card-foot">
-                <span class="settle-vch" id="depVchNo"></span>
-                <button class="btn btn-sm btn-ghost" id="btnDepVoucher">生成凭证</button>
-              </div>
-            </div>
-            <!-- 「结转销售成本」卡片（cardCost）已随功能下线移除（2026-11-03） -->
+            <!-- 期末处理卡片（结转损益 / 自定义·预置摊销）全部由
+                 js/pages/settle/Settle.js 的 buildSettleCard 统一模板动态生成，
+                 不再写死静态 HTML，杜绝默认卡与自建卡格式漂移。
+                 「计提折旧」卡 2026-11-03 移除：折旧只在「固定资产」页计提（btnAssetGenVoucher）。
+                同批移除顶部批量操作栏（全选 / 重新测算 / 批量生成凭证）：系统卡只剩结转损益，
+                且批量会把「先结转后摊销」的顺序颠倒导致结转凭证作废重做。 -->
           </div>
         </div>
 

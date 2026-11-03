@@ -368,14 +368,21 @@
    * ============================================================ */
   var AMT_SCALE = 10000;   // 1 元 = 10000 个最小单位（0.0001 元）
 
-  /* 【2026-11-03】1 分 = 100 个最小单位，以及「亚分残差」的判定/显示。
-   * 来由（实测，不是理论）：金蝶源账套是 4 位定点，导入后可能出现 <1 分的借贷残差 ——
-   *   绅蓝 2026-10「记-21」社保凭证里 1,022.8508 元（4 位小数）使贷借差 8 个单位（0.0008 元）。
-   * 它在「分」位上是 0，却会被整数严格判等当成「不平」：结账被硬拦、资产负债表报
-   * 「不平衡 … 差额 ¥0.00」（自相矛盾）、或在本期无凭证时被误解释成「未结转损益」。
-   * 故单列一档：**<1 分只提醒（可结账），≥1 分仍按真不平拦截**（`_addVoucher` 的严格校验不动）。
-   * ⚠ 阈值不得调大：100 个单位 = 1 分是「账面上真的差一分钱」的界线。
-   * ⚠ 显示必须给到 4 位小数，否则残差会被格式化成 "0.00"。 */
+  /* 【2026-11-03】1 分 = 100 个最小单位；**借贷平衡统一以「分」为单位判定**。
+   * 来由（实测，不是理论）：金蝶源账套金额是 4 位定点，导入后可能出现 <1 分的借贷残差 ——
+   *   绅蓝 2026-10「记-21」社保凭证里 1,022.8508 元（4 位小数）使借贷差 8 个单位（0.0008 元）。
+   *
+   * 【判定口径（现行，不得再分叉）】
+   *   ① 差 ≥ 1 分  → 真不平：保存拒绝、自检 error、结账拦截（硬门槛，不可降级）；
+   *   ② 差 < 1 分  → 亚分精度残差：**视为已平衡**，不告警、不出现在自检/结账清单里。
+   *      理由：会计金额的最小单位是分，分位金额完全相同即"账面平"；凭证录入页本来也按
+   *      半分容差判平（Voucher.js updateAmtTotals 的 0.005），金蝶侧同样按分判平
+   *      （12,612.82 = 12,612.82，否则这张凭证在源系统里根本存不下来）。
+   *      以前把亚分残差报成"不平"，会与页面上的「借贷平衡」互相矛盾（同一事实两个结论）。
+   *   ③ 4 位精度仍保留在**存储层**（无损承载源数据），但**不参与**平衡判定；
+   *      需要看残差明细时用 yuanSubFmt（4 位小数）在诊断工具里输出（verify_book_integrity 的 notices）。
+   * ⚠ 阈值不得调大：100 个单位 = 1 分 是「账面上真的差一分钱」的界线。
+   * ⚠ 显示残差必须给 4 位小数，否则会被格式化成 "0.00" 而自相矛盾。 */
   var AMT_CENT = 100;
   function yuanSubFmt(v) {
     var a = Math.abs(num(v));
@@ -777,6 +784,35 @@
       var after = byCode[before];
       if (after != null && after !== before) fa.category = after;
       else if (before !== fa.category) fa.category = before;   // 只顺带去掉首尾空白
+    });
+    return book;
+  }
+
+  /* ---------- 结账模板：清理已下线 / 空壳记录（v6 内的幂等清理，2026-11-03） ----------
+   * 【为什么需要】settleTemplates 是「整表覆盖」写入（Settle.js 的 writeSettleTemplatesToState），
+   *   但历史版本留下的记录不会被自动淘汰：
+   *     · dep / cost / fx —— 功能已下线（折旧入口只在「固定资产」页；结转成本、期末调汇整体移除）；
+   *     · {id, enabled} 空壳 —— 旧版只在 localStorage 存定义、账套里只存启用态，迁移/丢失后
+   *       只剩 id 的记录（实测绅蓝之星 7 条 custom_1792636xxx：无 name、无 template）。
+   *   这些记录没有任何消费者（loadSettleTemplates 会跳过），但会一直躺在账套里，
+   *   导出的 JSON 与排查模板问题时都会造成干扰。
+   * 【判定从严，宁留勿删】只删三类：① 已下线 id（dep/cost/fx）；② 缺 id；
+   *   ③ 既无 name、又无 template 的分录，且没有 custom / fromVchTpl 来源标记的纯空壳。
+   *   profit（唯一在用的系统模板）以及任何「有名称 / 有分录 / 有来源标记」的记录一律保留 ——
+   *   录凭证页同步来的 fromVchTpl 模板可能暂时没有分录金额，也必须留着。
+   * 【只改内存】与 migrateAssetCategoryToName 同一语义：随下一次正常写盘落库，加载路径不强行写盘。
+   * 【幂等】清理后上述记录不再存在，二次进入无变化。 */
+  function cleanupSettleTemplates(book) {
+    if (!book || !Array.isArray(book.settleTemplates)) return book;
+    var DEAD_IDS = { dep: 1, cost: 1, fx: 1 };
+    var SYSTEM_IDS = { profit: 1 };
+    book.settleTemplates = book.settleTemplates.filter(function (s) {
+      if (!s || !s.id) return false;
+      if (DEAD_IDS[s.id]) return false;
+      if (SYSTEM_IDS[s.id]) return true;
+      if (s.template && s.template.length) return true;
+      if (s.custom === true || s.fromVchTpl === true) return true;
+      return !!String(s.name == null ? '' : s.name).trim();
     });
     return book;
   }
@@ -2208,9 +2244,11 @@
     // 内部落库（金额已是定点整数，不再转换）：见 addVoucher 说明
     _addVoucher: function (v) {
       // v: { word, no, date, attach, summary, entries:[{code,name,summary,dr,cr,cashActivity?}] }
-      // 借贷平衡校验：任何路径（导入/接口/脚本）写入的凭证都必须平衡，避免脏数据入总账
+      // 借贷平衡校验：任何路径（导入/接口/脚本）写入的凭证都必须平衡，避免脏数据入总账。
+      // 判平口径 = 分（centBalanced）：<1 分的 4 位小数残差不算不平 —— 否则编辑这类导入凭证时
+      // 会以"借贷不平衡"被拒，用户明明只想改个摘要却无路可走（见 AMT_CENT）。
       var bal = this.voucherBalance(v.entries);
-      if (!bal.balanced) {
+      if (!bal.centBalanced) {
         return { ok: false, msg: '借贷不平衡，无法保存（借 ' + round2(bal.dr) + ' / 贷 ' + bal.cr + '）' };
       }
       // 期间三道闸门：已结账 / 启用月前 / 未来月
@@ -2350,8 +2388,9 @@
         return { ok: false, msg: '该凭证已被「' + (_rvUpd.word || '记') + '-' + _rvUpd.no + '」红字冲销，不可修改；请先删除该红字凭证。' };
       }
       // 借贷平衡校验（与 addVoucher 口径完全一致）：修改也不能改成不平衡
+      // 判平口径 = 分（centBalanced），与自检/结账同一口径；<1 分残差见 AMT_CENT
       var bal = this.voucherBalance(v.entries);
-      if (!bal.balanced) {
+      if (!bal.centBalanced) {
         return { ok: false, msg: '借贷不平衡，无法保存（借 ' + round2(bal.dr) + ' / 贷 ' + round2(bal.cr) + '）' };
       }
       if (this.isPeriodClosed(voucherMonth(this.state.vouchers[idx])))
@@ -2972,7 +3011,7 @@
         KIND_LABEL[K.CARRY_COST] = '结转销售成本';
         KIND_LABEL[K.DEPR] = '计提折旧';
         KIND_LABEL[K.PROFIT_DIST] = '利润分配';
-        KIND_WHERE[K.DEPR] = '「固定资产 → 计提折旧」或「期末处理」';
+        KIND_WHERE[K.DEPR] = '「固定资产 → 计提折旧」';
         return { ok: false, msg: '该凭证是「' + (KIND_LABEL[orig.kind] || '期末业务') + '」自动生成的凭证，'
           + '不应手工红字冲销（它的自动逻辑自带「重新生成」入口，会先删旧再按最新数据重算）。'
           + '如需更正，请到' + (KIND_WHERE[orig.kind] || '「结账 → 期末处理」') + '重新生成' };
@@ -3152,14 +3191,31 @@
       }
       return this.profitYearCode();
     },
-    // 凭证借贷平衡校验
+    /* 凭证借贷平衡校验。两个口径，别混用（见 AMT_CENT 说明）：
+     *   balanced     —— 4 位定点域**严格**相等。只用于程序内部"要不要 plug 配平"这类判断；
+     *   centBalanced —— **以「分」为单位**判平（差 < 1 分即算平）。保存/自检/结账/健康检查一律用它。
+     * diff 为定点单位（0.0001 元）的绝对差额，需要 4 位小数展示时交给 yuanSubFmt。 */
     voucherBalance: function (entries) {
       var dr = 0, cr = 0;
       (entries || []).forEach(function (e) { dr += num(e.dr); cr += num(e.cr); });
-      // 金额已是 0.0001 元整数，`=== 0` 即「借贷真正相等」。round2 保留：
-      // 入参若是元域浮点（旧调用方/测试），它仍负责归一 -0 与消除表示误差。
+      // 金额已是 0.0001 元整数。round2 保留：入参若是元域浮点（旧调用方/测试），
+      // 它仍负责归一 -0 与消除表示误差。
       var drR = round2(dr), crR = round2(cr);
-      return { dr: drR, cr: crR, balanced: round2(Math.abs(drR - crR)) === 0 };
+      var diff = Math.abs(drR - crR);
+      return {
+        dr: drR, cr: crR, diff: diff,
+        balanced: round2(diff) === 0,
+        centBalanced: diff < AMT_CENT
+      };
+    },
+
+    /* 金额「域」归一：v6 账套内部金额已是 0.0001 元整数；历史（v5 / 未迁移）账套仍是「元」浮点。
+       报表函数（balanceSheet 等）沿用 state 的域直接相加，所以拿差额跟「1 分 = AMT_CENT 个单位」
+       比较之前必须先归一到最小单位 —— 否则元域账套的 0.01 元会被当成 0.01 个单位
+       （历史 bug：差值 50 元也会掉进「亚分残差」档）。 */
+    _toAmtUnits: function (v) {
+      var n = num(v);
+      return (this.state && this.state.schemaVersion === SCHEMA_VERSION) ? n : amt(n);
     },
 
     /* ===================== 运行期自检（防算错） =====================
@@ -3190,37 +3246,34 @@
         push('error', '期初余额借贷不平', '借方合计 ¥' + yuanFmt(opDr) + '，贷方合计 ¥' + yuanFmt(opCr) + '，差额 ¥' + yuanFmt(Math.abs(opDr - opCr)), 'openingBal');
       }
       // 2、每张凭证借贷平衡（防止脏数据绕过 UI 校验进账）
-      /* 【2026-11-03】按差额分级：≥1 分 = 真不平（error）；<1 分 = 亚分残差（warn）。
-         见 AMT_CENT 处说明：源账套 4 位小数会留下 0.0008 元这类残差，不该被说成数据损坏，
-         也不该阻塞结账（否则导入账套永久无法结账）。 */
-      var badV = 0, badSub = 0, subDetail = [];
+      /* 【2026-11-03】判平口径 = 分（centBalanced，见 AMT_CENT）：
+         ≥1 分不平 → error（真错，必须报）；<1 分属源账套 4 位小数精度残差 → **视为已平衡，不产生任何项**。
+         以前把亚分残差单列 warn，会与凭证页的「借贷平衡」以及金蝶的判定互相矛盾，且永远无法消除。 */
+      var badV = 0;
       (this.state.vouchers || []).forEach(function (v) {
         var r = self.voucherBalance(v.entries);
-        if (r.balanced) return;
-        var d = Math.abs(num(r.dr) - num(r.cr));
-        if (d < AMT_CENT) {
-          badSub++;
-          if (subDetail.length < 5) subDetail.push((v.word || '记') + '-' + (v.no != null ? v.no : '') + '（' + yuanSubFmt(d) + ' 元）');
-        } else badV++;
+        if (r.centBalanced) return;
+        badV++;
       });
       if (badV > 0) {
-        push('error', '存在借贷不平的凭证', '共 ' + badV + ' 张凭证借贷不相等，将导致账簿与报表失真');
-      }
-      if (badSub > 0) {
-        push('warn', '存在亚分残差凭证（不足 1 分）',
-          '共 ' + badSub + ' 张：' + subDetail.join('、') + (badSub > 5 ? ' 等' : '')
-          + '；差额不足 1 分（源于源账套 4 位小数精度），不影响以「分」显示的报表金额');
+        /* 带稳定 key（与 openingBal / bsBal 一致），供工具按 key 定位、避免再按中文标签做匹配。
+           注意：settleChecklist 的 vbal 项是它自己按 voucherBalance 重算的，**不会**反查这一项
+           （清单要给出"本期"口径，而自检是全账套口径，两者判据同源、范围不同）。 */
+        push('error', '存在借贷不平的凭证', '共 ' + badV + ' 张凭证借贷相差 1 分及以上，将导致账簿与报表失真', 'vbal');
       }
       // 3、资产负债表恒等式（默认取当前期间，入参优先）
       try {
         var m = month || ((typeof currentPeriod === 'function') ? currentPeriod() : (this.state.currentPeriod || ''));
         if (m) {
           var bs = this.balanceSheet(m);
-          // 合计已 round2 到分、且金额是整数 → 差额恒为整数，`!== 0` 即「确实不平衡」。
+          // 合计已 round2 到分、且金额是整数 → 差额恒为整数。
           // （此处历史上两次踩坑：先硬编码 `>= 0.01` 会把「差 1 分」判成平；后改用浮点 EPS（半分），
-          //  定点化后 EPS 又变成「差 1 个最小单位就报」。整数域直接比才是唯一稳定的判据。）
-          if (bs.totalAsset !== bs.totalAll) {
-            var diff = bs.totalAsset - bs.totalAll;
+          //  定点化后 EPS 又变成「差 1 个最小单位就报」。整数域按「分」比才是唯一稳定的判据。）
+          /* 【2026-11-03】判平口径 = 分（见 AMT_CENT）：差额 <1 分是源账套 4 位小数精度残差，
+             视为平衡、**不产生任何自检项**；≥1 分才进入「未结转损益 / 非未结转损益」二分。 */
+          var bsDiff = bs.totalAsset - bs.totalAll;
+          if (Math.abs(this._toAmtUnits(bsDiff)) >= AMT_CENT) {
+            var diff = bsDiff;
             var net = 0;
             try { net = this.profitStatement(m).netProfit; } catch (e) {}
             var carried = 0;
@@ -3229,16 +3282,8 @@
               for (var i = 0; i < eq.length; i++) { if (eq[i].label && eq[i].label.indexOf('本年利润') >= 0) carried = eq[i].end; }
             } catch (e) {}
             var residual = Math.abs((net - carried) - diff) < AMT_SCALE;   // 容差 1 元（AMT_SCALE 个最小单位 = 1 元）
-            /* 【2026-11-03】差额显示必须给到 4 位：8 个单位（0.0008 元）用 2 位会印成 "0.00"，
-               与「不平衡」自相矛盾（实测绅蓝 2026-10）。 */
             var detail = '资产 ¥' + yuanFmt(bs.totalAsset) + '，负债及权益 ¥' + yuanFmt(bs.totalAll) + '，差额 ¥' + yuanSubFmt(Math.abs(diff));
-            if (Math.abs(diff) < AMT_CENT) {
-              /* 亚分残差单列一档，不再塞进「未结转损益 / 非未结转损益」二分法 ——
-                 实测同一个 8 单位，10 月被判「非未结转损益」、11 月（本期无凭证）被判
-                 「未结转损益」，两头都是错的。 */
-              push('warn', '资产负债表差额不足 1 分（亚分残差）',
-                detail + '；源于源账套 4 位小数精度造成的借贷残差，不影响以「分」显示的报表金额', 'bsBal');
-            } else if (residual) {
+            if (residual) {
               push('warn', '资产负债表暂不平衡（未结转损益）', detail + '；差额≈未结转损益净额，结转后自动平衡', 'bsBal');
             } else {
               push('error', '资产负债表不平衡（非未结转损益导致）', detail + '；差额无法由未结转损益解释，可能源于期初录入不平或科目属性标注问题，建议回到数据源规范后重新导入账套', 'bsBal');
@@ -3915,13 +3960,13 @@
       if (!this.state.closedPeriods) this.state.closedPeriods = [];
       return this.state.closedPeriods.indexOf(month) >= 0;
     },
-    // 系统模板默认全部启用，用户可在设置里停用
+    // 系统模板默认启用，用户可在设置里停用
     settleTplDefaultEnabled: function (id) {
       // vat / surTax / incTax 三个模板已下线（2026-09-18）；
-      // cost（结转销售成本）已于 2026-11-03 整体下线（见 costVoucherEstimate 处说明）。
-      // 余下两个系统模板：dep / profit。
-      var systemTpls = ['dep', 'profit'];
-      return systemTpls.indexOf(id) >= 0;
+      // cost（结转销售成本）2026-11-03 整体下线（见 costVoucherEstimate 处说明）；
+      // dep（计提折旧）2026-11-03 从「结账凭证模板设置」移除（结账清单的折旧提示已改为无条件检查）。
+      // 余下一个系统模板：profit。
+      return id === 'profit';
     },
     // 模板当前是否启用（读 state.settleTemplates，未保存时用默认）
     settleTplEnabled: function (id) {
@@ -3962,25 +4007,17 @@
       function kindCount(kind) { return self.periodVouchersOfKind(month, kind).length; }
 
       // 1. 凭证借贷平衡（硬性：本期内任意凭证借贷不平则拦截结账）
-      /* 【2026-11-03】分级：≥1 分不平 → fail（硬拦，且仍不可降级）；只有 <1 分的亚分残差 → warn
-         （可结账，但需用户确认，见 closePeriod 的 warns 分支）。
-         依据见 AMT_CENT 处：源账套 4 位小数（实测绅蓝 2026-10 差 0.0008 元）若一律硬拦，
-         导入账套会从该期起永久无法结账 —— 而分位金额完全一致，那不是应当拦截的错。 */
-      var vBad = [], vSub = [];
+      /* 【2026-11-03】判平口径 = 分（见 AMT_CENT）：≥1 分不平 → fail（硬拦，仍不可降级）；
+         <1 分的源账套 4 位小数残差 → 视为已平衡，直接 ok（不再作为 warn 让用户逐期确认）。 */
+      var vBad = [];
       vs.forEach(function (v) {
         var r = self.voucherBalance(v.entries);
-        if (r.balanced) return;
-        var d = Math.abs(num(r.dr) - num(r.cr));
-        var brief = (v.word || '记') + '-' + (v.no != null ? v.no : '') + '（' + yuanSubFmt(d) + ' 元）';
-        if (d < AMT_CENT) vSub.push(brief); else vBad.push(brief);
+        if (r.centBalanced) return;
+        vBad.push((v.word || '记') + '-' + (v.no != null ? v.no : '') + '（差 ' + yuanSubFmt(r.diff) + ' 元）');
       });
       if (vBad.length) {
         add('vbal', '凭证借贷平衡', 'fail',
           '本期存在借贷不平衡的凭证 ' + vBad.slice(0, 5).join('、') + (vBad.length > 5 ? ' 等' : '') + '，请修正后再结账');
-      } else if (vSub.length) {
-        add('vbal', '凭证借贷平衡', 'warn',
-          '本期 ' + vSub.length + ' 张凭证存在亚分残差（不足 1 分）：' + vSub.slice(0, 5).join('、')
-          + '；不影响以「分」显示的金额，确认后可继续结账');
       } else {
         add('vbal', '凭证借贷平衡', 'ok', '本期凭证借贷均已平衡');
       }
@@ -4073,25 +4110,26 @@
         }
       }
 
-      // 3. 计提折旧（提示项：模板启用且本期有待折旧资产）
-      // 【模板禁用时不加入清单】：禁用意味着用户不打算用这个期末项，
-      // 再显示一条「模板已禁用」既无可操作信息、又占坑，属噪音（此前会加一个 ok 项）。
-      if (self.settleTplEnabled('dep')) {
-        /* 【2026-11-02】判据改为与「实际计提」同源的单点 assetDeprDue —— 它已含全部跳过条件
-         * （本月已计提→0 的幂等保护、次月起提、本月新购不提、已提满、已清理、无购置日）。
-         * 旧写法自己拼 status + deprMonth + assetMonthlyDepr>40，与 assetDeprDue 口径分叉：
-         * 实测「本月新购」的卡被清单算作待计提（19 项），点计提却只提 18 项，两句提示互相打架
-         * （与结转损益此前「一句说已结转、一句说未结转」是同一类缺陷）。 */
-        var faDue = self.state.fixedAssets.filter(function (fa) { return self.assetDeprDue(fa, month) > 0; });
-        var depCnt = kindCount(self.VOUCHER_KINDS.DEPR);
-        if (!faDue.length) {
-          add('dep', '计提折旧', 'ok', depCnt ? ('折旧已计提 ' + depCnt + ' 张') : '本期无待折旧资产');
-        } else {
-          // 已计提但仍有余量（中途新增卡片、补提历史月份）：两句都说，避免从"误报"变成"漏报"
-          add('dep', '计提折旧', 'warn', depCnt
-            ? ('折旧已计提 ' + depCnt + ' 张，另有 ' + faDue.length + ' 项资产待计提折旧')
-            : ('本期有 ' + faDue.length + ' 项资产待计提折旧'));
-        }
+      // 3. 计提折旧（提示项：本期是否有待折旧资产）
+      // 【注意 2026-11-03】期末处理页的折旧卡已移除，计提入口只在「固定资产 → 计提折旧」；
+      // 本项仍保留 —— 它守的是"结账前漏提折旧"这一真实差错，且是本页唯一还会提到折旧的地方。
+      // 【2026-11-03 起改为无条件检查】原先前缀是 settleTplEnabled('dep')，而 dep 模板已从
+      // 「结账凭证模板设置」移除（它已无任何可配置项）：若继续挂在模板开关上，账套里 enabled=false
+      // （如实测绅蓝之星）的账套会永久看不到漏提提醒，且用户已无处把开关打回来。
+      /* 【2026-11-02】判据改为与「实际计提」同源的单点 assetDeprDue —— 它已含全部跳过条件
+       * （本月已计提→0 的幂等保护、次月起提、本月新购不提、已提满、已清理、无购置日）。
+       * 旧写法自己拼 status + deprMonth + assetMonthlyDepr>40，与 assetDeprDue 口径分叉：
+       * 实测「本月新购」的卡被清单算作待计提（19 项），点计提却只提 18 项，两句提示互相打架
+       * （与结转损益此前「一句说已结转、一句说未结转」是同一类缺陷）。 */
+      var faDue = self.state.fixedAssets.filter(function (fa) { return self.assetDeprDue(fa, month) > 0; });
+      var depCnt = kindCount(self.VOUCHER_KINDS.DEPR);
+      if (!faDue.length) {
+        add('dep', '计提折旧', 'ok', depCnt ? ('折旧已计提 ' + depCnt + ' 张') : '本期无待折旧资产');
+      } else {
+        // 已计提但仍有余量（中途新增卡片、补提历史月份）：两句都说，避免从"误报"变成"漏报"
+        add('dep', '计提折旧', 'warn', depCnt
+          ? ('折旧已计提 ' + depCnt + ' 张，另有 ' + faDue.length + ' 项资产待计提折旧')
+          : ('本期有 ' + faDue.length + ' 项资产待计提折旧'));
       }
 
       // 4.（原期末调汇提示项已随外币功能下线移除，序号不再回填以免历史规则错位）
@@ -4452,8 +4490,11 @@
       try {
         var bs = this.balanceSheet(month);
         var diff = bs.totalAsset - bs.totalAll;
-        // 与 runSelfTest 的同类判据同口径（同一事实、同一判据 —— 不允许两处取值不同）
-        if (diff !== 0) {
+        /* 与 runSelfTest 的同类判据同口径（同一事实、同一判据 —— 不允许两处取值不同）。
+           【2026-11-03】判平口径 = 分（见 AMT_CENT）：差额 <1 分是源账套 4 位小数精度残差，
+           不算不平衡，不产生风险项（否则健康检查页会与自检/报表页三个结论互相打架）。
+           差额先经 _toAmtUnits 归一（v6=最小单位 / 旧账套=元），否则元域账套会误判。 */
+        if (Math.abs(this._toAmtUnits(diff)) >= AMT_CENT) {
           checks.push({
             type: 'bs_unbalanced', severity: 'high', title: '资产负债表恒等式不平衡',
             desc: '资产总计 ≠ 负债及所有者权益总计',
@@ -5850,11 +5891,14 @@
      *   与实现不符，会误导后来者去"统一"而引入 bug。）
      *
      * 判断顺序与 depreciateMonth 保持一致（顺序本身有语义：先排除不存在的、再算金额）。 */
-    assetDeprDue: function (fa, month) {
+    /* 某资产在某期间「应提折旧」的毛额（不含幂等保护）。
+     * 与 assetDeprDue 同一套判定，唯独去掉 `deprMonth === month → 0` 那一行，
+     * 故已提过的月份也会算出应提额。assetDeprDue 改为「先判幂等、再调本函数」，
+     * 行为完全等价（本函数不读 deprMonth），避免两份口径分叉（见本文件顶部 check_single_source）。 */
+    _assetDeprRaw: function (fa, month) {
       if (!fa || !month) return 0;
       if (fa.status === '清理') return 0;                      // 已清理不再计提
       if (!fa.acqDate) return 0;
-      if (fa.deprMonth === month) return 0;                    // 本月已计提（幂等，防重复入账）
       if (fa.acqDate >= lastDay(month)) return 0;              // 购置晚于本月，本月不提
       var acqMonth = String(fa.acqDate).slice(0, 7);
       var totalMonths = num(fa.life) * 12;
@@ -5867,6 +5911,10 @@
       var lastMonth = (monthsPosted + 1 >= totalMonths);
       var amt = lastMonth ? Math.max(0, (num(fa.original) - num(fa.salvage)) - num(fa.accumDepr)) : md;
       return amt > 0 ? amt : 0;
+    },
+    assetDeprDue: function (fa, month) {
+      if (fa && fa.deprMonth === month) return 0;              // 幂等保护（本月已计提，防重复入账）
+      return this._assetDeprRaw(fa, month);
     },
     /* 某期间是否已存在折旧凭证 —— 「计提折旧」的防重复入账守卫。
      * 识别口径（两条都刻意不依赖凭证 kind：外部导入的凭证没有 kind）：
@@ -6045,7 +6093,8 @@
       }
       /* 【锚点对齐，2026-11-03】见 depreciationAlignPreview 的说明。
        * 会改卡片基准值（accumDeprBegin / periodUsed / deprMonth），所以分两步：
-       *   未传 opts.align → 只返回预览（needAlign:true），由页面弹确认，绝不静默改数据；
+       *   未传 opts.align → 只返回预览（needAlign:true），由页面弹确认（Asset.js 已接：
+       *   「折旧基准对齐」确认框），绝不静默改数据；
        *   传了 opts.align → 执行对齐并继续计提。
        * 放在「重新计提」之后：本期已有凭证时锚点本就该停在账上最后一期，无需对齐。 */
       var alignPrev = this.depreciationAlignPreview(month);
@@ -6313,6 +6362,9 @@
       // 必须在 fillBookDefaults 之后：映射要读老账套里保留的 assetCats 档案。
       // 只改内存，随下一次正常写盘落库（与下面的部门回填、backfillIncomeRowIds 同一语义）。
       migrateAssetCategoryToName(this.state);
+      // 结账模板：清掉已下线（dep/cost/fx）与纯 {id,enabled} 空壳（幂等，只改内存，见函数说明）。
+      // 必须在 fillBookDefaults 之后：那里会把缺失的 settleTemplates 补成 []。
+      cleanupSettleTemplates(this.state);
       // 资产「使用部门」回填（老账套迁移，幂等）：同源问题 —— 外部账套导入不带部门档案，
       // 本系统 depts 只有默认种子（前台/客房/餐厅），而卡片里写的是厨房/酒店/酒店洗衣房，
       // 于是资产左树与「按部门筛选」对不上（筛选比的是 d.code，卡片存的是名称）。
@@ -6506,6 +6558,8 @@
     /* 资产类别迁移（编码 → 名称）：暴露给校验脚本，让测试跑**真实实现**而不是手抄一份逻辑
        （抄本 = 测的不是产品，这类"假绿"本项目已经踩过）。 */
     migrateAssetCategoryToName: migrateAssetCategoryToName,
+    /* 结账模板清理（已下线 id + 纯空壳）：暴露给校验脚本，测真实实现而不是手抄一份判定。 */
+    cleanupSettleTemplates: cleanupSettleTemplates,
     ACCOUNT_CLASSES: ACCOUNT_CLASSES,
     util: {
       pad2: pad2, fmtDate: fmtDate, monthOf: monthOf, lastDay: lastDay,

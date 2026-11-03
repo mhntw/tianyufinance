@@ -2664,6 +2664,12 @@ label.req::before {
   transition: opacity .15s;
 }
 .fab:hover .fab-tip, .fab:focus-visible .fab-tip { opacity: 1; }
+/* 【2026-11-03】录凭证页隐藏 FAB（见 app.js 的 syncFabVisibility）：
+   该页是定宽 1096 的单据表，最右列是「贷方金额」输入，FAB 压在金额列中段；误触会走
+   goPage('voucher') → showVoucherEdit() → resetVoucherEdit()，把正在录入的凭证清空（无确认）。
+   ⚠ 这行不能省：上方 .fab{display:flex} 是作者样式，会盖掉浏览器对 [hidden] 的默认 display:none，
+   只给元素加 hidden 属性按钮照样显示（同类坑见本文件其他 .xxx[hidden] 规则）。 */
+.fab[hidden] { display: none; }
 
 /* 层级修饰（2026-10-31 收敛，2026-11-01 精简）：全站只保留这一档，动态浮层也一律用类，
    不再各写 style.zIndex。
@@ -4795,18 +4801,12 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 }
 .settle-operate-left,
 .settle-operate-right { display: flex; align-items: center; gap: var(--sp-3); }
-.settle-checkall {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-md);
-  color: var(--ty-text);
-  cursor: pointer;
-}
-.settle-checkall input { margin: 0; }
 /* 【2026-10-31 删除】结账页旧工具条：.settle-layout-toggle（布局切换开关）与
-   .settle-drop / .settle-drop-menu（下拉菜单）。三者连同子选择器在 index.html / js/ 全仓 0 命中，
-   结账页工具条现只有 .settle-checkall（全选）与右侧按钮组。 */
+   .settle-drop / .settle-drop-menu（下拉菜单）。三者连同子选择器在 index.html / js/ 全仓 0 命中。
+   【2026-11-03 删除】期末处理顶部批量操作栏（全选 / 重新测算 / 批量生成凭证）连同
+   .settle-checkall、.settle-process-bar*、.settle-card-check*、.settle-card-checked 一并移除：
+   该页系统卡只剩「结转损益」一张、自定义卡最多 4 张，批量生成还会先结转后摊销导致返工；
+   现在每张卡只保留各自的「生成凭证 / 设置」。 */
 
 /* 期间栏 */
 .settle-period-bar {
@@ -4827,21 +4827,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 }
 
 /* 结账区块 */
-/* 期末处理顶部批量操作栏 */
-.settle-process-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--ty-white);
-  border-bottom: 1px solid var(--ty-border);
-}
-.settle-process-bar-right {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-}
-.settle-process-bar .btn { font-size: var(--fs-md); }
 
 /* 卡片列表（期末处理卡片直接平铺，无分组标题） */
 .settle-card-list {
@@ -4852,8 +4837,8 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   flex-wrap: wrap;
   align-items: stretch;
 }
-.settle-card-list .settle-card { flex: 1 1 0; min-width: 180px; }
-.settle-card-list .settle-add-card { flex: 0 1 220px; min-width: 180px; }
+.settle-card-list .settle-card { flex: 1 1 0; min-width: 220px; }
+.settle-card-list .settle-add-card { flex: 0 1 240px; min-width: 220px; }
 
 .settle-card {
   border: 1px solid var(--ty-border);
@@ -4863,31 +4848,31 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   flex-direction: column;
   background: var(--ty-white);
 }
-.settle-card.settle-card-checked { border-color: var(--ty-blue); background: var(--ty-blue-2); }
 .settle-card.settle-card-disabled { background: var(--ty-blue-2); }
 .settle-card.settle-card-disabled .settle-card-name,
 .settle-card.settle-card-disabled .settle-stat,
 .settle-card.settle-card-disabled .settle-tip { color: var(--ty-text-3); }
 
-/* 卡片头部 */
+/* 卡片头部
+   【2026-11-03】四列窄卡（min-width:180px）里「禁用/设置/删除」操作区 flex-shrink:0 占掉大半宽度，
+   原先不换行的头部把模板名挤压成竖排单字（中文允许任意字间断行）。
+   改为允许换行：窄卡时操作区整体掉到第二行右对齐（margin-left:auto 仍生效），
+   名称与 ? 图标留在首行；宽卡（如结转损益）一行放得下则外观不变。 */
 .settle-card-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   margin-bottom: var(--sp-3);
   min-height: 22px;
 }
-.settle-card-check {
-  display: inline-flex;
-  margin: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.settle-card-check input { margin: 0; }
 .settle-card-name {
   font-size: var(--fs-md);
   font-weight: 400;
   color: var(--ty-text);
+  /* flex-basis 用 auto：名称以自身内容宽度参与换行判定 ——
+     短名整行放得下 → 与图标/「设置」同行；长名放不下 → 占满首行整行宽度，
+     「设置」掉到下一行，名称在整行宽度内正常横排换行（约 10 字/行），不会压成竖排。 */
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -4913,7 +4898,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 
 /* 卡片内容 */
 .settle-card-body { flex: 1; margin-bottom: var(--sp-3); }
-.settle-card-body-row { display: flex; gap: var(--sp-6); }
 .settle-stat {
   display: flex;
   justify-content: space-between;
@@ -4922,8 +4906,10 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   margin-bottom: var(--sp-2);
   line-height: var(--lh-base);
 }
-.settle-stat-label { color: var(--ty-text-2); }
-.settle-stat .val { color: var(--ty-text); font-weight: 400; text-align: right; }
+/* 标签与金额各自禁止逐字断行：窄卡里长金额（如 207,456.76）曾把「已结转：」压成
+   「已结/转：」竖排。两处 nowrap 后合计仍小于 180px 最小卡宽，不会溢出。 */
+.settle-stat-label { color: var(--ty-text-2); white-space: nowrap; }
+.settle-stat .val { color: var(--ty-text); font-weight: 400; text-align: right; white-space: nowrap; }
 .settle-tip {
   display: flex;
   align-items: center;

@@ -329,34 +329,51 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
    *       ②两侧都是精确录入值，固定 0.01。 */
   function _assetLedgerReconcile(month) {
     if (!month) return null;
-    var rows = S.generalLedger(month) || [];
-    function endBalOf(code) {
-      var r = rows.filter(function (x) { return String(x.code) === String(code); })[0];
-      if (!r) return null;
-      // 余额换算走 store.displayBalance（唯一实现）：资产核对需要「按科目正常方向为正」的净值
-      return S.displayBalance(num(r.endDr) - num(r.endCr), r.normal).amount;
+    /* 【2026-11-03】累计折旧的对账基准月必须「封顶到最后一次计提」。
+       卡片侧的累计折旧是按锚点**外推**的（见 _accumDeprAt：锚点月末 + 月折旧 × 月数），
+       而总账只有**已计提月份**的凭证。页面期间若晚于「账上最后一张折旧凭证的月份」，
+       卡片就多出尚未计提的那几个月 —— 实测（绅蓝 2026-10）：卡片 377,801.59 / 总账 363,034.04，
+       差 14,767.55 恰好等于该月折旧，属「本期还没计提」，不是账实不符（页面另有"尚未计提"提示）。
+       故 ① 一律按 min(页面期间, 最后计提月) 比较；② 原值不受计提影响，仍按页面期间核对。 */
+    var lastDepr = (typeof S._lastDeprVoucherMonth === 'function') ? S._lastDeprVoucherMonth() : '';
+    var cmpMonth = (lastDepr && month > lastDepr) ? lastDepr : month;
+    var rowsCmp = S.generalLedger(cmpMonth) || [];
+    var rowsPage = (cmpMonth === month) ? rowsCmp : (S.generalLedger(month) || []);
+    function endBalIn(rows) {
+      return function (code) {
+        var r = rows.filter(function (x) { return String(x.code) === String(code); })[0];
+        if (!r) return null;
+        // 余额换算走 store.displayBalance（唯一实现）：资产核对需要「按科目正常方向为正」的净值
+        return S.displayBalance(num(r.endDr) - num(r.endCr), r.normal).amount;
+      };
     }
-    // 参与核对的卡片（同页面可见口径）
-    var active = (S.state.fixedAssets || []).filter(function (fa) {
-      if (fa.status === '清理') return false;
-      var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
-      return !(acqM && acqM > month);
-    });
+    var endBalCmp = endBalIn(rowsCmp);     // ① 用（可能封顶到上个月）
+    var endBalPage = endBalIn(rowsPage);   // ② 用（页面期间）
+    // 参与核对的卡片（同页面可见口径）：期间早于购置月的卡片不计入
+    function activeAt(upto) {
+      return (S.state.fixedAssets || []).filter(function (fa) {
+        if (fa.status === '清理') return false;
+        var acqM = fa.acqDate ? String(fa.acqDate).slice(0, 7) : '';
+        return !(acqM && acqM > upto);
+      });
+    }
+    var active = activeAt(month);
+    var activeDepr = activeAt(cmpMonth);
 
     // ① 累计折旧
     var depr = null;
     var depSubj = S.subjectRole && S.subjectRole('ACC_DEPR');
     if (depSubj) {
       var cardTotal = 0;
-      active.forEach(function (fa) { cardTotal += _accumDeprAt(fa, month, S.assetMonthlyDepr(fa)); });
-      var ledgerEnd = endBalOf(depSubj.code);
+      activeDepr.forEach(function (fa) { cardTotal += _accumDeprAt(fa, cmpMonth, S.assetMonthlyDepr(fa)); });
+      var ledgerEnd = endBalCmp(depSubj.code);
       if (ledgerEnd !== null) {
         var d1 = round2(cardTotal - ledgerEnd);
         // 容差 = 每张卡 1 分（整数域）：原式 round2(n*0.01+0.01) 是「元」容差，
         // 整数域里 ≈0 → 塌成严格相等，账实对账会把合法的分位舍入差误报为「不符」。
-        var tol = (active.length + 1) * (U.AMT_SCALE / 100);
+        var tol = (activeDepr.length + 1) * (U.AMT_SCALE / 100);
         depr = { subject: depSubj, cardTotal: cardTotal, ledgerTotal: ledgerEnd, diff: d1,
-          tolerance: tol, ok: Math.abs(d1) <= tol };
+          tolerance: tol, ok: Math.abs(d1) <= tol, cmpMonth: cmpMonth };
       }
     }
 
@@ -378,7 +395,7 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     });
     var ledgerOrig = 0, detail = [];
     Object.keys(byAcct).forEach(function (c) {
-      var led = endBalOf(c) || 0;
+      var led = endBalPage(c) || 0;
       ledgerOrig += led;
       var d = { code: c, name: (S.subject(c) || {}).name || '', card: byAcct[c].sum,
         ledger: led, diff: round2(byAcct[c].sum - led) };
@@ -396,7 +413,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     var orig = { cardTotal: cardOrig, ledgerTotal: ledgerOrig, diff: d2, tolerance: U.AMT_SCALE / 100,
       ok: Math.abs(d2) <= U.AMT_SCALE / 100, detail: detail, orphan: orphan };   // 容差 1 分（整数域）
 
-    return { month: month, depr: depr, orig: orig, ok: (!depr || depr.ok) && orig.ok };
+    return { month: month, cmpMonth: cmpMonth, unbooked: cmpMonth !== month,
+      depr: depr, orig: orig, ok: (!depr || depr.ok) && orig.ok };
   }
 
   /* ---------- 差额定位：把「卡片 vs 总账」的差额落到具体凭证 / 具体卡片 ----------
@@ -551,8 +569,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     }
     // ① 累计折旧
     if (rc.depr && !rc.depr.ok) {
-      parts.push(html`<b>期末累计折旧与总账不符</b>：卡片 <b>${money(rc.depr.cardTotal)}</b> / 科目「${rc.depr.subject.code} ${rc.depr.subject.name}」期末 <b>${money(rc.depr.ledgerTotal)}</b>，差额 <b>${money(rc.depr.diff)}</b>`);
+      var depLabel = rc.unbooked ? ('截至 ' + rc.cmpMonth + ' 累计折旧') : '期末累计折旧';
+      parts.push(html`<b>${depLabel}与总账不符</b>：卡片 <b>${money(rc.depr.cardTotal)}</b> / 科目「${rc.depr.subject.code} ${rc.depr.subject.name}」期末 <b>${money(rc.depr.ledgerTotal)}</b>，差额 <b>${money(rc.depr.diff)}</b>`);
       more.push(html`<b>累计折旧差额口径</b>：容差 ${money(rc.depr.tolerance)}，已按卡片张数计入逐张舍入的累计误差。`);
+      if (rc.unbooked) {
+        // 基准月写清楚：否则用户会按"本期"理解，误以为账实不符（本期未计提属正常状态，页面另有提示）
+        more.push(html`<b>对账基准月</b>：累计折旧按「账上已记折旧的最后月份 ${rc.cmpMonth}」比较（页面期间 ${rc.month} 尚未计提，卡片侧会多出该月折旧）；计提后自动一致。`);
+      }
     }
     if (!parts.length) { el.hidden = true; el.innerHTML = ''; return; }
     more.unshift(badge.length ? html`<b>线索</b>：${badge.join(' · ')}` : null);   // null 由下方 filter 清掉
@@ -688,12 +711,17 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
      * 业务凭证已在凭证页禁止手工删除，原先「删旧凭证再回来提」的路已关闭，出口只剩这里。
      * 与下面「范围提示」互斥（重新计提时用户已知范围），避免连续弹两个确认框。 */
     var existed = S.deprVoucherIn(month);
+    /* 锚点是否落后（只读预览，仅用于决定"要不要同时弹范围提示"，不作为判定依据）：
+       真正的判定始终以 store.depreciateMonth 的返回值 needAlign 为准（下方），
+       避免页面自己算一套口径 —— 那种分叉正是「页面说能提、store 说不能」的温床。 */
+    var alignNeed = !existed && typeof S.depreciationAlignPreview === 'function'
+      ? !!S.depreciationAlignPreview(month).need : false;
     if (existed) {
       if (!(await H.confirmAsync(
         '本期（' + month + '）已存在折旧凭证 ' + existed + '。\n\n' +
         '继续将【作废】该凭证，并按最新卡片数据重新计提（同一期间不会重复入账）。\n\n' +
         '是否重新计提？', { title: '重新计提折旧' }))) return;
-    } else if (checked.length) {
+    } else if (!alignNeed && checked.length) {
       var total = (S.state.fixedAssets || []).length;
       if (!(await H.confirmAsync(
         '「计提折旧」按期间对全部应计提折旧的资产进行，与勾选无关（勾选不参与筛选）。\n\n' +
@@ -701,6 +729,29 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
         '是否继续计提 ' + month + ' 的折旧？', { title: '计提折旧范围' }))) return;
     }
     var r = S.depreciateMonth(month);
+    /* 【2026-11-03】锚点对齐：卡片累计折旧存的是「锚点月末余额」。若账上已有更晚期间的折旧凭证
+       （补提 / 导入 / 手工模板），而卡片锚点仍停在更早月份，直接计提会把这些中间期永久少掉，
+       故 store 拒绝并返回 needAlign —— 这里必须给出确认出口，否则用户只看到红字提示、无路可走。
+       实测绅蓝之星 2026-10：19 张卡 / 61 期 / 46,824.80 元。
+       对齐只改卡片基准（accumDeprBegin / periodUsed / deprMonth），不新增也不修改任何凭证。
+       注意：needAlign 与「本期已有凭证」互斥（有凭证时 last ≥ 本期，preview 必然 need=false），
+       所以走到这里时本期一定还没有折旧凭证，不存在"已作废旧凭证又取消"的中间态。 */
+    if (!r.ok && r.needAlign) {
+      var pv = r.preview || {};
+      var cards = pv.cards || [];
+      var from = (cards[0] && cards[0].from) || '?';
+      var to = pv.last || '?';
+      var okAlign = await H.confirmAsync(
+        '卡片累计折旧基准停在 ' + from + '，而账上折旧凭证已记到 ' + to + '。\n\n' +
+        cards.length + ' 张卡片、共 ' + (pv.periods || 0) + ' 期（' + money(pv.total || 0) + ' 元）' +
+        '尚未并入卡片基准。若直接计提，这些期间的折旧会在卡片与报表里凭空少掉。\n\n' +
+        '确认后将把上述金额并入卡片「期初累计折旧」，并把基准推进到 ' + to + '，' +
+        '再继续计提 ' + month + '。\n' +
+        '（只改卡片基准，不新增、不修改任何凭证；账上已有的折旧凭证保持原样。）\n\n' +
+        '是否确认对齐并继续计提？', { title: '折旧基准对齐' });
+      if (!okAlign) return showToast('已取消：未对齐，也未计提', 'warn');
+      r = S.depreciateMonth(month, { align: true });
+    }
     if (!r.ok) return showToast(r.msg, 'error');
     // 【2026-11-03】aligned>0 表示本次先把中间若干未并入卡片的折旧补进了卡片基准，
     // 提示里点出这笔金额，便于用户事后在「折旧汇总」和操作日志里对上（0 则不打扰）。

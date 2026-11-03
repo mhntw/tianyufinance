@@ -139,6 +139,10 @@ const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
    （资产负债表合计只做「两边相等」的等式断言，两侧同乘常数不影响结论，故无需换算。） */
 const Y = (global.util && global.util.AMT_SCALE) || 10000;
 const yuan = n => Number(n) / Y;
+/* 【2026-11-03】资产负债表等式断言的容差：内部整数域 1 分 = 100 个单位。
+   判平口径与 store 的 AMT_CENT 一致 —— <1 分是源账套 4 位小数精度残差（绅蓝「记-21」实测 8 个单位），
+   不是不平衡；≥1 分才算。此前这里按 `0.005`（元域阈值）比整数，遇到这类账套会误报 33 条。 */
+const BS_CENT = 100;
 let pass = 0, fail = 0;
 const fails = [];
 function ok(name, cond, extra) {
@@ -423,7 +427,7 @@ PLAN.forEach(P => {
     //   本条原先期望「差额 = 当月利润」（即不平），那是借助 unclosedProfit「只统计末级科目」
     //   的缺陷才成立的：本测试用一级科目(有下级)记账，未结转利润被算成 0，才显得"不平"。
     //   该缺陷修复后此期望不再成立，改为直接核对未结转利润本身（更有针对性）。
-    ok('结转前资产负债表平衡（未结转损益已并入权益）', Math.abs(diff) < 0.005, '差 ' + diff.toFixed(2));
+    ok('结转前资产负债表平衡（未结转损益已并入权益）', Math.abs(diff) < BS_CENT, '差 ' + diff.toFixed(2));
     eqAmt('未结转利润 = 当月利润（被正确识别）', r2(yuan(S.unclosedProfit(M))), P.expect.profit);
   }
 
@@ -446,7 +450,7 @@ PLAN.forEach(P => {
     S._glCache = {};
     const bs = S.balanceSheet(M);
     const diff = r2(num(bs.totalAsset) - num(bs.totalLiability) - num(bs.totalEquity));
-    ok('结转后资产负债表平衡', Math.abs(diff) < 0.005, '差 ' + diff.toFixed(2));
+    ok('结转后资产负债表平衡', Math.abs(diff) < BS_CENT, '差 ' + diff.toFixed(2));
     const assetDelta = Object.keys(P.expect.delta).reduce((a, c) => {
       const cls = (S.subject(c) || {}).cls;
       return a + ((cls === 'asset') ? P.expect.delta[c] : 0);
@@ -478,7 +482,7 @@ PLAN.forEach(P => {
     eqAmt('3104 增加 = 结转的利润', r2(allocAfter - allocBefore), before3103);
     S._glCache = {};
     const bsY = S.balanceSheet(M);
-    ok('年末结转后资产负债表平衡', Math.abs(r2(num(bsY.totalAsset) - num(bsY.totalLiability) - num(bsY.totalEquity))) < 0.005);
+    ok('年末结转后资产负债表平衡', Math.abs(r2(num(bsY.totalAsset) - num(bsY.totalLiability) - num(bsY.totalEquity))) < BS_CENT);
   }
 
   section('【8】结账 ' + M);
@@ -556,7 +560,7 @@ console.log('══════════════════════�
   }
   S._glCache = {};
   const bs1 = S.balanceSheet(yStart);
-  ok('2027-01 资产负债表平衡', Math.abs(r2(num(bs1.totalAsset) - num(bs1.totalLiability) - num(bs1.totalEquity))) < 0.005);
+  ok('2027-01 资产负债表平衡', Math.abs(r2(num(bs1.totalAsset) - num(bs1.totalLiability) - num(bs1.totalEquity))) < BS_CENT);
 }
 
 /* ============================================================
@@ -582,7 +586,7 @@ console.log('══════════════════════�
   ok('A5 凭证进入回收站', (S.deletedVouchers() || []).some(v => v.id === vA.id));
   S._glCache = {};
   const bsDel = S.balanceSheet(XM);
-  ok('A6 删除后资产负债表仍平衡', Math.abs(r2(num(bsDel.totalAsset) - num(bsDel.totalLiability) - num(bsDel.totalEquity))) < 0.005);
+  ok('A6 删除后资产负债表仍平衡', Math.abs(r2(num(bsDel.totalAsset) - num(bsDel.totalLiability) - num(bsDel.totalEquity))) < BS_CENT);
   const resR = S.restoreVoucher(vA.id);
   ok('A7 凭证还原成功', resR && resR.ok !== false, (resR && resR.msg) || '');
   eqAmt('A8 还原后 1002 本期变动恢复 +1234.56', periodDelta(XM, '1002'), 1234.56);
@@ -641,7 +645,7 @@ console.log('══════════════════════�
     ok('C13 该期重新进入已结账', S.isPeriodClosed(XM));
     S._glCache = {};
     const bsX = S.balanceSheet(XM);
-    ok('C14 异常操作后资产负债表仍平衡', Math.abs(r2(num(bsX.totalAsset) - num(bsX.totalLiability) - num(bsX.totalEquity))) < 0.005);
+    ok('C14 异常操作后资产负债表仍平衡', Math.abs(r2(num(bsX.totalAsset) - num(bsX.totalLiability) - num(bsX.totalEquity))) < BS_CENT);
   }
 }
 

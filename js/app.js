@@ -740,8 +740,13 @@
      此前 app.js 内 3 处、各页面若干处都各写一遍「有桥接用桥接，否则 window.confirm」，
      漏写一处就是两套长相、两种行为。统一从这里取（H.confirmAsync / H.promptAsync 同源）。 */
   function askConfirm(msg, title) {
+    /* 【2026-11-03】第二个参数接受两种历史传法，归一只在 dialog-bridge 做：
+         · 字符串      —— app.js 内部调用点：askConfirm(msg, '添钰财务管理系统')
+         · { title }   —— 页面模块十余处：H.confirmAsync(msg, { title: '删除账套' })
+       此前这里把 { title } 再包一层成 { title: { title } }，标题栏渲染成「[object Object]×」，
+       全站确认框的标题都错。**不要**在调用点各改各的写法 —— 两处各自归一必然再次分叉。 */
     var d = window.__dialogBridge;
-    if (d && d.confirmAsync) return d.confirmAsync(msg, title ? { title: title } : undefined);
+    if (d && d.confirmAsync) return d.confirmAsync(msg, title);
     return Promise.resolve(window.confirm ? window.confirm(msg) : false);
   }
   function askPrompt(msg, def, opts) {
@@ -2041,6 +2046,24 @@
     updateTabBar(page);
     // 同步左侧导航高亮（当前页加粗变蓝、所属分组自动展开）——2026-11-01 侧栏恢复后重新接上
     syncSideNav(page);
+    syncFabVisibility();
+  }
+
+  /* 录凭证页隐藏悬浮「录凭证」按钮（2026-11-03）。
+   * 【为什么】该按钮全站常驻（right:24px / top:60%），而录凭证页是定宽 1096 的单据表，
+   *   最右列正是「贷方金额」输入 —— 窗口不够宽时按钮就压在金额列中段，录到一半点金额很容易点到它。
+   *   误触代价不是"多点一下"：goPage('voucher') → showVoucherEdit() → resetVoucherEdit()
+   *   会把正在录入的凭证清成 4 行空白（vEditId 清空、附件清零），**全程无确认**。
+   *   而且 goPage 里 voucher 分支在 alreadyActive 判断之前，人已经在本页也照样重来。
+   * 【为什么按 DOM 结果判断，不按 goPage 的 page 参数】hash 直达、标签栏切换、showVoucherEdit
+   *   各条路径最终都只体现为「#page-voucher 是否 active」，读结果状态最不容易漏。
+   * 【显示方式】用 hidden 属性 + CSS 的 .fab[hidden]{display:none}
+   *   —— 不能只靠 hidden 属性：.fab{display:flex} 会盖掉浏览器对 [hidden] 的默认 display:none。 */
+  function syncFabVisibility() {
+    var fab = document.getElementById('fabVoucher');
+    if (!fab) return;
+    var sec = document.getElementById('page-voucher');
+    fab.hidden = !!(sec && sec.classList.contains('active'));
   }
 
   // 表头吸顶已由方案 C（纯结构：操作栏为滚动区的静态兄弟、表头 sticky top:0）彻底解决，
@@ -2426,6 +2449,8 @@
         ico.innerHTML = '<svg viewBox="0 0 1000 1000" aria-hidden="true"><path d="' + TY_MENU_ICON_PATHS['icon-voucher-add'] + '"/></svg>';  /* escape-ok: 字形路径来自常量表（纯大加号，专为 FAB 设计） */
       }
       fab.addEventListener('click', function () { goPage('voucher'); });
+      // 首次绑定时同步一次：启动/刷新可能直接落在录凭证页（hash 直达），此时按钮必须已隐藏。
+      syncFabVisibility();
     }
     // FAB 在脚本之后解析（body 末尾），故等 DOM 就绪再绑定
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
