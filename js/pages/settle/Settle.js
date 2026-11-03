@@ -27,8 +27,8 @@ const bookScopeChanged = H.bookScopeChanged || function () { return false; };
 
 // 取卡片对应的模板 id：系统卡用固定 id 映射，预置摊销/自定义卡用 data-id 属性
 function cardTplId(card) {
-  // vat / surTax / incTax 三个模板已下线（2026-09-18），不再参与卡片映射
-  var map = { cardDepr: 'dep', cardCost: 'cost', cardProfit: 'profit' };
+  // vat / surTax / incTax 三个模板已下线（2026-09-18）；cost（结转销售成本）2026-11-03 下线
+  var map = { cardDepr: 'dep', cardProfit: 'profit' };
   if (card.id && map[card.id]) return map[card.id];
   var did = card.getAttribute('data-id');
   return did || null;
@@ -176,29 +176,15 @@ function onDepVoucher() {
     var tpl = getSettleTemplates().filter(function (t) { return t.id === 'dep'; })[0] || {};
     var r = S.depreciateMonth(month, { word: tpl.word, summary: tplSummary(tpl, month), date: tmplVoucherDate(month, tpl) });
     if (!r.ok) return showToast(r.msg, 'error');
-    showToast('已生成折旧凭证：' + money(r.total) + '（' + r.count + ' 项资产）');
+    // 【2026-11-03】与固定资产页同一口径：aligned>0 说明本期计提前先把往期未并入卡片的折旧补进了卡片基准
+    var alignedTip = r.aligned > 0 ? '，其中 ' + money(r.aligned) + ' 元为往期折旧并入卡片基准' : '';
+    showToast('已生成折旧凭证：' + money(r.total) + '（' + r.count + ' 项资产' + alignedTip + '）');
     refreshSettle(); syncAll();
 }
 
-/* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
-   按钮 btnCarryCost 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
-function onCarryCost() {
-    var month = selMonth; // 期末处理跟随结账 tab 选期
-    var tpl = getSettleTemplates().filter(function (t) { return t.id === 'cost'; })[0] || {};
-    var est = S.costVoucherEstimate(month, tpl);
-    // tpl.costAmount 是模板域手填额（元）→ 经 U.amt 换算；est.amount 由 store 直接给出定点整数
-    var amt = U.num(tpl.costAmount) > 0 ? U.amt(tpl.costAmount) : est.amount;
-    if (amt < 0.005) return showToast('本期无销售成本可结转', 'error');
-    // 查重：连点会重复生成同额凭证虚增成本；按 v.kind 识别（导入凭证无 summary，摘要正则恒不命中）。
-    var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
-    if (costExisted.length) {
-      return showToast('本期已生成 ' + costExisted.length + ' 张结转销售成本凭证，请勿重复生成；如需重做请先删除旧凭证', 'error');
-    }
-    var r = S.genCostVoucher(month, tpl, amt);
-    if (!r || !r.ok) return showToast(r ? r.msg : '结转失败', 'error');
-    showToast('已结转销售成本：' + money(amt));
-    refreshSettle(); syncAll();
-}
+/* 「结转销售成本」功能已于 2026-11-03 整体下线（onCarryCost 一并删除）。
+ * 下线依据见 store.js 中 costVoucherEstimate 处的说明：两本真实账套从未使用，且
+ * 5401 被当作费用归集科目，模板的「按收入比例结转」与记账事实不符。 */
 
 /* 由 bindSettleEvents 内联 handler 原样搬迁（2026-10-04，A1 纯搬迁，逐字未改）：
    按钮 btnReCarryForward 的处理逻辑。绑定仍在 bindSettleEvents 里按原顺序完成。 */
@@ -216,7 +202,8 @@ async function onReCarryForward() {
     // 重新结转：先删除本期已有的结转损益凭证，避免重复结转本年利润
     var delMsg = '';
     for (var i = 0; i < old.length; i++) {
-      var dr = S.removeVoucher(old[i].id);
+      // system 标记：这是「重新结转」的内部作废，不是人工删凭证（人工入口已禁删业务凭证）
+      var dr = S.removeVoucher(old[i].id, '重新结转损益', { system: 'settle' });
       if (!dr.ok) return showToast('删除旧结转凭证失败：' + dr.msg, 'error');
     }
     if (old.length) delMsg = '（已删除旧结转凭证 ' + old.length + ' 张）';
@@ -263,7 +250,8 @@ async function onProfitDist() {
     if (!(await H.confirmAsync(cmsg, { title: old.length ? '重新分配利润' : '利润分配' }))) return;
     // 重新分配：先删除旧凭证，避免重复生成错账（同结转损益/本年利润）
     for (var i = 0; i < old.length; i++) {
-      var dr = S.removeVoucher(old[i].id);
+      // system 标记：内部作废（同「重新结转」），人工入口已禁删业务凭证
+      var dr = S.removeVoucher(old[i].id, '重新分配利润', { system: 'settle' });
       if (!dr.ok) return showToast('删除旧利润分配凭证失败：' + dr.msg, 'error');
     }
     var r2 = S.carryProfitDistribute(month);
@@ -383,15 +371,14 @@ async function onSettleBatchGen() {
     if (!toGenerate.length) return showToast('没有可生成的卡片', 'warn');
     for (var i = 0; i < toGenerate.length; i++) {
       var g = toGenerate[i];
-      // vat / surTax / incTax 已下线（2026-09-18），批量生成不再包含这三项
-      var sysMap = { dep: 'btnDepVoucher', cost: 'btnCarryCost', profit: 'btnReCarryForward' };
+      // vat / surTax / incTax 已下线（2026-09-18）；cost（结转销售成本）2026-11-03 下线
+      var sysMap = { dep: 'btnDepVoucher', profit: 'btnReCarryForward' };
       if (sysMap[g.id]) {
         // 系统模板：检查是否已生成，未生成则触发对应按钮逻辑。
         // 结转损益的「是否已生成」走单点四态（carryForwardStatus().exists），页面不再自行按 kind 过滤 ——
         // 同一口径多份实现正是「各消费方结论相反」那类缺陷的温床（见 check_single_source.js 的 carry-state-fork 规则）。
         var carrySt = g.id === 'profit' ? S.carryForwardStatus(month) : null;
-        var sysKind = g.id === 'dep' ? S.VOUCHER_KINDS.DEPR : S.VOUCHER_KINDS.CARRY_COST;
-        var existed = carrySt ? carrySt.exists : (S.periodVouchersOfKind(month, sysKind).length > 0);
+        var existed = carrySt ? carrySt.exists : (S.periodVouchersOfKind(month, S.VOUCHER_KINDS.DEPR).length > 0);
         if (existed) {
           // 结转损益的凭证可能"过时"（其后损益凭证被删改，本期净额不再为零）：此时不能静默跳过，
           // 否则结账检查报 blocking fail、批处理却说"跳过"，用户找不到出口。
@@ -409,15 +396,8 @@ async function onSettleBatchGen() {
         } else if (g.id === 'dep') {
           var rD = S.depreciateMonth(month, { word: tpl.word, summary: tplSummary(tpl, month), date: tmplVoucherDate(month, tpl) });
           if (rD.ok) okCount++; else { errCount++; msgs.push('计提折旧：' + rD.msg); }
-        } else if (g.id === 'cost') {
-          var estC = S.costVoucherEstimate(month, tpl);
-          var amtC = U.num(tpl.costAmount) > 0 ? U.amt(tpl.costAmount) : estC.amount;
-          if (amtC < 0.005) { skipCount++; continue; }
-          var costExisted = S.periodVouchersOfKind(month, S.VOUCHER_KINDS.CARRY_COST);
-          if (costExisted.length) { skipCount++; continue; }
-          var rC = S.genCostVoucher(month, Object.assign({}, tpl, { date: tmplVoucherDate(month, tpl) }), amtC);
-          if (rC && rC.ok) okCount++; else { errCount++; msgs.push('结转销售成本：' + (rC ? rC.msg : '失败')); }
         }
+        // cost（结转销售成本）分支随功能下线删除（2026-11-03）
       } else {
         // 预置摊销/自定义模板：走 genVoucherFromTpl
         var tpl = findSettleTemplate(g.id);
@@ -469,7 +449,7 @@ function bindSettleEvents() {
     });
   });
   onBtn('btnDepVoucher', onDepVoucher);
-  onBtn('btnCarryCost', onCarryCost);
+  // 结转销售成本按钮的事件绑定已随功能下线移除（2026-11-03）
   // 「转出未交增值税 / 计提附加税 / 计提所得税」三个按钮已随模板下线（2026-09-18）。
   // 真实账套从未使用增值税转出；附加税与所得税按「利润×税率」测算的金额与申报口径不符，
   // 自动生成不可信，税款一律由会计按实际申报数手工录入。
@@ -670,7 +650,7 @@ function renderCustomCards(procList, profitCard) {
 function renderSettleCards() {
   // 期末处理卡片：checkbox 绑定模板启用状态（每张卡的启用开关）
   var cardTplMap = {
-    cardDepr: 'dep', cardCost: 'cost', cardProfit: 'profit'
+    cardDepr: 'dep', cardProfit: 'profit'   // cost 卡片已随结转销售成本功能下线（2026-11-03）
   };
   Object.keys(cardTplMap).forEach(function (cid) {
     var card = $(cid);
@@ -708,9 +688,9 @@ function renderSettleChecklist(month, K, curDoneCount) {
     // 只列出「已启用」的模板项：模板被禁用后应从检查清单里消失。
     // 此前是硬编码 3 项、不看启用状态 —— 于是「结转销售成本」禁用后仍挂在清单上，
     // 看起来像禁用没生效。数据层 settleChecklist 已采用同一口径（禁用则不加入）。
+    // cost（结转销售成本）项已随功能下线移除（2026-11-03）
     var rows = [
       { k: 'dep', name: '计提折旧', kind: K.DEPR, hint: '固定资产折旧凭证' },
-      { k: 'cost', name: '结转销售成本', kind: K.CARRY_COST, hint: '销售成本结转' },
       { k: 'profit', name: '结转损益', kind: K.CARRY_PL, hint: '损益类科目结转' }
     ].filter(function (r) { return S.settleTplEnabled(r.k); });
     var out = '';
@@ -756,11 +736,10 @@ function renderSettleVchNos(vs, K, kindVs) {
     }).join('、');
   };
   // id 必须与 index.html 完全一致（曾用 depVoucherNo / costVoucherNo / profitVoucherNo，
-  // 而 HTML 里是 depVchNo / costVchNo / profitVchNo —— 不匹配导致 $() 取不到元素、
+  // 而 HTML 里是 depVchNo / profitVchNo —— 不匹配导致 $() 取不到元素、
   // 凭证字号永远不显示，且不报任何错。tools/_diag_settle_tpl.js 已加契约检查防回归。
   filler('depVchNo', K.DEPR);
-  filler('costVchNo', K.CARRY_COST);
-  filler('profitVchNo', K.CARRY_PL);
+  filler('profitVchNo', K.CARRY_PL);   // costVchNo 已随结转销售成本下线移除
 }
 
 /* 结转损益：已结转/应结转额 + 利润卡状态类 */
@@ -1064,9 +1043,10 @@ function genOnceVoucher(month, kind, summary, entries, word, date) {
 var SETTLE_TMPL_KEY = 'settle_templates_v1';   // 旧版遗留键：只读、不删（迁移源 + 降级回滚保险）
 
 /* 写进账套的模板快照：**黑名单式浅拷贝**，只丢函数与 `_` 前缀的 UI 临时态。
-   ⚠ 不要改成字段白名单 —— 曾试过白名单，漏了 costRevSubj / costInvSubj / costProdSubj /
-   costSummary / voucherDate 这五个「模板设置」里可编辑的字段，保存一次就会把它们悄悄丢掉。
-   这里的原则是"宁可多存，不可少存"：未知字段原样带进账套，旧版本读到时也只是忽略。 */
+   ⚠ 不要改成字段白名单 —— 曾试过白名单，漏了成本模板那批「模板设置」里可编辑的字段
+   （costRevSubj / costInvSubj / costRate / voucherDate 等），保存一次就会把它们悄悄丢掉。
+   这里的原则是"宁可多存，不可少存"：未知字段原样带进账套，旧版本读到时也只是忽略。
+   （成本模板本身 2026-11-03 已下线，但「整体保留」的规则对未来新增字段同样成立。） */
 function snapshotSettleTemplate(t) {
   var o = {};
   Object.keys(t || {}).forEach(function (k) {
@@ -1088,13 +1068,11 @@ function stateSettleTemplates() {
 }
 
 function defaultSettleTemplates() {
-  // 系统模板共 3 个（dep / cost / profit）；各自的默认启用状态由 store.settleTplDefaultEnabled 决定，
+  // 系统模板共 2 个（dep / profit）；各自的默认启用状态由 store.settleTplDefaultEnabled 决定，
   // 此处 enabled 仅作为「账套里没有该模板记录」时的兜底初值。用户可在模板设置里停用/启用。
   return [
     { id: 'dep', name: '计提折旧', enabled: true, summary: '计提本月固定资产折旧', template: [], hasEntries: false, summaryText: '计提折旧费用' },
-    // cost 默认关闭：借方科目（5401 主营业务成本各明细）因账套而异，默认值指向的「4001 生产成本」
-    // 在真实账套里零发生额，自动生成会把成本记歪。由用户在期末处理页显式「启用」并指定科目后再用。
-    { id: 'cost', name: '结转销售成本', enabled: false, summary: '按收入比例结转销售成本', template: [], hasEntries: false, costRate: '80', costAmount: '' },
+    // cost（结转销售成本）默认模板已下线（2026-11-03），不再预置
     // vat / surTax / incTax 三个默认模板已下线（2026-09-18），不再预置
     // targetSubj 留空 = 用「本年利润」科目角色（store.settleProfitTargetCode 解析，回退 3103）。
     // 旧版硬写 '3103'，会把已重映射本年利润科目的账套带偏（模板值优先于角色）。
@@ -1102,9 +1080,10 @@ function defaultSettleTemplates() {
   ];
 }
 
-// 系统模板（dep/cost/profit 共 3 个，跟账套无关）；其余模板随账套存放（存于 state.settleTemplates，删账套即随之消失）
+// 系统模板（dep/profit 共 2 个，跟账套无关；cost 已于 2026-11-03 下线）；
+// 其余模板随账套存放（存于 state.settleTemplates，删账套即随之消失）
 function isSystemSettleTmpl(t) {
-  return ['dep', 'cost', 'profit'].indexOf(t && t.id) >= 0;
+  return ['dep', 'profit'].indexOf(t && t.id) >= 0;
 }
 // 结账检查清单（store.settleChecklist）按它判断、卡片 checkbox 显示也按它，两处从此一致。
 function syncTplEnabledFromStore() {
@@ -1244,8 +1223,7 @@ function selectSettleTemplate(id, t0) {
   if (formPanel) formPanel.style.display = '';
   fillSettleTmplForm(t);
   if (t && t.custom) {
-    // 预置摊销/自定义模板：隐藏成本参数和系统参数，显示分录表格
-    var costExtra = $('settleTmplCostExtra'); if (costExtra) costExtra.style.display = 'none';
+    // 预置摊销/自定义模板：隐藏系统参数，显示分录表格
     var custExtra = $('settleTmplCustomExtra'); if (custExtra) custExtra.style.display = '';
     var sysExtra0 = $('settleTmplSystemExtra'); if (sysExtra0) sysExtra0.style.display = 'none';
     editingCustomId = id;
@@ -1261,11 +1239,10 @@ function selectSettleTemplate(id, t0) {
     var custExtra2 = $('settleTmplCustomExtra'); if (custExtra2) custExtra2.style.display = 'none';
     var sysExtra = $('settleTmplSystemExtra'); if (sysExtra) sysExtra.style.display = '';
     // 全部子项先隐藏，再按模板 id 逐个显示
-    // 只有 profit / dep 有系统参数区；cost 用专属 costExtra；vat/surTax/incTax 已下线（2026-09-18）
+    // 只有 profit / dep 有系统参数区；vat/surTax/incTax（2026-09-18）、cost（2026-11-03）已下线
     var show = {
       profit: { profitTarget: true, summaryText: true, separate: true },
-      dep: { summaryText: true },
-      cost: {} // cost 用专属的 costExtra，不走 systemExtra
+      dep: { summaryText: true }
     }[t.id] || {};
     function toggle(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
     toggle('settleTmplProfitParams', !!show.profitTarget);
@@ -1291,18 +1268,9 @@ function fillSubjectField(id, selected) {
   el.value = selected || '';
 }
 
-function updateCostEstimate() {
-  var out = $('settleTmplCostRevAmt');
-  if (!out) return;
-  var month = currentPeriod();
-  var tpl = findSettleTemplate('cost') || {};
-  var est = S.costVoucherEstimate ? S.costVoucherEstimate(month, tpl) : { amount: 0, revenue: 0 };
-  out.textContent = '本期金额：' + money(est.revenue || 0);
-  var invBal = $('settleTmplCostInvBal');
-  if (invBal) invBal.textContent = '余额：' + money(est.amount || 0);
-}
+// updateCostEstimate 已随结转销售成本下线删除（2026-11-03）
 
-// 右侧表单面板填充（对接 HTML settleTmplForm* / settleTmplFx* / settleTmplCost*）
+// 右侧表单面板填充（对接 HTML settleTmplForm* / settleTmplFx*）
 function fillSettleTmplForm(t) {
   var formPanel = $('settleTmplFormPanel');
   if (!formPanel || !t) return;
@@ -1334,18 +1302,7 @@ function fillSettleTmplForm(t) {
   if (dt) dt.style.display = isSystem ? 'none' : '';
   var sm = $('settleTmplSummaryText'); if (sm) { sm.value = t.summaryText || ''; sm.readOnly = false; if (sm.classList) sm.classList.remove('stm-name-ro'); sm.placeholder = isSystem ? '留空则按系统规则自动生成摘要' : '留空则用模板名称作为默认摘要'; }
 
-  // 结转销售成本专属
-  var costExtra = $('settleTmplCostExtra');
-  if (costExtra) costExtra.style.display = (t.id === 'cost') ? '' : 'none';
-  if (t.id === 'cost') {
-    fillSubjectField('settleTmplCostRevSubj', t.costRevSubj || '5001');
-    fillSubjectField('settleTmplCostInvSubj', t.costInvSubj || '1405');
-    fillSubjectField('settleTmplCostProdSubj', t.costProdSubj || '5001');
-    var rate = $('settleTmplCostRate'); if (rate) rate.value = t.costRate || '80';
-    var amt = $('settleTmplCostAmt'); if (amt) amt.value = t.costAmount || '';
-    var csm = $('settleTmplCostSummary'); if (csm) csm.value = t.costSummary || '';
-    updateCostEstimate();
-  }
+  // 结转销售成本专属参数区（settleTmplCostExtra）已随功能下线移除（2026-11-03）
 }
 
 // 凭证字下拉同步「凭证字设置」页面数据（S.state.voucherWords）
@@ -1899,14 +1856,7 @@ function saveSettleTmplForm() {
   var nm = $('settleTmplFormName'); if ((t.custom || t.preset) && nm && nm.value.trim()) t.name = nm.value.trim();
   var en = $('settleTmplFormEnabled'); if (en) t.enabled = en.checked;
   var wd = $('settleTmplFormWord'); if (wd) t.word = wd.value || '记';
-  if (t.id === 'cost') {
-    var rev = $('settleTmplCostRevSubj'); if (rev) t.costRevSubj = rev.value;
-    var inv = $('settleTmplCostInvSubj'); if (inv) t.costInvSubj = inv.value;
-    var prod = $('settleTmplCostProdSubj'); if (prod) t.costProdSubj = prod.value;
-    var rate = $('settleTmplCostRate'); if (rate) t.costRate = rate.value;
-    var amt = $('settleTmplCostAmt'); if (amt) t.costAmount = amt.value;
-    var csm = $('settleTmplCostSummary'); if (csm) t.costSummary = csm.value;
-  }
+  // cost 模板参数收集已随功能下线移除（2026-11-03）
   // 系统模板通用参数（profit / dep；vat / surTax / incTax 已下线 2026-09-18）
   if (t.id === 'profit') {
     var pt = $('settleTmplProfitTarget'); if (pt) t.targetSubj = pt.value.trim();

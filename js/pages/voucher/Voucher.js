@@ -1622,7 +1622,9 @@ function applyVchTpl(t) {
     e.preventDefault(); e.stopPropagation(); hideMenu();
     if (!vEditId) return;
     var reason = await H.promptAsync(
-      '您确认要删除此凭证吗？删除会产生断号。请填写删除原因（必填）：',
+      '您确认要删除此凭证吗？删除会产生断号。请填写删除原因（必填）：\n\n'
+      + '注：折旧、资产清理、期末结转等由业务模块生成的凭证不可在此删除，'
+      + '请到对应业务入口（计提折旧 / 取消清理 / 重新结转）重新生成。',
       '',
       { title: '删除凭证' }
     );

@@ -334,7 +334,11 @@ function openMonths() {
 
 function opDel() {
   const closed = S.state.closedPeriods || [];
-  const cands = (S.state.vouchers || []).filter(v => v.deleted !== 'y' && closed.indexOf(vmonth(v)) < 0);
+  // 2026-11-03：业务凭证（折旧/清理/期末结转）在人工入口禁删。随机删除必须跳过它们，
+  // 否则会拿「按规则本就应该被拒」的凭证去要求删除成功。
+  const cands = (S.state.vouchers || [])
+    .filter(v => v.deleted !== 'y' && closed.indexOf(vmonth(v)) < 0)
+    .filter(v => !S._assetVoucherGuard(v));
   if (!cands.length) return;
   const v = cands[rndInt(cands.length)];
   const m = vmonth(v), word = v.word || '记', no = v.no;
@@ -385,7 +389,8 @@ function attemptClose(m) {
     // 按应用提示"先删除旧结转凭证再重新生成"；'ok' 理论上不会被 carry 拦截，兜底一并处理。
     if (c && c.ok === false && (c.state === 'stale' || c.state === 'ok')) {
       const olds = (c.vouchers || []).filter(v => v.deleted !== 'y');
-      olds.forEach(v => S.removeVoucher(v.id, 'fuzz 重做结转'));
+      // 模拟「重新结转」的系统内部作废（人工入口已禁删业务凭证）
+      olds.forEach(v => S.removeVoucher(v.id, 'fuzz 重做结转', { system: 'settle' }));
       dbg += ' | 清除过时结转凭证 ' + olds.length + ' 张';
       c = S.carryForwardProfit(m);
     }
@@ -506,7 +511,7 @@ RANGE.slice(0, -1).forEach(m => { if (!S.isPeriodClosed(m)) attemptClose(m); });
 if (!S.isPeriodClosed(lastM)) {
   // 清掉该月已有结转凭证，制造「确实需要结转」的状态
   (S.state.vouchers || []).filter(v => v.deleted !== 'y' && vmonth(v) === lastM
-    && v.kind === S.VOUCHER_KINDS.CARRY_PL).forEach(v => S.removeVoucher(v.id, 'fuzz 收尾重做'));
+    && v.kind === S.VOUCHER_KINDS.CARRY_PL).forEach(v => S.removeVoucher(v.id, 'fuzz 收尾重做', { system: 'settle' }));
   const expS = allSubj.filter(s => s.cls === 'expense' && isLeaf(s))[0];
   const av = S.addVoucher({
     word: '记', date: lastM + '-15', summary: '确定性结转用例',
@@ -601,7 +606,7 @@ check('契约巡检覆盖到期间（非空转）', contractSwept > 0, '巡检�
     entries: [{ code: eS.code, name: eS.name, dr: amt, cr: 0 }, { code: aS.code, name: aS.name, dr: 0, cr: amt }] });
   const delCarry = (why) => (S.state.vouchers || [])
     .filter(v => v.deleted !== 'y' && v.kind === S.VOUCHER_KINDS.CARRY_PL)
-    .forEach(v => S.removeVoucher(v.id, why));
+    .forEach(v => S.removeVoucher(v.id, why, { system: 'settle' }));   // 系统内部作废
 
   // ① none：本期无损益发生
   carryContract('孤立结转·none', curMonth);
@@ -647,7 +652,7 @@ check('契约巡检覆盖到期间（非空转）', contractSwept > 0, '巡检�
 
   // ⑦ 收尾：清空本期 → 回到 none，检查项随之放行（有明确出口，非死锁）
   (S.state.vouchers || []).filter(v => v.deleted !== 'y' && vmonth(v) === curMonth)
-    .forEach(v => S.removeVoucher(v.id, 'fuzz 孤立结转清理'));
+    .forEach(v => S.removeVoucher(v.id, 'fuzz 孤立结转清理', { system: 'settle' }));   // 系统内部作废
   const r7 = carryContract('孤立结转·清理后', curMonth);
   check('孤立结转·清理后：回到 none，结账检查放行',
     r7.st.state === 'none' && r7.item.status === 'ok', JSON.stringify(r7.item));

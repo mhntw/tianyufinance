@@ -296,6 +296,10 @@ const PLAN = [
    采购略大于结转成本（cost+5000），避免库存越结越负。 */
 for (let i = 1; i <= 12; i++) {
   const mo = '2027-' + String(i).padStart(2, '0');
+  // 【2026-11-03】去重：PLAN 里 m2/m3 已是 2027-01/02，这里若再追加会重复处理同一月份
+  //   （第一遍已结账，第二遍 addVoucher 必报「已结账不可新增」），产生 38 个误报失败。
+  //   跳过已存在的月份，保留 m2/m3 专项用例 + 2027-03~12 模板用例，覆盖不丢。
+  if (PLAN.some(p => p.month === mo)) continue;
   const rev = 100000 + i * 1000;
   const cost = 40000;
   const buy = cost + 5000;
@@ -343,6 +347,18 @@ section('【前置】结 ' + lastMonth + ' 的账（现有账套该月尚未结�
 if (S.isPeriodClosed(lastMonth)) {
   console.log('    该期已结账，跳过');
 } else {
+  // 【2026-11-03】基准账套最后未结账月（lastMonth，通常 2026-10）在真实账套里往往从未做过
+  //   「结转损益」——损益科目仍有余额，unclosedProfit(lastMonth)=207456.76（全年累计）；而 sim_book 此后的
+  //   「unclosedProfit(M) === 当月利润」断言与「前置结账」都假设基准已清零（结账前必须先结转损益，本就是真实流程）。
+  //   只读探针已确认：2026-01~09 均已结转（unclosedProfit==0），仅 lastMonth 未结转，故只需补做这一期，不做多余改动。
+  //   若改自动化守护判据，必须同步维护 tools/verify_invariants.js（见 store.js 3616 处静态卡口说明）。
+  const cf0 = S.carryForwardStatus(lastMonth);
+  if (cf0.state === 'todo') {
+    const cfR = S.carryForwardProfit(lastMonth);
+    console.log('    补结转损益 ' + lastMonth + '：' + (cfR.ok ? '生成 ' + (cfR.vouchers || []).length + ' 张结转凭证' : ('失败 ' + JSON.stringify(cfR).slice(0, 90))));
+  } else {
+    console.log('    结转损益状态：' + cf0.state + '（无需补做）');
+  }
   const cl = S.settleChecklist(lastMonth) || [];
   const bad = cl.filter(x => x.status === 'fail');
   console.log('    检查清单：' + cl.length + ' 项，其中 fail ' + bad.length + (bad.length ? '（' + bad.map(x => x.label).join('、') + '）' : ''));
@@ -601,7 +617,9 @@ console.log('══════════════════════�
   const reR = S.reopenPeriod(XM, '模拟：需修正一笔凭证');
   ok('C5 反结账成功', reR && reR.ok !== false, (reR && reR.msg) || '');
   ok('C6 该期不再处于已结账', !S.isPeriodClosed(XM));
-  S.periodVouchersOfKind(XM, 'carryPL').forEach(v => S.removeVoucher(v.id));   // 先清旧结转，避免重复结转
+  // 先清旧结转，避免重复结转。2026-11-03 起结转凭证在人工入口禁删（_assetVoucherGuard），
+  // 这里模拟的是「重新结转」的系统内部作废，必须带 system 标记。
+  S.periodVouchersOfKind(XM, 'carryPL').forEach(v => S.removeVoucher(v.id, '重新结转', { system: 'settle' }));
   const revV = S.periodVouchers(XM).filter(v => !v.kind).find(v => String(v.summary || '').indexOf('客房收入') >= 0);
   if (!revV) {
     ok('C7 找到待修改凭证', false, '未在期间凭证中找到「客房收入」');

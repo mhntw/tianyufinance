@@ -150,13 +150,30 @@ function audit(file) {
   console.log('    · 资金余额参考：三行口径（正确）' + fundRight + '；若重复聚合会显示成 '
     + fundWrong + '（虚增 ' + inflated + '）→ 真断言见 verify_invariants.js 的 I12');
 
-  // ④ 上卷自洽：资产类「顶级合计」应等于「末级合计」
-  //    （只对资产类比较：若对全部科目比，借贷相抵恒为 0，检查会失去意义）
+  // ④ 上卷自洽：资产类「顶级合计 − 末级合计」应等于「各父科目自身直接挂账之和」
+  //    （只对资产类比较：全科目比会借贷相抵恒为 0，失去意义）
+  //    【2026-11-03 修正】原断言「顶级 == 末级」是错的：合法的父级挂账（如 添钰 141101 直接记 1,125.00）
+  //    会产生这种差，原断言会把它误报成"上卷丢失"。正确判据：差额必须 = 各父科目自身挂账之和。
+  //    ⚠ 科目编码用「前缀匹配」判父子，导致 14110101 同时是 1411 与 141101 的下级 → balanceOf 会把嵌套余额
+  //      重复计入。故「父科目自身挂账」必须按**直接下级**（跳过中间层）相减，否则 1411 的 exclusive 会被算错成对不上。
+  //      用直接下级相减后，Σ exclusive = 顶级 − 末级（ telescoping 恒等式），两者对得上即自洽；
+  //      任一处重复聚合 bug 都会让它们偏离容差 —— 真正的调用点 bug 另有 verify_invariants.js 兜底。
   const assetTop = sumTop(/^1/), assetLeaf = sumLeaf(/^1/);
-  const rollGap = r2(Math.abs(assetTop - assetLeaf));
-  add('资产类 顶级合计 = 末级合计（上卷自洽）', rollGap <= Math.max(EPS, Math.abs(assetTop) * 0.0001),
+  const rollGap = r2(assetTop - assetLeaf);
+  // 直接下级：c 是 p 的下级，且不存在中间科目 m 使得 p<m<c（避免嵌套被重复计入）
+  const directChildren = p => subjects.filter(c => isChild(p, c) &&
+    !subjects.some(m => isChild(p, m) && isChild(m, c) && m !== p && c !== m));
+  const parents = subjects.filter(c => subjects.some(o => isChild(c, o)));   // 有子科目者
+  let ownSum = 0; const ownDet = [];
+  parents.forEach(p => {
+    const own = balanceOf(p, maxPeriod) - directChildren(p).reduce((s, c) => s + balanceOf(c, maxPeriod), 0);
+    if (Math.abs(own) > 0) { ownSum += own; ownDet.push(String(p) + ':' + r2(own)); }
+  });
+  ownSum = r2(ownSum);
+  const ownTol = Math.max(EPS, Math.abs(assetTop) * 0.0001);
+  add('资产类 顶级−末级 = 父科目自身挂账之和（上卷自洽）', Math.abs(rollGap - ownSum) <= ownTol,
     '顶级 ' + r2(assetTop) + ' / 末级 ' + r2(assetLeaf) + ' 差 ' + rollGap
-    + (rollGap > EPS ? '（差额通常来自「父科目自身挂了余额」）' : ''));
+    + ' / 父级自身挂账 ' + ownSum + (ownDet.length ? '（' + ownDet.join('、') + '）' : ''));
 
   // ⑤ 结转损益口径一致性（关键）：结转损益按科目 cls(revenue/expense) 取数，
   //    利润表按「编码白名单」取数；两者若不一致，会出现「结转后本年利润 ≠ 利润表净利润」。

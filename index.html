@@ -865,15 +865,7 @@
                 <button class="btn btn-sm btn-ghost" id="btnDepVoucher">生成凭证</button>
               </div>
             </div>
-            <div class="settle-card" id="cardCost">
-              <div class="settle-card-head">
-                <label class="settle-card-check"><input type="checkbox" /></label>
-                <span class="settle-card-name">结转销售成本</span>
-                <span class="settle-card-op"><a class="settle-link" data-act="disable">禁用</a><a class="settle-link" data-act="setting">设置</a></span>
-              </div>
-              <div class="settle-card-body"><div class="settle-tip" id="costTip"><i class="settle-tip-icon">&#9888;</i>请点击【生成凭证】测算金额</div></div>
-              <div class="settle-card-foot"><span class="settle-vch" id="costVchNo"></span><button class="btn btn-sm btn-ghost" id="btnCarryCost">生成凭证</button></div>
-            </div>
+            <!-- 「结转销售成本」卡片（cardCost）已随功能下线移除（2026-11-03） -->
           </div>
         </div>
 
@@ -978,37 +970,7 @@
                   </div>
                 </div>
 
-                <div id="settleTmplCostExtra" style="display:none">
-                  <div class="settle-tmpl-sub">结转成本预估</div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">主营业务收入科目：</div>
-                    <input class="inp" id="settleTmplCostRevSubj" placeholder="输入编码或名称选择" autocomplete="off">
-                    <span class="settle-tmpl-tip" id="settleTmplCostRevAmt">本期金额：0.00</span>
-                  </div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">预计成本结转百分比(%)：</div>
-                    <input type="number" class="inp settle-tmpl-num" id="settleTmplCostRate" min="0" max="100" step="1" />
-                  </div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">预计结转成本：</div>
-                    <input type="number" class="inp settle-tmpl-num" id="settleTmplCostAmt" min="0" step="0.01" />
-                    <i class="settle-tmpl-help" title="预计结转成本 = 主营业务收入金额 * 成本结转百分比，支持手工调整">?</i>
-                  </div>
-                  <div class="settle-tmpl-sub">凭证设置</div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">结转成本摘要：</div>
-                    <input type="text" class="inp" id="settleTmplCostSummary" />
-                  </div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">库存商品科目：</div>
-                    <input class="inp" id="settleTmplCostInvSubj" placeholder="输入编码或名称选择" autocomplete="off">
-                    <span class="settle-tmpl-tip" id="settleTmplCostInvBal">余额：0.00</span>
-                  </div>
-                  <div class="flex--3nLNX">
-                    <div class="label--315S5">生产成本科目：</div>
-                    <input class="inp" id="settleTmplCostProdSubj" placeholder="输入编码或名称选择" autocomplete="off">
-                  </div>
-                </div>
+                <!-- 结转销售成本参数区（settleTmplCostExtra）已随功能下线移除（2026-11-03） -->
 
                 <!-- 系统模板通用参数区（profit/dep/vat/surTax/incTax，按模板类型动态显示子项） -->
                 <div id="settleTmplSystemExtra" style="display:none">

@@ -82,14 +82,14 @@ function makeEnv(bookId, state) {
       S._persists++;
       return true;
     },
-    /* 与 store.js:3221-3239 同口径（cost 默认关、dep/profit 默认开、其它 id 默认关） */
+    /* 与 store.js 的 settleTplDefaultEnabled 同口径（dep/profit 默认开、其它 id 默认关；
+       cost 已于 2026-11-03 下线，不再有默认启用态） */
     settleTplEnabled: function (id) {
       const tpls = S.state.settleTemplates;
       if (Array.isArray(tpls)) {
         for (const t of tpls) { if (t && t.id === id) return t.enabled !== false; }
       }
-      if (id === 'cost') return false;
-      return ['dep', 'cost', 'profit'].indexOf(id) >= 0;
+      return ['dep', 'profit'].indexOf(id) >= 0;
     }
   };
   S.state = state || {};
@@ -119,10 +119,11 @@ console.log('① 双账套互不覆盖');
   A.S.bookId = 'B'; A.S.state = { settleTemplates: [] };
   A.api.reload();
   check(!has(A.api.cur(), 'c1'), 'B 账套不应看到 A 的自定义模板（账套隔离）');
-  find(A.api.cur(), 'cost').enabled = true;
+  // 2026-11-03：原用 cost（已下线），改用 dep 验证「只改启用态也不许抹掉别的账套的定义」
+  find(A.api.cur(), 'dep').enabled = false;
   A.api.persist();
-  check(has(A.S.state.settleTemplates, 'cost'), 'B 保存后：B 的账套里应有 cost 记录');
-  check(find(A.S.state.settleTemplates, 'cost').enabled === true, 'B 保存后：cost 启用状态应落进 B 账套');
+  check(has(A.S.state.settleTemplates, 'dep'), 'B 保存后：B 的账套里应有 dep 记录');
+  check(find(A.S.state.settleTemplates, 'dep').enabled === false, 'B 保存后：dep 启用状态应落进 B 账套');
 
   // 切回 A
   A.S.bookId = 'A';
@@ -202,17 +203,18 @@ console.log('⑦ 字段完整性');
 {
   const E = makeEnv('A', { settleTemplates: [] });
   E.api.reload();
-  const cost = find(E.api.cur(), 'cost');
-  Object.assign(cost, {
-    costRevSubj: '5001', costInvSubj: '1405', costProdSubj: '4001',
-    costRate: '75', costAmount: '123.45', costSummary: '结转销售成本', voucherDate: 'period'
+  /* 2026-11-03：cost 模板已下线，改用 dep + 两个「当前未知的字段」验证整体保留语义 ——
+     这才是这条断言的原始目的（拒绝字段白名单），不再绑定某个具体模板的字段名。 */
+  const tpl = find(E.api.cur(), 'dep');
+  Object.assign(tpl, {
+    summaryText: '计提{month}折旧', voucherDate: 'period',
+    futureFieldA: 'v1', futureFieldB: 42
   });
   E.api.persist();
-  const r = find(E.S.state.settleTemplates, 'cost') || {};
-  check(r.costRevSubj === '5001' && r.costInvSubj === '1405' && r.costProdSubj === '4001'
-    && r.costRate === '75' && r.costAmount === '123.45' && r.costSummary === '结转销售成本'
-    && r.voucherDate === 'period',
-    '模板设置里可编辑的业务字段必须整体存进账套（曾用字段白名单漏掉这五个，保存即丢）', JSON.stringify(r));
+  const r = find(E.S.state.settleTemplates, 'dep') || {};
+  check(r.summaryText === '计提{month}折旧' && r.voucherDate === 'period'
+    && r.futureFieldA === 'v1' && r.futureFieldB === 42,
+    '模板业务字段（含当前未知字段）必须整体存进账套（拒绝字段白名单，宁可多存不可少存）', JSON.stringify(r));
 }
 
 /* ========== ⑧ 静态卡口 ========== */

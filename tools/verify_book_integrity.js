@@ -137,18 +137,23 @@ function checkOne(file) {
   }
 
   // 5) 凭证：entries 结构 + 借贷平衡（v6 整数精确比较；旧格式浮点按 1e-6 容差）
+  //    【2026-11-03】亚分残差分级：差 < 1 分（100 个最小单位）属源账套 4 位小数精度残留，
+  //    视为提示、不判失败；差 ≥ 1 分才是真不平（数据损坏/被改写）。与 store 的 AMT_CENT 口径一致。
   if (Array.isArray(d.vouchers)) {
-    let badEntries = 0, unbalanced = 0;
-    const tol = isV6 ? 0 : 1e-6;
+    let badEntries = 0, unbalanced = 0, subCent = 0;
+    const CENT = 100;   // 1 分 = 100 个最小单位（定点 0.0001 元）
     d.vouchers.forEach((v, i) => {
       if (!v || typeof v !== 'object' || Array.isArray(v)) { problems.push('vouchers[' + i + '] 不是对象'); return; }
       if (!Array.isArray(v.entries)) { badEntries++; return; }
       let dr = 0, cr = 0;
       v.entries.forEach(e => { dr += Number((e && e.dr) || 0); cr += Number((e && e.cr) || 0); });
-      if (Math.abs(dr - cr) > tol) unbalanced++;
+      const diff = Math.abs(dr - cr);
+      if (diff > 0 && diff < CENT) subCent++;          // 亚分残差：<1 分，源精度残留
+      else if (diff >= CENT) unbalanced++;             // ≥1 分：真不平
     });
     if (badEntries) problems.push('凭证 entries 不是数组：' + badEntries + ' 张');
     if (unbalanced) problems.push('借贷不平衡的凭证：' + unbalanced + ' 张（数据已损坏或曾被外部改写）');
+    if (subCent) notices.push('存在亚分残差凭证：' + subCent + ' 张（差额不足 1 分，源于源账套 4 位小数精度，不影响以「分」显示的报表金额）');
   }
 
   // 6) 期初余额

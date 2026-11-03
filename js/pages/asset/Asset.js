@@ -684,7 +684,16 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   $('btnAssetGenVoucher').addEventListener('click', async function () {
     var month = _assetPeriod();
     var checked = Array.prototype.slice.call(document.querySelectorAll('.aChk:checked'));
-    if (checked.length) {
+    /* 【2026-11-03】本期已计提：不直接拒绝，而是确认「作废并重新计提」。
+     * 业务凭证已在凭证页禁止手工删除，原先「删旧凭证再回来提」的路已关闭，出口只剩这里。
+     * 与下面「范围提示」互斥（重新计提时用户已知范围），避免连续弹两个确认框。 */
+    var existed = S.deprVoucherIn(month);
+    if (existed) {
+      if (!(await H.confirmAsync(
+        '本期（' + month + '）已存在折旧凭证 ' + existed + '。\n\n' +
+        '继续将【作废】该凭证，并按最新卡片数据重新计提（同一期间不会重复入账）。\n\n' +
+        '是否重新计提？', { title: '重新计提折旧' }))) return;
+    } else if (checked.length) {
       var total = (S.state.fixedAssets || []).length;
       if (!(await H.confirmAsync(
         '「计提折旧」按期间对全部应计提折旧的资产进行，与勾选无关（勾选不参与筛选）。\n\n' +
@@ -693,7 +702,10 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     }
     var r = S.depreciateMonth(month);
     if (!r.ok) return showToast(r.msg, 'error');
-    showToast('已计提 ' + month + ' 折旧，生成凭证 ' + ((r.voucher.word || '记') + '-' + r.voucher.no) + '，金额 ' + money(r.total) + '（' + r.count + ' 项资产）');
+    // 【2026-11-03】aligned>0 表示本次先把中间若干未并入卡片的折旧补进了卡片基准，
+    // 提示里点出这笔金额，便于用户事后在「折旧汇总」和操作日志里对上（0 则不打扰）。
+    var alignedTip = r.aligned > 0 ? '，其中 ' + money(r.aligned) + ' 元为往期折旧并入卡片基准' : '';
+    showToast('已计提 ' + month + ' 折旧，生成凭证 ' + ((r.voucher.word || '记') + '-' + r.voucher.no) + '，金额 ' + money(r.total) + '（' + r.count + ' 项资产' + alignedTip + '）');
     renderAssets(); syncAll();
   });
   // 上一页/下一页由 common/pager.js 的容器委托统一处理，不再单独绑 aPrev/aNext
@@ -870,7 +882,8 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     lockedIds.forEach(function (eid) {
       var el = $(eid); if (!el) return;
       el.disabled = !!hasDepr;
-      if (hasDepr) el.title = '已计提折旧的卡片，此字段不可修改（如需修改请先反结账、删除该期间折旧凭证）';
+      // 2026-11-03：业务凭证已禁止手工删除，出口改为「重新计提」（会作废旧凭证再按最新数据重算）
+      if (hasDepr) el.title = '已计提折旧的卡片，此字段不可修改（如需修改请先反结账，再到「计提折旧」重新计提该期间）';
       else el.removeAttribute('title');
     });
     $('assetModal').setAttribute('data-asset-id', id || '');

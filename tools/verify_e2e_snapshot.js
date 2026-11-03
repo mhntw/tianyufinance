@@ -95,12 +95,24 @@ const ck = (c, m) => { if (c) console.log('  ✓ ' + m); else { console.log('  �
     // ② 幂等：折旧重复计提
     loadBook(file);
     const s0 = snapshot();
+    const live0 = (S.state.vouchers || []).filter((v) => v.deleted !== 'y').length;
     const d1 = S.depreciateMonth(m);
+    const live1 = (S.state.vouchers || []).filter((v) => v.deleted !== 'y').length;
     const d2 = S.depreciateMonth(m);
+    const live2 = (S.state.vouchers || []).filter((v) => v.deleted !== 'y').length;
     const s1 = snapshot();
     ck(d1.ok || !d1.ok, '② 折旧：调用未抛错（' + (d1.ok ? '成功' : d1.msg || '无资产/已结账') + '）');
     if (d1.ok) {
-      ck(!d2.ok || s1.vchCount === s0.vchCount + (d1.count || 1), '② 折旧：重复调用不产生额外凭证（' + s0.vchCount + '→' + s1.vchCount + '）');
+      /* 【2026-11-03】语义变更：同一期间再次计提不再是「幂等拒绝」，而是「作废旧凭证 + 按最新
+       * 数据重新生成」（业务凭证已禁止在凭证页手工删除，这是唯一出口）。因此 state.vouchers
+       * 长度必然 +1（旧凭证软删、仍留在账套）；真正要守的是「不重复入账」——断言有效凭证数不变。 */
+      /* 首次调用可能是「新计提」（有效 +1），也可能是「本期间已有折旧凭证 → 作废旧凭证再重算」
+       * （有效净 0）。两种都合法，本质约束是「该期间账上只能有一张有效折旧凭证」。 */
+      const liveDepr = (S.state.vouchers || []).filter((v) => v.deleted !== 'y'
+        && String(v.date || '').slice(0, 7) === m && S._hasAccDeprCredit(v)).length;
+      ck(liveDepr === 1, '② 折旧：该期间有效折旧凭证恰好 1 张（不重复入账，有效 ' + live0 + '→' + live1 + '）');
+      ck(live2 === live1,
+        '② 折旧：重复调用不产生额外有效凭证（有效 ' + live1 + '→' + live2 + '，数组 ' + s0.vchCount + '→' + s1.vchCount + '）');
     }
 
     // ③ 无副作用：只读操作不改变任何数据

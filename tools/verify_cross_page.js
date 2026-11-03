@@ -200,7 +200,9 @@ const S = global.S;
 (function adoptRealUtil() {
   const RU = global.util;
   if (!RU) return;
-  ['num', 'money', 'round2', 'amt', 'yuan', 'AMT_SCALE'].forEach(function (k) {
+  /* 【2026-11-03】补 yuanFmt：Report.js 的「资产负债表恒等式差额」诊断文案用 U.yuanFmt，
+     之前漏抄导致真账套一旦不平衡就报「U.yuanFmt is not a function」（假红，掩盖真实信号）。 */
+  ['num', 'money', 'round2', 'amt', 'yuan', 'yuanFmt', 'AMT_SCALE'].forEach(function (k) {
     if (RU[k] !== undefined) { U[k] = RU[k]; H[k] = RU[k]; }
   });
   H.absFmt = function (v) { return RU.money(Math.abs(Number(v) || 0)); };

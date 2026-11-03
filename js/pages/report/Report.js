@@ -139,8 +139,19 @@ function renderBs(month) {
   // 恒等式差额提示：资产 ≠ 负债+权益 时说明原因（数据如实呈现，不掩盖）
   var diff = bs.totalAsset - bs.totalAll;
   var wip = $('bsWip');
-  if (Math.abs(diff) >= 0.005) {
-    var absv = Math.abs(diff);
+  var absv = Math.abs(diff);
+  // 【2026-11-03】阈值统一用「1 分」（100 个最小单位），不要再写 0.005 —— 定点域里 0.005 恒小于任何非零整数，
+  //   会把「差 8 个单位（0.0008 元）」误判成「不平衡」还印成「¥0.00」（自相矛盾，见绅蓝 2026-10）。
+  //   亚分残差（<1 分）单独一档：它不影响分位金额，只说明源账套 4 位小数的精度残留。
+  var CENT = (U && U.AMT_CENT) || 100;
+  if (absv > 0 && absv < CENT) {
+    var subTxt = '资产负债表恒等式存在亚分残差：资产比负债及所有者权益' +
+                 (diff > 0 ? '多 ' : '少 ') +
+                 (U.yuanSubFmt ? U.yuanSubFmt(absv) : '¥' + (absv / U.AMT_SCALE).toFixed(4)) +
+                 '（不足 1 分，源于源账套 4 位小数精度）。不影响以「分」显示的报表金额，本软件如实呈现账套原貌。';
+    wip.textContent = subTxt;
+    wip.style.display = 'block';
+  } else if (absv >= CENT) {
     // 数据驱动诊断：差额是否≈「利润表净利润 − 已转入本年利润的净额」
     // （即账套结转损益未完整执行，损益科目尚有余额残留）。
     var period = currentPeriod();

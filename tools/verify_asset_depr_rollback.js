@@ -88,23 +88,34 @@ if (!r1.ok) {
   ck(fa1.deprVoucher === vno1, 'A4 卡片引用凭证 ' + vno1);
   ck(num(fa1.periodUsed) === 1, 'A5 已折旧期间 = 1');
 
+  /* 【2026-11-03 规则变更】业务凭证禁止在凭证页手工删除，出口改为业务侧「重新计提」。
+   * 原断言是「删除 → 卡片回滚 → 还原」，现改为：
+   *   ① 人工删除被拒且卡片分毫未动（不再有「删一半」的中间态）
+   *   ② 同一期间再点一次计提 = 作废旧凭证 + 按最新数据重算，结果与首次一致（不重复入账）
+   *   ③ 被系统作废的凭证不可从回收站还原（否则会出现「凭证回来、卡片没回来」） */
   const rDel = S.removeVoucher(r1.voucher.id);
-  ck(rDel.ok === true, 'A6 删除折旧凭证成功（未再被「固定资产引用」拦死）' + (rDel.ok ? '' : '（' + rDel.msg + '）'));
-  ck(Math.abs(num(fa1.accumDepr)) < 0.01, 'A7 卡片累计折旧已回滚为 0');
-  ck(num(fa1.periodUsed) === 0, 'A8 已折旧期间回退为 0');
-  ck(!fa1.deprVoucher, 'A9 deprVoucher 已清空');
-  ck(!fa1.deprMonth && anchorOf(fa1) === '2026-01',
-    'A10 锚点已交回推导并落在 2026-01（显式字段已清除，不与推导打架）');
-  const rec1 = vById(r1.voucher.id);
-  ck(!!(rec1 && rec1.deprReverted && rec1.deprReverted.length === 1), 'A11 凭证上留存 1 条回滚快照');
+  ck(rDel.ok === false && /不能直接删除/.test(rDel.msg || ''),
+    'A6 人工删除折旧凭证被拒：' + (rDel.msg || ''));
+  ck(Math.abs(num(fa1.accumDepr) - accAfter) < 0.01, 'A7 被拒后卡片累计折旧分毫未动 ' + num(fa1.accumDepr).toFixed(2));
+  ck(num(fa1.periodUsed) === 1, 'A8 已折旧期间仍为 1');
+  ck(fa1.deprVoucher === vno1 && fa1.deprVoucherId === r1.voucher.id, 'A9 卡片引用未被清空');
+  ck(vById(r1.voucher.id).deleted !== 'y', 'A10 凭证仍在账上（未被软删）');
 
-  const rRes = S.restoreVoucher(r1.voucher.id);
-  ck(rRes.ok === true, 'A12 还原凭证成功');
-  ck(Math.abs(num(fa1.accumDepr) - accAfter) < 0.01, 'A13 卡片累计折旧恢复 ' + num(fa1.accumDepr).toFixed(2));
-  ck(num(fa1.periodUsed) === 1, 'A14 已折旧期间恢复 1');
-  ck(fa1.deprVoucher === vno1, 'A15 deprVoucher 恢复 ' + vno1);
-  ck(String(fa1.deprMonth) === '2026-02', 'A16 锚点月恢复 2026-02');
-  ck(!(rec1 && rec1.deprReverted), 'A17 快照已消费（不会重复回滚）');
+  const r2nd = S.depreciateMonth('2026-02');
+  ck(r2nd.ok === true && r2nd.voucher.id !== r1.voucher.id,
+    'A11 同一期间再点计提 = 重新计提成功' + (r2nd.ok ? '' : '（' + (r2nd.msg || '') + '）'));
+  const oldV = vById(r1.voucher.id);
+  ck(!!(oldV && oldV.deleted === 'y' && oldV.businessDeleted === 'y'),
+    'A12 旧凭证由系统作废并标记 businessDeleted（不可还原）');
+  ck(Math.abs(num(fa1.accumDepr) - accAfter) < 0.01,
+    'A13 重算后累计折旧与首次一致 ' + num(fa1.accumDepr).toFixed(2) + '（没有重复计提）');
+  ck(num(fa1.periodUsed) === 1, 'A14 已折旧期间仍为 1');
+  ck(fa1.deprVoucherId === r2nd.voucher.id, 'A15 卡片改指新凭证 ' + r2nd.voucher.id);
+  ck(String(fa1.deprMonth) === '2026-02', 'A16 锚点仍为 2026-02');
+  ck(S.restoreVoucher(oldV.id).ok === false, 'A17 已作废的业务凭证不可从回收站还原');
+  const liveA = S.state.vouchers.filter((v) =>
+    v.kind === S.VOUCHER_KINDS.DEPR && v.deleted !== 'y' && String(v.date || '').slice(0, 7) === '2026-02');
+  ck(liveA.length === 1, 'A18 该期间账上仅一张有效折旧凭证（不重复入账）');
 }
 
 /* ============ B. 真实账套端到端 ============ */
@@ -120,25 +131,40 @@ if (!BOOK) {
   const base = cardSum();
   console.log('  基线卡片累计合计 ' + base.toFixed(2) + '，卡片 ' + (S.state.fixedAssets || []).length + ' 张');
 
-  const rB = S.depreciateMonth('2026-09');
-  ck(rB.ok === true, 'B1 计提 2026-09 成功' + (rB.ok ? '' : '（' + (rB.msg || '') + '）'));
-  if (rB.ok) {
-    const after = cardSum();
-    const total = r2(rB.total);
-    ck(Math.abs(after - base - total) < 0.02, 'B2 卡片合计 ' + after.toFixed(2) + ' = 基线 + 本期折旧 ' + total.toFixed(2));
-    const vnoB = (rB.voucher.word || '记') + '-' + rB.voucher.no;
-    ck(S.state.fixedAssets.filter((f) => f.deprVoucher === vnoB).length === rB.count,
-      'B3 ' + rB.count + ' 张卡片引用新凭证 ' + vnoB);
+  /* 真实账套 2026-09 可能已有随账套导入的折旧凭证（金蝶每月一张）：
+   *   · 有 → 验证「导入折旧凭证禁删、可红冲」（方案 B 的落地形态）
+   *   · 无 → 计提后验证「人工删除被拒 + 重新计提结果一致」 */
+  const existedB = S._deprVoucherOf('2026-09');
+  if (existedB && !S._assetRefOf(existedB) && existedB.kind !== S.VOUCHER_KINDS.DEPR) {
+    ck(true, 'B1 2026-09 已存在导入折旧凭证 ' + ((existedB.word || '记') + '-' + existedB.no));
+    const rImpDel = S.removeVoucher(existedB.id);
+    ck(rImpDel.ok === false && /不能直接删除/.test(rImpDel.msg || ''),
+      'B2 导入折旧凭证不可手工删除：' + (rImpDel.msg || ''));
+    ck(vById(existedB.id).deleted !== 'y', 'B3 删除被拒后该凭证仍在账上');
+    const rImpRev = S.reverseVoucher(existedB.id, { month: '2026-10' });
+    ck(rImpRev.ok === true, 'B4 导入折旧凭证可红冲（留痕更正）' + (rImpRev.ok ? '' : '（' + (rImpRev.msg || '') + '）'));
+  } else {
+    const rB = S.depreciateMonth('2026-09');
+    ck(rB.ok === true, 'B1 计提 2026-09 成功' + (rB.ok ? '' : '（' + (rB.msg || '') + '）'));
+    if (rB.ok) {
+      const after = cardSum();
+      const total = r2(rB.total);
+      ck(Math.abs(after - base - total) < 0.02, 'B2 卡片合计 ' + after.toFixed(2) + ' = 基线 + 本期折旧 ' + total.toFixed(2));
+      const vnoB = (rB.voucher.word || '记') + '-' + rB.voucher.no;
+      ck(S.state.fixedAssets.filter((f) => f.deprVoucher === vnoB).length === rB.count,
+        'B3 ' + rB.count + ' 张卡片引用新凭证 ' + vnoB);
 
-    const rBDel = S.removeVoucher(rB.voucher.id);
-    ck(rBDel.ok === true, 'B4 删除新凭证成功' + (rBDel.ok ? '' : '（' + rBDel.msg + '）'));
-    ck(Math.abs(cardSum() - base) < 0.02, 'B5 删除后卡片合计回到基线 ' + cardSum().toFixed(2));
-    ck(S.state.fixedAssets.filter((f) => f.deprVoucher === vnoB).length === 0, 'B6 deprVoucher 已全部清空');
+      const rBDel = S.removeVoucher(rB.voucher.id);
+      ck(rBDel.ok === false, 'B4 人工删除折旧凭证被拒：' + (rBDel.msg || ''));
+      ck(Math.abs(cardSum() - after) < 0.02, 'B5 被拒后卡片合计仍为 ' + cardSum().toFixed(2));
 
-    const rBRes = S.restoreVoucher(rB.voucher.id);
-    ck(rBRes.ok === true, 'B7 还原成功');
-    ck(Math.abs(cardSum() - after) < 0.02, 'B8 还原后卡片合计回到 ' + cardSum().toFixed(2));
-    ck(S.state.fixedAssets.filter((f) => f.deprVoucher === vnoB).length === rB.count, 'B9 deprVoucher 全部恢复');
+      const rBAgain = S.depreciateMonth('2026-09');
+      ck(rBAgain.ok === true, 'B6 重新计提成功' + (rBAgain.ok ? '' : '（' + (rBAgain.msg || '') + '）'));
+      ck(Math.abs(cardSum() - after) < 0.02, 'B7 重算后卡片合计与首次一致 ' + cardSum().toFixed(2));
+      ck(S.state.fixedAssets.filter((f) => f.deprVoucherId === rBAgain.voucher.id).length === rBAgain.count,
+        'B8 ' + rBAgain.count + ' 张卡片改指新凭证');
+      ck(vById(rB.voucher.id).businessDeleted === 'y', 'B9 原凭证已标记为业务作废');
+    }
   }
 }
 
@@ -203,20 +229,24 @@ if (rGen.ok) {
   const cvno = (rGen.voucher.word || '记') + '-' + rGen.voucher.no;
   ck(fa7.cleanVoucher === cvno, 'D3 卡片记录清理凭证 ' + cvno);
   const puBefore = num(fa7.periodUsed);
+  /* 【2026-11-03 规则变更】清理凭证同样不许手工删，唯一出口是卡片的「取消清理」
+   * （它是有业务语义的一步撤销：作废凭证 + 卡片回「正常」，见 cancelCleanFixedAsset）。 */
   const rDelC = S.removeVoucher(rGen.voucher.id);
-  ck(rDelC.ok === true, 'D4 删除清理凭证成功（死锁解除，无需先「取消清理」）' + (rDelC.ok ? '' : '（' + rDelC.msg + '）'));
-  ck(fa7.status === '正常', 'D5 卡片状态回退为「正常」');
-  ck(!fa7.cleanVoucher, 'D6 cleanVoucher 已清空');
-  ck(fa7.cleanPeriod === '', 'D7 cleanPeriod 已清空');
+  ck(rDelC.ok === false && /取消清理/.test(rDelC.msg || ''),
+    'D4 直接删清理凭证被拒，并指引「取消清理」：' + (rDelC.msg || ''));
+  ck(fa7.status === '清理', 'D5 被拒后卡片仍为「清理」');
+  ck(fa7.cleanVoucher === cvno, 'D6 cleanVoucher 未被清空');
+  ck(fa7.cleanPeriod === '2026-03', 'D7 cleanPeriod 未被清空');
   ck(num(fa7.periodUsed) === puBefore, 'D8 已折旧期间数不变（' + puBefore + '，漏提期间不自动补提）');
+  ck(vById(rGen.voucher.id).deleted !== 'y', 'D9 凭证仍在账上（未被软删）');
+  const rCancelD = S.cancelCleanFixedAsset('fa7');
+  ck(rCancelD.ok === true && fa7.status === '正常',
+    'D10 正确出口「取消清理」可一步撤销处置并作废凭证' + (rCancelD.ok ? '' : '（' + (rCancelD.msg || '') + '）'));
+  ck(!fa7.cleanVoucher && !fa7.cleanPeriod, 'D11 卡片清理字段已清空');
   const recC = vById(rGen.voucher.id);
-  ck(!!(recC && recC.cleanReverted && recC.cleanReverted.length === 1), 'D9 凭证上留存清理回退快照');
-  const rResC = S.restoreVoucher(rGen.voucher.id);
-  ck(rResC.ok === true, 'D10 还原清理凭证成功');
-  ck(fa7.status === '清理', 'D11 卡片状态恢复为「清理」');
-  ck(fa7.cleanPeriod === '2026-03', 'D12 清理期间恢复 2026-03');
-  ck(fa7.cleanVoucher === cvno, 'D13 清理凭证引用恢复 ' + cvno);
-  ck(!(recC && recC.cleanReverted), 'D14 快照已消费（不会重复回退）');
+  ck(!!(recC && recC.deleted === 'y' && recC.businessDeleted === 'y'),
+    'D12 被作废的清理凭证标记为业务作废（回收站不可还原）');
+  ck(S.restoreVoucher(rGen.voucher.id).ok === false, 'D13 已作废的清理凭证不可还原');
   // D15~D16 代码层：行内清理一步式（标记＋生成凭证）并保持失败回滚；防日后被改回两步
   const assetSrc = fs.readFileSync(path.resolve(__dirname, '../js/pages/asset/Asset.js'), 'utf8');
   const inlineClean = assetSrc.slice(assetSrc.indexOf("contains('link-clean')"));
@@ -344,13 +374,18 @@ ck(!!(vG && vG.deprLines && vG.deprLines.length === 1 && num(vG.deprLines[0].amt
 if (rG.ok) {
   const accBeforeG = num(S.state.fixedAssets[0].accumDepr);
   ck(accBeforeG === 12000, 'G3 计提后卡片已提满 12000（原值-残值）');
-  S.removeVoucher(rG.voucher.id);
-  ck(num(S.state.fixedAssets[0].accumDepr) === 11000,
-    'G4 删除末月凭证精确回滚到 11000（旧实现停在 12000 —— 末月卡漏回滚）');
-  ck(num(S.state.fixedAssets[0].periodUsed) === 11, 'G5 已折旧期间回退为 11');
-  ck(!S.state.fixedAssets[0].deprVoucher && !S.state.fixedAssets[0].deprVoucherId, 'G6 凭证引用（字号与 id）已清空');
-  S.restoreVoucher(rG.voucher.id);
-  ck(num(S.state.fixedAssets[0].accumDepr) === accBeforeG, 'G7 还原后精确回到 ' + accBeforeG);
+  /* 【2026-11-03】末月凭证不许手工删。改为验证「重新计提」：
+   * 末月补足（1000）依赖 assetDeprDue 的剩余净值逻辑，作废重算若算错会退化成 0 或超提。 */
+  const rDelG = S.removeVoucher(rG.voucher.id);
+  ck(rDelG.ok === false, 'G4 末月折旧凭证不可手工删除：' + (rDelG.msg || ''));
+  ck(num(S.state.fixedAssets[0].accumDepr) === 12000, 'G5 被拒后卡片仍为 12000');
+  ck(num(S.state.fixedAssets[0].periodUsed) === 12, 'G6 已折旧期间仍为 12');
+  const rReG = S.depreciateMonth('2025-12');
+  ck(rReG.ok === true, 'G7 重新计提成功' + (rReG.ok ? '' : '（' + (rReG.msg || '') + '）'));
+  ck(num(S.state.fixedAssets[0].accumDepr) === accBeforeG,
+    'G8 重算后仍精确 ' + accBeforeG + '（末月补足逻辑在作废重算下不失效）');
+  ck(num(S.state.fixedAssets[0].periodUsed) === 12, 'G9 已折旧期间仍为 12（未重复计提）');
+  ck(S.state.fixedAssets[0].deprVoucherId === rReG.voucher.id, 'G10 卡片改指新凭证');
 }
 
 // 跨月同号场景：1 月先插一张普通凭证占号，使三个月的折旧凭证号为 记-2 / 记-1 / 记-1
@@ -377,23 +412,25 @@ S.addVoucher({ date: '2025-01-05', word: '记', summary: '占号', entries: [
 const g1 = S.depreciateMonth('2025-01');   // 记-2
 const g2 = S.depreciateMonth('2025-02');   // 记-1
 const g3 = S.depreciateMonth('2025-03');   // 记-1（与 2 月同号）
-ck(g1.ok && g2.ok && g3.ok, 'G8 连续三期计提成功（记-2 / 记-1 / 记-1）');
+ck(g1.ok && g2.ok && g3.ok, 'G11 连续三期计提成功（记-2 / 记-1 / 记-1）');
 const faG2 = S.state.fixedAssets[0];
-ck(num(faG2.accumDepr) === 3000 && num(faG2.periodUsed) === 3, 'G9 三期累计 3000、已折旧期间 3');
+ck(num(faG2.accumDepr) === 3000 && num(faG2.periodUsed) === 3, 'G12 三期累计 3000、已折旧期间 3');
 ck(faG2.deprVoucher === '记-1' && faG2.deprVoucherId === g3.voucher.id,
-  'G10 卡片引用指向最新一期（记-1 @2025-03，含月份 id）');
-S.removeVoucher(g1.voucher.id);
-ck(num(S.state.fixedAssets[0].accumDepr) === 2000,
-  'G11 删除 1 月（记-2，非最新期）精确回滚到 2000（旧实现匹配不上 → 停在 3000）');
-ck(num(S.state.fixedAssets[0].periodUsed) === 2, 'G12 已折旧期间 3 → 2');
-ck(S.state.fixedAssets[0].deprVoucher === '记-1' && S.state.fixedAssets[0].deprVoucherId === g3.voucher.id,
-  'G13 最新一期引用未被误清（旧实现按字号会误判）');
-S.removeVoucher(g2.voucher.id);
-ck(num(S.state.fixedAssets[0].accumDepr) === 1000,
-  'G14 删除 2 月（与 3 月同为 记-1，跨月同号）精确回滚到 1000');
-ck(S.state.fixedAssets[0].deprVoucherId === g3.voucher.id, 'G15 仍指向 3 月凭证（同号未误清）');
-S.restoreVoucher(g2.voucher.id);
-ck(num(S.state.fixedAssets[0].accumDepr) === 2000, 'G16 还原 2 月凭证后回到 2000（快照对称）');
+  'G13 卡片引用指向最新一期（记-1 @2025-03，含月份 id）');
+/* 「删中间期」这个场景在新规则下已不存在（三期凭证都删不掉），但原缺陷的防线要保留：
+ * 任何被拒绝的删除，都不能顺手清掉「最新一期引用」或改动卡片金额。 */
+const d1 = S.removeVoucher(g1.voucher.id);
+const d2 = S.removeVoucher(g2.voucher.id);
+const d3 = S.removeVoucher(g3.voucher.id);
+ck(!d1.ok && !d2.ok && !d3.ok, 'G14 三期折旧凭证全部不可手工删除（含非最新期、跨月同号）');
+ck(num(faG2.accumDepr) === 3000 && num(faG2.periodUsed) === 3, 'G15 三次删除尝试后卡片仍为 3000 / 3 期');
+ck(faG2.deprVoucherId === g3.voucher.id, 'G16 最新一期引用未被误清（旧实现按字号会误判）');
+const rRe3 = S.depreciateMonth('2025-03');
+ck(rRe3.ok === true && num(faG2.accumDepr) === 3000 && num(faG2.periodUsed) === 3,
+  'G17 重新计提 3 月：累计仍 3000、期间仍 3（作废重算不加倍）' + (rRe3.ok ? '' : '（' + (rRe3.msg || '') + '）'));
+ck(faG2.deprVoucherId === rRe3.voucher.id, 'G18 卡片改指 3 月新凭证');
+ck(vById(g3.voucher.id).businessDeleted === 'y' && vById(g1.voucher.id).deleted !== 'y',
+  'G19 只作废被重算的那一期；1 月凭证不受影响');
 
 /* ============ H. 清理凭证回滚（2026-11-02）：跨月同号 ============
  * 与 G 组同源缺陷：卡片只存「记-N」字号，而凭证号按月从 记-1 重编。原实现两处：
@@ -435,13 +472,13 @@ const cB = cleanOne('faB', '2026-03');   // 记-1（同号）
 ck(cA.ok && cB.ok, 'H1 两卡分别在 1 月 / 3 月清理并生成凭证（都为 记-1）');
 ck(faById('faA').cleanVoucherId === cA.voucher.id && faById('faB').cleanVoucherId === cB.voucher.id,
   'H2 卡片各存含月份的清理凭证 id');
-S.removeVoucher(cB.voucher.id);
-ck(faById('faB').status === '正常', 'H3 删乙的清理凭证 → 乙回到「正常」');
-ck(faById('faA').status === '清理', 'H4 甲仍为「清理」，未被同号误伤（旧实现会把甲一起改成正常）');
-ck(vAlive(cA.voucher.id), 'H5 甲的清理凭证仍在账上（账实相符）');
-S.restoreVoucher(cB.voucher.id);
+const rDelHB = S.removeVoucher(cB.voucher.id);
+ck(rDelHB.ok === false, 'H3 直接删乙的清理凭证被拒：' + (rDelHB.msg || ''));
 ck(faById('faB').status === '清理' && faById('faB').cleanVoucherId === cB.voucher.id,
-  'H6 还原后乙回到「清理」并恢复凭证 id（快照对称）');
+  'H4 乙仍为「清理」且引用完整（删除被拒不留中间态）');
+ck(faById('faA').status === '清理' && vAlive(cA.voucher.id),
+  'H5 甲完全不受影响（跨月同号也不会误伤）');
+ck(S.restoreVoucher(cB.voucher.id).ok === false, 'H6 未被删除的清理凭证不可还原');
 
 // 反向布置：乙 1 月清理、甲 3 月清理，取消甲的清理不应删到乙的凭证
 cleanSetup();
@@ -460,9 +497,11 @@ cleanSetup();
 const oA = cleanOne('faA', '2026-01');
 const oB = cleanOne('faB', '2026-03');
 S.state.fixedAssets.forEach(function (fa) { delete fa.cleanVoucherId; });
-S.removeVoucher(oB.voucher.id);
-ck(faById('faA').status === '清理' && faById('faB').status === '正常' && vAlive(oA.voucher.id),
-  'H13 老数据（无 id）按「字号 + 清理期间」兜底，同样不误伤同号卡片');
+const rDelOld = S.removeVoucher(oB.voucher.id);
+ck(rDelOld.ok === false, 'H13 老数据（无 id）删清理凭证同样被拒：' + (rDelOld.msg || ''));
+ck(faById('faA').status === '清理' && faById('faB').status === '清理'
+  && vAlive(oA.voucher.id) && vAlive(oB.voucher.id),
+  'H14 老数据下不误伤任何卡片与凭证（字号 + 期间兜底仍生效）');
 
 /* ============ I. 红字冲销守卫（2026-11-02）：同号凭证不再被误拦 ============
  * reverseVoucher 原来只比「记-N」字号就断定"这张是折旧/清理凭证"，跨月同号时会把**普通凭证**也拦下，
@@ -523,6 +562,47 @@ ck(S.reverseVoucher(gOrd3.id, { month: '2026-03' }).ok === true,
   'I7 老数据（无 id）按「字号 + 计提月份」判定，同号不同月不再误拦');
 ck(S.reverseVoucher(gd3.voucher.id, { month: '2026-03' }).ok === false,
   'I8 老数据下真正的折旧凭证仍被拦（月份相同）');
+
+/* ============ J. 外部导入凭证（2026-11-03 方案 B）：禁删、可红冲 ============
+ * 金蝶导入的折旧凭证既没有 kind、也没有卡片引用（卡片累计折旧是锚点值，不来自这些凭证）。
+ * 判据只能靠「无 maker + 有 preparer + 分录含贷累计折旧」：
+ *   · 禁删   —— 删掉会让总账 1602 少一期而卡片锚点不动 → 账实脱节；
+ *   · 可红冲 —— 会计上唯一合规的历史更正手段，留痕且不碰卡片锚点。
+ * 同时必须防误伤：导入的「普通」凭证仍要能删。 */
+console.log('\n=== J. 外部导入凭证：禁删、可红冲 ===');
+S.state = {};
+S.normalizeState();
+S.state.subjects = [
+  { code: '1122', name: '应收账款', cls: 'asset', normal: 'dr', level: 0, enabled: true },
+  { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+  { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+];
+S.state.company = Object.assign({}, S.state.company, { startMonth: '2026-01', bookkeeper: '测试' });
+S.state.closedPeriods = [];
+S.state.fixedAssets = [];
+// 模拟导入：直接塞进 state（导入不走 _addVoucher，故没有 maker，只有 preparer）
+S.state.vouchers = [
+  { id: 'imp1', word: '记', no: 1, date: '2026-03-31', preparer: 'Manager', summary: '计提折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '计提折旧', dr: 500, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '累计折旧', dr: 0, cr: 500 }
+    ] },
+  { id: 'imp2', word: '记', no: 2, date: '2026-03-31', preparer: 'Manager', summary: '收到货款',
+    entries: [
+      { code: '1122', name: '应收账款', summary: '收到货款', dr: 100, cr: 0 },
+      { code: '1122', name: '应收账款', summary: '收到货款', dr: 0, cr: 100 }
+    ] }
+];
+S._glCache = {};
+const jDel = S.removeVoucher('imp1');
+ck(jDel.ok === false && /导入的折旧凭证/.test(jDel.msg || ''),
+  'J1 导入的折旧凭证不可手工删除：' + (jDel.msg || ''));
+ck(vById('imp1').deleted !== 'y', 'J2 被拒后该凭证仍在账上');
+const jDel2 = S.removeVoucher('imp2');
+ck(jDel2.ok === true, 'J3 导入的普通凭证仍可删除（不误拦）' + (jDel2.ok ? '' : '（' + (jDel2.msg || '') + '）'));
+const jRev = S.reverseVoucher('imp1', { month: '2026-04' });
+ck(jRev.ok === true, 'J4 导入的折旧凭证可红冲（留痕更正）' + (jRev.ok ? '' : '（' + (jRev.msg || '') + '）'));
+ck(!!(jRev.ok && jRev.voucher && jRev.voucher.reverses === 'imp1'), 'J5 红字凭证正确反向引用原凭证');
 
 console.log('\n' + (bad ? '\u2717 \u6709 ' + bad + ' \u9879\u672a\u901a\u8fc7' : '\u2713 \u5168\u90e8\u901a\u8fc7'));
 process.exit(bad ? 1 : 0);

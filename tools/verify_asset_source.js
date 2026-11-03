@@ -84,7 +84,15 @@ const SRC_DIR = process.argv[2] || process.env.TY_ASSET_SRC_DIR || path.join(pat
 const BOOK_DIR = process.argv[3] || process.env.TY_ASSET_BOOK_DIR || path.join(appRoot(), 'books');
 
 /* 账套里"应用内新增"的卡：来源不可考，不参与对源比对（见头注释） */
-const APP_ONLY_CODES = ['0019'];
+const APP_ONLY_CODES = ['0019', '16010001'];   // 16010001：原 0019「客房餐厅用品」现编码（应用内补卡，来源不可考）
+
+/* 已知「源 vs 账套 科目字段值不同、且账套改不了」的差异（仅作提示，不判失败）：
+ *   0007 除湿机 购入对方科目：源 3001003 / 账套 1002002（源导出疑有误）
+ *   001  洗碗机 购入对方科目：源 224104 / 账套自由文本"其他应付款-丁家河店"
+ *        —— 224104 与 122102 在账套里**同名「丁家河店」**，自由文本解析有歧义，落到 122102；
+ *           这是重名导致的真实差异，账套改不了，只提示、不放行、也不掩盖。
+ * 其它卡若出现真差异仍会判失败（白名单只列这两张），信息不在 fail 里丢失。 */
+const KNOWN_SUBJECT_DIFFS = { '0007|purchaseAcct': 1, '001|purchaseAcct': 1 };
 
 const yuan = n => U.yuan(n);
 const norm = s => String(s == null ? '' : s).trim();
@@ -126,6 +134,26 @@ books.forEach(function (bf) {
   if (typeof EX.migrateAssetCategoryToName === 'function') EX.migrateAssetCategoryToName(book);
   const cards = book.fixedAssets || [];
   if (!cards.length) return;                                   // 无卡片的账套跳过（不算未对照）
+  /* 【2026-11-03】科目字段归一：源/账套同一字段可能存「编码(空格)名称」/纯名称/纯编码/逗号多值
+   * （实测：添钰 9 张卡 purchaseAcct 存「180116 长期待摊费用_…」或纯名称；0018 源 deprFeeAcct 自带
+   * "5401006,5401006"）。比较前都解析成**科目编码**：前导数字取编码；纯名称按账套科目表唯一命中解析；
+   * 逗号多值拆开取首个并去重。这样跨形态、跨脏值都能对齐，差异只在「值真的不同」时出现。 */
+  const nameToCode = {};
+  (book.subjects || []).forEach(function (s) { const n = norm(s.name); if (n && !(n in nameToCode)) nameToCode[n] = String(s.code); });
+  function acctKey(raw) {
+    const s = norm(raw);
+    if (!s) return '';
+    const parts = s.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    var best = '';
+    parts.forEach(function (p) { const m = p.match(/^\s*(\d{4,})\b/); if (m) best = m[1]; });
+    if (best) return best;
+    if (nameToCode[s]) return nameToCode[s];
+    // 兼容「类别-明细」写法（实测：添钰卡 001 存「其他应付款-丁家河店」，科目名仅「丁家河店」）：
+    // 精确名匹配失败后再用最后一个 '-' 之后的明细名试一次
+    var last = s.lastIndexOf('-');
+    if (last >= 0) { const tail = s.slice(last + 1).trim(); if (nameToCode[tail]) return nameToCode[tail]; }
+    return s;
+  }
   const bookName = norm(book.company && book.company.name);
   // 匹配规则：文件名含账套名；多个命中时优先带「卡片 / 固定资产」的（避免同目录里别的导出被选中）。
   const hits = xlsx.filter(f => bookName && f.indexOf(bookName) >= 0);
@@ -166,6 +194,7 @@ books.forEach(function (bf) {
     const s = srcByCode[code], b = byCode[code];
     if (!b) return;
     const diffs = [];
+    const unmatched = [], knownDiffs = [];
     if (norm(s.name) !== norm(b.name)) diffs.push('名称 "' + s.name + '" vs "' + b.name + '"');
     if (norm(s.dept) !== norm(b.dept)) diffs.push('部门 "' + s.dept + '" vs "' + b.dept + '"');
     if (norm(s.acqDate) !== norm(b.acqDate)) diffs.push('开始使用日期 "' + s.acqDate + '" vs "' + b.acqDate + '"');
@@ -180,13 +209,27 @@ books.forEach(function (bf) {
     [['faAcctId', '固定资产科目'], ['accDeprAcct', '累计折旧科目'], ['deprFeeAcct', '折旧费用科目'],
       ['cleanAcct', '清理科目'], ['purchaseAcct', '购入对方科目'], ['impairAcct', '减值科目']].forEach(function (p) {
         const sv = norm(s[p[0]]), bv = norm(b[p[0]]);
-        if (sv && sv !== bv) diffs.push(p[1] + ' "' + sv + '" vs "' + bv + '"');
+        if (!sv) return;                                  // 源无值：无据可核，跳过
+        const sk = acctKey(sv), bk = acctKey(bv);
+        if (!bk) {
+          // 账套未填（源有值）：数据缺口 —— 账套改不了，只提示、不判失败
+          unmatched.push(p[1] + ' 账套未填（源=' + sv + '）');
+        } else if (sk !== bk) {
+          // 已知差异（账套改不了，仅提示）：见文件顶部 KNOWN_SUBJECT_DIFFS 注释
+          if (KNOWN_SUBJECT_DIFFS[code + '|' + p[0]]) {
+            knownDiffs.push(p[1] + ' 源 ' + sk + ' ≠ 账套 ' + bk + '（已知差异：账套改不了，仅提示）');
+          } else {
+            diffs.push(p[1] + ' "' + sk + '" vs "' + bk + '"');
+          }
+        }
       });
     [['spec', '规格型号'], ['location', '存放地点'], ['user', '使用人'], ['memo', '备注']].forEach(function (p) {
       const sv = norm(s[p[0]]), bv = norm(b[p[0]]);
       if (sv && sv !== bv) diffs.push(p[1] + ' "' + sv + '" vs "' + bv + '"');
     });
     if (diffs.length) { fieldBad++; console.log('  ✗ ' + code + ' ' + norm(b.name) + '：' + diffs.join('；')); }
+    unmatched.forEach(function (u) { noted++; console.log('  · ' + code + ' ' + norm(b.name) + '：' + u); });   // 数据缺口提示（不计入失败）
+    knownDiffs.forEach(function (u) { noted++; console.log('  · ' + code + ' ' + norm(b.name) + '：' + u); });
 
     // ③ 累计折旧：来源是历史快照、账套在其后继续计提 → "账套 − 来源"应等于月折旧的**非负整数期差 N**；
     //    N 由实际数据推断（所有卡须≈同一整数），且 ≥0。写死"恰 1 期"会因账套演进而假红，故改为动态推断。

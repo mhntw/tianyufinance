@@ -164,8 +164,11 @@
       return invoke('trash_book', { id: id }).then(function (file) { return { ok: true, file: file }; });
     },
     listTrash: function () {
-      return invoke('list_trash').then(function (list) { return list || []; })
-        .catch(function () { return []; });
+      /* 【2026-11-03】不再把失败吞成空数组。
+       * 事故：删了账套、trash/ 里明明有文件，界面却只显示「回收站为空」，完全拿不到原因 ——
+       * 正是这里的 .catch(() => []) 把 invoke 的真实错误抹掉了。失败必须冒泡到
+       * Tools.js renderTrash 的 catch，让界面显示「读取回收站失败：<原因>」。 */
+      return invoke('list_trash').then(function (list) { return list || []; });
     },
     // 还原：返回落回后的账套 id（原 id 被占用时会自动换 id，故以返回值为准）
     restoreFromTrash: function (file) {

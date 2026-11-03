@@ -30,7 +30,9 @@ ck(/function genOnceVoucher/.test(src), 'genOnceVoucher 函数已定义');
 // 不再按按钮 id 校验；税款一律由会计按实际申报数手工录入。
 // genOnceVoucher 现由「自定义/预置模板生成凭证」路径调用（genVoucherFromTpl），改为校验该路径。
 ck(/genOnceVoucher\(month,/.test(src), '自定义模板生成凭证走 genOnceVoucher 查重');
-ck(/结转销售成本/.test(src) && /costExisted/.test(src.slice(src.indexOf('btnCarryCost'), src.indexOf('btnCarryCost') + 700)), 'btnCarryCost 使用 costExisted 查重');
+// 结转销售成本已于 2026-11-03 整体下线：反向锁住，防止实现被重新加回而忘了配套的查重/禁删规则
+ck(!/S\.genCostVoucher\(|S\.costVoucherEstimate\(|onBtn\('btnCarryCost'/.test(src),
+  '结转销售成本已彻底下线（Settle.js 不再调用生成/预估，按钮不再绑定）');
 
 // 运行时：调汇/结转成本类按钮连点不再重复生成（store 层已由 verify_idempotent 覆盖；此处验证 genOnceVoucher 逻辑）
 function baseState() {
@@ -400,11 +402,21 @@ const rcD = S.carryForwardProfit('2025-06', { separate: true });
 const vvsD = rcD.vouchers || [];
 ck(vvsD.length === 2, '生成 2 张结转损益凭证');
 const revD = vvsD.filter((v) => String(v.entries[v.entries.length - 1].code) === '3103')[0];
-// 模拟「重新结转」：软删收入凭证（进回收站）
-S.removeVoucher(revD.id);
+// 模拟「重新结转」：系统作废收入凭证（进回收站，并标记 businessDeleted）
+S.removeVoucher(revD.id, '重新结转', { system: 'settle' });
 const rrD = S.restoreVoucher(revD.id);
-ck(!rrD.ok, '本期已有其它结转凭证时，还原结转凭证被拒绝');
+ck(!rrD.ok, '本期已有其它结转凭证时，还原结转凭证被拒绝（系统作废凭证不可还原）');
 ck(S.periodVouchersOfKind('2025-06', S.VOUCHER_KINDS.CARRY_PL).length === 1, '拦截后本期仍只有 1 张结转凭证');
+/* 2026-11-03 起：人工入口已禁删业务凭证，但历史账套里可能躺着「本规则上线前软删」的结转凭证
+ * （没有 businessDeleted 标记）。这类仍必须被「防重复结转」拦住，否则还原即双倍结转。 */
+const revRecD = S.state.vouchers.filter((v) => v.id === revD.id)[0];
+delete revRecD.businessDeleted;
+delete revRecD.businessDeletedBy;
+const rrD2 = S.restoreVoucher(revD.id);
+ck(!rrD2.ok,
+  '历史软删的结转凭证同样不可直接还原（业务凭证规则更宽，已覆盖「防重复结转」这条旧闸门）：' + (rrD2.msg || ''));
+/* 注：restoreVoucher 里的 carryPL 防重复检查现在是**兜底**——只有凭证 kind 丢失（历史脏数据）
+ * 导致 _assetVoucherGuard 放行时才会走到。保留它，避免那条缝隙变成双倍结转。 */
 // 反向：还原一张普通凭证不受拦
 const plainD = S.addVoucher({ word: '记', date: '2025-06-20', summary: 'x', entries: [{ code: '1002', dr: 1, cr: 0 }, { code: '6001', dr: 0, cr: 1 }] });
 S.removeVoucher(plainD.id);

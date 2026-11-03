@@ -150,9 +150,11 @@ $('bookBody').addEventListener('click', async function (e) {
       if (!rd || !rd.ok) return showToast((rd && rd.msg) || '删除失败', 'error');
       // 删的是当前账套时，store 已自动切走（或进入无账套态）——提示必须说清去了哪，
       // 否则用户会以为"删完还在用同一个账套"。
-      if (rd.noBook) showToast('已移入回收站（7 天内可还原）。当前已无账套，请新建或导入账套');
-      else if (rd.switchedTo) showToast('已移入回收站（7 天内可还原），已切换到「' + rd.switchedTo + '」');
-      else showToast('账套已移入回收站（7 天内可还原）');
+      /* 提示里必须点明「去哪儿还原」：回收站入口是工具条上一排小链接（btn-link）中的「回收站」，
+       * 删完账套后用户往往找不到它 —— 只说"7 天内可还原"等于没说。 */
+      if (rd.noBook) showToast('已移入回收站（7 天内可还原）。当前已无账套：点上方「回收站」可还原，或新建/导入账套');
+      else if (rd.switchedTo) showToast('已移入回收站（7 天内可还原），可点上方「回收站」还原；已切换到「' + rd.switchedTo + '」');
+      else showToast('账套已移入回收站（7 天内可还原），可点上方「回收站」还原');
       refreshTools();
       if (trashPanelOpen()) renderTrash();
       // 删除账套 changelog 已由 store.removeBook 异步写盘，稍候刷新系统事件卡
