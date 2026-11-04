@@ -8,9 +8,16 @@
  *   4) 同一期间重复点击只能「作废重提」，账上始终只有一张有效折旧凭证（不叠加）；
  *   5) UI 必须真的消费 needAlign 并把 align:true 传下去 —— 否则 store 拒绝后用户无路可走
  *      （2026-11-03 实测：Asset.js 与已删除的期末处理卡都只把 r.msg 弹成红字）。
+ *   6) 对齐后的「台账六件套」必须同时推进：accumDepr/Begin、periodUsed、deprMonth、
+ *      netValueBegin/End、yearDepr —— 缺任一项都会让卡片表单/Excel 导出与辅助账对不上。
+ *   7) 删除本期凭证时锚点必须退回【本次计提之前】的锚点月（凭证快照 anchorBefore），
+ *      不能交回「购置月 + 期数」推导 —— 两者可以差好几期，会让报表累计折旧虚增。
+ *   8) 对齐后本月恰好无卡可提（如对齐后正好提满）时，必须如实回报 aligned 并落库，
+ *      不许「提示失败、数据却已改」。
  *
  * A 合成场景（自包含，不依赖账套）：不变量 1~4 的精确断言（金额用可控的整千数，便于逐分核对）。
  * B 真实账套（只读内存副本）：在「下一期」上重跑同一条链路；无账套时自动跳过。
+ * D 台账同步（6/7/8）：对齐后 yearDepr / netValue、删除回退锚点、无卡可提的如实回报。
  * C 静态契约：Asset.js 必须消费 needAlign。
  *
  * 用法：node tools/verify_asset_depr_align.js [账套.json]
@@ -203,6 +210,121 @@ if (!books.length) {
   });
 }
 
+/* ============ D. 台账同步与删除回退（2026-11-04 补齐） ============
+ * 对齐只改卡片基准（不改凭证），所以「基准」必须是一个完整自洽的时点快照：
+ *   accumDeprBegin / periodUsed / deprMonth / netValueBegin / netValueEnd / yearDepr 六件套。
+ * 原先只改前三件，后三件要么停在旧值、要么只累加本期；实测分别在
+ *   「对齐后本月提满、不再计提」与「本年已折旧」两个台账字段上留下错值。
+ * 另外删除本期凭证时锚点必须退回【本次计提之前】的锚点月，不能交回推导 —— 否则报表虚增。 */
+console.log('\n=== D. 台账同步（yearDepr / netValue）与删除回退锚点 ===');
+{
+  /* D1~D3：同一张「导入过、卡片没回写」的卡，对齐 25 期后 yearDepr 只并入 2026 年内的 9 期 */
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+  S.addFixedAsset({
+    code: 'D001', name: '台账设备', acqDate: '2024-08-01', status: '正常',
+    original: 60000, salvage: 0, life: 5, periodUsed: 0,
+    accumDepr: 0, accumDeprBegin: 0, deprMonth: '',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa = S.state.fixedAssets[0];
+  S.addVoucher({
+    word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 25000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 25000 }
+    ]
+  });
+  const r = S.depreciateMonth('2026-10', { align: true });
+  ck(r.ok === true, 'D1 对齐 + 计提成功');
+  /* 对齐区间 2024-09~2026-09 共 25 期，其中落在 2026 年的 9 期 + 本期 1 期 = 10,000 */
+  ck(U.num(fa.yearDepr) === U.amt(10000),
+    'D2 本年已折旧 = 10,000.00（年内 9 期 + 本期 1 期，实际 ' + (U.num(fa.yearDepr) / U.AMT_SCALE).toFixed(2) + '）');
+  ck(U.num(fa.netValueEnd) === U.num(fa.original) - U.num(fa.accumDepr) - U.num(fa.impairment)
+    && U.num(fa.netValueBegin) === U.num(fa.netValueEnd),
+    'D3 净值 = 原值 − 累计 − 减值，且期初=期末（' + (U.num(fa.netValueEnd) / U.AMT_SCALE).toFixed(2) + '）');
+}
+
+{
+  /* D4~D6：显式锚点（2026-06）≠ 推导锚点（acqDate+periodUsed = 2026-08）时，删除本期凭证
+     必须退回对齐基准月 2026-09，否则报表在 2026-09 会虚增一期 */
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+  S.addFixedAsset({
+    code: 'D002', name: '锚点设备', acqDate: '2024-08-01', status: '正常',
+    original: 60000, salvage: 0, life: 5, periodUsed: 21,
+    accumDepr: 21000, accumDeprBegin: 21000, deprMonth: '2026-06',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa2 = S.state.fixedAssets[0];
+  S.addVoucher({
+    word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 3000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 3000 }
+    ]
+  });
+  const r2 = S.depreciateMonth('2026-10', { align: true });
+  ck(r2.ok === true && fa2.deprMonth === '2026-10', 'D4 对齐到 2026-09 后计提 2026-10（锚点 ' + fa2.deprMonth + '）');
+  const lines = (r2.voucher && r2.voucher.deprLines) || [];
+  ck(lines.length === 1 && lines[0].anchorBefore === '2026-09',
+    'D5 凭证快照记下计提前锚点 = 2026-09（实际 ' + ((lines[0] && lines[0].anchorBefore) || '—') + '）');
+  const del = S.removeVoucher(r2.voucher.id, '回归：删除本期折旧凭证', { system: 'asset' });
+  ck(!!(del && del.ok), 'D6 系统作废本期折旧凭证成功');
+  ck(fa2.deprMonth === '2026-09', 'D7 锚点退回 2026-09（不是推导值 2026-08，实际 ' + (fa2.deprMonth || '空') + '）');
+  const md2 = U.num(S.assetMonthlyDepr(fa2));
+  const d2 = 0;   // 2026-09 相对锚点 2026-09 差 0 期
+  const accAt = U.num(fa2.accumDeprBegin) + md2 * d2;
+  ck(accAt === U.amt(24000), 'D8 报表 2026-09 累计折旧 = 24,000.00（实际 ' + (accAt / U.AMT_SCALE).toFixed(2) + '）');
+}
+
+{
+  /* D9~D11：对齐后本月恰好提满、无卡可提 —— 必须如实回报 aligned，且不得留在「改了内存没落盘」的状态 */
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2021-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+  S.addFixedAsset({
+    code: 'D003', name: '提满设备', acqDate: '2021-08-01', status: '正常',
+    original: 60000, salvage: 0, life: 5, periodUsed: 58,
+    accumDepr: 58000, accumDeprBegin: 58000, deprMonth: '2026-07',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa3 = S.state.fixedAssets[0];
+  S.addVoucher({
+    word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 2000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 2000 }
+    ]
+  });
+  const r3 = S.depreciateMonth('2026-10', { align: true });
+  ck(r3.ok === false && r3.aligned === U.amt(2000),
+    'D9 无卡可提时仍如实回报已并入金额 2,000.00（不是静默返回失败）');
+  ck(fa3.periodUsed === 60 && U.num(fa3.accumDepr) === U.amt(60000),
+    'D10 卡片基准确实推进到提满（60 期 / 60,000.00）');
+  ck(U.num(fa3.netValueEnd) === 0, 'D11 提满后净值 = 0（不再停在旧值 2,000.00）');
+}
+
 /* ============ C. 静态契约：UI 必须消费 needAlign ============ */
 console.log('\n=== C. 静态契约（Asset.js 接住 needAlign）===');
 {
@@ -212,5 +334,5 @@ console.log('\n=== C. 静态契约（Asset.js 接住 needAlign）===');
   ck(/折旧基准对齐/.test(src), 'C3 确认框标题明确（用户知道自己在确认什么）');
 }
 
-console.log('\n' + (bad ? '\u2717 有 ' + bad + ' 项断言失败' : '\u2713 全部通过：折旧锚点对齐链路（拒绝零副作用 / 对齐金额 / 计提后对平 / 不叠加 / UI 已接）'));
+console.log('\n' + (bad ? '\u2717 有 ' + bad + ' 项断言失败' : '\u2713 全部通过：折旧锚点对齐链路（拒绝零副作用 / 对齐金额 / 计提后对平 / 不叠加 / 台账六件套 / 删除回退锚点 / UI 已接）'));
 process.exit(bad ? 1 : 0);

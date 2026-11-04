@@ -2597,9 +2597,16 @@
         // （实测删 10 月「记-1」把指向 11 月「记-1」的引用清空）。deprVoucher 一并兜底清理。
         if (fa.deprVoucherId === v.id) delete fa.deprVoucherId;
         if (fa.deprVoucher === vno && !fa.deprVoucherId) delete fa.deprVoucher;
-        // 锚点回退：仅当卡片的计提月正是被删的这一期才回退，删中间期不动锚点（与旧逻辑一致）。
+        /* 锚点回退：仅当卡片的计提月正是被删的这一期才回退，删中间期不动锚点（与旧逻辑一致）。
+         * 【2026-11-04】优先退回快照里的 anchorBefore（= 计提前的锚点月，有对齐时为对齐基准月）。
+         * 原写法一律 delete deprMonth 交回「acqDate + periodUsed」推导，而那正是当初引入显式
+         * 锚点的原因 —— 两者可以差好几期。实测：卡片 acqDate 2024-08 / periodUsed 21 /
+         * deprMonth 2026-06，对齐到 2026-09 后计提 2026-10，再删这张凭证 →
+         * 锚点落到 2026-08（应回到 2026-09），报表 2026-09 累计折旧虚增 1,000。
+         * 老凭证没有 anchorBefore → 保持原行为。 */
         if (month && fa.deprMonth && String(fa.deprMonth) === String(month)) {
-          if (fa.acqDate) delete fa.deprMonth;
+          if (l.anchorBefore) fa.deprMonth = String(l.anchorBefore);
+          else if (fa.acqDate) delete fa.deprMonth;
           else fa.deprMonth = prevMonth(month);
         }
       });
@@ -6034,9 +6041,18 @@
       });
       return { need: cards.length > 0, last: last, cards: cards, total: total, periods: periods };
     },
-    // 执行对齐（仅由 depreciateMonth 在调用方确认后调用）；返回实际并入基线的金额
-    _applyDeprAlign: function (preview) {
+    /* 执行对齐（仅由 depreciateMonth 在调用方确认后调用）；返回实际并入基线的金额。
+     *
+     * 【2026-11-04】补齐台账三件套：netValueBegin / netValueEnd / yearDepr 必须随锚点一起走。
+     * 原先只改 accumDepr(Begin) / periodUsed / deprMonth，于是：
+     *   ① 本月提满、不再计提的卡 netValue 停在旧值 —— 实测 60,000 提满后净值仍显示 2,000；
+     *      净值回写只发生在「本月有实提额」的分支里，这类卡恰好落在分支外。
+     *   ② 「本年已折旧」只累加本期 —— 实测 1,000，而本年内实际已并入 9 期（应 10,000）。
+     * 两者都不进总账（报表年份折旧用 _accumDeprAt 滚算），但卡片表单与 Excel 导出直接读
+     * 这两个字段，长期偏低会让台账与辅助账外表对不上。 */
+    _applyDeprAlign: function (preview, month) {
       if (!preview || !preview.need) return 0;
+      var year = String(month || preview.last || '').slice(0, 4);
       var byId = {};
       (preview.cards || []).forEach(function (c) { byId[c.id] = c; });
       var applied = 0;
@@ -6048,6 +6064,22 @@
         fa.periodUsed = num(fa.periodUsed || 0) + c.periods;
         // 锚点显式钉到 last：即使某卡的 acqDate+periodUsed 与最后一次计提月有偏差也不会错位
         fa.deprMonth = preview.last;
+        // 净值跟随锚点（锚点月末口径，与计提回写段同一恒等式）
+        fa.netValueBegin = Math.max(0, num(fa.original) - num(fa.accumDeprBegin) - num(fa.impairment));
+        fa.netValueEnd = fa.netValueBegin;
+        /* 本年已折旧只并入落在「计提月所在年度」的期数：对齐区间可能跨年
+         * （如 anchor 2025-03 → last 2026-09），往年那部分不属于本年。
+         * 金额按时段的期数比例折算后取整 —— c.amt 本身是 md×n 取整，
+         * 折算误差不超过 1 个定点单位（0.0001 元），不影响任何报表口径。 */
+        if (year && c.periods > 0) {
+          var nYear = 0;
+          for (var i = 1; i <= c.periods; i++) {
+            if (addMonths(c.from, i).slice(0, 4) === year) nYear++;
+          }
+          if (nYear > 0) {
+            fa.yearDepr = num(fa.yearDepr || 0) + Math.round(num(c.amt) * nYear / c.periods);
+          }
+        }
         applied += c.amt;
       });
       return applied;
@@ -6108,7 +6140,7 @@
       }
       var alignedAmt = 0;
       if (alignPrev.need) {
-        alignedAmt = this._applyDeprAlign(alignPrev);
+        alignedAmt = this._applyDeprAlign(alignPrev, month);
         this.addLog && this.addLog('折旧基准对齐',
           '卡片基准由 ' + alignPrev.cards[0].from + ' 对齐到 ' + alignPrev.last
           + '（' + alignPrev.cards.length + ' 张卡、' + alignPrev.periods + ' 期、'
@@ -6145,9 +6177,29 @@
         entries.push({ code: fee.code, name: fee.name, summary: '计提折旧-' + fa.name, dr: amt, cr: 0 });
         entries.push({ code: dep.code, name: dep.name, summary: '累计折旧-' + fa.name, dr: 0, cr: amt });
         total += amt;
-        assetLines.push({ id: fa.id, amt: amt });
+        /* anchorBefore：本卡【本次计提之前】的锚点月（有对齐时即对齐基准月 last）。
+         * 删除本期凭证时按它把锚点退回去 —— 既不能 delete deprMonth 交回推导
+         * （acqDate+periodUsed 可能差好几期，实测让报表虚增 1,000），
+         * 也不能硬写 prevMonth(month)（外部导入卡本无显式锚点，硬写会与推导打架）。 */
+        assetLines.push({ id: fa.id, amt: amt, anchorBefore: fa.deprMonth || self._faAnchorMonth(fa) });
       });
-      if (!entries.length) return { ok: false, msg: '本月无资产需要计提折旧' };
+      if (!entries.length) {
+        /* 【2026-11-04】对齐已经改了卡片基准，这里必须落库并如实回报。
+         * 原写法直接 return「本月无资产需要计提折旧」—— 卡片在内存里被改、却没 persist，
+         * 用户看到"失败"以为什么都没发生；下次任何一次 persist 又会把对齐悄悄写盘。
+         * 实测触发条件：卡片恰好差几期提满，对齐把它提满 → 本月无卡可提 → 走这个分支。
+         * 对齐本身是对既有账面的修正（那些期间的凭证已在账上），所以保留它是对的。 */
+        if (alignedAmt > 0) {
+          this.persist();
+          this.backupNow();
+          return {
+            ok: false, aligned: alignedAmt, count: 0, total: 0,
+            msg: '已将 ' + alignPrev.periods + ' 期折旧（' + (alignedAmt / 10000).toFixed(2)
+              + ' 元）并入卡片基准，但本月无资产需要计提折旧'
+          };
+        }
+        return { ok: false, msg: '本月无资产需要计提折旧' };
+      }
       var v = {
         word: opts.word || this.state.param.voucherWord || '记', date: (opts && opts.date) || lastDay(month), attach: 0,
         summary: opts.summary || ('计提' + month + '固定资产折旧'),
@@ -6165,8 +6217,12 @@
        * 删除凭证时按 id + 实提额精确回滚，不再用「每月重编的 记-N 字号」匹配卡片、
        * 也不再用 assetMonthlyDepr 现场重算 —— 后者对已提满的卡返回 0，导致末月那期
        * 整张卡漏回滚，差额又被「并入最后一张卡」的逻辑扣到别的卡上（实测把 4,251.11
-       * 从电视机挪到客房餐厅用品）。快照是定点整数，与 entries 同域。 */
-      saved.deprLines = assetLines.map(function (al) { return { id: al.id, amt: al.amt }; });
+       * 从电视机挪到客房餐厅用品）。快照是定点整数，与 entries 同域。
+       * 【2026-11-04】增加 anchorBefore（计提前的锚点月），供删除时把锚点精确退回；
+       * 老凭证没有该字段 → _revertAssetDeprByLines 仍走原逻辑，无需迁移。 */
+      saved.deprLines = assetLines.map(function (al) {
+        return { id: al.id, amt: al.amt, anchorBefore: al.anchorBefore || '' };
+      });
       assetLines.forEach(function (al) {
         self.state.fixedAssets.forEach(function (fa) {
           if (fa.id === al.id) {

@@ -752,7 +752,13 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       if (!okAlign) return showToast('已取消：未对齐，也未计提', 'warn');
       r = S.depreciateMonth(month, { align: true });
     }
-    if (!r.ok) return showToast(r.msg, 'error');
+    if (!r.ok) {
+      /* 【2026-11-04】对齐已并入卡片基准、但本月恰好无卡可提（例如对齐后正好提满）：
+       * 数据确实变了，必须刷新列表并用 warn 提示，不能只弹红字 —— 否则用户会以为
+       * "什么也没发生"，而卡片基准已经推进（下次计提不再弹对齐确认）。 */
+      if (r.aligned > 0) { renderAssets(); syncAll(); return showToast(r.msg, 'warn'); }
+      return showToast(r.msg, 'error');
+    }
     // 【2026-11-03】aligned>0 表示本次先把中间若干未并入卡片的折旧补进了卡片基准，
     // 提示里点出这笔金额，便于用户事后在「折旧汇总」和操作日志里对上（0 则不打扰）。
     var alignedTip = r.aligned > 0 ? '，其中 ' + money(r.aligned) + ' 元为往期折旧并入卡片基准' : '';
