@@ -993,6 +993,14 @@
       + 'th,td{border:1px solid #666;padding:3px 6px;text-align:left;}'
       + 'th{background:#f0f0f0;font-weight:600;}'
       + 'tr:nth-child(even) td{background:#fafafa;}'
+      // 账簿三表（总账/明细账/多栏账）的斑马纹在屏幕上由 JS 按业务行打 .row-alt（见 Ledger.js
+      // renderGl），纸面必须同口径：否则总账每科目 3 行 + 首两列 rowspan=3，物理行奇偶会让
+      // 每个科目只有中间那行带底色（2026-11-04「总账斑马纹乱」在打印件上的同款）。
+      // ⚠ 下面这条的 `:not(.row-alt)` 不能删：一个 .row-alt 组的物理行奇偶是混的
+      //   （总账第 2 组 = 物理第 4/5/6 行），若连 .row-alt 行也一并置透明，
+      //   组内 4/6 行会被压掉、只剩 5 行带底色 —— 正是要修的那个"半行"。
+      + '#glGrid tbody tr:nth-child(even):not(.row-alt) td,#dlGrid tbody tr:nth-child(even):not(.row-alt) td,#mlGrid tbody tr:nth-child(even):not(.row-alt) td{background:transparent;}'
+      + 'tbody tr.row-alt td{background:#fafafa;}'
       // 金额/数字/方向/期间列不折行，文本列允许折行
       + 'td.ta-r, td.mono, td.num, td.col-amt, th.ta-r, th.col-amt, td.gl-dir, td.gl-period{white-space:nowrap;}'
       // 保留链接文字（科目编码是 <a>），只去样式

@@ -145,7 +145,52 @@ function glCodesFor(code) {
   return set.size ? set : null;
 }
 
+/* ===================== 总账：悬停整组高亮 =====================
+   【为什么需要这段 JS】总账一个科目 3 行、首两列 rowspan=3，跨行格在 DOM 上**只属于组内
+   第 1 行**（实测 elementFromPoint：鼠标停在视觉第 2 行的前两列上，命中的仍是第 1 个 <tr>）。
+   于是纯 CSS `tr:hover` 表现为「同一视觉行左右移动，高亮在第 1/2 行之间跳，前两列永远只跟
+   第 1 行走」—— 与斑马纹当初的"半行蓝"同一个 rowspan 根因。
+   【为什么只动总账】明细账/多栏账没有 rowspan，原生 `:hover` 本来就整行正确，不必经手 JS。
+   【为什么不接管 `tr:hover`】css 里那条 `.grid tbody tr:hover{...!important}` **保持原样**：
+     本处只给同组另外两行补上同色 .row-hover。好处是**降级安全** —— 万一这段没跑起来，
+     总账退回"只亮一行"的旧表现，不会整表失去悬停反馈。
+   【与跳转高亮的关系】.row-hl 带 !important 且在 css 中更靠后 → 仍压过悬停（勿改那条顺序）。 */
+var ROW_HOVER_CLS = 'row-hover';
+// 从任意一行回溯到组首（.gl-subject），再取紧跟其后的两条 .gl-sub（组内恰好 3 行）
+function glHoverUnit(tr) {
+  var head = tr;
+  while (head && !head.classList.contains('gl-subject')) head = head.previousElementSibling;
+  if (!head) return [tr];
+  var unit = [head];
+  var n = head.nextElementSibling;
+  while (n && unit.length < 3 && n.classList.contains('gl-sub')) { unit.push(n); n = n.nextElementSibling; }
+  return unit;
+}
+function bindGlRowHover() {
+  var tb = $('glBody');
+  if (!tb || tb.__rowHoverBound) return;
+  tb.__rowHoverBound = true;
+  var curHead = null;   // 当前高亮组的首行：同组内移动直接返回，避免反复改类
+  function clearHover() {
+    var on = tb.getElementsByClassName(ROW_HOVER_CLS);
+    while (on.length) on[0].classList.remove(ROW_HOVER_CLS);
+    curHead = null;
+  }
+  tb.addEventListener('mouseover', function (e) {
+    var tr = e.target && e.target.closest ? e.target.closest('tr') : null;
+    if (!tr || tr.parentNode !== tb) { clearHover(); return; }   // 移入表体空白区也撤销
+    var unit = glHoverUnit(tr);
+    if (unit[0] === curHead) return;
+    clearHover();
+    for (var i = 0; i < unit.length; i++) unit[i].classList.add(ROW_HOVER_CLS);
+    curHead = unit[0];
+  });
+  // 离开表体时撤销；重绘会清空 tbody，旧节点上的类随节点一起丢弃，不会残留到新行
+  tb.addEventListener('mouseleave', clearHover);
+}
+
 function refreshGl() {
+  bindGlRowHover();   // 幂等：已绑过的 tbody 直接返回
   // 换账套：总账的「科目过滤 / 跳转高亮」是**上一本账套**的上下文，必须清掉 ——
   // 否则新账套的总账被旧过滤裁掉若干行（少行、不报错，属最难自查的一类）。
   if (bookScopeChanged('gl')) { glFilterCodes = null; glJumpHl = false; }
@@ -163,6 +208,13 @@ function renderGl(month) {
   var hideZero = !!(document.getElementById('glHideZero') && document.getElementById('glHideZero').checked);
   var glExpand = document.getElementById('glExpandAll');
   var expandAll = !!(glExpand && glExpand.checked);
+  /* 斑马纹按「科目组」交替（一个科目 3 行必须同色）：
+     全局 `.grid tbody tr:nth-child(even)` 数的是物理 <tr>，而本表每科目 3 行、
+     且首两列 rowspan=3 只落在第 1 行 —— 结果每个科目只有中间那行被染蓝，前两列不染，
+     视觉上就是"半行蓝、每个科目一条"，即用户 2026-11-04 报的「总账斑马纹乱」。
+     故本表（#glGrid 带 .zebra-js）退出 nth-child 规则，改由这里按组打 .row-alt。
+     规则见 css：`.grid tbody tr.row-alt`。 */
+  var gidx = 0;
   S.generalLedger(month).forEach(function (r) {
     if (glFilterCodes && !glFilterCodes.has(r.code)) return;
     if (!expandAll && r.code.length > 4) return;
@@ -192,20 +244,22 @@ function renderGl(month) {
     // 跳转高亮：过滤态下渲染出来的行本就是全部命中行（非命中的在上面已 return），
     // 故给该科目的 3 行（期初/本期/本年累计）整体标记，样式直接复用利润表的 .row-hl。
     var hlCls = (glJumpHl && glFilterCodes) ? ' row-hl' : '';
+    // 组内 3 行共用同一 alt 状态（奇的组染淡蓝），故在组首算一次、三行都用它
+    var altCls = (gidx++ % 2 === 1) ? ' row-alt' : '';
     var tr1 = document.createElement('tr');
-    tr1.className = 'gl-subject' + hlCls;
+    tr1.className = 'gl-subject' + altCls + hlCls;
     tr1.innerHTML =   /* raw(indent): subjectIndentHTML 只产出固定宽度 <span> 占位，非用户文本 */
       html`<td rowspan="3" class="mono"><a href="#" class="link-gl-subject" data-code="${r.code}">${r.code}</a></td><td rowspan="3" class="gl-name" title="${r.name}">${raw(indent)}${r.name}</td><td class="gl-period">${month}</td><td class="gl-seg">期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td class="gl-dir">${obDir}</td><td class="ta-r mono">${obSigned ? money(obSigned) : ''}</td>`;
     tb.appendChild(tr1);
     // Row 2: 本期合计
     var tr2 = document.createElement('tr');
-    tr2.className = 'gl-sub' + hlCls;
+    tr2.className = 'gl-sub' + altCls + hlCls;
     tr2.innerHTML =
       html`<td class="gl-period">${month}</td><td class="gl-seg">本期合计</td><td class="ta-r mono">${r.periodDr ? money(r.periodDr) : ''}</td><td class="ta-r mono">${r.periodCr ? money(r.periodCr) : ''}</td><td class="gl-dir">${endDir}</td><td class="ta-r mono">${endSigned ? money(endSigned) : ''}</td>`;
     tb.appendChild(tr2);
     // Row 3: 本年累计
     var tr3 = document.createElement('tr');
-    tr3.className = 'gl-sub gl-last' + hlCls;
+    tr3.className = 'gl-sub gl-last' + altCls + hlCls;
     tr3.innerHTML =
       html`<td class="gl-period">${month}</td><td class="gl-seg">本年累计</td><td class="ta-r mono">${r.ytdDr ? money(r.ytdDr) : ''}</td><td class="ta-r mono">${r.ytdCr ? money(r.ytdCr) : ''}</td><td class="gl-dir">${endDir}</td><td class="ta-r mono">${endSigned ? money(endSigned) : ''}</td>`;
     tb.appendChild(tr3);
@@ -403,11 +457,16 @@ function renderDlSegment(tb, code, range, vmap, showHead) {
   // 期初行：借贷方列强制空，只在方向+余额列显示净额（列序与金蝶一致：方向在前、余额在后）
   tro.innerHTML = html`${subjCells(s.code)}<td></td><td></td><td>期初余额</td><td class="ta-r mono"></td><td class="ta-r mono"></td><td>${obView.dir}</td><td class="ta-r mono">${amtText(obView.amount)}</td>`;
   tb.appendChild(tro);
+  /* 斑马纹：#dlGrid 同样退出 nth-child 规则（理由见 renderGl），只给**逐笔明细行**交替打
+     .row-alt；期初/合计/累计这类段行不参与、保持中性 —— 否则每组的段行会随明细笔数随机
+     变色，同一科目段在视觉上被切碎。计数每组从 0 起，故每组第一笔明细一律白底。 */
+  var didx = 0;
   d.rows.forEach(function (r) {
     // 凭证字号可点 → 跳转到该凭证（可编辑，store 保证仅未结账期间可保存）
     var vchTd = voucherLinkCell(r, vmap);
     var v = lineView(r);
     var tr = document.createElement('tr');
+    tr.className = (didx++ % 2 === 1) ? 'row-alt' : '';
     tr.innerHTML = html`${subjCells(r.entryCode)}<td>${r.date}</td><td>${vchTd}</td><td class="cell-ellipsis" title="${r.summary}">${r.summary}</td><td class="ta-r mono">${money(r.dr)}</td><td class="ta-r mono">${money(r.cr)}</td><td>${v.dir}</td><td class="ta-r mono">${amtText(v.amount)}</td>`;
     tb.appendChild(tr);
   });
@@ -558,8 +617,12 @@ function mlDrawRows(tb, d, cols, subj) {
   // 【2026-10-04 删除】原有 `var colDr = {}, colCr = {};` + 一行把每个分栏列初始化为 0 ——
   //   全文件只有这两行提到 colDr/colCr，从未被读取（逐笔分栏金额是当场算当场拼进 rowCells 的），属死代码。
   var vm = voucherVmap();
+  /* 斑马纹：#mlGrid 同样退出 nth-child 规则（理由见 renderGl），逐笔明细行交替打 .row-alt，
+     期初/本期合计/本年累计三段行不参与、保持中性（与明细账一致）。 */
+  var didx = 0;
   d.rows.forEach(function (r) {
     var tr = document.createElement('tr');
+    tr.className = (didx++ % 2 === 1) ? 'row-alt' : '';
     var rowCells = html`<td>${r.date}</td><td>${voucherLinkCell(r, vm)}</td><td class="cell-ellipsis" title="${r.summary}">${r.summary}</td><td class="ta-r mono">${money(r.dr)}</td><td class="ta-r mono">${money(r.cr)}</td>`;
     runNet += num(r.dr) - num(r.cr);
     var runView = S.displayBalance(runNet, subj.normal);

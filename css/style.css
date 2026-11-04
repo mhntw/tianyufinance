@@ -1669,10 +1669,23 @@ label.req::before {
 }
 
 /* 表体奇偶行：奇行白、偶行**淡**蓝（var(--ty-row-alt)）。刻意不再与表头同色 ——
-   密排表格整片浅蓝偏重，且同色会让"偶行悬浮高亮"完全看不出来。 */
-.grid tbody tr:nth-child(even) { background: var(--ty-row-alt); }
+   密排表格整片浅蓝偏重，且同色会让"偶行悬浮高亮"完全看不出来。
+   例外：带 .zebra-js 的表（账簿三表：总账/明细账/多栏账）退出 nth-child，改由 JS 打
+   .row-alt 类 —— 理由见下面那条规则。 */
+.grid:not(.zebra-js) tbody tr:nth-child(even) { background: var(--ty-row-alt); }
+/* 账簿三表的斑马纹：nth-child 数的是物理 <tr>，而总账一个科目 3 行且首两列 rowspan=3
+   只落在第 1 行 → 每个科目只有中间那行被染蓝，前两列不染，即用户 2026-11-04 报的
+   「总账斑马纹乱」。故改由 Ledger.js 按**业务行**打类：总账按科目组（3 行同色），
+   明细账/多栏账按逐笔明细行交替（期初/本期合计/本年累计这类段行不参与）。
+   注意 .grid:not(.zebra-js) 与 .row-alt 互斥（前者不命中 zebra-js 表），二者不会打架。 */
+.grid tbody tr.row-alt { background: var(--ty-row-alt); }
 /* 鼠标定位行高亮 var(--ty-row-hover)（原生 ty-table-row:hover td），覆盖斑马纹 */
 .grid tbody tr:hover { background: var(--ty-row-hover) !important; }
+/* 总账「一个科目 3 行」的整组悬停补充（唯一使用方：Ledger.js 的 bindGlRowHover）。
+   该表首两列 rowspan=3、DOM 上只属于组内第 1 行，纯 :hover 会让同一视觉行的高亮
+   在组内跳行，故 JS 额外给同组另外两行补这个类。不加 !important —— ① 悬停那行由上面
+   那条 !important 规则上色，两者同色；② 让 .row-hl（跳转定位琥珀高亮，!important）压过它。 */
+.grid tbody tr.row-hover { background: var(--ty-row-hover); }
 
 .grid td.num { text-align: right; }
 

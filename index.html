@@ -522,7 +522,8 @@
             <button class="btn" id="btnGlExport">导出</button>
         </div>
         <div class="scroll-area">
-        <table class="grid gl-grid" id="glGrid">
+        <!-- .zebra-js：本表斑马纹由 JS 按「科目组」打 .row-alt，不用 nth-child（见 Ledger.js renderGl） -->
+        <table class="grid gl-grid zebra-js" id="glGrid">
           <thead><tr>
             <th>科目编码</th><th class="col-fill">科目名称</th><th>期间</th><th class="col-fill">摘要</th>
             <th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th>
@@ -540,7 +541,7 @@
         </div>
         <div class="dl-layout">
           <div class="dl-main">
-            <table class="grid" id="dlGrid">
+            <table class="grid zebra-js" id="dlGrid">
               <!-- 列序与导出一致（9 列）：科目编码｜科目名称｜日期｜凭证字号｜摘要｜借方｜贷方｜方向｜余额
                    （科目两列 2026-10-14 补：查一级科目时逐笔要能看出实际入账的二级科目，见 renderDlSegment） -->
               <thead><tr><th>科目编码</th><th>科目名称</th><th>日期</th><th>凭证字号</th><th class="col-fill">摘要</th><th class="ta-r">借方</th><th class="ta-r">贷方</th><th>方向</th><th class="ta-r">余额</th></tr></thead>
@@ -567,7 +568,7 @@
         </div>
         <div class="open-check" id="mlTip">多栏账须选择非最明细科目（该科目下应有下级科目或核算项目），否则无法生成多栏式格式。</div>
         <div class="scroll-area">
-        <table class="grid ml-grid" id="mlGrid">
+        <table class="grid ml-grid zebra-js" id="mlGrid">
           <thead id="mlHead"></thead>
           <tbody id="mlBody"></tbody>
         </table>
