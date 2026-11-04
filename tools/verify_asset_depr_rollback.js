@@ -604,5 +604,43 @@ const jRev = S.reverseVoucher('imp1', { month: '2026-04' });
 ck(jRev.ok === true, 'J4 导入的折旧凭证可红冲（留痕更正）' + (jRev.ok ? '' : '（' + (jRev.msg || '') + '）'));
 ck(!!(jRev.ok && jRev.voucher && jRev.voucher.reverses === 'imp1'), 'J5 红字凭证正确反向引用原凭证');
 
+/* ============ K. 清理前必须完成折旧基准对齐（2026-11-04 由「只提示」改「阻断」）============
+ * 清理凭证按卡片 accumDepr（锚点月末值）转出累计折旧。锚点落后于账上最后一期时，
+ * 这段已提折旧不会被转出 → 总账 1602 残留（实测绅蓝 19 张卡 46,824.80）。
+ * 现在 genCleanVoucher 直接拒绝；页面在确认框之前就拦（见 Asset.js _cleanLagTip）。 */
+console.log('\n=== K. 清理前必须完成折旧基准对齐（阻断）===');
+cleanSetup();
+{
+  /* 账上最后一期折旧凭证 2026-03（贷 1602）；faA 无 deprMonth，
+     锚点 = 开始使用月 2025-01 + 已提 1 期 = 2025-02 → 落后 13 期 */
+  S._addVoucher({
+    word: '记', date: '2026-03-31', attach: 0, summary: '计提折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '计提折旧', dr: 5000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '计提折旧', dr: 0, cr: 5000 }
+    ]
+  });
+  const faA = faById('faA');
+  const lag = S.assetCleanLag(faA);
+  ck(lag && lag.lagN === 13 && lag.gap === 1300 && lag.lastDepr === '2026-03',
+    'K1 识别基准落后 13 期（锚点 2025-02 / 账上 2026-03，少转 0.13）'
+    + (lag ? '' : '（未识别）'));
+
+  const vCount = S.state.vouchers.length;
+  const rBlock = cleanOne('faA', '2026-04');
+  ck(rBlock.ok === false && /基准停在 2025-02/.test(rBlock.msg || ''),
+    'K2 基准落后时拒绝生成清理凭证：' + (rBlock.msg || ''));
+  ck(S.state.vouchers.length === vCount && !faById('faA').cleanVoucherId,
+    'K3 拒绝时零副作用（不新增凭证、卡片不记凭证号）');
+
+  /* 模拟「计提折旧」完成对齐：锚点推到 2026-03、累计同步 → 允许清理 */
+  faA.deprMonth = '2026-03';
+  faA.accumDepr = 1400;
+  ck(S.assetCleanLag(faA) === null, 'K4 对齐后不再判定为落后');
+  const rOk = S.genCleanVoucher(['faA'], '2026-04');
+  ck(rOk.ok === true, 'K5 对齐后正常生成清理凭证' + (rOk.ok ? '' : '（' + (rOk.msg || '') + '）'));
+  ck(faById('faA').cleanVoucherId === (rOk.voucher && rOk.voucher.id), 'K6 清理凭证引用仍按 id 记录');
+}
+
 console.log('\n' + (bad ? '\u2717 \u6709 ' + bad + ' \u9879\u672a\u901a\u8fc7' : '\u2713 \u5168\u90e8\u901a\u8fc7'));
 process.exit(bad ? 1 : 0);

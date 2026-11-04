@@ -51,7 +51,15 @@
       case '原值': return fmt(fa.original);
       case '期初累计折旧': return fmt(fa.accumDeprBegin);
       case '期末累计折旧': return fmt(fa.accumDepr);
-      case '月折旧': return fmt(fa.assetMonthlyDepr ? fa.assetMonthlyDepr : '');
+      /* 月折旧：卡片自带快照（老数据/外部导入）优先，否则由 store 现算（唯一实现，与计提同源）。
+         原写法 `fa.assetMonthlyDepr ? fa.assetMonthlyDepr : ''` 把函数名当字段名，恒为 undefined
+         → 生产账套导出的这一列永远空白（2026-11-04 修正）。 */
+      case '月折旧': {
+        var md = (fa.assetMonthlyDepr != null && fa.assetMonthlyDepr !== '')
+          ? fa.assetMonthlyDepr
+          : (global.S && typeof global.S.assetMonthlyDepr === 'function' ? global.S.assetMonthlyDepr(fa) : '');
+        return fmt(md);
+      }
       case '预计使用期限': return fa.life ? (fa.life + '年') : '';
       case '已折旧期间': return fa.periodUsed || '';
       case '残值': return fmt(fa.salvage);

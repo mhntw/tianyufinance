@@ -300,7 +300,16 @@ function check(cond, label, detail) {
    合法地增行 / 升级第三方库：改下面的基线并**在本段写明理由**（别只改数字）。 */
 (function () {
   const crypto = require('crypto');
-  const KIS_LINES = 1067;                       // 2026-09-28 冻结时行数（含冻结说明自身）
+  const KIS_LINES = 1188;                       // 2026-09-28 冻结时 1067 行（按 split('\n').length 计）
+  /* 【2026-11-04 合法增行 +121 —— 只修缺陷，未加功能】
+     修的是 closedPeriods（结账进度）三处缺陷：
+       ① 每年 12 月被当成"当前未结账期" → 导入后 12 月凭证可随意改、每年要人工补结账；
+       ② 改为**直接读金蝶 GLPref**（FStartPeriod 启用期 / FCurrPeriod 当前期 = 已结到其上一期），
+          不再靠"凭证最大期"推理 —— 实测绅蓝 2026 账套 FCurrPeriod=9，8 月已结，推理只给 01~07；
+       ③ 启用月之前的空期间不再凭空生成（添钰 2025 启用 3 月，原会给 01~02）。
+     改动：deriveClosedPeriods / hasYearEndCarry 单一实现，单年 convert 与多年 parseMulti 共用；
+     12 月年结另证（后续年度账套存在 / 年结凭证「本年利润 ↔ 利润分配」）。
+     回归：ais-tool/tests/verify_closed_periods.js（构造用例 + 5 个真实 .ais 样本）。 */
   const VENDOR = {                              // 第三方库：内容哈希锁定（原地改必红）
     'ais-tool/js/mdb-reader.js': 'd2004378ef866d0c',
     'ais-tool/js/buffer.js': 'e7c24f84529843da'

@@ -77,6 +77,11 @@ function currentPeriodOf(state){
   return '2026-07';
 }
 const MON = currentPeriodOf(st);
+/* 【2026-11-04】测试要在 MON 期录入凭证，但真实账套的 MON 可能已被用户正常结账
+   （计提→结转→结账之后，MON 恰好就是最后凭证期，本脚本会整片 FAIL 16 项且与代码无关）。
+   本脚本全程在深拷贝上跑、persist/saveBook 已封死，故只把测试期间从**副本**的
+   closedPeriods 移除，不影响原账套文件。 */
+st.closedPeriods = (st.closedPeriods || []).filter(function (m) { return m !== MON; });
 console.log('=== 测试账套：添钰来客 / 录入期间 '+MON+' / 原凭证数 '+base.vouchers.length+' ===\n');
 
 function balOf(rows, code){

@@ -33,7 +33,7 @@
  *   若某天确实从金蝶新增了卡，请把编码从白名单移除，让它回到比对面。
  *
  * 【用法】
- *   node tools/verify_asset_source.js                      # 自动找 ~/Downloads/金蝶账套 ais 与账套目录
+ *   node tools/verify_asset_source.js                      # 自动找「仓库上一级/金蝶账套 ais」与账套目录
  *   TY_ASSET_SRC_DIR=<目录>  TY_ASSET_BOOK_DIR=<目录>      # 覆盖来源目录 / 账套目录（便于自测）
  *   node tools/verify_asset_source.js <来源xlsx目录> <账套目录>
  *   退出码：0 = 全部一致（或无来源可对）；1 = 存在差异

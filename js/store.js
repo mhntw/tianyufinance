@@ -3937,8 +3937,10 @@
          挡住，崩溃路径根本走不到；修好年结识别后立刻暴露，故一并修掉。
          ⚠ 不能用 round2 代替 R：round2 是「元级保留两位小数」的对外口径，而此处的 net / 生成
            分录金额都是**内部定点整数**（1 元 = 10000 单位），对它做 ×100/100 不等于「归一到分」。
-           定点金额的归整口径就是 Math.round 到整数（与 _addVoucher 的入参约定一致）。 */
-      function pct(parent, p) { return Math.round(parent * p); }   // 定点整数按比例取整
+         【2026-11-04】取整口径改为「分」：原实现 Math.round(parent * p) 只归到 0.0001 元，
+           于是 10% 会生成 123.4568 这种分以下金额；会计最小单位是分，故统一 round 到 AMT_CENT
+           （100 个最小单位 = 1 分）。三项比例各自取整后，借方合计仍等于各项之和，借贷天然平衡。 */
+      function pct(parent, p) { return Math.round(parent * p / AMT_CENT) * AMT_CENT; }   // 定点整数按比例取整到「分」
       if (legal) { var a = pct(net, 0.10); entries.push({ code: legal.code, name: legal.name, summary: '提取法定盈余公积', dr: 0, cr: a }); alloc += a; }
       if (disc) { var b = pct(net, 0.10); entries.push({ code: disc.code, name: disc.name, summary: '提取任意盈余公积', dr: 0, cr: b }); alloc += b; }
       // 无明细科目时回退：合并计提盈余公积 20%（法定+任意）
@@ -5798,6 +5800,36 @@
       this.persist();
       return { ok: true };
     },
+    /* 清理前的「折旧基准落后」判定（唯一实现，2026-11-04；页面与 genCleanVoucher 共用）。
+     * 背景：清理凭证按卡片 accumDepr（锚点月末余额）转出累计折旧。锚点停在账上最后一期之前时，
+     *   这段已计提的折旧不会被转出，总账 1602 会残留同等金额
+     *   （实测绅蓝之星 19 张卡锚点 2026-07、账上已记到 2026-09，合计 46,824.80）。
+     * 旧实现只在确认框提示一句、仍允许生成 —— 提示一旦被忽略，账就错了；现在改为**阻断**。
+     * 【为什么不在清理时自动对齐】对齐金额是「月折旧 × 期数」的推算，而某张卡是否真的参与了
+     *   那几期无法从总账反查（凭证没有到卡的可靠关联）。放在计提流程里经「校准」确认，
+     *   比在清理时静默推算安全。
+     * @returns null（可清理）| { lagN, anchor, lastDepr, gap, msg }
+     */
+    assetCleanLag: function (fa) {
+      if (!fa) return null;
+      var lastDepr = this._lastDeprVoucherMonth();
+      var anchor = this._faAnchorMonth(fa);
+      if (!lastDepr || !anchor) return null;
+      var lagN = monthsBetween(anchor, lastDepr);
+      if (lagN <= 0) return null;
+      var md = num(this.assetMonthlyDepr(fa));
+      var cap = Math.max(0, num(fa.original) - num(fa.salvage));
+      var should = num(fa.accumDeprBegin) + md * lagN;
+      if (cap > 0 && should > cap) should = cap;
+      var gap = should - num(fa.accumDepr);
+      if (gap < AMT_CENT) return null;            // 不足 1 分不打断（会计最小单位是分）
+      return {
+        lagN: lagN, anchor: anchor, lastDepr: lastDepr, gap: gap,
+        msg: '折旧基准停在 ' + anchor + '，而账面折旧已记到 ' + lastDepr + '（' + lagN +
+          ' 期），直接清理会少转出累计折旧 ' + money(gap) + ' 元（总账 1602 会残留同等金额）。' +
+          '请先到「计提折旧」完成基准对齐，再回来清理。'
+      };
+    },
     // 对已清理且未生成清理凭证的卡片生成清理凭证
     // 分录：借 固定资产清理(账面净值=原值-累计折旧-减值准备) / 累计折旧 / 减值准备，贷 固定资产(原值)
     genCleanVoucher: function (ids, month) {
@@ -5813,6 +5845,10 @@
         if (!idsMap[fa.id]) return;
         if (fa.status !== '清理') return;
         if (fa.cleanVoucher) return;
+        /* 【2026-11-04】基准落后 → 拒绝生成（错一张就整批不生成，保持原子性）。
+           否则按锚点值转出累计折旧，锚点之后的已提折旧会留在 1602 上（见 assetCleanLag 注释）。 */
+        var lag = self.assetCleanLag(fa);
+        if (lag) { errMsg = '「' + fa.name + '」' + lag.msg; return; }
         var orig = num(fa.original), dep = num(fa.accumDepr), imp = num(fa.impairment);
         var net = Math.max(0, orig - dep - imp); // 账面净值
         // 科目角色解析（单点）：固定资产/累计折旧/固定资产清理 由卡片配置或准则 roles 提供
@@ -5860,23 +5896,32 @@
       this.persist();
       return { ok: true, voucher: saved, total: total, count: done.length };
     },
-    // 月折旧额（直线法，按月均摊剩余净值）
-    // 关键：以「已折旧期间」为计数器，按 剩余净值 / 剩余寿命 计算，
-    // 这样导入/带历史卡片（原账套折旧率可能不同）也能精确摊到（原值-残值），不会重提或超提。
+    // 月折旧额（直线法）：固定额 = (原值 − 残值) ÷ 总期数，四舍五入到「分」。
+    // 尾差由 _assetDeprRaw 的「末月按剩余余额补足」承接，故仍恰好摊到（原值 − 残值）。
     assetMonthlyDepr: function (fa) {
       if (!fa.life || fa.life <= 0) return 0;
       var base = num(fa.original) - num(fa.salvage);
-      var totalMonths = fa.life * 12;
+      /* life 存「年」，但导入会把月期数年化成 4 位小数（14 期 → 1.1667 年 → ×12 = 14.0004），
+         不取整会让「已提满 / 末月」两个判据都基于 14.0004，永远差一点点：
+         14 期卡片会多推一期 —— 末月补足被推到第 15 期（实测 0.04 落第 15 期、期数记成 15）。
+         期数本质是整数月，故取整；对 3/5/10 年（36/60/120 期）零影响。 */
+      var totalMonths = Math.round(num(fa.life) * 12);
+      if (totalMonths <= 0) return 0;
       var monthsPosted = num(fa.periodUsed || 0);
-      var remainingMonths = totalMonths - monthsPosted;
-      if (remainingMonths <= 0) return 0;
-      var accumulated = num(fa.accumDepr);
-      var remainingBase = Math.max(0, base - accumulated);
-      // 定点域唯一除法点：整数 ÷ 整数 → 对称 half-away-from-zero 取整（与 amt 同一舍入口径）。
-      // 除不尽时余数由 assetDeprDue 的「末月补足」承接，保证累计恰好落到（原值-残值）。
-      var q = Math.abs(remainingBase) / remainingMonths;
-      var r = Math.round(q);
-      return r === 0 ? 0 : (remainingBase < 0 ? -r : r);
+      if (totalMonths - monthsPosted <= 0) return 0;     // 已提满
+      /* 【2026-11-04 口径对齐金蝶：固定额 + 四舍五入到「分」】
+       * 原实现是「剩余可提 ÷ 剩余期数」（remainingBase / remainingMonths），不四舍五入到分：
+       *   0002 活动家具 → 75,911.59 / 37 = 2,051.664594，而金蝶是 2,051.67；
+       *   每期差 0.005，补 2 期就是 0.01/卡，19 张卡合计 0.09 —— 这正是
+       *   「卡片累计 363,034.13 vs 总账 363,034.04」那几分钱的**全部来源**。
+       * 已用金蝶卡片自身参数反推验证 28 张卡、零例外：
+       *   金蝶月折旧 = round(原值 × (1 − 残值率) ÷ 总期数, 2)，且 累计 = 月折旧 × 已折旧期数。
+       *   （卡片的 salvage 实测恒等于 原值 × 残值率，故这里直接用 原值 − 残值。）
+       * 固定额产生的尾差由 _assetDeprRaw 的「末月按剩余余额补足」承接，
+       * 因此仍然恰好落到（原值 − 残值），不会超提也不会提不满。
+       * 定点域：1 元 = 10000 单位、1 分 = 100 单位，故先 ÷100 取整再 ×100。 */
+      var perMonth = Math.round(base / totalMonths / 100) * 100;
+      return perMonth > 0 ? perMonth : 0;
     },
     /* 某资产在**某期间实际应提**的折旧额（0 = 该月不需计提）。
      *
@@ -5908,7 +5953,8 @@
       if (!fa.acqDate) return 0;
       if (fa.acqDate >= lastDay(month)) return 0;              // 购置晚于本月，本月不提
       var acqMonth = String(fa.acqDate).slice(0, 7);
-      var totalMonths = num(fa.life) * 12;
+      // 与 assetMonthlyDepr 同一判据：期数取整到整数月（导入年化 4 位会带出 14.0004，见该函数注释）
+      var totalMonths = Math.round(num(fa.life) * 12);
       var monthsPosted = num(fa.periodUsed || 0);
       if (monthsPosted >= totalMonths) return 0;               // 已提满
       if (monthsBetween(acqMonth, month) < 1) return 0;        // 次月起提
@@ -6084,6 +6130,70 @@
       });
       return applied;
     },
+    /* 卡片折旧基准校准（只读，2026-11-04）
+     *
+     * 【为什么单独做一个函数】对齐本身是一件「一次性」的事 —— 导入时卡片快照的时点比账上
+     *   凭证早（实测绅蓝之星：xlsx 卡片到 2026-07、账上凭证到 2026-09，差 2 期 28,031.46），
+     *   却被挂在每次计提上：每次点计提都要重算一遍、几个月不计提就一直不同步、算错了也没人
+     *   核对。要把闸门从计提挪到「导入完成后一次」，先得有这个只读入口：
+     *     ① 导入完成后调用一次 —— 把卡片从 anchor 推进到账上最后一期；
+     *     ② 现存账套一次性迁移 —— 用同一函数先验证「推进后能否与 1602 对上」。
+     * 【与 depreciationAlignPreview 的区别】后者只算「要补多少」，不判断补完是否与账面相符；
+     *   本函数把「校准后的卡片合计」与「1602 在该期期末」并列，差额超容差即 ok:false。
+     * 【只读】不写任何字段；调用方确认后才走 _applyDeprAlign + persist。 */
+    assetDeprCalibration: function () {
+      var self = this;
+      var last = this._lastDeprVoucherMonth();
+      if (!last) return { ok: true, need: false, last: '', cards: [], msg: '账上还没有折旧凭证，无需校准' };
+      var live = (this.state.fixedAssets || []).filter(function (fa) {
+        return fa.status !== '清理' && !fa.cleanPeriod;
+      });
+      var cards = [], total = 0, periods = 0;
+      live.forEach(function (fa) {
+        var anchor = self._faAnchorMonth(fa);
+        if (!anchor) return;
+        var n = monthsBetween(anchor, last);
+        if (n <= 0) return;                        // 锚点已跟上账上最后一期
+        var md = num(self.assetMonthlyDepr(fa));
+        /* md = 0（已提满）时只推进锚点与期数、不加金额 —— 提满后账上不再计提，
+         * 再按 md×n 加钱就是凭空造数。 */
+        var amt = md > 0 ? Math.round(md * n) : 0;
+        if (md > 0) { total += amt; periods += n; }
+        cards.push({ id: fa.id, code: fa.code, name: fa.name, periods: n, amt: amt, from: anchor, md: md });
+      });
+      /* 校准后每卡累计 = accumDeprBegin + 本次补提（计提时两者同步，见 depreciateMonth 回写段），
+       * 同时检查是否会超「原值−残值」——超了说明卡片参数与账不符，必须人工确认，不能静默推进。 */
+      var cardSum = 0, over = [];
+      live.forEach(function (fa) {
+        var c = cards.filter(function (x) { return x.id === fa.id; })[0];
+        var acc = num(fa.accumDeprBegin) + (c ? c.amt : 0);
+        if (c && c.amt) {
+          var cap = Math.max(0, num(fa.original) - num(fa.salvage));
+          if (cap > 0 && acc > cap) {
+            over.push({ code: fa.code, name: fa.name, acc: acc, cap: cap, by: acc - cap });
+          }
+        }
+        cardSum += acc;
+      });
+      var role = this.subjectRole('ACC_DEPR');
+      var code = String((role && role.code) || '1602');
+      var row = (this.generalLedger(last) || []).filter(function (x) { return String(x.code) === code; })[0];
+      var ledger = row ? num(row.endCr) - num(row.endDr) : null;
+      var diff = ledger == null ? null : cardSum - ledger;
+      /* 容差：每张卡 0.01 元（定点 100），与 verify_asset_cross_report 的逐卡舍入口径一致 */
+      var tol = Math.max(100, live.length * 100);
+      var ok = !over.length && diff != null && Math.abs(diff) <= tol;
+      return {
+        ok: ok, need: cards.length > 0, last: last, cards: cards,
+        total: total, periods: periods, cardSum: cardSum, ledger: ledger,
+        diff: diff, tolerance: tol, over: over,
+        msg: !cards.length ? '卡片基准已与账上最后一期（' + last + '）一致，无需校准'
+          : over.length ? '有卡片会超提（见 over），需先修卡片参数'
+          : diff == null ? '总账缺少累计折旧科目，无法对账'
+          : ok ? '可校准：差额 ' + (diff / 10000).toFixed(2) + ' 元在容差内'
+          : '不可校准：卡片与总账差 ' + (diff / 10000).toFixed(2) + ' 元，超容差 ' + (tol / 10000).toFixed(2)
+      };
+    },
     // 【冻结】计提折旧：幂等（重复计提不产生额外凭证）由 tools/verify_e2e_snapshot.js ② 守护，
     // 凭证借贷平衡由不变量 I1 兜底。纯可读性改动不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑 verify_e2e_snapshot.js 与 verify_invariants.js，全绿才算完成。
@@ -6130,9 +6240,28 @@
        *   传了 opts.align → 执行对齐并继续计提。
        * 放在「重新计提」之后：本期已有凭证时锚点本就该停在账上最后一期，无需对齐。 */
       var alignPrev = this.depreciationAlignPreview(month);
+      /* 【2026-11-04】对齐前先对账（assetDeprCalibration）。原闸门只管「要不要对齐」，
+       * 不管「对齐得对不对」：md×n 是**推算**，账上断月、各期金额与 md 不符、卡片参数录错，
+       * 都会把错数静默写进卡片。这里把「校准后的卡片合计」与 1602 在该期期末并列，
+       * 超提或差额超容差一律拒绝 —— 推算错时拒绝执行，而不是事后靠脚本才发现。
+       * 两条路径（预览 / 带 opts.align 执行）都过这一关，UI 无法绕过。 */
+      var alignCal = null;
+      if (alignPrev.need) {
+        alignCal = this.assetDeprCalibration();
+        if (alignCal && alignCal.ok === false) {
+          var overOne = (alignCal.over || [])[0];
+          return {
+            ok: false, needAlign: true, preview: alignPrev, calibration: alignCal,
+            msg: '折旧基准无法自动对齐：' + alignCal.msg
+              + (overOne ? '（' + overOne.code + ' ' + overOne.name + ' 会超提 '
+                + (overOne.by / 10000).toFixed(2) + ' 元）' : '')
+              + '。请先核对卡片参数（原值 / 残值 / 年限 / 期初累计折旧）与总账「累计折旧」科目。'
+          };
+        }
+      }
       if (alignPrev.need && !opts.align) {
         return {
-          ok: false, needAlign: true, preview: alignPrev,
+          ok: false, needAlign: true, preview: alignPrev, calibration: alignCal,
           msg: '卡片累计折旧基准停在 ' + alignPrev.cards[0].from + '，而账上折旧凭证已到 ' + alignPrev.last
             + '，中间 ' + alignPrev.periods + ' 期（' + (alignPrev.total / 10000).toFixed(2)
             + ' 元）尚未并入卡片。请确认对齐后再计提'

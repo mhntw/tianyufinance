@@ -143,6 +143,19 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     return v;
   }
 
+  /* 清理前的「折旧基准落后」判定（2026-11-04：由「只提示」改为**阻断**）。
+   * 判定与文案的唯一实现在 store.assetCleanLag —— 页面与 genCleanVoucher 共用同一套口径，
+   * 避免「确认框说差 100、实际生成时按另一套算法」的分叉。
+   * 返回 '' = 可以清理；非空 = 必须先到「计提折旧」完成基准对齐（那里会经「校准」确认），
+   * 否则按锚点值转出累计折旧，锚点之后已提的那几期会残留在总账 1602 上。
+   * 独立成函数而非内联：link-clean 分支有静态契约（verify_asset_depr_rollback 的 D16
+   *   要求在分支前若干字符内看到 cancelCleanFixedAsset），内联会把窗口撑破。 */
+  function _cleanLagTip(fa) {
+    if (!fa || typeof S.assetCleanLag !== 'function') return '';
+    var lag = S.assetCleanLag(fa);
+    return lag ? lag.msg : '';
+  }
+
   // 资产卡片 25 列共用 td 拼接（仅卡片页使用；折旧凭证页已合并下线）
   // 2026-10-27：删除「减值准备凭证」「其他变动凭证」两列 —— 二者全库无生成入口
   // （fa.impairVoucher / fa.otherVoucher 只有 store 默认 '' + Excel 导入可带），界面恒空。
@@ -248,13 +261,20 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     (list || []).forEach(function (fa) {
       var msg = [];
       var begin = num(fa.accumDeprBegin), end = num(fa.accumDepr);
-      var md = S.assetMonthlyDepr(fa);
+      /* 【2026-11-04 域修正】这里的 fa 来自 parseAssetWorkbook，金额是「元」；
+         而 assetMonthlyDepr 是**定点域**函数（1 元 = 10000 单位，内部 ÷100 取整到分）。
+         直接喂元域会把 123,100 ÷ 60 算成 2,100（而非 2,051.67），于是每张卡都误报
+         「月折旧与导入数据不符」（实测差 48.33）。故先 amt 转定点、算完 yuan 换回元，
+         与 ref（元）同域比较；下面的 0.01 容差因此仍然是「1 分（元）」。 */
+      var md = U.yuan(S.assetMonthlyDepr({
+        original: U.amt(fa.original), salvage: U.amt(fa.salvage),
+        life: fa.life, periodUsed: fa.periodUsed
+      }));
       var ref = num(fa.monthDeprRef);                      // 导入文件的「月折旧额」（给了才有）
       if (!fa.acqDate) msg.push('缺开始使用日期');
       if (!num(fa.life)) msg.push('缺预计使用期限');
       if (!begin && !end) msg.push('期初/期末累计折旧均为 0');
-      /* 【不是 bug，别"顺手改"】此处两侧都在**导入解析域**（parseAssetWorkbook 产出「元」）：
-         ref 来自导入文件、md 由 assetMonthlyDepr 以同域入参算出 —— 都是元，0.01 即"1 分"元容差。
+      /* 两侧都是「元」：ref 来自导入文件、md 已由上一步换回元，0.01 即"1 分"元容差。
          批量替换时不要改成 AMT_SCALE（那是 1 元，会把容差放大 100 倍）。 */
       if (ref > 0 && md > 0 && Math.abs(ref - md) > 0.01) {
         msg.push('月折旧与导入数据不符（本软件 ' + md.toFixed(2) + ' / 导入 ' + ref.toFixed(2) + '）');
@@ -741,10 +761,19 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var cards = pv.cards || [];
       var from = (cards[0] && cards[0].from) || '?';
       var to = pv.last || '?';
+      /* 【2026-11-04】store 在弹框前已经把「校准后的卡片合计」与 1602 对过账，ok=false 会直接拒绝
+         并带 msg（走不到这里）。这里把差额摆出来，让确认动作有据可依，而不是盲点"确定"。 */
+      var cal = r.calibration || null;
+      var calLine = (cal && cal.ledger != null)
+        ? '核对：校准后卡片累计 ' + money(cal.cardSum) + ' 元，总账「累计折旧」在 ' + cal.last
+          + ' 的期末 ' + money(cal.ledger) + ' 元，差 ' + money(cal.diff)
+          + ' 元（容差 ' + money(cal.tolerance) + '）。\n\n'
+        : '';
       var okAlign = await H.confirmAsync(
         '卡片累计折旧基准停在 ' + from + '，而账上折旧凭证已记到 ' + to + '。\n\n' +
         cards.length + ' 张卡片、共 ' + (pv.periods || 0) + ' 期（' + money(pv.total || 0) + ' 元）' +
         '尚未并入卡片基准。若直接计提，这些期间的折旧会在卡片与报表里凭空少掉。\n\n' +
+        calLine +
         '确认后将把上述金额并入卡片「期初累计折旧」，并把基准推进到 ' + to + '，' +
         '再继续计提 ' + month + '。\n' +
         '（只改卡片基准，不新增、不修改任何凭证；账上已有的折旧凭证保持原样。）\n\n' +
@@ -781,6 +810,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
       var cf = S.state.fixedAssets.filter(function (x) { return x.id === cid; })[0];
       if (!cf) return;
       var cm = _assetPeriod();
+      // 折旧基准落后 → 直接阻断（详见 store.assetCleanLag）：不标记、不生成，卡片保持原状
+      var cleanLagTip = _cleanLagTip(cf);
+      if (cleanLagTip) return showToast('无法清理：' + cleanLagTip, 'error');
       if (!(await H.confirmAsync('确认清理「' + cf.name + '」？\n清理期间：' + cm +
         '\n\n将同时生成清理凭证：借 固定资产清理/累计折旧，贷 固定资产。' +
         '\n注意：该凭证只转出账面价值，处置收入、清理费用与净损益结转需另行手工处理。' +
@@ -871,7 +903,15 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
   function _calcMonthDepr() {
     var o = U.num($('aOriginal').value), r = U.num($('aSalvageRate').value), m = U.num($('aLife').value);
     if (!o || !m) { $('aMonthDepr').value = ''; _updateHints(); return; }
-    $('aMonthDepr').value = ((o * (1 - r / 100)) / m).toFixed(2);
+    /* 与计提**同一实现**（store.assetMonthlyDepr：定点域、四舍五入到分）。
+       原式 `(o*(1-r/100)/m).toFixed(2)` 是元域浮点：在 x.xx5 边界（如 1.005）toFixed 会向下
+       舍成 1.00，而实提是 1.01 —— 预览比实际少 1 分。这里先换定点域算、再换回元显示。
+       残值口径与保存时一致（_collectAsset：原值 × 残值率%）。 */
+    var md = S.assetMonthlyDepr({
+      original: U.amt(o), salvage: U.amt(o * r / 100),
+      life: m / 12, periodUsed: 0
+    });
+    $('aMonthDepr').value = U.yuanFmt(md);   // 单点：定点 → 元（2 位、不带千分位，见 store.yuanFmt）
     _updateHints();
   }
   // 填充「使用部门」下拉（每次打开重填，保证表单内「＋部门」新增后立即可选）。部门存**名称**
@@ -906,7 +946,9 @@ const ACCOUNT_CLASSES = globalThis.ACCOUNT_CLASSES || (EX && EX.ACCOUNT_CLASSES)
     $('aOriginal').value = fa ? U.yuan(fa.original) : '';        // 回填「元」输入框：store 内部为定点整数，须换回元
     $('aMethod').value = fa ? (fa.method || '平均年限法') : '平均年限法';
     $('aSalvageRate').value = fa ? fa.salvageRate : '';
-    $('aLife').value = fa ? (fa.life * 12) : 60;    // 存储为年，表单显示月
+    /* 存储为年、表单显示月。取整再显示：导入把月期数年化成 4 位（14 期 → 1.1667 年），
+       直接 ×12 会显示 14.0004，与「期数是整数月」的事实不符（store 侧也按整数月计算）。 */
+    $('aLife').value = fa ? Math.round(fa.life * 12) : 60;
     $('aPeriodUsed').value = fa ? (fa.periodUsed || 0) : 0;
     $('aAccumDeprBegin').value = fa ? U.yuan(num(fa.accumDeprBegin)) : 0;   // 元域输入框
     $('aYearDepr').value = fa ? U.yuan(num(fa.yearDepr)) : 0;               // 元域输入框

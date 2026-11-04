@@ -94,8 +94,16 @@ console.log('\n=== 契约一：静态红线（schemaVersion / 拆分不退流）
 })();
 
 console.log('\n=== 契约二：真实 .ais → 转换 → 导入 → 金额必须恰为 ×10000 ===');
-/* 找样本：与 verify_vs_ais.js 同一批目录（保持口径一致，避免两边各挑各的） */
-const DIRS = ['/Users/chen/Desktop', '/Users/chen/Downloads/金蝶账套 ais', '/Users/chen/Downloads'];
+/* 找样本：与 verify_vs_ais.js 同一批目录（保持口径一致，避免两边各挑各的）。
+   【2026-11-04 修正】原写死 /Users/chen/Desktop、/Users/chen/Downloads，金蝶原始账套实际已挪到
+   **本仓库的上一级** `金蝶账套 ais/`，于是契约二长期「跳过 —— 无样本」。
+   现按「环境变量 → 仓库上一级 → 旧位置兜底」解析，不写死用户名（换机器同样可用）。 */
+const DIRS = (process.env.TY_AIS_DIR ? [process.env.TY_AIS_DIR] : []).concat([
+  path.join(ROOT, '..', '金蝶账套 ais'),                  // 当前实际位置：ty 的上一级（财务软件/金蝶账套 ais）
+  path.join(os.homedir(), 'Desktop'),
+  path.join(os.homedir(), 'Downloads', '金蝶账套 ais'),
+  path.join(os.homedir(), 'Downloads')
+]);
 let aisPath = null;
 for (const d of DIRS) {
   try {

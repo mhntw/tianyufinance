@@ -271,6 +271,15 @@ console.log('\n=== D. 台账同步（yearDepr / netValue）与删除回退锚点
     depFeeAcct: '6602', accDeprAcct: '1602'
   });
   const fa2 = S.state.fixedAssets[0];
+  /* 历史累计（锚点 2026-06 末的 21,000）必须落账 —— 对齐前会拿「校准后卡片合计」与 1602 对账，
+   * 缺这张就是「卡片多、账面少」，会被校准检查正确拒绝（这正是 2026-11-04 新增的那道关）。 */
+  S.addVoucher({
+    word: '记', date: '2026-06-30', attach: 0, summary: '计提2026-06固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 21000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 21000 }
+    ]
+  });
   S.addVoucher({
     word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
     entries: [
@@ -310,6 +319,14 @@ console.log('\n=== D. 台账同步（yearDepr / netValue）与删除回退锚点
     depFeeAcct: '6602', accDeprAcct: '1602'
   });
   const fa3 = S.state.fixedAssets[0];
+  /* 历史累计（锚点 2026-07 末的 58,000）必须落账，理由同上 */
+  S.addVoucher({
+    word: '记', date: '2026-07-30', attach: 0, summary: '计提2026-07固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 58000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 58000 }
+    ]
+  });
   S.addVoucher({
     word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
     entries: [
@@ -325,6 +342,182 @@ console.log('\n=== D. 台账同步（yearDepr / netValue）与删除回退锚点
   ck(U.num(fa3.netValueEnd) === 0, 'D11 提满后净值 = 0（不再停在旧值 2,000.00）');
 }
 
+/* ============ E. 校准不通过必须拒绝对齐（2026-11-04） ============
+ * 对齐金额是 md×n 的**推算**：账上断月、各期金额与 md 不符、卡片参数录错，都会算错。
+ * 所以对齐前会把「校准后卡片合计」与 1602 在该期期末对账，不平即拒绝执行 —— 这也正是
+ * 把闸门从"每次计提重算"改成"算完必校验"的关键：算错时拒绝，而不是写进去再靠脚本发现。
+ * 本节锁死三件事：预览路径拒、带 align:true 也拒（UI 不能绕过）、被拒时数据零改动。 */
+/* 文案避免「不通过」三字：run-all 的"可疑假绿"启发式会把它当成失败结论，
+   于是每次全量都报「疑漏 process.exit(1)」——属告警误判，不是真失败。 */
+console.log('\n=== E. 校准不可行 → 拒绝对齐（两条路径都不可绕过）===');
+{
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+  /* 卡片声称已提 23 期 23,000（锚点 2026-07），但账上只有 2026-09 一张 5,000 —— 典型的数据不平 */
+  S.addFixedAsset({
+    code: 'E001', name: '账实不符设备', acqDate: '2024-08-01', status: '正常',
+    original: 60000, salvage: 0, life: 5, periodUsed: 23,
+    accumDepr: 23000, accumDeprBegin: 23000, deprMonth: '2026-07',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  S.addVoucher({
+    word: '记', date: '2026-09-30', attach: 0, summary: '计提2026-09固定资产折旧',
+    entries: [
+      { code: '6602', name: '管理费用', summary: '折旧', dr: 5000, cr: 0 },
+      { code: '1602', name: '累计折旧', summary: '折旧', dr: 0, cr: 5000 }
+    ]
+  });
+
+  const pv = S.depreciationAlignPreview('2026-10');
+  ck(pv.need === true, 'E1 预览仍提示需要对齐（' + pv.periods + ' 期 / ' + (U.num(pv.total) / U.AMT_SCALE).toFixed(2) + '）');
+
+  const cal = S.assetDeprCalibration();
+  ck(cal.ok === false && Math.abs(cal.diff) > cal.tolerance,
+    'E2 校准自身判定不可行（卡片 ' + (cal.cardSum / U.AMT_SCALE).toFixed(2)
+    + ' / 账面 ' + (cal.ledger == null ? '—' : (cal.ledger / U.AMT_SCALE).toFixed(2))
+    + ' / 差 ' + (cal.diff == null ? '—' : (cal.diff / U.AMT_SCALE).toFixed(2))
+    + '，容差 ' + (cal.tolerance / U.AMT_SCALE).toFixed(2) + '）');
+
+  const vn0 = (S.state.vouchers || []).filter(v => v.deleted !== 'y').length;
+  const snap = JSON.stringify((S.state.fixedAssets || []).map(x => [x.id, x.accumDepr, x.accumDeprBegin, x.periodUsed, x.deprMonth, x.yearDepr, x.netValueEnd]));
+  const r1 = S.depreciateMonth('2026-10');
+  ck(r1.ok === false && /无法自动对齐/.test(String(r1.msg || '')), 'E3 预览路径被拒并说明原因（' + String(r1.msg || '').slice(0, 34) + '…）');
+  const r2 = S.depreciateMonth('2026-10', { align: true });
+  ck(r2.ok === false && /无法自动对齐/.test(String(r2.msg || '')), 'E4 带 align:true 同样被拒 —— UI 无法绕过这道校验');
+  const snap2 = JSON.stringify((S.state.fixedAssets || []).map(x => [x.id, x.accumDepr, x.accumDeprBegin, x.periodUsed, x.deprMonth, x.yearDepr, x.netValueEnd]));
+  ck(snap === snap2, 'E5 两次被拒后卡片分毫未动');
+  ck((S.state.vouchers || []).filter(v => v.deleted !== 'y').length === vn0, 'E6 被拒时不生成任何凭证');
+}
+
+/* ============ F. 月折旧额必须是「固定额 + 四舍五入到分」（2026-11-04） ============
+ * 原实现是「剩余可提 ÷ 剩余期数」，不四舍五入到分，于是每期比金蝶差 0.005 元左右，
+ * 补 2 期就是 0.01/卡，19 张卡合计 0.09 —— 表现为「卡片累计 363,034.13 vs 总账 363,034.04」。
+ * 已用金蝶卡片自身参数反推 28 张卡、零例外确认：金蝶 = round((原值−残值)÷总期数, 2)，
+ * 且累计 = 月折旧 × 已折旧期数。本节锁死这个口径，防止被改回"剩余平均"。 */
+console.log('\n=== F. 月折旧额口径 = 固定额、四舍五入到分（对齐金蝶） ===');
+{
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+
+  /* F1：金蝶实测 0002 活动家具 → 123,100 ÷ 60 = 2,051.6667，金蝶取 2,051.67（旧算法给 2,051.6646） */
+  S.addFixedAsset({
+    code: 'F001', name: '活动家具', acqDate: '2024-08-31', status: '正常',
+    original: 123100, salvage: 0, life: 5, periodUsed: 23,
+    accumDepr: 47188.41, accumDeprBegin: 47188.41, deprMonth: '2026-07',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa1 = S.state.fixedAssets[0];
+  ck(U.num(S.assetMonthlyDepr(fa1)) === U.amt(2051.67),
+    'F1 月折旧 = 2,051.67（round 到分；旧算法会给 2,051.6646，实际 '
+    + (U.num(S.assetMonthlyDepr(fa1)) / U.AMT_SCALE).toFixed(4) + '）');
+
+  /* F2：除不尽且需要进位 —— 100 ÷ 60 = 1.6667，取 1.67 */
+  S.addFixedAsset({
+    code: 'F002', name: '进位测试', acqDate: '2024-08-31', status: '正常',
+    original: 100, salvage: 0, life: 5, periodUsed: 0,
+    accumDepr: 0, accumDeprBegin: 0, deprMonth: '',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa2 = S.state.fixedAssets[1];
+  ck(U.num(S.assetMonthlyDepr(fa2)) === U.amt(1.67),
+    'F2 月折旧 = 1.67（100 ÷ 60 = 1.6667 进位，实际 ' + (U.num(S.assetMonthlyDepr(fa2)) / U.AMT_SCALE).toFixed(4) + '）');
+
+  /* F3：末月必须按剩余余额补足 —— 59 期 × 1.67 = 98.53，最后 1 期应提 1.47（不是 1.67） */
+  fa2.periodUsed = 59;
+  fa2.accumDepr = U.amt(98.53);
+  fa2.accumDeprBegin = U.amt(98.53);
+  fa2.deprMonth = '2029-07';
+  const lastAmt = U.num(S._assetDeprRaw(fa2, '2029-08'));
+  ck(lastAmt === U.amt(1.47),
+    'F3 末月补足 = 1.47（原值 100 − 已提 98.53，实际 ' + (lastAmt / U.AMT_SCALE).toFixed(2) + '）');
+
+  /* F4：累计口径 = 月折旧 × 期数，与金蝶 GLBal 一致 */
+  const accumAt25 = U.num(fa1.accumDeprBegin) + U.num(S.assetMonthlyDepr(fa1)) * 2;
+  ck(accumAt25 === U.amt(51291.75),
+    'F4 25 期累计 = 51,291.75（= 47,188.41 + 2 × 2,051.67，金蝶同口径，实际 '
+    + (accumAt25 / U.AMT_SCALE).toFixed(2) + '）');
+
+  /* F5/F6：期数取整 —— 导入把「14 期」年化成 1.1667 年（×12 = 14.0004）。
+     不取整时 monthsPosted + 1 >= 14.0004 永远为假：末月补足被推到第 15 期（0.04），
+     期数也记成 15（实测，见 store.js assetMonthlyDepr 注释）。 */
+  S.addFixedAsset({
+    code: 'F003', name: '14 期卡', acqDate: '2024-01-31', status: '正常',
+    original: 100, salvage: 0, life: 1.1667, periodUsed: 0,
+    accumDepr: 0, accumDeprBegin: 0, deprMonth: '',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa3 = S.state.fixedAssets[2];
+  let posted3 = 0, acc3 = 0, last3 = 0;
+  for (let i = 1; i <= 16; i++) {
+    fa3.periodUsed = posted3;
+    fa3.accumDepr = acc3;                      // 定点累加，避免浮点噪声干扰断言
+    const a = U.num(S._assetDeprRaw(fa3, addMonths('2024-01', i)));
+    if (!a) continue;
+    acc3 += a; posted3++; last3 = a;
+  }
+  ck(posted3 === 14 && acc3 === U.amt(100),
+    'F5 14 期（年化 1.1667）恰好提 14 期、累计 100.00（实际 ' + posted3 + ' 期 / '
+    + (acc3 / U.AMT_SCALE).toFixed(2) + '）');
+  ck(last3 === U.amt(7.18),
+    'F6 末月补足落在第 14 期 = 7.18（不推到第 15 期补 0.04，实际 ' + (last3 / U.AMT_SCALE).toFixed(2) + '）');
+}
+
+/* ============ G. 利润分配金额按「分」取整（2026-11-04）============
+ * 原实现 pct = Math.round(parent*p) 只归到 0.0001 元：净利润 100.01 元、10% 会生成 10.001 元。
+ * 会计最小单位是分，且分以下金额在金蝶里根本存不下 —— 这里锁死「所有分录都是整分」。 */
+console.log('\n=== G. 利润分配金额按「分」取整 ===');
+{
+  const { S, U } = freshStore();
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '3103', name: '本年利润', cls: 'equity', normal: 'cr', level: 0, enabled: true },
+    { code: '3104', name: '利润分配', cls: 'equity', normal: 'cr', level: 0, enabled: true },
+    { code: '310101', name: '法定盈余公积', cls: 'equity', normal: 'cr', level: 1, enabled: true },
+    { code: '310102', name: '任意盈余公积', cls: 'equity', normal: 'cr', level: 1, enabled: true },
+    { code: '2232', name: '应付利润', cls: 'liability', normal: 'cr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = []; S._glCache = {};
+  /* 净利润 100.01 元 → 10% = 10.001 元（旧实现会留下 0.001 元亚分金额） */
+  S._addVoucher({
+    word: '转', date: '2024-12-31', attach: 0, summary: '结转 2024 年度本年利润',
+    kind: S.VOUCHER_KINDS.CARRY_YE,
+    entries: [
+      { code: '3103', name: '本年利润', summary: '结转', dr: U.amt(100.01), cr: 0 },
+      { code: '3104', name: '利润分配', summary: '结转', dr: 0, cr: U.amt(100.01) }
+    ]
+  });
+  const r = S.carryProfitDistribute('2024-12');
+  ck(r.ok === true, 'G1 利润分配生成成功' + (r.ok ? '' : '（' + (r.msg || '') + '）'));
+  if (r.ok) {
+    const es = r.voucher.entries || [];
+    const offCent = es.filter(e => (Number(e.dr) % 100) !== 0 || (Number(e.cr) % 100) !== 0);
+    ck(offCent.length === 0, 'G2 所有分录金额都是整分（无 0.001 元级金额）'
+      + (offCent.length ? '：' + JSON.stringify(offCent.slice(0, 2)) : ''));
+    const drs = es.reduce((s, e) => s + Number(e.dr || 0), 0);
+    const crs = es.reduce((s, e) => s + Number(e.cr || 0), 0);
+    ck(drs === crs, 'G3 借贷平衡（' + (drs / U.AMT_SCALE).toFixed(2) + '）');
+    const legal = es.filter(e => e.code === '310101')[0];
+    ck(legal && Number(legal.cr) === U.amt(10),
+      'G4 法定盈余公积 = 10.00（100.01×10% = 10.001 → 取整到分）');
+  }
+}
+
 /* ============ C. 静态契约：UI 必须消费 needAlign ============ */
 console.log('\n=== C. 静态契约（Asset.js 接住 needAlign）===');
 {
@@ -332,6 +525,26 @@ console.log('\n=== C. 静态契约（Asset.js 接住 needAlign）===');
   ck(/r\.needAlign/.test(src), 'C1 Asset.js 判断 r.needAlign（store 拒绝后必须给出出口）');
   ck(/depreciateMonth\(month,\s*\{\s*align:\s*true\s*\}\)/.test(src), 'C2 Asset.js 确认后带 align:true 重调');
   ck(/折旧基准对齐/.test(src), 'C3 确认框标题明确（用户知道自己在确认什么）');
+  /* C4：导入体检的卡片是「元」域，assetMonthlyDepr 是定点域 —— 必须先 amt 再算。
+     直喂元域会把 2,051.67 算成 2,100（÷60 后再 ÷100 取整），每张卡都误报。 */
+  ck(/assetMonthlyDepr\(\{[\s\S]{0,160}U\.amt\(fa\.original\)/.test(src),
+    'C4 导入体检先 U.amt 转定点再算月折旧（元域直喂会算成整百误报）');
+  /* C5：导出「月折旧」列必须由 store 现算 —— 卡片上没有该字段，原写法恒为空白。 */
+  const ioSrc = fs.readFileSync(path.resolve(__dirname, '../js/ty-io.js'), 'utf8');
+  ck(/case '月折旧':[\s\S]{0,220}assetMonthlyDepr/.test(ioSrc),
+    'C5 导出「月折旧」列由 store 现算（不读不存在的 fa.assetMonthlyDepr）');
+  const storeSrc = fs.readFileSync(path.resolve(__dirname, '../js/store.js'), 'utf8');
+  /* C6：利润分配比例按「分」取整 —— 原 Math.round(parent*p) 只归到 0.0001 元。 */
+  ck(/function pct\(parent, p\) \{ return Math\.round\(parent \* p \/ AMT_CENT\) \* AMT_CENT; \}/.test(storeSrc),
+    'C6 利润分配比例按「分」取整（AMT_CENT），不生成分以下金额');
+  /* C7：清理凭证生成前必须消费 assetCleanLag（单一实现，页面与 store 同口径）。 */
+  ck(/assetCleanLag:\s*function/.test(storeSrc) && /var lag = self\.assetCleanLag\(fa\)/.test(storeSrc),
+    'C7 清理凭证生成前消费 assetCleanLag（基准落后即拒绝，不是只在确认框提示）');
+  ck(/function _cleanLagTip[\s\S]{0,400}S\.assetCleanLag/.test(src),
+    'C8 页面清理拦截复用 store.assetCleanLag（避免两套判定分叉）');
+  /* C9：表单月折旧预览必须走 store 同一实现（原来 toFixed 在 x.xx5 边界会与实提差 1 分）。 */
+  ck(/function _calcMonthDepr[\s\S]{0,700}S\.assetMonthlyDepr/.test(src),
+    'C9 表单「月折旧额」预览调 store.assetMonthlyDepr（与实提同口径）');
 }
 
 console.log('\n' + (bad ? '\u2717 有 ' + bad + ' 项断言失败' : '\u2713 全部通过：折旧锚点对齐链路（拒绝零副作用 / 对齐金额 / 计提后对平 / 不叠加 / 台账六件套 / 删除回退锚点 / UI 已接）'));

@@ -112,6 +112,36 @@ if (back.length === 1) {
     'C 导入「原值」不得等于内部整数（再证一次方向没搞反）', b.original + ' vs ' + fa.original);
 }
 
+/* ---------- D 「月折旧」列：卡片无快照时必须现算 ----------
+ * 2026-11-04 修复前该列读 `fa.assetMonthlyDepr`（把函数名当字段名）→ 生产账套导出的
+ * 这一列永远空白，用户拿导出表核对时看不到月折旧。这里守住「无字段也能导出真值」。 */
+{
+  const S = global.S;
+  S.state = {};
+  S.normalizeState();
+  S.state.subjects = [
+    { code: '1602', name: '累计折旧', cls: 'asset', normal: 'cr', level: 0, enabled: true },
+    { code: '6602', name: '管理费用', cls: 'expense', normal: 'dr', level: 0, enabled: true }
+  ];
+  S.state.company = Object.assign({}, S.state.company, { startMonth: '2024-01', bookkeeper: '测试' });
+  S.state.closedPeriods = []; S.state.vouchers = []; S.state.fixedAssets = [];
+  S.addFixedAsset({
+    code: 'FA002', name: '现算月折旧', acqDate: '2024-08-31', status: '正常',
+    original: 123100, salvage: 0, life: 5, periodUsed: 23,
+    accumDepr: 47188.41, accumDeprBegin: 47188.41, deprMonth: '2026-07',
+    depFeeAcct: '6602', accDeprAcct: '1602'
+  });
+  const fa2 = S.state.fixedAssets[0];
+  ck(fa2 && fa2.assetMonthlyDepr === undefined,
+    'D 前提：生产卡片没有 assetMonthlyDepr 字段（旧写法读它 → 列恒为空）');
+  const wb2 = TyIo.buildAssetWorkbook([fa2]);
+  const aoa2 = global.XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]], { header: 1, defval: '', raw: false });
+  const H2 = aoa2[0] || [], R2 = aoa2[1] || [];
+  const c2 = k => { const i = H2.indexOf(k); return i < 0 ? undefined : String(R2[i]); };
+  ck(c2('月折旧') === '2051.67',
+    'D 无快照时「月折旧」由 store 现算为 2051.67（金蝶同口径，修复前为空串）', c2('月折旧'));
+}
+
 /* ---------- 汇总 ---------- */
 console.log('\n固定资产卡片 导出/导入 金额单位验证：通过 ' + pass + ' / 失败 ' + fail);
 if (fail) {

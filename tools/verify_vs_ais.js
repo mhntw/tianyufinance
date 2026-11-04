@@ -60,9 +60,26 @@ function aisLabel(file) {
   const m2 = base.match(/(\d{4})\s*年/);
   return { name: base.replace(/[_\-].*$/, '').trim(), year: m2 ? +m2[1] : null };
 }
+/* 【2026-11-04 修正：样本目录写死导致本机搬到外置盘后 .ais 找不到、护栏被架空】
+   原写死 /Users/chen/Desktop、/Users/chen/Downloads，金蝶原始账套实际已挪到
+   **本仓库的上一级** `金蝶账套 ais/`（与 verify_asset_source.js 的卡片源同目录），
+   于是本脚本长期「跳过 —— 无样本」，最广的一张对源网形同虚设。
+   现按「环境变量 → 仓库上一级 → 旧位置兜底」解析，且不写死用户名（换机器同样可用），
+   目录口径与 verify_import_contract.js 保持一致（两边各挑各的曾造出过假警报）。 */
+function aisDirs() {
+  const h = os.homedir();
+  const def = [
+    path.join(__dirname, '..', '..', '金蝶账套 ais'),   // 当前实际位置：ty 的上一级（财务软件/金蝶账套 ais）
+    path.join(h, 'Desktop'),
+    path.join(h, 'Downloads', '金蝶账套 ais'),
+    path.join(h, 'Downloads')
+  ];
+  const extra = process.env.TY_AIS_DIR;
+  return extra ? [extra].concat(def) : def;
+}
 function listAisCands() {
   const out = [];
-  ['/Users/chen/Desktop', '/Users/chen/Downloads/金蝶账套 ais', '/Users/chen/Downloads'].forEach(function (d) {
+  aisDirs().forEach(function (d) {
     try {
       if (!fs.existsSync(d)) return;
       fs.readdirSync(d).forEach(function (f) {
@@ -122,7 +139,16 @@ if (!process.argv[2] && !process.argv[3]) {
     } catch (e) { code = 1; out = String(e.stdout || '') + String(e.stderr || ''); }
     const noAis = /跳过：/.test(out) && !/差异项：/.test(out);
     if (noAis) { skipped++; console.log('  · ' + b.file + '：无对应金蝶 .ais，未对照'); return; }
-    if (code === 0) { okCount++; console.log('  ✓ ' + b.file + '（v' + (b.schemaVersion == null ? '?' : b.schemaVersion) + '）：逐科目逐期逐字段无差异'); }
+    if (code === 0) {
+      okCount++;
+      /* 有「已登记业务差异」时不能说成"逐字段无差异"——那是另一回事，会让人以为账套与源完全一样 */
+      const mk = out.match(/已登记业务差异：(\d+)/);
+      const knownN = mk ? (+mk[1] || 0) : 0;
+      console.log('  ✓ ' + b.file + '（v' + (b.schemaVersion == null ? '?' : b.schemaVersion) + '）：'
+        + (knownN > 0
+          ? '无未解释差异（含 ' + knownN + ' 项已登记业务差异，见 KNOWN_DIFFS）'
+          : '逐科目逐期逐字段无差异'));
+    }
     else {
       bad++;
       console.log('  ✗ ' + b.file + '：存在差异 —— 明细如下');
@@ -336,6 +362,26 @@ if (dupCells) {
 }
 console.log('金蝶 GLBal：' + balRowsTotal + ' 行，覆盖期间 ' + Object.keys(kis).sort().join(', '));
 
+/* 【2026-11-04】金蝶对「尚未开始记账的月份」也会在 GLBal 留一行（余额 = 上月末、发生额 0）。
+ * 若拿 GLBal 的期间上限当比对上限，就会把「ty 已记账、金蝶还没记」的月份算成差异 ——
+ * 实测绅蓝之星：金蝶 2026 年账套最后有凭证的期间是 8 月（9 月一张凭证都没有），
+ * GLBal 却有 9 月行，于是 9 月的 71 项「差异」全是假警报（那 71 张凭证金蝶侧根本还没发生）。
+ * 故上限改按「.ais 里最后一次有凭证的期间」（GLVch）取；取不到 GLVch 时保持原行为。 */
+const kisVchMonths = {};
+AIS_LIST.forEach(function (a) {
+  const year = a.label.year || AIS_YEAR;
+  const reader = new MDBReader(fs.readFileSync(a.p));
+  if (reader.getTableNames().indexOf('GLVch') < 0) return;
+  (reader.getTable('GLVch').getData() || []).forEach(function (r) {
+    const rp = parseInt(r.FPeriod || 0, 10) || 0;
+    if (!rp) return;
+    const m = rp > 999 ? (String(rp).slice(0, 4) + '-' + String(rp).slice(4, 6)) : mapPeriod(rp, year);
+    if (/^\d{4}-\d{2}$/.test(m)) kisVchMonths[m] = 1;
+  });
+});
+const kisVchLast = Object.keys(kisVchMonths).sort().pop() || '';
+if (kisVchLast) console.log('金蝶 GLVch：最后有凭证的期间 ' + kisVchLast);
+
 /* ---------- 2. 读 ty 侧（用 store 计算总账） ---------- */
 global.localStorage = { getItem: function () { return null; }, setItem: function () { }, removeItem: function () { } };
 global.document = { getElementById: function () { return null; }, addEventListener: function () { }, querySelector: function () { return null; }, querySelectorAll: function () { return []; } };
@@ -402,7 +448,13 @@ let bookLast = '';
   const vm = String(v.date || '').slice(0, 7);
   if (/^\d{4}-\d{2}$/.test(vm) && vm > bookLast) bookLast = vm;
 });
-const aisFirst = months[0] || '', aisLast = months[months.length - 1] || '';
+const aisFirst = months[0] || '';
+const aisLastBal = months[months.length - 1] || '';
+/* 上限取「GLBal 期间」与「GLVch 最后凭证期间」的较小者，见上面 GLVch 段的说明 */
+const aisLast = (kisVchLast && aisLastBal && kisVchLast < aisLastBal) ? kisVchLast : aisLastBal;
+if (kisVchLast && aisLastBal && kisVchLast < aisLastBal) {
+  console.log('ℹ 金蝶 GLBal 的期间到 ' + aisLastBal + '，但该月没有任何凭证 → 比对上限取 ' + aisLast);
+}
 const from = (bookStart && bookStart > aisFirst) ? bookStart : aisFirst;
 const to = (bookLast && aisLast) ? (bookLast < aisLast ? bookLast : aisLast) : (aisLast || bookLast);
 const cmpMonths = months.filter(function (m) { return (!from || m >= from) && (!to || m <= to); });
@@ -457,6 +509,30 @@ if (LEGACY_RED_STYLE) {
 }
 console.log('');
 
+/* ---------- 已知业务差异白名单（逐条登记；不是容差、不是跳过） ----------
+ * 【为什么需要】2026-08 绅蓝之星有 5 项无法用「软删除」解释的差异。人工核对后确认是
+ *   **用户在 ty 里新增的两笔业务**，金蝶原账套里本来就没有：
+ *     记-64 2026-08-31 计提 26.8.18-27.8.16 广电收视信息费 13,000
+ *           借 1801008 长期待摊费用-广电收视信息费 / 贷 2202042 应付账款-广电
+ *     记-65 2026-08-31 摊销该费用 1,083.33（摊销模板生成）
+ *           借 5601042 数字电视收视费 / 贷 1801008
+ *   传导到期末余额 5 处：1801008 与父级 1801 各 -11,916.67（13,000 − 1,083.33）；
+ *   2202042 与父级 2202 各 +13,000；3103 本年利润 -1,083.33（摊销进费用后 8 月结转）。
+ *
+ * 【纪律】只登记「账套 + 期间 + 科目 + 字段 + 差额」的精确组合 —— 金额或科目一变立刻不再
+ *   命中，所以它解释的是"已经查清的这一笔"，不会把将来新出现的错账一起吞掉。
+ *   业务被冲销/改账后请删掉对应条目；新增条目必须在 why 里写明来源凭证号与摘要。
+ *   （对比：软删除解释是自动的，本白名单是人工查证后的登记，两者都不参与"差异项"计数为错。） */
+const KNOWN_DIFFS = [
+  { book: '绅蓝之星', month: '2026-08', code: '1801',    field: 'end', diff: -11916.67, why: '记-64/65 广电收视费：13,000 − 1,083.33' },
+  { book: '绅蓝之星', month: '2026-08', code: '1801008', field: 'end', diff: -11916.67, why: '记-64/65 广电收视费：13,000 − 1,083.33' },
+  { book: '绅蓝之星', month: '2026-08', code: '2202',    field: 'end', diff: 13000.00,  why: '记-64 计提应付账款-广电' },
+  { book: '绅蓝之星', month: '2026-08', code: '2202042', field: 'end', diff: 13000.00,  why: '记-64 计提应付账款-广电' },
+  { book: '绅蓝之星', month: '2026-08', code: '3103',    field: 'end', diff: -1083.33,  why: '记-65 摊销进费用，8 月结转损益' }
+];
+// 账套名：优先 company.name（与 verify_asset_source 的公司名配对同源），退回文件名首段
+const BOOK_CO = String((BOOK_OBJ.company || {}).name || path.basename(BOOK).split('_')[0] || '').trim();
+
 const FIELDS = [
   ['beg', function (r) { return R(num(r.obDr) - num(r.obCr)); }, '期初余额'],
   ['debit', function (r) { return R(num(r.periodDr)); }, '本期借方'],
@@ -466,8 +542,9 @@ const FIELDS = [
   ['ytdC', function (r) { return R(num(r.ytdCr)); }, '本年贷方']
 ];
 
-let totalChecked = 0, totalDiff = 0, totalExplained = 0, totalUnexplained = 0;
+let totalChecked = 0, totalDiff = 0, totalExplained = 0, totalUnexplained = 0, totalKnown = 0;
 const unexplainedDetail = [];
+const knownDetail = [];
 
 cmpMonths.forEach(function (m) {
   const gl = S.generalLedger(m);
@@ -512,6 +589,17 @@ cmpMonths.forEach(function (m) {
       const explained = expected !== null && Math.abs(d - expected) < EPS;
       if (explained) totalExplained++;
       else {
+        /* 已登记的业务差异（见 KNOWN_DIFFS）：精确匹配「账套+期间+科目+字段+差额」才放过。
+         * 不匹配就照旧算「未解释差异」—— 白名单不会因为"同一期间还有别的差异"而放宽。 */
+        const kd = KNOWN_DIFFS.filter(function (x) {
+          return x.book === BOOK_CO && x.month === m && x.code === String(c)
+            && x.field === f[0] && Math.abs(x.diff - d) < EPS;
+        })[0];
+        if (kd) {
+          totalKnown++;
+          knownDetail.push('   ' + m + ' ' + c + ' ' + label + ' 差 ' + d + '：' + kd.why);
+          return;
+        }
         totalUnexplained++;
         issues.push('   ' + c + ' ' + label + '：金蝶 ' + kv + ' / ty ' + tv + ' 差 ' + d
           + (expected !== null ? '（软删除只能解释 ' + expected + '）' : ''));
@@ -528,15 +616,22 @@ cmpMonths.forEach(function (m) {
 
 console.log('─'.repeat(70));
 console.log('对比期间数：' + cmpMonths.length + '/' + bookMonths.length + '　差异项：' + totalDiff
-  + '　（其中软删除可解释：' + totalExplained + '）');
+  + '　（其中软删除可解释：' + totalExplained + '，已登记业务差异：' + totalKnown + '）');
+if (totalKnown > 0) {
+  console.log('ℹ 已登记的业务差异 ' + totalKnown + ' 项（人工核实过：ty 侧新增业务，金蝶原账套无对应凭证）：');
+  knownDetail.slice(0, 10).forEach(function (x) { console.log(x); });
+  if (knownDetail.length > 10) console.log('   …其余 ' + (knownDetail.length - 10) + ' 项见 KNOWN_DIFFS');
+}
 if (totalUnexplained === 0) {
+  const knownTail = totalKnown > 0 ? '（另有 ' + totalKnown + ' 项已登记业务差异，非缺陷）' : '';
   // 覆盖不全时必须说清楚 —— 否则"已比对部分一致"会被读成"整个账套都没问题"。
   if (bookMonths.length > cmpMonths.length) {
-    console.log('✅ 已比对的 ' + cmpMonths.length + ' 期与金蝶金额完全一致 ✓');
+    console.log('✅ 已比对的 ' + cmpMonths.length + ' 期与金蝶金额一致' + knownTail + ' ✓');
     console.log('⚠ 但账套还有 ' + (bookMonths.length - cmpMonths.length) + ' 期【未参与比对】（见上方提示）——'
       + '不能据此认定"全账套无差异"。');
   } else {
-    console.log('✅ 全部差异均可由「软删除凭证」解释 —— ty 与金蝶原账套金额一致（账套全期间） ✓');
+    console.log('✅ 全部差异均可由「软删除凭证 / 已登记业务差异」解释 —— ty 与金蝶原账套金额一致（账套全期间）'
+      + knownTail + ' ✓');
   }
 } else {
   console.log('❌ 有 ' + totalUnexplained + ' 项差异无法用软删除解释（期间：' + unexplainedDetail.join(',') + '）← 需人工核查');
