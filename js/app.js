@@ -1922,9 +1922,11 @@
     var month = v ? U.monthOf(v.date) : '';
     if (qS && month) qS.value = month;
     if (qE && month) qE.value = month;
-    // 刷新查凭证列表：renderQuery 是 Voucher.js 模块私有函数，不可直接调用；
-    // 经全局桥 __renderQuery（refreshQuery）读取刚设好的期间输入后渲染，天然含当前科目筛选。
-    if (globalThis.__renderQuery) globalThis.__renderQuery();
+    // 刷新查凭证列表：renderQuery 是 Voucher.js 模块私有函数，不可直接调用。
+    // 分页后必须走 __jumpQueryTo：它先在完整筛选结果里算出目标凭证属于第几页再重绘，
+    // 否则目标凭证不在第 1 页时，下面的 `#qBody tr[data-vid]` 找不到行、静默不高亮。
+    if (globalThis.__jumpQueryTo) globalThis.__jumpQueryTo(id);
+    else if (globalThis.__renderQuery) globalThis.__renderQuery();   // 旧桥兜底
     setTimeout(function () {
       var row = document.querySelector('#qBody tr[data-vid="' + id + '"]');
       if (row) { row.classList.add('row-hl'); row.scrollIntoView({ block: 'center' }); }

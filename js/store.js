@@ -31,7 +31,7 @@
  *
  * 落地形态：
  *   · **只有金额字段**是整数 —— 汇率/单价/数量保持浮点（导入源也是如此）
- *   · 除法场景（折旧摊销、汇率换算）用对称四舍五入 + 余数并入末项（见 assetMonthlyDepr / genDeprVoucher）
+ *   · 除法场景（折旧摊销、汇率换算）用对称四舍五入 + 余数并入末项（见 assetMonthlyDepr）
  *   · 磁盘 v5（元浮点）→ v6（整数）一次性迁移，见 migrateAmountsToV6；
  *     **对外的写入 API 入参仍是「元」**（addVoucher/setOpening/updateFixedAsset/importExternalBook/restoreBookState）
  *   · 模板（vchTemplates/settleTemplates）**有意保持元**，套用时再经 amt() 换算
@@ -39,7 +39,8 @@
  * 安全性由这些断言守着：verify_amount_shadow（新旧逐 0.0001 对照）、
  *   verify_invariants 的 I15（金额字段整数完整性）、check_single_source（口径单点化棘轮）。
  *
- * 导入源侧的事实依据见 tools/read_ais.js 头部（可复现：跑该脚本读 .ais 表结构）。
+ * 导入源侧的事实依据由 tools/verify_vs_ais.js 的对源比对锁定（.ais 表结构只读；
+ * 原 read_ais 脚本与金蝶转换脚本均已迁出本仓库，别再按旧注释找文件）。
  */
 
 /* ============================================================
@@ -88,16 +89,15 @@
  *
  * 账簿取数（核心：generalLedger 是所有报表的唯一底层）
  *   generalLedger                ← 总账缓存（_glCache memoization）
- *   trialBalance                 ← 科目余额表（前端 TrialBalance.js 调）
+ *   trialBalance                 ← generalLedger 的别名（生产页面直接调 generalLedger；校验工具在用）
  *   subjectEndBalance            ← 某科目期末余额
  *   subjectPeriodAmount          ← 某科目本期发生额
- *   subjectPeriod                ← 某科目本期余额（含期初期末）
- *   cashBalance                  ← 资金余额（首页资金卡）
+ *   cashBalance                  ← 资金类科目取数（生产页面不直接调，校验工具 I12 在用）
  *   detailLedger                 ← 明细账（前端 Ledger.js 调）
  *
  * 利润表 / 损益类
  *   incomeStatement              ← 完整利润表行（含 reportRules 规则计算）
- *   profitStatement              ← 旧版兼容调用 incomeStatement
+ *   profitStatement              ← 损益取数的唯一行计算实现（incomeStatement 反向委托它）
  *   plSummary                    ← 首页专用：revenue/cost/expense/netProfit + formula 明细
  *   unclosedProfit               ← 未结转的本期净利润（结账用）
  *
@@ -359,7 +359,7 @@
    *     ① 根除二进制浮点的表示误差 —— 现值里出现过 `995288.7100000002`、
    *        `65359.729999999996` 这类「值是对的、表现是错的」数；文件头记录的 4 起事故全属此类。
    *     ② 与金蝶源数据对齐 —— 源账套本身就是 4 位定点，而此前导入被 round 到 2 位，
-   *        精度白白丢在入口（见 kis-import.js 的 Math.round(×100)/100）。
+   *        精度白白丢在入口（金蝶转换脚本已迁出仓库：历史版本在入口做 Math.round(×100)/100）。
    *   代价：金额比较从「容差比较」变为「严格相等」（浮点噪声不存在了，容差不再需要）。
    *
    * 【已落地】底座（AMT_SCALE / amt / yuan）与**全部调用点切换、EPS 退场**已同批完成
@@ -744,7 +744,7 @@
     // 5) 现金流量初始余额 { itemId: {ytd} }
     var cf = book.cashFlowOpening || {};
     Object.keys(cf).forEach(function (id) { mulKeys(cf[id], ['ytd']); });
-    // 6) 跨年校验报告 meta.yearBoundaries（由 kis-import 以「元」产出，同样是金额域；
+    // 6) 跨年校验报告 meta.yearBoundaries（由金蝶转换脚本以「元」产出，同样是金额域；
     //    checked/total 是科目计数，不乘）
     ((book.meta || {}).yearBoundaries || []).forEach(function (b) {
       if (!b) return;
@@ -1055,6 +1055,11 @@
       // 文件可读、结构正确 → 自动解除写盘闸门（避免一次瞬时读取/解析故障让软件永久只读）
       this._clearBookWriteBlock();
       if (res.schemaVersion != null && res.schemaVersion !== SCHEMA_VERSION && res.schemaVersion !== 5) {
+        /* 版本冲突与「解析失败/结构坏」同属不可信文件：首次加载时内存只是兜底空账套，
+           弹窗等待用户确认期间任何 persist() 都会把空账套原地写回原文件 —— 原文件再也救不回来。
+           故这里必须设写盘闸门（此前只有解析/结构坏两处设了，唯独漏了本分支）。
+           刷新重载(resetOnMissing=false)内存握着旧的好数据，不设闸门（与解析失败同口径）。 */
+        if (resetOnMissing) this._markBookWriteBlocked('账套文件版本(' + res.schemaVersion + ')与程序(' + SCHEMA_VERSION + ')不一致，待用户确认');
         // 版本不一致（既非本版本、也非可迁移的 v5）：不静默忽略，交 UI 决策
         console.warn('[Store] 账套文件版本(' + res.schemaVersion + ') 与程序(' + SCHEMA_VERSION + ') 不一致');
         if (typeof window.__onSchemaMismatch === 'function') {
@@ -1064,6 +1069,12 @@
             self.state = self._pendingServerState;
             self._pendingServerState = null;
             self.ensureVoucherIds();
+            /* 用户明确选择"用账套文件"：先解除闸门（让随后 normalizeState 内可能的 persist 生效），
+               再按正常加载同口径归一 + 作废缓存，否则界面保留未归一数据或陈旧总账缓存。 */
+            self._clearBookWriteBlock();
+            self.normalizeState();
+            self.ensureCashFlowFields();
+            self._invalidate();
             if (window.__refreshAll) window.__refreshAll();
           });
         } else {
@@ -1474,7 +1485,7 @@
       // 空 id 提交给 Rust 会被拒绝而误触「保存失败」告警；账套数据由
       // load 完成后首次业务动作才需要持久化，此处绝不落空盘。
       if (!bid) return;
-      // 真实文件落盘（Storage.js → Rust 写 <应用数据目录>/添钰财务/books/<id>.json）
+      // 真实文件落盘（js/storage.js → Rust 写 <应用数据目录>/添钰财务/books/<id>.json）
       /* 在途计数：供关窗兜底（_flushOnExit）判断"是否有写入可能还没落地"。
          用**计数**而非布尔 —— persist() 会被连续调用，布尔会被先完成的那次提前清零，
          从而漏掉仍需兜底的那次（那正是原设计想防的"关窗丢最后一笔"）。 */
@@ -1648,8 +1659,8 @@
          vouchers[].deprReverted 类型不对），当前账套还保持原样，不会被换成半成品。 */
       // 金额单位分流：只有 v6（内部定点整数）可直接用；其余（v5 / 旧 .json 无版本号 / 金蝶 .ais 导入产物）
       // 一律按「元」迁移到 v6 —— v6 是本程序才引入的唯一整数格式，历史落盘与全部导入产物都是「元」。
-      // ⚠ kis-import **有意不**自行定点化、也**不打 schemaVersion**（见 js/kis-import.js：它输出的是
-      //   保留 4 位精度的「元」）。换算只此一处 —— 若哪天有人在转换器里补上 schemaVersion:6，
+      // ⚠ 金蝶转换脚本**有意不**自行定点化、也**不打 schemaVersion**（脚本已迁出仓库，
+      //   输出的是保留 4 位精度的「元」）。换算只此一处 —— 若哪天有人在转换器里补上 schemaVersion:6，
       //   这里就会跳过迁移、金额被少乘 10000 倍；反之若转换器自己乘了 10000，这里会再多乘一次。
       if (book.schemaVersion !== SCHEMA_VERSION) migrateAmountsToV6(book);
       this.bookId = id; this.state = book;
@@ -1769,10 +1780,15 @@
         var prevId = self.bookId, prevState = self.state;
         self.bookId = id;
         setCurBookId(id);
-        // 记录「上次关闭的店」到磁盘 meta（关闭软件后重开默认进入此店）
-        var meta = self._lastMeta || { last_book: null, disabled: {} };
-        meta.last_book = id; self._lastMeta = meta;
-        writeBookMeta(meta).then(function (r) { metaWriteWarn(r, '上次账套指针'); });
+        /* 「上次关闭的店」指针必须在目标账套**成功加载并落盘之后**才写。
+           原先在加载前就写：目标文件为空/坏 JSON/版本冲突时内存已回滚到 prev，
+           磁盘 meta 却仍指向失败目标 —— 重开软件进错账套（2026-11-16 复审在构造账套与
+           真实账套副本上都复现）。disabled 等其它元信息保持不动，只延后 last_book。 */
+        function commitBookMeta(bid) {
+          var m = self._lastMeta || { last_book: null, disabled: {} };
+          m.last_book = bid; self._lastMeta = m;
+          return writeBookMeta(m).then(function (r) { metaWriteWarn(r, '上次账套指针'); return r; });
+        }
         // 用临时空账套顶屏，避免旧账套数据显示；随后从磁盘加载权威数据
         self.state = emptyState();
         self.normalizeState();
@@ -1785,6 +1801,8 @@
         var rollbackToPrev = function (why) {
           console.warn('[Store] 切换账套失败，已回滚到「' + prevId + '」：' + why);
           self.state = prevState; self.bookId = prevId; setCurBookId(prevId);
+          // 内存与磁盘指针一起回滚，保证重开仍进原账套
+          commitBookMeta(prevId);
         };
         window.Storage.loadBook(id).then(function (txt) {
           if (!txt) { rollbackToPrev('账套文件为空或不存在'); return; }
@@ -1799,7 +1817,14 @@
           if (res && Array.isArray(res.subjects) && Array.isArray(res.vouchers)) {
             // 与首次加载共用**同一条**迁移链路（快照 → 迁移 → 自检 → 落盘 → 回读）。
             // 此前这里只补一个版本号就完事，v5 老账套切过来会整体错 10000 倍。
-            self._applyLoadedBookAndPersist(res, txt, id);
+            // 校验通过即视为「已采用目标账套」，指针照写：saved=false 还包含
+            // 「升级快照失败 → 已用 v5 原数据顶屏」这种仍在使用该账套的场景，
+            // 此时回滚到 prev 会违背既有语义（test_book_manage_e2e 锁定了它）。
+            // 真正需要回滚的是上面的文件空 / 非法 JSON / 版本冲突 / 结构坏四类。
+            return self._applyLoadedBookAndPersist(res, txt, id).then(function (saved) {
+              commitBookMeta(id);
+              return saved;
+            });
           } else {
             rollbackToPrev('目标账套数据异常（缺 subjects/vouchers）');
           }
@@ -2014,16 +2039,6 @@
         cur = p;
       }
       return true;
-    },
-
-    // 某编码是否有子科目（有子节点 → 可展开）
-    subjectHasChildren: function (code, parentMap) {
-      // parentMap 的每个 value 是直接父 → 统计 parentMap[child] === code 的 child 数
-      var count = 0;
-      for (var c in parentMap) {
-        if (parentMap[c] === String(code)) count++;
-      }
-      return count > 0;
     },
 
     // 展开/折叠箭头 HTML（统一用文字 ▶▼，打印友好）—— 全站树形三角的唯一出口
@@ -2790,7 +2805,7 @@
     // 凭证制单人（唯一取值点，页面一律调用本方法，不要各自读字段）。
     // 【为什么必须兼容两个字段】制单人有两套来源，只读任何一个都会漏：
     //   · v.maker    —— ty 新录的凭证（addVoucher 写入，值为当时的 company.bookkeeper）
-    //   · v.preparer —— 金蝶导入的凭证（kis-import 取 FPreparer，如 "Manager"）
+    //   · v.preparer —— 金蝶导入的凭证（金蝶转换脚本取 FPreparer，如 "Manager"）
     // 实测（添钰来客 2026）：1047 张导入凭证只有 preparer、没有 maker；
     // 若只读 v.maker，这些凭证「没有制单人」，导出 Excel 与操作日志都会显示空白。
     // 2026-09-21 统一：两处来源都认，谁有值用谁。
@@ -3108,20 +3123,6 @@
     deletedVouchers: function () {
       return (this.state.vouchers || []).filter(function (v) { return v.deleted === 'y'; });
     },
-    // 物理清除已软删凭证（不可恢复，高危；用于清理历史软删凭证）
-    purgeDeletedVouchers: function () {
-      var before = (this.state.vouchers || []).length;
-      this.state.vouchers = (this.state.vouchers || []).filter(function (v) { return v.deleted !== 'y'; });
-      var purged = before - this.state.vouchers.length;
-      if (purged > 0) {
-        this._invalidate();
-        this.persist();
-        this.addLog('清除回收站', '物理清除 ' + purged + ' 张已软删凭证', '凭证',
-          null, null, null,
-          { action_type: 'purge', result: 'success' });
-      }
-      return { ok: true, purged: purged };
-    },
     /* ---------- 业务科目角色解析（单点，规范化） ----------
      * 自动凭证生成与默认科目只说「角色」，编码由当前准则决定（两准则费用类不同 5xxx/6xxx）。
      * 解析顺序：用户配置编码 preferred → 准则 subjectRoles → 按名称关键字回退 → null。
@@ -3360,6 +3361,9 @@
        收口后，以后新增任何取数缓存，只改这一处即可。 */
     _invalidate: function () {
       this._glCache = {};
+      // 利润表缓存（profitStatement）也只在这里作废：凭证增删改/切账套/恢复/导入
+      // 20+ 处已收口到本方法；漏接就是"凭证改了、利润表照旧"的静默错数。
+      this._plCache = {};
       this._vchIndex = null;
     },
 
@@ -3486,7 +3490,7 @@
      * 背景（系统性缺陷，此处一次性根治；此后禁止再新增「摘要正则判定期末凭证」的写法）：
      *   此前全工程 14 处「某类期末凭证是否已存在」的判定，全部依赖凭证摘要正则
      *   （/结转.*损益/、/年度本年利润/、/计提.*折旧/ …）。而  / Excel 导入的凭证
-     *   **没有凭证级 summary 字段**（摘要只落在分录级 entries[].summary，见 kis-import.js:192），
+     *   **没有凭证级 summary 字段**（摘要只落在分录级 entries[].summary；金蝶转换脚本已迁出仓库），
      *   故 re.test(v.summary || '') 对导入凭证恒为 false，导致：
      *     · 幂等失效 → 重复生成年结/税金凭证（错账）；
      *     · 结账检查恒 fail → 12 月年度结转死锁，该月永远无法结账；
@@ -3685,7 +3689,7 @@
       return this.carryForwardState(month).done;
     },
     // 【冻结】结转损益：行为已由自动化守护锁定 —— 幂等见 tools/verify_invariants.js I6，
-    // 口径见 tools/audit_books.js「结转损益口径 = 利润表口径（逐期）」。
+    // 口径见 tools/verify_books_audit.js 与 verify_invariants 的 I11（结转损益 = 利润表逐期对账）。
     // 纯可读性改动（花括号/缩进/拆辅助函数）不改业务口径，风险 > 收益，默认不动；
     // 确需重构时：单独开一轮，改完立即跑上述两脚本，全绿才算完成（决策记录见 CHANGELOG 2026-09-12）。
     // 2026-09-29：幂等分支改用 carryForwardStatus() 四态判定（修「孤立结转凭证」提示矛盾），
@@ -3972,7 +3976,7 @@
     // 系统模板默认启用，用户可在设置里停用
     settleTplDefaultEnabled: function (id) {
       // vat / surTax / incTax 三个模板已下线（2026-09-18）；
-      // cost（结转销售成本）2026-11-03 整体下线（见 costVoucherEstimate 处说明）；
+      // cost（结转销售成本）2026-11-03 整体下线（见 trialBalance 上方的下线说明）；
       // dep（计提折旧）2026-11-03 从「结账凭证模板设置」移除（结账清单的折旧提示已改为无条件检查）。
       // 余下一个系统模板：profit。
       return id === 'profit';
@@ -4145,7 +4149,7 @@
 
       // 5. 结转销售成本（2026-11-03 功能下线，检查项一并移除）
       // 原先是「模板启用且本期有收入」时提示结转；实测两本账套从未使用该模板（见
-      // costVoucherEstimate 处的下线说明），保留一个永远 ok/warn 的检查项只会制造噪音。
+      // trialBalance 上方的下线说明），保留一个永远 ok/warn 的检查项只会制造噪音。
 
       // 6/7/8「转出未交增值税 / 计提附加税 / 计提所得税」三个期末模板已下线（2026-09-18），
       // 不再纳入结账检查。理由见 _detectVoucherKind 处注释：账套从未使用增值税转出，
@@ -4831,12 +4835,6 @@
         ytdDr: ytdDr, ytdCr: ytdCr
       };
     },
-    // 科目本期借贷发生额（「结转生产成本设置」：收入科目自动汇总本期发生额）
-    subjectPeriod: function (code, month) {
-      var gl = this.generalLedger(month);
-      for (var i = 0; i < gl.length; i++) if (gl[i].code === code) return gl[i];
-      return null;
-    },
     /* 「结转销售成本」功能已于 2026-11-03 下线（costVoucherEstimate / genCostVoucher 一并删除）。
      * 下线依据（两本真实账套实测）：kind=carryCost 凭证 0 张、摘要命中 0 张、5401 主营业务成本
      * 全期发生额 0.00 —— 该账套把 5401 当费用归集科目（客房/房租/折旧…）在用，费用按实际发生
@@ -4854,39 +4852,16 @@
     profitStatement: function (month) {
       var self = this;
       month = normMonth(month);
+      /* 记忆化（2026-11-16）：首页一次刷新会经 plSummary 调本函数约 21~39 次，而本函数对每个
+         损益科目都要把本期/本年凭证各遍历一遍。实测 2598 张凭证的账套：10 次 179ms，
+         按 bookId|month 缓存后 17ms（结果逐项一致）。
+         ⚠ 失效必须只走 _invalidate —— 凭证增删改、切账套、恢复/导入都已收口到那里；
+         若漏接，改完凭证后利润表会静默显示旧值（这类错数极难自查）。 */
+      var cacheKey = String(this.bookId || '') + '|' + month;
+      var plCache = this._plCache || (this._plCache = {});
+      if (Object.prototype.hasOwnProperty.call(plCache, cacheKey)) return plCache[cacheKey];
       var year = month.split('-')[0];
       var ym = year + '-01';
-      // 取某类科目本期净发生额
-      function netOf(cls, monthScope) { // monthScope: 'period' 或 'year'
-        var vs = monthScope === 'year' ? self.vouchersBefore(month).concat(self.periodVouchers(month))
-                                       : self.periodVouchers(month);
-        var t = 0;
-        vs.forEach(function (v) {
-          v.entries.forEach(function (e) {
-            var s = self.subject(e.code);
-            if (!s || s.cls !== cls) return;
-            if (cls === 'revenue') t += num(e.cr) - num(e.dr);
-            else t += num(e.dr) - num(e.cr);
-          });
-        });
-        return t;
-      }
-      // 期间范围：从年初到目标月末（用于本年累计）
-      function netOfRange(cls) {
-        // 同 netOfCls：统一走 ytdVouchers（已排除软删除凭证），避免累计口径漏掉删除标记
-        var vs = self.ytdVouchers(month);
-        var t = 0;
-        vs.forEach(function (v) {
-          v.entries.forEach(function (e) {
-            var s = self.subject(e.code);
-            if (!s || s.cls !== cls) return;
-            if (cls === 'revenue') t += num(e.cr) - num(e.dr);
-            else t += num(e.dr) - num(e.cr);
-          });
-        });
-        return t;
-      }
-      void netOf; void netOfRange;
       // 结转科目（本年利润 3103 / 利润分配 3104）虽可能被标为 revenue/expense cls，
       // 但它们是「权益/结转类」科目，不是损益类科目。若纳入利润表，结转损益凭证中
       // 「贷 3103 本年利润」会被误计入收入，导致结转后利润表收入/净利润翻倍虚增。
@@ -4958,13 +4933,15 @@
         return t;
       }
       var netProfit = totalRevenue - totalExpense;
-      return {
+      var result = {
         items: items,
         totalRevenue: totalRevenue,
         totalExpense: totalExpense,
         netProfit: netProfit,
         month: month
       };
+      plCache[cacheKey] = result;
+      return result;
     },
     // 利润表（配置化行计算）：读 state.reportRules.incomeStatement 规则按行求值。
     // 返回 [{ id, label, codes, cur, ytd, isGrp }]：
@@ -5464,7 +5441,7 @@
      * 部门字段存**名称**：卡片表单的「使用部门」是下拉（option value = 名称），addFixedAsset
      *   也没有「部门编码」的契约，且全库消费方（卡片左树 / fDept 筛选 / 折旧汇总表「按部门汇总」）
      *   都是按**名称**比对。故这里归一为**名称**，code 只作档案内部标识。
-     * 【为什么要归一】和类别同一个病根：外部账套导入**不带部门档案**（kis-import.js 全库 0 处提及），
+     * 【为什么要归一】和类别同一个病根：外部账套导入**不带部门档案**（转换脚本已迁出仓库，导入产物不含 depts），
      *   本系统的 depts 一直是内置默认种子（前台/客房/餐厅）；而外部账套卡片表里的部门是
      *   厨房/客房/酒店/酒店洗衣房 —— 于是「资产左树的部门」跟外部账套对不上、按部门筛选也筛不到。 */
     depts: function () {
@@ -5592,7 +5569,6 @@
       status: '状态', cleanPeriod: '清理期间', cleanVoucher: '清理凭证',
       faAcctId: '固定资产科目', accDeprAcct: '累计折旧科目', deprFeeAcct: '折旧费用科目'
     },
-    _assetHistoryFields: function () { return this._ASSET_HISTORY_FIELDS; },
     _assetHistoryLabels: function () { return this._ASSET_HISTORY_LABELS; },
     _pushAssetHistory: function (fa, op, fields) {
       if (!fa) return;
@@ -6654,7 +6630,7 @@
 
   // ===================== 渲染层字段契约（单一事实源） =====================
   // 用途：store 输出的字段与渲染层消费字段的契约字典，只定义这一份。
-  // - 审计 tools/audit_render_contract.js 直接读 S.__contracts，不再自带拷贝，
+  // - 审计方直接读 S.__contracts，不再自带拷贝（原专用审计脚本已撤，仓库内只维护这一份），
   // 消除「审计脚本契约与真实契约脱节」的二次维护问题；
   // - 渲染层要消费 store 输出的新字段，必须先在此登记（否则审计报缺登记）；
   // - 改动 store 输出字段 / 渲染层消费字段时，必须同步更新本字典。
@@ -6684,8 +6660,8 @@
       operating: 'num', investing: 'num', financing: 'num', exchange: 'num', opening: 'num' } },
     opening: { self: { dr: 'num', cr: 'num', yb: 'num', ytdDr: 'num', ytdCr: 'num' } }
   };
-  // 契约断言（只校验、不修改数据）。供 tools/audit_render_contract.js 复用；
-  // 挂在全局 S 上，运行期字段错位时浏览器 console 也会直接报「[契约错位]」。
+  // 契约断言（只校验、不修改数据），挂在全局 S 上供校验脚本与运行期共用；
+  // 运行期字段错位时浏览器 console 也会直接报「[契约错位]」。
   S.__checkShape = function (ctx, obj, def) {
     var fails = 0;
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {

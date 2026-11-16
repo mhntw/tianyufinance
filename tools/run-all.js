@@ -65,9 +65,12 @@ const ALL = fs.readdirSync(__dirname)
 const scripts = QUICK ? ALL.filter(n => !/^sim_/.test(n)) : ALL;
 const skipped = QUICK ? ALL.filter(n => /^sim_/.test(n)) : [];
 
-let pass = 0, fail = 0, skipCount = 0;
+let pass = 0, fail = 0, skipCount = 0, partialCount = 0;
 const failures = [];
 const skips = [];
+/* 【2026-11-16】"部分跳过"单列：脚本打印了 ⊘/SKIP/跳过（有链路没跑），同时又打印
+   「结果：X 通过」—— 旧口径因 hasPassMark 命中被算作完整通过，典型的假绿。 */
+const partials = [];
 const unjudged = [];   // exit 0，但脚本既没给出可识别的通过结论、也不是跳过（门禁盲区，仅告警）
 const suspect = [];    // exit 0，但输出里出现明确的失败标记（疑「报了红却忘了 exit 非 0」，仅告警）
 const t0 = Date.now();
@@ -106,13 +109,30 @@ scripts.forEach(name => {
        「跳过：找不到 .ais → …」「跳过（该 .ais 无 GLBal 表）」「✗ 未找到金蝶科目文件，跳过」
      ⚠ 不能只判「输出里含跳过」：正文与被打印的代码片段里也会出现这两个字 ——
        实测 check_html_escape 打印的问题代码里就有「按编码跳过重复」，于是被误判成"跳过"。 */
-  const isSkip = ok && !hasPassMark && /(^|\n)\s*[✗·\-]?\s*跳过[：:（(]|跳过\s*$/m.test(out);
+  /* 全跳过沿用原判据（宽），但**部分跳过必须收紧**：
+     业务输出里大量出现"跳过"二字（「该期已结账，跳过」「本期无需结转，跳过」），
+     那是正常分支，不是校验链路未跑 —— 若据此标部分跳过会把 sim_book / verify_e2e_snapshot
+     等完整通过的脚本误报。只认脚本**显式声明**的 SKIP: 与自报未跑的 ⊘ 前缀：
+     例如 test_typrint.js 的「⊘ tyPrint 全链路（需完整应用环境）」没有"跳过"二字，
+     却照样打印「结果：3 通过」—— 旧口径把它整个算成通过，这才是要抓的假绿。 */
+  const explicitSkip = /^\s*SKIP[:：]/m.test(out);
+  const markerSkip = /^\s*⊘/m.test(out);
+  const isSkip = ok && !hasPassMark && (explicitSkip || markerSkip
+    || /(^|\n)\s*[✗·\-]?\s*跳过[：:（(]|跳过\s*$/m.test(out));
+  const isPartial = ok && hasPassMark && (explicitSkip || markerSkip);
   if (ok && isSkip) {
     skipCount++;
     skips.push(name);
     if (!QUIET) {
-      const why = (out.match(/跳过[：:][^\n]*/) || [''])[0].replace(/^跳过[：:]\s*/, '').slice(0, 42);
+      const why = (out.match(/跳过[：:][^\n]*|^⊘[^\n]*/m) || [''])[0].replace(/^\s*(跳过[：:]\s*|⊘\s*)/, '').slice(0, 42);
       console.log('  ⊘ ' + name.padEnd(36) + String(ms + 'ms').padStart(8) + '   跳过（未校验）：' + why);
+    }
+  } else if (ok && isPartial) {
+    partialCount++;
+    partials.push(name);
+    if (!QUIET) {
+      const why = (out.match(/^\s*(?:SKIP[:：][^\n]*|⊘[^\n]*)/m) || [''])[0].replace(/^\s*(SKIP[:：]\s*|⊘\s*)/, '').slice(0, 42);
+      console.log('  ◐ ' + name.padEnd(36) + String(ms + 'ms').padStart(8) + '   部分跳过（有断言，链路未全跑）：' + why);
     }
   } else if (ok) {
     pass++;
@@ -166,5 +186,11 @@ if (suspect.length) {
   console.log('  → 请检查这些脚本：若有失败应 `process.exit(1)`，否则失败会被门禁当成通过。');
   console.log('');
 }
-console.log('通过 ' + pass + ' / 跳过 ' + skipCount + ' / 失败 ' + fail + '   耗时 ' + secs + 's');
+if (partials.length) {
+  console.log('部分跳过（**跑了一些断言，但有链路没跑，不等于全部校验通过**）：');
+  partials.forEach(n => console.log('  ◐ ' + n));
+  console.log('  → 这些脚本同时打印了跳过标记与「结果：…通过」，旧口径把它们计为完整通过。');
+  console.log('');
+}
+console.log('通过 ' + pass + ' / 部分跳过 ' + partialCount + ' / 跳过 ' + skipCount + ' / 失败 ' + fail + '   耗时 ' + secs + 's');
 process.exit(fail ? 1 : 0);

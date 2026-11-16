@@ -251,7 +251,7 @@ function fillMetrics() {
   //   与首页顶栏「当前账期」(app.js:1685/1884 用 currentPeriod()) 保持一致；
   //   不再用第三套 company.currentPeriod，也不再背离顶栏用 lastClosedPeriod 结账期。取数底座 subjectEndBalance 不动。
   var latestPeriod = currentPeriod();
-  var periodText = latestPeriod ? latestPeriod.replace('-', '年') + '期' : '--';
+  var periodText = latestPeriod ? ymText(latestPeriod) : '--';   // 期间文案单点（原内联拼法绕过了契约正则）
   // 三张流量卡片各自独立的期间对象
   var pProfit = resolvePeriod(periodProfit);
   var pRevCost = resolvePeriod(periodRevCost);

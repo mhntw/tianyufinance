@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-// 验证金蝶科目 Excel 导入逻辑（与 Subject.js importSubjectsFromExcel 相同的映射）
-// 用真实金蝶导出文件：~/Downloads/20260830170910_科目.xlsx
+/* 【2026-11-16 复审】本脚本已停用，不再作为科目导入正确性的判据。
+ * 原因：第 21~48 行复刻了一份 addSubject，第 71 行还从「数量核算」列推导 qty 传给复刻版；
+ * 而真实实现 js/pages/subject/Subject.js:151-172 传的是空 `extra`，根本不读该列。
+ * 即断言的是测试自己写的代码，真实导入逻辑从未被它覆盖。样本文件也已不存在。
+ * 真正的导入链路请测 Subject.js 的 importSubjectsFromExcel + store 的 addSubject（源码提取壳
+ * 可参照 tools/test_voucher_query_export.js），不要复活本抄本。 */
+
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -9,7 +14,7 @@ const require = createRequire(import.meta.url);
 const XLSX = require('../js/xlsx.full.min.js');
 
 const f = path.join(os.homedir(), 'Downloads', '20260830170910_科目.xlsx');
-if (!fs.existsSync(f)) { console.log('✗ 未找到金蝶科目文件，跳过'); process.exit(0); }
+if (!fs.existsSync(f)) { console.log('SKIP: 历史抄本测试已停用（复刻 addSubject / 读数量核算列，真实实现不读该列）；样本文件也不存在'); process.exit(0); }
 
 // —— 科目表（从真实账套初始化，模拟 S.state.subjects）——
 let bookFile = path.join(os.homedir(), 'Library', 'Application Support', '添钰财务', 'books', 'default.json');

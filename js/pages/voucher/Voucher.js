@@ -26,6 +26,8 @@ import { matchSubjectCode, bindSubjectPicker } from '../../components/SubjectPic
 import { subjectFullName } from '../../common/subject-name.js';
 // 金额位格算法（纯函数，无 DOM；由 tools/check_amt_cells.js 断言锁死）
 import { computeAmtCells } from './amt_cells.mjs?v=dev';
+// 分页全站唯一实现（与资产卡片/费用明细/操作日志同源），本页不再自己写页码算术
+import { renderPager } from '../../common/pager.js?v=dev';
 
 /* —— 制单人：屏幕「制单人」列与「导出凭证列表」的唯一取值口径 ——
  * 真实值 = 本系统录入时的 maker，外部账套（金蝶）导入时落在 preparer —— 两者都由
@@ -1096,6 +1098,12 @@ function qRender() { var s = $('qPeriodStart'), e = $('qPeriodEnd'); renderQuery
 // 期间变更由期间控件的 data-on-change 直接回调（组件不派发 change 事件），此处无需再绑监听。
 var qCodeEl = $('qCode'); if (qCodeEl) qCodeEl.addEventListener('change', qRender);
 var qSortDir = 0;
+/* 查凭证分页（2026-11-16）：真实账套 2598 张凭证 / 31 期，跨期一次渲染 13,810 行 DOM。
+   按【凭证】分页而不是按分录行 —— 一张凭证的分录必须连续，否则第 2 页起看不到日期/字号。
+   筛选键（期间+科目+排序）变化自动回第 1 页；凭证增删改后的刷新只做 clamp，保留当前页。 */
+var Q_PAGE_SIZE = 50;
+var qPage = 1;
+var qLastKey = '';
 var qThNo = $('qThNo');
 if (qThNo) qThNo.addEventListener('click', function () {
   qSortDir = (qSortDir + 1) % 3;
@@ -1180,12 +1188,24 @@ function exportQuery() {
   __safeExportExcel(wb, fname);
 }
 
-function renderQuery(start, end) {
+function renderQuery(start, end, forcePage) {
   var tb = $('qBody'); if (!tb) return;
   tb.innerHTML = '';
   var sc = qSubjectCodes();
   var vs = queryVouchers(start, end, sc.codes);
   if (!start || !end) return;
+  /* 分页：筛选键（期间+科目+排序）变了回第 1 页；凭证增删改后的普通刷新只 clamp，保留当前页。
+     forcePage 只给搜索跳转用（__jumpQueryTo），它要直接落到目标凭证所在的那一页。 */
+  var qKey = start + '|' + end + '|' + (sc.codes ? Array.from(sc.codes).join(',') : '') + '|' + qSortDir;
+  if (typeof forcePage === 'number') { qPage = forcePage; qLastKey = qKey; }
+  else if (qKey !== qLastKey) { qPage = 1; qLastKey = qKey; }
+  var totalPages = U.totalPages(vs.length, Q_PAGE_SIZE);   // 分页算术单点（含「0 条也算 1 页」守卫）
+  qPage = Math.min(Math.max(1, qPage), totalPages);
+  renderPager($('qPages'), { page: qPage, total: totalPages, onGo: function (p) {
+    qPage = p;
+    renderQuery(start, end);
+  } });
+  var qCount = $('qCount'); if (qCount) qCount.textContent = '共 ' + vs.length + ' 张凭证';
   // colspan 随表头列数（8：日期/字号/摘要/科目/借/贷/附件/制单人）。
   // 历史：12 是「含操作列」时的旧值；删「原单据编号」前一直是 10 —— 比表头多 1（表头从来只有 9 列，
   // 从未有过勾选列），本次一并纠正为与表头严格相等的 8。
@@ -1203,7 +1223,9 @@ function renderQuery(start, end) {
     if (x.deleted === 'y') return;
     if (x.reverses) { revOf[x.reverses] = x; reversedSet[x.id] = true; }
   });
-  vs.forEach(function (v) {
+  // 只渲染当前页的凭证；一张凭证的多条分录必须留在同一页（首行才带日期/字号标识）
+  var pageVs = vs.slice((qPage - 1) * Q_PAGE_SIZE, qPage * Q_PAGE_SIZE);
+  pageVs.forEach(function (v) {
     var first = true;
     v.entries.forEach(function (e) {
       // 只展示命中的分录行；codes 为 null（全部科目）时展示全部分录
@@ -1689,6 +1711,23 @@ globalThis.__VOUCHER__ = {
   openVoucherPage: openVoucherPage,
   prefillVoucher: prefillVoucher,
   refreshRecycleBin: refreshRecycleBin
+};
+/* 搜索结果「跳到查凭证并高亮」专用桥（app.js locateVoucherInQuery）。
+   分页后目标凭证未必在第 1 页：必须先在**完整筛选结果**里算出它属于第几页，
+   再用 forcePage 重绘，否则 app.js 的 `#qBody tr[data-vid=...]` 会找不到行、静默不高亮。 */
+globalThis.__jumpQueryTo = function (id) {
+  var s = $('qPeriodStart'), e = $('qPeriodEnd');
+  var start = s ? s.value : '', end = e ? e.value : '';
+  var sc = qSubjectCodes();
+  var vs = queryVouchers(start, end, sc.codes);
+  for (var i = 0; i < vs.length; i++) {
+    if (vs[i].id === id) {
+      renderQuery(start, end, Math.floor(i / Q_PAGE_SIZE) + 1);
+      return true;
+    }
+  }
+  renderQuery(start, end);
+  return false;
 };
 // 凭证回收站入口：点击弹出 modal 显示已软删凭证列表，可还原
 (function bindRecycleBinBtn() {

@@ -2905,29 +2905,8 @@ label.req::before {
 }
 .form-section-title:first-child { border-top: none; margin-top: 0; }
 
-/* 卡片页：资产类别横向快捷筛选栏 */
-.asset-cat-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--ty-border);
-  background: var(--st-panel-bg);
-}
-.asset-cat-bar .cat-label { font-size: var(--fs-md); color: var(--ty-text-2); margin-right: var(--sp-3); }
-.asset-cat-bar .cat-item {
-  font-size: var(--fs-md);
-  color: var(--ty-text-2);
-  padding: var(--sp-1) var(--sp-3);
-  cursor: pointer;
-  border-right: 1px solid var(--ty-border);
-  white-space: nowrap;
-}
-.asset-cat-bar .cat-item:last-of-type { border-right: none; }
-.asset-cat-bar .cat-item.active { color: var(--ty-blue); font-weight: 400; }
-.asset-cat-bar .cat-dept { margin-left: var(--sp-3); }
-.asset-cat-bar .cat-reset { margin-left: auto; font-size: var(--fs-md); color: var(--ty-blue); cursor: pointer; padding: var(--sp-1) var(--sp-2); }
+/* 资产类别快捷筛选栏已随固定资产类别维度下线（2026-10-27 路线 C）：
+   页面左树只剩部门，卡片表单/列表不再有类别，对应 .asset-cat-bar 系列样式已整体删除。 */
 
 /* ===== 固定资产卡片表： ty-table 固定列宽 + 横向滚动 ===== */
 /* 卡片表 31 列均为固定宽（120px 为主），外层 ty-table-wrapper overflow 横滚，
@@ -4592,7 +4571,8 @@ label.req::before {
 /* 【2026-11-01 删除】顶栏「快速跳转 / 全部功能」入口（.cmd-trigger + 内部 .cmd-kbd 键帽）。
    该按钮是侧栏下线后跨页导航的唯一可见入口才存在的；现在"全部功能"的可见入口是标签栏
    「更多 ▾」（常驻、就在标签栏里），按钮与它完全重复且顶栏右侧已够满，故整体撤除。
-   Ctrl/Cmd + K 快捷键保留（js/command-palette.js 只剩这一条职责），没有可见按钮了。 */
+   Ctrl/Cmd + K 与 js/command-palette.js 也一并删除（见 app.js:2157 留痕），
+   跨页导航现在只有标签栏「更多 ▾」一个入口，不再有命令面板。 */
 
 .topbar-search { position: relative; display: flex; align-items: center; }
 /* 🔍 提交按钮：位于搜索框内最右（复刻） */
@@ -4791,16 +4771,9 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 }
 .settle-tab { white-space: nowrap; }
 
-/* 弹窗内表格滚动容器（资产类别 / 部门职员 / 工资凭证模板 收敛为弹窗后复用） */
-.asset-cat-scroll {
-  max-height: calc(100vh - 240px);
-  overflow: auto;
-  padding: var(--sp-2) var(--sp-4) var(--sp-4);
-}
-/* 弹窗内表格：列宽走全站标准（原按表写死的 min-width 720/900 已删除），
-   需要横向滚动时由外层 .asset-cat-scroll 承接 */
-/* 工资凭证模板弹窗内容较宽：加宽弹窗并允许横向滚动 */
-/* 工资模块 2026-10-27 下线：#salaryTplModal / #page-salary / #sstGrid 的样式已随页面移除。 */
+/* 弹窗内表格滚动容器随资产类别、工资模块一并下线（2026-10-27）：
+   .asset-cat-scroll 及 #salaryTplModal / #page-salary / #sstGrid 样式均已删除，
+   弹窗内表格列宽现在走全站标准，不再为单个弹窗写死 min-width。 */
 
 /* 工具栏 */
 .settle-operate {
