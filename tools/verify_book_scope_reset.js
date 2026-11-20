@@ -490,7 +490,7 @@ globalThis.__PAGE_HOOK__ = {
      各页取用 + 在刷新入口按 key 复位。用哪个 key 是各页自己的事；页面**不得**再写一套账套判据。 */
   const pages = [
     ['js/pages/ledger/Ledger.js', ['gl', 'dl', 'ml']],
-    ['js/pages/voucher/Voucher.js', ['voucher']],
+    ['js/pages/voucher/Voucher.js', ['voucher', 'vq']],
     ['js/pages/report/ExpenseDetail.js', ['ed']],
     ['js/pages/settle/Settle.js', ['settle']]
   ];

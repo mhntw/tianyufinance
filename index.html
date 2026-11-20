@@ -491,6 +491,7 @@
             </div>
             <button class="btn btn-primary" id="btnQNewVoucher">新增</button>
             <button class="btn" id="btnRecycleBin" title="查看已删除的凭证并可还原">回收站</button>
+            <button class="btn" id="btnQPrint" title="勾选凭证后批量打印为记账凭证纸；不勾选则打印当前筛选的全部凭证">打印</button>
             <button class="btn" id="btnQExport">导出</button>
         </div>
 
@@ -498,6 +499,7 @@
         <div class="grid-wrap">
         <table class="grid vq-grid" id="qGrid">
           <thead><tr>
+            <th class="col-check"><input type="checkbox" id="qCheckAll" title="全选/取消当前筛选的全部凭证（跨页）"></th>
             <th>日期</th><th class="vq-th-no" id="qThNo" title="点击或回车按凭证字号排序" tabindex="0" role="button" data-kb-activate>凭证字号<span class="ty-sort-icon" id="qSortIcon"></span></th><th class="col-fill">摘要</th><th class="col-fill">科目</th>
             <th class="ta-r">借方金额</th><th class="ta-r">贷方金额</th>
             <th>附件</th><th>制单人</th>

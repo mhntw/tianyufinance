@@ -351,6 +351,20 @@ function resetVoucherEdit() {
   renderVoucherRows();
 }
 
+/* 判平口径与 store 单点对齐（见 store.js 的 AMT_CENT / voucherBalance.centBalanced）：
+ * 表单金额是「元」浮点，必须先经 U.amt() 定点化为内部整数，再交给 store 按「分」判平。
+ * 原实现直接拿元域 `Math.abs(drT-crT) >= 0.005`（半分）判，比 store 的 1 分更严 ——
+ * 差在 [0.5分,1分) 的导入凭证（store 判平、可入库）在编辑保存时会被 UI 拒绝，
+ * 用户只想改个摘要却无路可走（正是 store.addVoucher 注释担心的情况）。
+ * 统一走 store 口径后，录入页提示 / 大写金额 / 保存校验的结论与自检、结账、健康检查一致。 */
+function vBalanced(entries) {
+  if (!S || typeof S.voucherBalance !== 'function') return true; // 无 store 时不当场拦，交落库校验兜底
+  var rows = (entries || []).map(function (e) {
+    return { dr: U.amt(U.num(e.dr)), cr: U.amt(U.num(e.cr)) };
+  });
+  return S.voucherBalance(rows).centBalanced;
+}
+
 function updateAmtTotals() {
   var drT = 0, crT = 0;
   vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
@@ -360,13 +374,13 @@ function updateAmtTotals() {
   // 大写金额（借贷平衡时取合计，不平衡时取借贷差额）
   var cnTd = $('vTotalCn');
   if (cnTd) {
-    var bal = Math.abs(drT - crT) < 0.005 ? drT : Math.abs(drT - crT);
+    var bal = vBalanced(vRows) ? drT : Math.abs(drT - crT);
     cnTd.textContent = numToChinese(bal);
     // 【2026-10-21】取消负数标红：numToChinese 已自带「负」字，红色是重复强调，按用户要求去掉。
     cnTd.classList.remove('ty-red');
   }
   var tip = $('vBalanceTip');
-  if (vRows.length && Math.abs(drT - crT) >= 0.005) {
+  if (vRows.length && !vBalanced(vRows)) {
     tip.textContent = '借贷不平衡！差 ' + money(U.amt(Math.abs(drT - crT)));
     tip.className = 'voucher-balance warn';
   } else {
@@ -613,7 +627,9 @@ function fillCellBalance(td) {
   var drT = 0, crT = 0;
   vRows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
   var fill = isDr ? (crT - drT) : (drT - crT); // 整张凭证借贷平衡所需差额
-  if (fill <= 0.005) { showToast('借贷已平或方向不符，无需补平', 'ok'); return; }
+  // 补平入口判平口径与提示/保存/落库一致（差 <1 分即视为已平，见 vBalanced）；
+  // 原 0.005 元（半分）会把 [0.5分,1分) 误判为仍需补平，补出一个 store 认为已平的差额。
+  if (fill <= 0 || vBalanced(vRows)) { showToast('借贷已平或方向不符，无需补平', 'ok'); return; }
   // 目标行：优先当前空行；若当前行已有对方金额（同行不能既借又贷），则找/建一个空行放补平数
   var target = i;
   if (U.num(vRows[i][otherKey]) > 0) {
@@ -741,15 +757,18 @@ function voucherSheetDate(dateStr) {
 function voucherSheetEsc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function renderVoucherSheetHtml() {
-  var word = ($('vWord') && $('vWord').value) || '记';
-  var no = ($('vNo') && $('vNo').value) || '';
-  var date = ($('vDate') && $('vDate').value) || '';
-  var attach = U.num(($('vAttach') && $('vAttach').value) || 0);
-  var company = (S.state && S.state.company) || {};
-  var maker = ($('vMakerName') && $('vMakerName').textContent.trim()) || company.bookkeeper || '';
-  var period = ($('vPeriodText') && $('vPeriodText').textContent.trim()) || '';
-  var rows = (vRows || []).filter(function (r) { return r.code || r.summary || U.num(r.dr) || U.num(r.cr); });
+/* 凭证纸渲染（纯函数）：入参 v 是「元域」凭证对象
+ *   {word,no,date,attach,maker,period,entries:[{summary,code,name,dr,cr}]}
+ *   —— dr/cr 必须是元（不是内部定点整数）。单张打印传表单构造的临时凭证，
+ *   批量打印传 store 凭证时先 U.yuan() 把定点整数换回元，两条路径共用同一份纸面样式。 */
+function renderVoucherSheet(v) {
+  var word = v.word || '记';
+  var no = v.no || '';
+  var date = v.date || '';
+  var attach = U.num(v.attach || 0);
+  var maker = v.maker || '';
+  var period = v.period || '';
+  var rows = (v.entries || []).filter(function (r) { return r.code || r.summary || U.num(r.dr) || U.num(r.cr); });
   var drT = 0, crT = 0;
   rows.forEach(function (r) { drT += U.num(r.dr); crT += U.num(r.cr); });
 
@@ -802,6 +821,12 @@ var VOUCHER_SHEET_CSS = 'body{font-family:-apple-system,"PingFang SC","Microsoft
   + '.bl-meta span:nth-child(3){justify-self:end;}'
   + '.vblank td{height:22px;padding-top:10px;padding-bottom:10px;}'
   + '.print-hint{margin-top:18px;font-size:12px;color:#1565c0;background:#e3f2fd;padding:8px 12px;border-radius:4px;}'
+  /* 每张凭证独占一页：分页属性加在凭证自身的容器上（空 div + page-break-before 在部分内核
+     WKWebView 上不可靠，会串页）；break-inside:avoid 防止一张凭证被从中间切断。
+     最后一张不强制换页，避免尾部多出一张空白页。 */
+  + '.print-sheet{page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;}'
+  // 用 last-of-type 而非 last-child：文档尾部还有 <p class="print-hint">，last-child 永不命中。
+  + '.print-sheet:last-of-type{page-break-after:auto;break-after:auto;}'
   + '@media print{body{padding:0;}.print-hint{display:none!important;}}';
 
 function voucherSheetDoc(innerHtml, docTitle) {
@@ -843,7 +868,16 @@ function printCurrentVoucher() {
   if (!vRows || !vRows.length) { showToast('暂无凭证内容可打印', 'warn'); return; }
   var word = ($('vWord') && $('vWord').value) || '记';
   var no = ($('vNo') && $('vNo').value) || '';
-  openVoucherPrintDoc(renderVoucherSheetHtml(), word + '-' + no + '_凭证');
+  var company = (S.state && S.state.company) || {};
+  var dv = {
+    word: word, no: no,
+    date: ($('vDate') && $('vDate').value) || '',
+    attach: U.num(($('vAttach') && $('vAttach').value) || 0),
+    maker: ($('vMakerName') && $('vMakerName').textContent.trim()) || company.bookkeeper || '',
+    period: ($('vPeriodText') && $('vPeriodText').textContent.trim()) || '',
+    entries: vRows
+  };
+  openVoucherPrintDoc('<div class="print-sheet">' + renderVoucherSheet(dv) + '</div>', word + '-' + no + '_凭证');
 }
 /* 空白记账凭证纸：字号/日期/分录/金额全留空，供财务手填或作凭证纸 */
 function renderBlankVoucherHtml() {
@@ -911,7 +945,10 @@ function saveVoucher() {
   }
   var drT = v.entries.reduce(function (s, e) { return s + e.dr; }, 0);
   var crT = v.entries.reduce(function (s, e) { return s + e.cr; }, 0);
-  if (Math.abs(drT - crT) >= 0.005) { showToast('借贷不平衡，无法保存', 'warn'); return { ok: false }; }
+  // 判平口径与落库（store.addVoucher → voucherBalance.centBalanced）严格同源：
+  // 元域金额先定点化再按「分」判。原写法 >=0.005 元（半分）比落库口径更严，
+  // 会把差在 [0.5分,1分) 的导入凭证拒之门外 —— 页面上显示「平衡」却存不了，自相矛盾。
+  if (!vBalanced(v.entries)) { showToast('借贷不平衡，无法保存', 'warn'); return { ok: false }; }
   // 用绝对值判断「金额是否全为 0」：红字凭证的 drT / crT 都是负数，
   // 原写法 drT + crT < 0.01 会把【合法的红字/红字冲销凭证】误判成「未填金额」而拒绝保存。
   if (Math.abs(drT) + Math.abs(crT) < 0.01) { showToast('请填写凭证金额后再保存', 'warn'); return { ok: false }; }
@@ -1057,6 +1094,10 @@ function renderSum(start, end) {
  * ============================================================ */
 function refreshQuery() {
   setupVoucher();
+  // 换账套：勾选集与分页/排序属于上一本账套的上下文，必须复位 ——
+  // 凭证 id（word-no@month）跨账套大量重名，不清则新账套同 id 凭证被回填成「已勾选」，
+  // 点批量打印会静默打印另一本账套的凭证（与 refreshVoucher 复位编辑表单同一理由）。
+  if (bookScopeChanged('vq')) { qSelected.clear(); qPage = 1; qSortDir = 0; qLastKey = ''; }
   // 默认期间由 index.html 的 data-default 声明，periodRangeValue 单点兜底并同步触发器文本。
   // 本页是区间口径（起止都要用），故兜底后各自读取。
   periodRangeValue('qPeriod');
@@ -1104,6 +1145,9 @@ var qSortDir = 0;
 var Q_PAGE_SIZE = 50;
 var qPage = 1;
 var qLastKey = '';
+/* 批量打印的勾选集：存凭证 id（不是分录行），跨页保留。
+   筛选键（期间/科目/排序）变化时清空 —— 与 qLastKey 同一时机，避免"选中的凭证已不在结果里"。 */
+var qSelected = new Set();
 var qThNo = $('qThNo');
 if (qThNo) qThNo.addEventListener('click', function () {
   qSortDir = (qSortDir + 1) % 3;
@@ -1117,10 +1161,10 @@ if (qThNo) qThNo.addEventListener('click', function () {
 var bQNew = $('btnQNewVoucher'); if (bQNew) bQNew.addEventListener('click', function () { goPage('voucher'); });
 // 查凭证导出：与列表同源（含跨期、科目过滤、字号排序），导出为 Excel
 var bQExport = $('btnQExport'); if (bQExport) bQExport.addEventListener('click', exportQuery);
-/* 【2026-10-07】移除查凭证页「批量删除」按钮及其绑定，并一并不再渲染勾选列
-   （表头全选框 #qCheckAll + 每行 .row-check）。删除凭证入口保留在凭证编辑页
-   「更多」菜单（vchMoreDelete，带填原因 + 软删除进回收站），查凭证页只负责查看/导出，
-   勾选列已无用途，移除避免死 UI。对应 HTML 见 index.html（btnQDelete、#qCheckAll 已删）。 */
+var bQPrint = $('btnQPrint'); if (bQPrint) bQPrint.addEventListener('click', printSelectedVouchers);
+/* 【历史】2026-10-07 曾移除查凭证页「批量删除」按钮与勾选列（删除入口保留在凭证编辑页
+   「更多」菜单）。2026-11-20 为【批量打印】恢复勾选列与 #qCheckAll —— 纯只读用途，
+   与已下线的批量删除无关，不要再按旧注释把勾选列当成死 UI 删掉。 */
 
 // 取当前查询条件下的凭证列表（跨期逐月汇总 + 科目过滤 + 字号排序）。
 // 抽成独立函数，供列表渲染与 Excel 导出复用，保证「所见即所导」。
@@ -1188,17 +1232,103 @@ function exportQuery() {
   __safeExportExcel(wb, fname);
 }
 
+/* ===== 查凭证：勾选 + 批量打印（2026-11-20） =====
+ * 勾选集 qSelected 存凭证 id，跨页保留；「全选」= 当前筛选结果全部凭证（与导出同口径）。
+ * 打印用 renderVoucherSheet 的凭证纸样式，多张合并成一份 HTML、每张之间强制分页。 */
+function qSelectedIds() {
+  var s = $('qPeriodStart'), e = $('qPeriodEnd');
+  var sc = qSubjectCodes();
+  var all = queryVouchers(s ? s.value : '', e ? e.value : '', sc.codes);
+  if (qSelected.size) return all.filter(function (v) { return qSelected.has(v.id); });
+  return all;   // 未勾选 = 打印当前筛选的全部
+}
+
+function printSelectedVouchers() {
+  var s = $('qPeriodStart'), e = $('qPeriodEnd');
+  var start = s ? s.value : '', end = e ? e.value : '';
+  if (!start || !end) { showToast('请先选择查询期间', 'warn'); return; }
+  var list = qSelectedIds();
+  if (!list.length) { showToast(qSelected.size ? '勾选的凭证不在当前结果里，请重新勾选' : '当前条件下没有可打印的凭证', 'warn'); return; }
+  var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
+  var company = (S.state && S.state.company) || {};
+  var parts = list.map(function (v) {
+    // store 凭证金额是内部定点整数；凭证纸渲染收「元」——必须 U.yuan() 换回，否则放大 10000 倍。
+    var entries = (v.entries || []).map(function (en) {
+      return {
+        summary: en.summary || v.summary || '',
+        code: en.code || '',
+        name: subjName[en.code] || en.name || '',
+        dr: U.yuan(en.dr || 0), cr: U.yuan(en.cr || 0)
+      };
+    });
+    // 每张凭证包进独立分页容器，样式与单张打印完全一致；CSS 保证一张一页、不串页。
+    return '<div class="print-sheet">' + renderVoucherSheet({
+      word: v.word || '记', no: v.no, date: v.date || '', attach: v.attach || 0,
+      maker: makerOf(v), period: '', entries: entries
+    }) + '</div>';
+  });
+  var scope = qSelected.size ? ('勾选' + list.length + '张') : ('全部' + list.length + '张');
+  openVoucherPrintDoc(parts.join(''), scope + '_凭证');
+}
+
+// 表头全选：按当前筛选结果的全部凭证切换；与 qSelected 同步后重绘本页。
+function qToggleSelectAll(checked) {
+  var s = $('qPeriodStart'), e = $('qPeriodEnd');
+  var sc = qSubjectCodes();
+  var all = queryVouchers(s ? s.value : '', e ? e.value : '', sc.codes);
+  qSelected.clear();
+  if (checked) all.forEach(function (v) { qSelected.add(v.id); });
+  renderQuery(s ? s.value : '', e ? e.value : '');
+}
+
+// 同步表头全选框：全部选中→勾，部分选中→半选(indeterminate)，无选中→不勾。
+function syncQCheckAll(vs) {
+  var box = $('qCheckAll'); if (!box) return;
+  var total = vs.length, picked = vs.filter(function (v) { return qSelected.has(v.id); }).length;
+  box.checked = total > 0 && picked === total;
+  box.indeterminate = picked > 0 && picked < total;
+}
+
+// 勾选委托：绑在 tbody 上，行勾选框变化即更新 qSelected（跨页保留），不整表重绘。
+(function bindQueryChecks() {
+  var body = $('qBody');
+  if (!body) return;
+  body.addEventListener('change', function (ev) {
+    var cb = ev.target.closest ? ev.target.closest('input.qChk') : null;
+    if (!cb) return;
+    var id = cb.getAttribute('data-vid');
+    if (cb.checked) qSelected.add(id); else qSelected.delete(id);
+    // 同步同一凭证的其它行（本页一般只有首行有框，保险起见）
+    body.querySelectorAll('input.qChk[data-vid]').forEach(function (x) {
+      if (x.getAttribute('data-vid') === id) x.checked = cb.checked;
+    });
+    var s = $('qPeriodStart'), e = $('qPeriodEnd');
+    var sc = qSubjectCodes();
+    syncQCheckAll(queryVouchers(s ? s.value : '', e ? e.value : '', sc.codes));
+  });
+  var all = $('qCheckAll');
+  if (all) all.addEventListener('change', function () { qToggleSelectAll(all.checked); });
+})();
+
 function renderQuery(start, end, forcePage) {
   var tb = $('qBody'); if (!tb) return;
   tb.innerHTML = '';
   var sc = qSubjectCodes();
   var vs = queryVouchers(start, end, sc.codes);
-  if (!start || !end) return;
+  if (!start || !end) {
+    // 期间清空：与有结果路径同样复位计数/勾选态，避免残留旧账套/旧期间的显示与勾选。
+    qSelected.clear(); qLastKey = '';
+    var qc0 = $('qCount'); if (qc0) qc0.textContent = '共 0 张凭证';
+    syncQCheckAll([]);
+    return;
+  }
   /* 分页：筛选键（期间+科目+排序）变了回第 1 页；凭证增删改后的普通刷新只 clamp，保留当前页。
      forcePage 只给搜索跳转用（__jumpQueryTo），它要直接落到目标凭证所在的那一页。 */
   var qKey = start + '|' + end + '|' + (sc.codes ? Array.from(sc.codes).join(',') : '') + '|' + qSortDir;
-  if (typeof forcePage === 'number') { qPage = forcePage; qLastKey = qKey; }
-  else if (qKey !== qLastKey) { qPage = 1; qLastKey = qKey; }
+  // 搜索跳转（forcePage）会改期间定位到某张凭证：旧期间的勾选已无意义，必须清空，
+  // 否则 qLastKey 被本分支改写后再不触发清空，残留勾选会静默混入打印范围。
+  if (typeof forcePage === 'number') { qPage = forcePage; qLastKey = qKey; qSelected.clear(); }
+  else if (qKey !== qLastKey) { qPage = 1; qLastKey = qKey; qSelected.clear(); }
   var totalPages = U.totalPages(vs.length, Q_PAGE_SIZE);   // 分页算术单点（含「0 条也算 1 页」守卫）
   qPage = Math.min(Math.max(1, qPage), totalPages);
   renderPager($('qPages'), { page: qPage, total: totalPages, onGo: function (p) {
@@ -1206,10 +1336,9 @@ function renderQuery(start, end, forcePage) {
     renderQuery(start, end);
   } });
   var qCount = $('qCount'); if (qCount) qCount.textContent = '共 ' + vs.length + ' 张凭证';
-  // colspan 随表头列数（8：日期/字号/摘要/科目/借/贷/附件/制单人）。
-  // 历史：12 是「含操作列」时的旧值；删「原单据编号」前一直是 10 —— 比表头多 1（表头从来只有 9 列，
-  // 从未有过勾选列），本次一并纠正为与表头严格相等的 8。
-  if (!vs.length) { tb.innerHTML = '<tr><td colspan="8" class="empty-hint">本期无凭证</td></tr>'; return; }
+  // colspan 随表头列数（9：勾选/日期/字号/摘要/科目/借/贷/附件/制单人）。
+  // 2026-11-20 恢复勾选列（批量打印用），表头由 8 列变 9 列，空状态与合计行同步。
+  if (!vs.length) { tb.innerHTML = '<tr><td colspan="9" class="empty-hint">本期无凭证</td></tr>'; syncQCheckAll(vs); return; }
   // 科目名显示口径：取科目表实时名称，科目改名后历史凭证显示同步更新；分录快照名仅作兜底（科目已不存在时）。一次构建 map，避免逐行线性查找。
   var subjName = S.subjectNameMap ? S.subjectNameMap() : {};
   // 制单人：取模块级 makerOf（屏幕与导出共用一份，见文件上方定义）。
@@ -1226,32 +1355,39 @@ function renderQuery(start, end, forcePage) {
   // 只渲染当前页的凭证；一张凭证的多条分录必须留在同一页（首行才带日期/字号标识）
   var pageVs = vs.slice((qPage - 1) * Q_PAGE_SIZE, qPage * Q_PAGE_SIZE);
   pageVs.forEach(function (v) {
-    var first = true;
+    // headerShown 只随「已渲染的命中分录」推进，不随被过滤掉的分录变化 ——
+    // 否则首条分录不命中科目过滤时，后面命中的行会丢失勾选框/日期/字号/附件/制单人。
+    var headerShown = false;
     v.entries.forEach(function (e) {
       // 只展示命中的分录行；codes 为 null（全部科目）时展示全部分录
-      if (!matchSubjectCode(sc.codes, e.code)) { first = false; return; }
+      if (!matchSubjectCode(sc.codes, e.code)) return;
+      var showHeader = !headerShown;
       var tr = document.createElement('tr');
       tr.setAttribute('data-vid', v.id);
-      var dateCell = first ? html`${v.date}` : '';
-      var noCell = first ? html`<a class="link-voucher" href="#" data-id="${v.id}">${v.word}-${v.no}</a>${queryFlags(v, revOf, reversedSet)}` : '';
+      // 勾选框只在该凭证第一条【命中】分录渲染（一张凭证多条分录 = 多行，勾选绑凭证 id 不绑行）
+      var checkCell = showHeader
+        ? html`<td class="col-check"><input type="checkbox" class="qChk" data-vid="${v.id}"${qSelected.has(v.id) ? ' checked' : ''}></td>`
+        : html`<td class="col-check"></td>`;
+      var dateCell = showHeader ? html`${v.date}` : '';
+      var noCell = showHeader ? html`<a class="link-voucher" href="#" data-id="${v.id}">${v.word}-${v.no}</a>${queryFlags(v, revOf, reversedSet)}` : '';
       // 制单人来自账套数据（可能源自导入文件），必须转义后再拼进 HTML
-      var makerCell = first ? html`${makerOf(v)}` : '';
+      var makerCell = showHeader ? html`${makerOf(v)}` : '';
       // 摘要 / 科目是自由文本，列宽有限：截断显示，完整内容挂 title 悬停可见
       tr.innerHTML =
-        html`<td>${dateCell}</td><td>${noCell}</td><td class="cell-ellipsis" title="${e.summary || v.summary || ''}">${e.summary || v.summary || ''}</td><td class="cell-ellipsis" title="${e.code + ' ' + (subjName[e.code] || e.name || '')}">${e.code ? html`<a href="#" class="link-gl-subject" data-code="${e.code}">${e.code}</a> ` : ''}${subjName[e.code] || e.name || ''}</td><td class="ta-r mono">${U.num(e.dr) ? money(e.dr) : ''}</td><td class="ta-r mono">${U.num(e.cr) ? money(e.cr) : ''}</td><td>${first ? (v.attach || '') : ''}</td><td>${makerCell}</td>`;
+        html`${checkCell}<td>${dateCell}</td><td>${noCell}</td><td class="cell-ellipsis" title="${e.summary || v.summary || ''}">${e.summary || v.summary || ''}</td><td class="cell-ellipsis" title="${e.code + ' ' + (subjName[e.code] || e.name || '')}">${e.code ? html`<a href="#" class="link-gl-subject" data-code="${e.code}">${e.code}</a> ` : ''}${subjName[e.code] || e.name || ''}</td><td class="ta-r mono">${U.num(e.dr) ? money(e.dr) : ''}</td><td class="ta-r mono">${U.num(e.cr) ? money(e.cr) : ''}</td><td>${showHeader ? (v.attach || '') : ''}</td><td>${makerCell}</td>`;
       tb.appendChild(tr);
-      first = false;
+      headerShown = true;
     });
   });
   var sumDr = 0, sumCr = 0;
   vs.forEach(function (v) { v.entries.forEach(function (e) { sumDr += U.num(e.dr); sumCr += U.num(e.cr); }); });
   var trt = document.createElement('tr');
   trt.className = 'grp-row';
-  // 末尾补空列：表头 8 列，本行 = 4(合计占「日期/字号/摘要/科目」) + 2(借贷) + 2(补空) = 8。
-  // ⚠ 此处历来是「表头改了漏改这里」的高发点（曾 11 列、后来 9 列对 10 列表头）。
-  //   改表头时请回来数一遍：4 + 2 + N 必须等于表头列数。
-  trt.innerHTML = html`<td colspan="4" class="ta-r">合 计</td><td class="ta-r mono grp-amt">${money(sumDr)}</td><td class="ta-r mono grp-amt">${money(sumCr)}</td><td colspan="2"></td>`;
+  // 表头 9 列：1(勾选) + 4(合计占日期/字号/摘要/科目) + 2(借贷) + 2(补空) = 9。
+  // ⚠ 此处历来是「表头改了漏改这里」的高发点，改表头请回来数一遍：1 + 4 + 2 + N 必须等于表头列数。
+  trt.innerHTML = html`<td class="col-check"></td><td colspan="4" class="ta-r">合 计</td><td class="ta-r mono grp-amt">${money(sumDr)}</td><td class="ta-r mono grp-amt">${money(sumCr)}</td><td colspan="2"></td>`;
   tb.appendChild(trt);
+  syncQCheckAll(vs);
 }
 
 /* —— 红字冲销（入口在录凭证页的「删除」旁边） ——

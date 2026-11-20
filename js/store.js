@@ -84,7 +84,7 @@
  * 凭证（增删改查 / 模板）
  *   addVoucher, updateVoucher, removeVoucher
  *   getVoucher, deletedVouchers, restoreVoucher
- *   nextVoucherNo, periodVouchers, vouchersBefore
+ *   nextVoucherNo, periodVouchers, ytdVouchers（vouchersBefore 已下线，走 _matBefore 矩阵）
  *   vchTemplates, saveVchTemplate, removeVchTemplate
  *
  * 账簿取数（核心：generalLedger 是所有报表的唯一底层）
@@ -133,13 +133,19 @@
  *   financialHealthCheck         ← 深度健康体检
  *   backupNow                    ← 立即手动备份（Rust Storage）
  *   log 系统：addLog, getLogs
- *   getParam / setParam          ← 全局参数（bookHideZero / thousand 等）
+ *   setParam                     ← 全局参数写入（bookHideZero / thousand 等；getParam 已下线）
  *
- * 内部工具函数（IIFE 私有，不暴露到 global S）
- *   pad2, fmtDate, monthOf, voucherMonth, voucherOrderCmp
- *   prevMonth, round2, monthsBetween, monthList, normMonth
- *   num, money, lastDay, amt, yuan, AMT_SCALE（金额定点换算单点）
- *   emptyState, detectStandardBySubjects, backfillIncomeRowIds
+ * 内部工具函数（IIFE 私有；对外经 global.util / __TY_EXPORT__.util 暴露，字段名即契约）
+ *   日期/期间：pad2, fmtDate, fmtDateTime, monthOf, voucherMonth, voucherOrderCmp,
+ *              lastDay, prevMonth, monthsBetween, addMonths, monthList, normMonth
+ *   金额定点：num, round2, amt, yuan, money, yuanFmt, yuanSubFmt, AMT_SCALE, AMT_CENT
+ *   判定/换算：totalPages, isChildCode, periodText, actualDirBalance
+ *   ★ 受门禁锁定，改前先看卡口：totalPages（check_single_source.inline-total-pages）、
+ *     round2（inline-round2）、periodText（check_period_contract.js 从源码抠出本函数单独
+ *     eval，必须自包含、不调 pad2）；yuan/yuanFmt 的调用形态另由 inline-fixed2 /
+ *     inline-amt-scale 约束页面侧。
+ *   数据层辅助（历史索引误归入工具函数）：emptyState, detectStandardBySubjects,
+ *     backfillIncomeRowIds —— 见各自定义处，非本区纯工具。
  * ======================================================================= */
 (function (global) {
   'use strict';
@@ -375,10 +381,11 @@
    * 【判定口径（现行，不得再分叉）】
    *   ① 差 ≥ 1 分  → 真不平：保存拒绝、自检 error、结账拦截（硬门槛，不可降级）；
    *   ② 差 < 1 分  → 亚分精度残差：**视为已平衡**，不告警、不出现在自检/结账清单里。
-   *      理由：会计金额的最小单位是分，分位金额完全相同即"账面平"；凭证录入页本来也按
-   *      半分容差判平（Voucher.js updateAmtTotals 的 0.005），金蝶侧同样按分判平
-   *      （12,612.82 = 12,612.82，否则这张凭证在源系统里根本存不下来）。
-   *      以前把亚分残差报成"不平"，会与页面上的「借贷平衡」互相矛盾（同一事实两个结论）。
+   *      理由：会计金额的最小单位是分，分位金额完全相同即"账面平"；凭证录入页现已统一走
+   *      本口径（Voucher.js 的 vBalanced：元域金额先定点化，再按 centBalanced 判平），
+   *      金蝶侧同样按分判平（12,612.82 = 12,612.82，否则这张凭证在源系统里根本存不下来）。
+   *      【2026-11-19】此前录入页用元域 0.005（半分）判，比本口径更严：差在 [0.5分,1分) 的
+   *      导入凭证在页面上显示「借贷平衡」却被保存拦下，同一事实两个结论 —— 已收口到单点。
    *   ③ 4 位精度仍保留在**存储层**（无损承载源数据），但**不参与**平衡判定；
    *      需要看残差明细时用 yuanSubFmt（4 位小数）在诊断工具里输出（verify_book_integrity 的 notices）。
    * ⚠ 阈值不得调大：100 个单位 = 1 分 是「账面上真的差一分钱」的界线。
@@ -445,8 +452,9 @@
    *   这正是把索引排在定点化之后的原因（浮点域下只能退化成容差比较）。
    *
    * ⚠ ms 里可能出现 ''（凭证既无 date 又无可用 period → voucherMonth 返回空）：
-   *   它按 `'' < 任何 'YYYY-MM'` 参与比较，与 vouchersBefore 的原口径一致 ——
-   *   这类凭证计入每一期的「期初（以前年度）」，但不计入任何真实月份的本期/本年累计。
+   *   它按 `'' < 任何 'YYYY-MM'` 参与比较，与原 vouchersBefore 口径一致（该方法已下线，
+   *   由本矩阵路径取代）—— 这类凭证计入每一期的「期初（以前年度）」，
+   *   但不计入任何真实月份的本期/本年累计。
    * ============================================================ */
   function _matCountLess(ms, m) {          // ms 中 < m 的个数（二分）
     var lo = 0, hi = ms.length;
@@ -3346,8 +3354,8 @@
     },
 
     /* ===================== 期间过滤 =====================
-     * 软删除过滤：所有"活动凭证"查询入口（periodVouchers/vouchersBefore/ytdVouchers/getVoucher）
-     * 均排除 deleted==='y'。软删凭证只在 deletedVouchers() 回收站可见。
+     * 软删除过滤：所有"活动凭证"查询入口（periodVouchers/ytdVouchers/getVoucher，
+     * 以及 _vchIndexOf 矩阵路径）均排除 deleted==='y'。软删凭证只在 deletedVouchers() 回收站可见。
      * 直接访问 state.vouchers 的少数派生场景（如 ensureVoucherIds 初始化、_voucherRefs 反查），
      * 通过显式过滤或调用上述入口间接过滤。
      */
@@ -3400,7 +3408,7 @@
         if (m) (byMonth[m] || (byMonth[m] = [])).push(v);
         /* 发生额矩阵：**在同一次遍历里**顺带累加，不再单独扫一遍全表。
            m 可能为 ''（凭证既无 date 又无可用 period）—— 保留在矩阵内，因为
-           vouchersBefore 的字符串比较把 '' 视为「早于任何真实月份」（原实现如此）。 */
+           原 vouchersBefore 的字符串比较把 '' 视为「早于任何真实月份」（历史口径，已由矩阵路径承继）。 */
         var es = v.entries || [];
         for (var j = 0; j < es.length; j++) {
           var e = es[j];
@@ -3422,20 +3430,12 @@
         }
         mat[c] = { ms: ms, cd: cd, cc: cc };
       });
-      this._vchIndex = { ref: vs, len: vs.length, live: live, byMonth: byMonth, before: {}, ytd: {}, mat: mat };
+      this._vchIndex = { ref: vs, len: vs.length, live: live, byMonth: byMonth, ytd: {}, mat: mat };
       return this._vchIndex;
     },
     periodVouchers: function (month) {
       // 返回副本：调用方可能自行排序/裁剪，不得污染索引
       return (this._vchIndexOf().byMonth[month] || []).slice();
-    },
-    vouchersBefore: function (month) { // < month（含期初之前）
-      var idx = this._vchIndexOf();
-      if (!idx.before[month]) {
-        // 判据与原实现逐字一致（含「月份为空」的边界行为），只是按 month 记忆化
-        idx.before[month] = idx.live.filter(function (v) { return voucherMonth(v) < month; });
-      }
-      return idx.before[month].slice();
     },
     ytdVouchers: function (month) { // 本年累计：当年 1 月 ~ 当前月
       var idx = this._vchIndexOf();
@@ -3683,10 +3683,6 @@
         state: exists ? (need ? 'stale' : 'ok') : (need ? 'todo' : 'none'),
         exists: exists, need: need, vouchers: vs, nums: nums, net: net
       };
-    },
-    // 是否已结转损益（布尔，兼容历史调用）
-    hasCarryForward: function (month) {
-      return this.carryForwardState(month).done;
     },
     // 【冻结】结转损益：行为已由自动化守护锁定 —— 幂等见 tools/verify_invariants.js I6，
     // 口径见 tools/verify_books_audit.js 与 verify_invariants 的 I11（结转损益 = 利润表逐期对账）。
@@ -5426,10 +5422,6 @@
       this.persist();
       return this.state.param;
     },
-    getParam: function (k, def) {
-      return this.state.param && this.state.param[k] !== undefined ? this.state.param[k] : def;
-    },
-
     /* ===================== 固定资产 ===================== */
     /* 【资产类别已下线（2026-10-27）】原先的两个类别方法（读取档案 / 编码↔名称归一）已整体删除。
        卡片 fa.category 仍按**名称**存（与金蝶导出「固定资产类别」列同口径），但只作为历史数据

@@ -5511,6 +5511,9 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
    fixed 会把 colgroup 像素宽当比例重分配，正是窄窗口列被压扁的根因。 */
 /* 凭证字号排序（ty-sort-icon） */
 .vq-th-no { cursor: pointer; user-select: none; white-space: nowrap; }
+/* 查凭证批量打印的勾选框：沿用浏览器默认外观，仅补指针光标与列居中 */
+.qChk { cursor: pointer; }
+#qGrid .col-check { text-align: center; width: 34px; }
 /* 凭证列表的关联标记（红字冲销）：
      · .vq-flag     已冲 —— 本凭证已被某张红字冲销凭证冲销
      · .vq-flag-rev 红字冲销 —— 本凭证本身就是红字冲销凭证
