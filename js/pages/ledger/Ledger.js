@@ -1,7 +1,6 @@
 // 账簿域模块（B 方案解耦）
-// 包含：总账(refreshGl) / 明细账(refreshDl) / 多栏账(refreshMl) / 数量总账(refreshQg) /
-// 数量明细账(refreshQd) / 核算项目明细账(refreshAx) / 核算项目余额表(refreshAb) /
-// 核算项目组合表(refreshAc)
+// 包含：总账(refreshGl) / 明细账(refreshDl) / 多栏账(refreshMl)
+// （数量总账/数量明细账/核算项目三表 refreshQg/Qd/Ax/Ab/Ac 已下线，见 CHANGELOG）
 // 依赖全部从全局桥接对象取，逻辑与 app.js 原实现逐字一致（只挪窝不改写）。
 // 注：试算平衡表(trial-balance) 已在 js/pages/ledger/TrialBalance.js 独立迁走，本模块不含。
 //

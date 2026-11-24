@@ -60,7 +60,6 @@ function loadBook(file) {
   if (S.state.schemaVersion == null) S.state.schemaVersion = 5;
   S.normalizeState();
   S.ensureVoucherIds();
-  if (S.ensureBankAccounts) S.ensureBankAccounts();
   if (S.ensureCashFlowFields) S.ensureCashFlowFields();
   S._glCache = {};
   return S.state;

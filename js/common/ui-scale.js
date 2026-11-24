@@ -107,5 +107,3 @@ apply(read());
 installShortcuts();
 
 globalThis.__TY_UI_SCALE__ = api;
-
-export { api as uiScale, capFor, apply, LAYOUT_MIN_W };

@@ -1,15 +1,13 @@
 /* 报表 / 账簿族的共享基座。
-   引导块（H / EX / S / U / $ / money / esc / num / showToast / currentPeriod / round2 / yuan）
+   引导块（H / EX / S / U / $ / money / esc / showToast / currentPeriod / round2 / yuan）
    已收口到 ../../common/helpers.js —— 本文件只保留**本族专属**的名字
-   （goPage / absFmt / lastClosedPeriod / nowTimeStr / 月历 / 科目工具）。
+   （goPage / absFmt / nowTimeStr / 月历 / 科目工具）。
    收口前这 20 行引导在本族两个文件 + 15 个页面里各写一遍，且写法互不相同
    （详见 common/helpers.js 头部那张差异表；其中 3 处 esc 兜底甚至是"不转义"的）。 */
-import { H, $, S, U, money, esc, escHtml, escAttr, num, showToast, currentPeriod, round2, yuan } from '../../common/helpers.js?v=dev';
+import { H, $, S, U, money, esc, escAttr, showToast, currentPeriod, round2, yuan } from '../../common/helpers.js?v=dev';
 
 const absFmt = H.absFmt || (v => v == null ? '' : String(v));
 const goPage = H.goPage || (p => { if (window.goPage) window.goPage(p); });
-// 本期 = 最近一个已结账期间（桥接层 lastClosedPeriod）；无已结账回退 currentPeriod()
-const lastClosedPeriod = H.lastClosedPeriod || currentPeriod;
 const nowTimeStr = H.nowTimeStr || (() => {
   const d = new Date();
   const p = n => ('0' + n).slice(-2);
@@ -58,5 +56,5 @@ function subjectFilter(fn) {
   return (S.subjects() || []).filter(fn);
 }
 
-export { H, $, S, U, money, esc, escHtml, escAttr, num, showToast, currentPeriod, round2, yuan,
-  absFmt, goPage, lastClosedPeriod, nowTimeStr, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };
+export { H, $, S, U, money, esc, escAttr, showToast, currentPeriod, round2, yuan,
+  absFmt, goPage, nowTimeStr, monthList, prevYearMonth, monthLabel, subjectLevel, subjectFilter };

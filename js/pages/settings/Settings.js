@@ -904,6 +904,6 @@ export {
   refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
   refreshBackup, refreshLogs, refreshBookManage,
   refreshSysEvents,
-  refreshParam, refreshSystemSettings, refreshDeptCard
+  refreshParam, refreshSystemSettings
 };
 

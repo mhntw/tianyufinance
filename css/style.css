@@ -104,7 +104,6 @@
   --ty-th-bg:       #e7f0fb;   /* 表头/列标题底：轻蓝高亮（比 --ty-blue-2 更浅一档，去脏） */
   --ty-row-hover:   var(--ty-blue-2);   /* 鼠标定位行高亮（蓝·高亮）—— 与斑马(#f1f7fe)不同色 */
   --ty-subtotal-bg: var(--ty-blue-2);   /* 小计行背景（蓝·高亮） */
-  --ty-cur-add-bg:  var(--ty-blue-2);   /* 当前添加行背景（蓝·高亮） */
   /* 表头线：横线、竖线都走网格线 token（2026-10-25 起竖线与横线同色，消除表头格间白缝） */
   --th-border:      var(--ty-border);   /* 表头下边框（软化：不深于填充，去脏晕） */
   --th-border-r:    var(--grid-line-v);   /* 表头竖线：跟随竖线 token（现与横线同色 #d6e2f3） */
@@ -139,7 +138,7 @@
                 --st-hl-fg:   #7A5B00;
   --st-danger-bg: var(--ty-red-bg); --st-danger-fg: var(--ty-red);
   --st-ok-bg:   var(--ty-green-bg); --st-ok-fg:   var(--ty-green);
-  --st-panel-bg: var(--ty-border);  --st-panel-bg2: var(--ty-blue-2); --st-panel-bd: var(--ty-border-2);
+  --st-panel-bg: var(--ty-border);  --st-panel-bd: var(--ty-border-2);
   /* 蓝白单色体系（2026-10-24 重构）：全站只用「蓝 + 白」两材料，元素靠蓝的明度阶梯区分。
      阶梯（由浅到深）：白#fff ／ 画布#f4f9ff ／ 面#f1f7fe ／ 高亮#dfeafc ／ 线#d6e2f3 ／ 线强#c0d3ec
        ／ deco#93a8c9 ／ 墨三#4c6c9c ／ 墨二#3d5a85 ／ 墨一#1f3a5f ／ 强调#2f95ff。
@@ -276,8 +275,6 @@ img, svg { display: block; max-width: 100%; }
 .relative { position: relative; }
 .absolute { position: absolute; }
 
-
-
 /* ============================================================
  * 顶部栏（风格：白底 + 品牌logo）
  * ============================================================ */
@@ -357,15 +354,11 @@ img, svg { display: block; max-width: 100%; }
 }
 .topbar-acct-btn:hover { background: var(--ty-btn-hover); }
 
-
-
 /* 【2026-10-31 删除】.topbar-company（旧「账套选择（右侧）」按钮）：顶栏改三列方案后，
    账套区由 .topbar-acct-btn + .acct-book-name 承担；该类在 index.html / js/ 全仓 0 命中。 */
 
-
-
 /* ============================================================
- * 布局：顶栏横贯全宽，下方 .layout-body 承载内容区（左侧导航已移除）
+ * 布局：顶栏横贯全宽，下方 .layout-body 承载内容区 + 左侧导航
  * ============================================================ */
 
 .layout {
@@ -433,9 +426,6 @@ img, svg { display: block; max-width: 100%; }
 .sidenav.collapsed .nav-direct-title { text-align: center; }
 .sidenav.collapsed .nav-text { display: none; }   /* 收起后只留图标，与参考实现一致 */
 .sidenav.collapsed .nav-group { justify-content: center; }
-.sidenav.collapsed .nav-header { justify-content: center; padding-left: 0; padding-right: 0; }
-.sidenav.collapsed .nav-company,
-.sidenav.collapsed .nav-period { display: none; }
 
 /* 侧栏底部操作区（含「收起导航」按钮，旧版另有浅色模式按钮，已随暗色模式删除） */
 .nav-op-wrapper {
@@ -574,20 +564,6 @@ img, svg { display: block; max-width: 100%; }
   display: none;
 }
 
-/* 圆形图标（对照： subMenuItemTitleIcon，保留类定义以备将来） */
-.nav-pop-title-ico {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--ty-blue-2);
-  color: var(--ty-blue);
-  font-size: var(--fs-2xl);
-  flex-shrink: 0;
-}
-
 /* 子菜单项（浅色悬浮卡内，hover / active 用蓝系高亮） */
 .nav-pop-item {
   display: block;
@@ -635,12 +611,15 @@ img, svg { display: block; max-width: 100%; }
    height:36px; background:#eff3f6; border-top:1px solid #eff3f6; padding:4px 120px 1px 4px）。
    该灰条是贴边通栏（左仅 4px、右 120px 给"管理"按钮），不随下方卡片缩进。
    本项目：.content 无 padding（padding 已下放至 .page.active），故标签栏灰底天然通栏贴边；
-   内部文字 padding 左 4px 贴边、右 24px 与卡片右缘对齐（因无"管理"按钮，右侧留白用 24px）。 */
+   内部标签与内容统一缩进 24px（2026-11-24 基线统一）。 */
 .content-toolbar {
   display: flex;
   align-items: stretch;             /* 让 .tab-bar 撑满 36px 高度（标签再在内部底部对齐） */
   height: 36px;                     /* 全站统一高度：36px（含 border-top），标签撑满、激活白块贴底 */
-  padding: 0 var(--sp-5) 0 7px;   /* 上下 0 / 右24 / 左7：左侧留 7px 让主页左脚（6px）完整显示、不被 overflow 裁切（1px 抗锯齿余量） */
+  /* 左右均 24px（--sp-5）：主页标签实体左缘 24px 与下方内容卡片左缘对齐。
+     主页「脚」向左伸 6px+阴影，落在 18px，仍在灰条内不被 overflow 裁切 —— 旧值 7px 是被脚的空间挤出来的
+     非网格 hack，且左右不等宽；24px 既对称又与 .page.active 的内容基线同源。 */
+  padding: 0 var(--sp-5);
   box-sizing: border-box;
   /* 中性灰底（参考实现 #eff3f6），与下方白卡自然分层。 */
   background: var(--ty-surface-2);
@@ -662,7 +641,6 @@ img, svg { display: block; max-width: 100%; }
   padding: 2px var(--sp-2) 0;   /* 上 2px / 左右 8px / 下 0：底部 0 让激活标签贴住内容区 */
 }
 
-
 /* ===================== 费用明细表（分析模块） ===================== */
 /* 项目利润/费用明细表：全站同步优化——表格铺满容器（与 .rpt-grid 一致），
    列宽由 table-layout:auto 按内容分布，名称列自适应不无限拉宽；
@@ -676,7 +654,6 @@ img, svg { display: block; max-width: 100%; }
 /* .pp-grid 的 pp-indent-1/2 已删除：全站缩进统一走 .indent-1…5（见「树形层级缩进」） */
 .pp-grid .pp-dots { color: var(--ty-text-3); }
 .pp-grid .pp-empty-row { height: 32px; }
-
 
 /* 多栏表滚动容器 */
 /* 注：.grid-wrap 不再独立 overflow 滚动。外层 .page.active 已负责整页滚动，若这里再设 overflow:auto + max-height，
@@ -731,7 +708,6 @@ img, svg { display: block; max-width: 100%; }
 }
 .subj-tab:hover { border-color: var(--ty-btn); color: var(--ty-btn); }
 .subj-tab.active { background: var(--ty-btn); border-color: var(--ty-btn); color: var(--ty-white); }
-
 
 .subj-check { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; user-select: none; }
 .subj-check input { accent-color: var(--ty-btn); }
@@ -844,12 +820,9 @@ img, svg { display: block; max-width: 100%; }
 }
 /* 凭证字/币别（表头统一走全局 .grid 居中，仅金额/操作列按列类型对齐） */
 #vwGrid .col-op { text-align: left; }   /* 宽度走全站列宽标准 */
-/* 币别新增录入行：作为表格 tbody 首行，与下方数据行共用 .grid td 规格（行高34px/网格线） */
-.cur-add-row td { background: var(--ty-cur-add-bg); }
+
 /* 输入框撑满所在列，套用表格内嵌输入框规格（.grid td .inp：26px 高、白底、聚焦蓝边） */
-.cur-add-row .inp { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
-.cur-add-row td.ta-r .inp { text-align: right; }
-.cur-add-row .btn { height: 26px; line-height: var(--lh-base); padding: 0 var(--sp-3); font-size: var(--fs-md); }
+
 /* 凭证汇总表（表头统一走全局 .grid 居中，金额列 .ta-r 右对齐） */
 /* 已统一包入 .grid-wrap，按内容宽度自适应。 */
 #sumGrid th.ta-r { text-align: right; }
@@ -953,8 +926,6 @@ img, svg { display: block; max-width: 100%; }
 /* hover 任意非激活标签时，预览其关闭键（与激活态一致） */
 .tab-item:not(.active):hover .tab-close { display: inline-flex; }
 
-
-
 /* 工作区页面：在 .content(flex column, overflow:hidden) 内各自成为滚动区，
    「inner--38K5g overflow:hidden + 工作区自身滚动」——头部(标签栏)固定不滚 */
 .page { display: none; }
@@ -1046,7 +1017,6 @@ img, svg { display: block; max-width: 100%; }
 #page-cashflow-project .grid thead th,
 #page-system-settings .grid thead th,
 #page-operation-logs .grid thead th { top: 0; }
-
 
 /* 首行共享：页面级操作栏自动粘顶 + 分隔线。
    ⚠️ 只对【页面级】操作栏（section.page 的直接子元素）吸顶。卡片内嵌的 .page-actions
@@ -1229,8 +1199,6 @@ select:not([class]):focus { border-color: var(--ty-blue); }
   height: 14px;
 }
 
-
-
 /* ============================================================
  * 表单控件
  * ============================================================ */
@@ -1299,10 +1267,6 @@ select:not([class]),
 
 /* 报表筛选行： .custom-page-search-wrapper 为横向排列、各 filter 纵向（label 在上）
    整个行 align-items:flex-end，使「查询」按钮与最底部输入框对齐 */
-/* 报表筛选项补充（.ykj-filter-item-box / .ty-select）：
-   原 DOM = .custom-search-item(width:270) > 期间[ty-xw-date-range-picker] / .custom-search-item(min-width:370) > 科目[ty-select 多选]
-   下拉宽度统一走上方 select.inp/.inp-sel 全局基础样式 */
-/* 多选框： ty-select 多选展开高度约 130px、宽 360-370px、边框与单选一致、内部选项 hover 浅蓝 */
 .inp-multi {
   height: 32px;
   min-height: 32px;
@@ -1332,8 +1296,6 @@ select:not([class]),
 .ykj-filter-item-box-content .inp-period { min-width: 80px; max-width: 100px; }
 .ykj-filter-item-box-content .inp-month { min-width: 130px; max-width: 160px; }
 .ykj-filter-item-box-content .inp-search { min-width: 130px; max-width: 200px; }
-/* 无 label 的复选项框：label 占位撑高，使其与同行带 label 框纵向对齐 */
-.ed-box-nolabel { justify-content: flex-end; }
 
 /* 主按钮（对齐 .ty-btn-size-middle：高 28px、圆角 4、字号 13）
    注：min-width 于 2026-09-20 与 .btn 同步由 60px 提到 72px（理由见 .btn 处的注释）——
@@ -1511,12 +1473,6 @@ label.req::before {
   width: auto;
   flex: 0 0 auto;
 }
-.param-preview {
-  font-family: 'Consolas', 'Menlo', monospace;
-  font-size: var(--fs-md);
-  color: var(--ty-blue);
-  letter-spacing: 1px;
-}
 
 /* ============================================================
  * 数据表格（式紧凑网格）
@@ -1686,8 +1642,6 @@ label.req::before {
    在组内跳行，故 JS 额外给同组另外两行补这个类。不加 !important —— ① 悬停那行由上面
    那条 !important 规则上色，两者同色；② 让 .row-hl（跳转定位琥珀高亮，!important）压过它。 */
 .grid tbody tr.row-hover { background: var(--ty-row-hover); }
-
-.grid td.num { text-align: right; }
 
 /* 报表通用：表名行（两格：名称 + 账期） */
 /* 不绑定具体页面，任意 <table class="grid"> 均可复用，与全局白底灰线一致 */
@@ -2228,8 +2182,6 @@ label.req::before {
 .voucher-grid .col-num { width: 70px; text-align: center; }
 .voucher-grid .col-summary { width: 261px; }
 .voucher-grid .col-account { width: 349px; }
-/* 操作列已移除（按钮并入序列号列） */
-.col-action { display: none; }
 
 /* 序列号列：默认显示序号，hover 时序号隐藏、操作按钮浮现（式） */
 #vRows .row-num { display: inline; }
@@ -2704,7 +2656,7 @@ label.req::before {
      400   常规：表单 / 设置 / 确认（基类，含科目、云同步、新建账套等）
      650   列表选择器：从模板生成凭证
      780   宽表单 / 多列表格：固定资产卡片、凭证回收站、部门职员、变动记录
-     950   超宽表格（原工资凭证模板档位；模块下线后保留备用于其它超宽表）
+     950   超宽表格
      1134  左树 + 右表单：结账凭证模板设置
    新增弹窗请直接复用上面某一档，不要再临时写 420 / 460 / 520 这类中间值 ——
    这正是此前"每个弹窗都不一样宽"的来源。
@@ -2806,7 +2758,7 @@ label.req::before {
   color: var(--ty-blue);
 }
 .operator-box .modal-actions { padding-bottom: var(--sp-4); }
-.modal-box .form-row .inp-pin { flex: 0 0 auto; width: 130px; }
+
 /* 【2026-10-27 统一】原 .inp-sel 固定 226px，而 .inp 是 flex:1 撑满 ——
    同一个弹窗里输入框和下拉框右边缘对不齐，看着长短不一。
    现统一为「一起撑满」：两者都取行内剩余宽度，右边缘对齐。
@@ -2955,7 +2907,6 @@ label.req::before {
 }
 /* 全局 .grid td/th 已统一 nowrap + 省略号截断，此处不再重复声明。
    操作列 / 凭证列左对齐，金额列右对齐（与 th 类一致） */
-
 
 .modal-actions {
   display: flex;
@@ -3291,9 +3242,7 @@ label.req::before {
   color: var(--ty-red);
   margin-right: var(--sp-1);
 }
-.tmpl-name-error {
-  box-shadow: 0 0 0 1px var(--ty-red) !important;
-}
+
 .settle-tmpl-new-head .flex--3nLNX {
   display: flex;
   align-items: center;
@@ -3447,8 +3396,7 @@ label.req::before {
   gap: var(--sp-2);
   margin-top: var(--sp-1);
 }
-.tmpl-cell-inp,
-.tmpl-cell-sel {
+.tmpl-cell-inp {
   width: 100%;
   height: 35px;
   border: none;
@@ -3458,10 +3406,8 @@ label.req::before {
   color: var(--ty-text);
   border-radius: 0;
 }
-.tmpl-cell-inp:hover,
-.tmpl-cell-sel:hover { background: var(--st-panel-bg2); }
-.tmpl-cell-inp:focus,
-.tmpl-cell-sel:focus {
+.tmpl-cell-inp:hover { background: var(--ty-blue-2); }
+.tmpl-cell-inp:focus {
   background: var(--ty-white);
   box-shadow: inset 0 0 0 1px var(--ty-blue);
 }
@@ -3508,32 +3454,9 @@ label.req::before {
 .settle-tmpl-rule-tip p { margin: 0 0 var(--sp-1); font-weight: 400; color: var(--ty-text); }
 .settle-tmpl-rule-tip ol { margin: 0; padding-left: var(--sp-4); }
 
-
-
 /* ============================================================
  * 云端登录弹窗
  * ============================================================ */
-.login-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--ty-border);
-}
-.login-tab {
-  flex: 1;
-  height: 38px;
-  border: none;
-  background: var(--ty-blue-2);
-  color: var(--ty-muted);
-  font-size: var(--fs-md);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-.login-tab.active {
-  background: var(--ty-white);
-  color: var(--ty-blue);
-  font-weight: 400;
-  border-bottom-color: var(--ty-blue);
-}
-
 
 /* ============================================================
  * Toast
@@ -3646,8 +3569,7 @@ label.req::before {
 .btn-xs { height: 24px; min-width: 0; padding: 0 var(--sp-2); font-size: var(--fs-md); }
 
 /* 凭证模板「目标科目」行删除钮（此前无 CSS 定义 = 浏览器裸按钮，风格缺失）；复用危险小钮语义 */
-.vet-del { height: 24px; padding: var(--sp-1) var(--sp-3); font-size: var(--fs-md); color: var(--ty-red); background: var(--ty-white); border: 1px solid var(--ty-red); border-radius: 4px; cursor: pointer; }
-.vet-del:hover { background: var(--st-danger-bg); }
+
 .book-ops .btn + .btn { margin-left: var(--sp-2); }
 
 /* ============================================================
@@ -3718,19 +3640,6 @@ label.req::before {
 
 /* 【2026-11-01 删除】首页顶部 Tab 栏（.home-tabs / .home-tab / .tab-ico 22px）：
    该板块已下线（见 verify_tab_pins C1，JS/HTML 零消费方）；.tab-ico 类名现无复用方，标签栏保持纯文字。 */
-.home-tab-help {
-  margin-left: auto;
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  /* 【2026-10-04】原 --ty-blue-2（主色浅蓝）→ --ty-surface-2（中性灰）：
-     帮助圆钮是常驻静态控件，不该抢主色。 */
-  background: var(--ty-surface-2);
-  color: var(--ty-text-3);
-  font-size: var(--fs-md);
-  cursor: pointer;
-}
-
 /* ---- 章节容器 & 标题 ---- */
 /*  contentRItemWrapper--WHucT：每个区块是白底卡片，
    区块之间用 8px solid var(--ty-surface-2) 灰色粗线分隔
@@ -3760,10 +3669,6 @@ label.req::before {
 /* 相邻块之间用单条 8px 灰缝（contentItemWrapper + contentItemWrapper） */
 .home-section + .home-section {
   border-top: 8px solid var(--ty-surface-2);
-}
-/* 左主区内容容器 */
-.home-section .home-section-content {
-  font-size: var(--fs-md);
 }
 /* 【2026-11-01 删除】首页「常用功能」整块样式：.home-section-quick / .home-section-edit
    （自定义齿轮）/ .home-quick / .home-quick-edit —— 该板块已整体下线，DOM 里不再有这些节点
@@ -3814,8 +3719,11 @@ label.req::before {
  *   不再限宽居中导致两侧留白；窄屏自动降列、不溢出。 */
 /* 【2026-11-01】上内距收敛为 var(--sp-1)（4px）：标签栏到卡片空白 = .home-tips 提示槽（min-height 26px，
    有/无提示一致） + 此处 4px 呼吸 = 30px。原先删标题行时把内距提到 32px 补呼吸，
-   与提示槽占位叠加后空白近 60px、过大 —— 两段间距只留提示槽 + 4px。 */
-.home-section-metrics { padding: var(--sp-1) var(--sp-5) var(--sp-5); }
+   与提示槽占位叠加后空白近 60px、过大 —— 两段间距只留提示槽 + 4px。
+   【2026-11-24 基线统一】左右内距由 var(--sp-5) 改为 0：水平缩进统一交 .page.active（24px），
+   卡片左缘 24px 与标签栏主页标签、提醒条、其他页面内容同一条基线；
+   原先此处再叠 24px 使首页内容左缘 48px，是全校唯一缩进翻倍的页。上下内距不变。 */
+.home-section-metrics { padding: var(--sp-1) 0 var(--sp-5); }
 /* 【2026-11-01 删除】「财务指标」标题行相关规则（.home-section-title ul / ul li）——
    标题本身已从首页移除（首页只剩这一个板块，标题等于重复自己），这些规则全仓零命中。 */
 /* 【2026-10-04 删除】此处原有两条死规则（已 grep 确认 HTML/JS 全仓零引用）：
@@ -4049,24 +3957,6 @@ label.req::before {
         → e37a8ae（2026-10-04 收尾，删除余下规则）。
    ⚠ 请勿因"看起来少了个功能"而径直恢复本段。将来若要做，请按新方案重做：一处 CSS 单点 +
       一个开关按钮 + 一条卡口，**不要**再像旧版那样逐个 id/类硬编码 20+ 个选择器（删改时极易分家）。 */
-/* 资金余额卡片期间选择：原生 select 套 ty-select 外观（select-period 箭头） */
-.ty-select.select-period select.ty-select-selection-item {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  border: none;
-  /* 原生 select 不继承字号/字体/颜色（浏览器默认约 13.3px，比标题小一档），
-     显式继承以与 .metric-card-head .title（14px）保持一致 */
-  font-size: inherit;
-  font-family: inherit;
-  color: inherit;
-  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%233d5a85" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat right center;
-  background-size: 10px 6px;
-  padding: 0 var(--sp-3) 0 0;
-  cursor: pointer;
-  outline: none;
-  white-space: nowrap;
-}
 
 /* 期次 Tab（应收/应付） ——  .tab-wrapper ul li 真实值 */
 .tab-wrapper {
@@ -4212,8 +4102,6 @@ label.req::before {
 .ic-inc { border-bottom: 6px solid var(--ty-red); }    /* 增·红（向上三角） */
 .ic-dec { border-top: 6px solid var(--ty-green); }       /* 减·绿（向下三角） */
 .ic-neutral { border-bottom: 6px solid var(--ty-blue); } /* 无数据·中性灰（待数据就绪后 JS 动态切 inc/dec） */
-
-
 
 .detail-split-wrapper { display: flex; align-items: flex-start; padding: var(--sp-2) var(--card-pad-x) var(--sp-4); margin-top: var(--sp-1); }   /*  .detail-split-wrapper padding:8px 0 16px;margin-top:2px；横向补齐 --card-pad-x 与 .padding 对齐 */
 .detail-split { flex: 1; text-align: left; }
@@ -4403,8 +4291,6 @@ label.req::before {
 }
 /* hover 不变色（用户要求：鼠标放到「当前账期」「账套」上时无颜色变化） */
 
-
-
 /* 当前账期块（标签「当前账期：」+ 期别值） */
 .topbar .acct-label {
   display: none !important;   /* 【2026-10-06】去掉冗余前缀标签（"当前账期：""账套："），值本身已自明，顶栏更简洁 */
@@ -4541,13 +4427,6 @@ label.req::before {
   padding: 0 var(--sp-2);
   line-height: var(--lh-tight);
 }
-.book-dropdown .book-empty {
-  padding: var(--sp-4) var(--sp-3);
-  font-size: var(--fs-md);
-  color: var(--ty-text-3);
-  text-align: center;
-  white-space: nowrap;
-}
 
 /* ——— 右列（搜索框）：随 .topbar-center 的 margin-left:auto 一起整体右对齐，
    列内元素左排、间距统一（顶栏布局模型：brand 固定于最左，其余内容整体靠右、各自自适应宽度） ——— */
@@ -4678,12 +4557,9 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .status-tag.warn { background: var(--st-warn-bg); color: var(--st-hl-fg); }   /* 橙字在白/浅黄底仅 2.09~2.24，改深黄棕 5.54 */
 .status-tag.muted { background: var(--ty-blue-2); color: var(--ty-muted); }
 
-
 /* .link-enable 已并入文件上方「行内操作链接」统一声明 */
-.settle-audit { margin-top: var(--sp-3); font-size: var(--fs-md); }
-.settle-audit .warn { color: var(--st-hl-fg); }   /* 原橙 2.09，改深黄棕 5.54 */
-.settle-audit .ok { color: var(--ty-green); }
 
+   /* 原橙 2.09，改深黄棕 5.54 */
 
 /* 结账前检查清单 */
 .settle-check-wrap { margin: var(--sp-1) 0 var(--sp-4); }
@@ -5096,15 +4972,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 /* .btn-close-period 已并入上面的 .btn-settle-action（结账/反结账同一尺寸） */
 
 /* 审核提示 */
-.settle-audit {
-  margin: 0 var(--sp-4) var(--sp-4);
-  padding: var(--sp-3) var(--sp-3);
-  border-radius: 4px;
-  font-size: var(--fs-md);
-  background: var(--ty-green-bg);
-  color: var(--ty-green);
-}
-.settle-audit .warn { color: var(--ty-red); background: var(--ty-red-bg); }
 
 /* ===== 结账/反结账：年份栏 + 12月方块导航 ===== */
 .settle-year-bar {
@@ -5463,9 +5330,7 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
   .grid-wrap,
   .grid-wrap .grid,
   .pp-grid,
-  #sumGrid, #vwGrid,
-  #patternGrid, #rbGrid, #acGrid, #cgGrid,
-  #openGrid, #auxGrid {
+  #sumGrid, #vwGrid, #openGrid {
     width: auto !important;
     min-width: 0 !important;
     table-layout: auto !important;
@@ -5636,7 +5501,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
  * th 的 height 就是整行高，无需再加边框增量）。前两列 rowspan=2，不参与第二行。 */
 #tbGrid thead tr:nth-child(2) th { top: var(--grid-row-h); }
 
-
 .page-title { font-size: var(--fs-xl); font-weight: 400; color: var(--ty-text); margin: 0; }
 
 /* 凭证字卡片：默认行高亮 + 操作链接 */
@@ -5659,8 +5523,6 @@ tr.row-hl > td:first-child { box-shadow: inset 3px 0 0 var(--ty-orange); }
 .ok-tag { display: inline-block; padding: 0 var(--sp-2); margin-left: var(--sp-1); font-size: var(--fs-2xs); line-height: var(--lh-tight);
   color: var(--ty-blue); background: var(--ty-blue-2); border-radius: 3px; border: 1px solid var(--ty-deco); }
 
-
-
 /* 通用数据表格：外观统一吃全局 .grid（白底灰线、常规字重），此处仅表头左对齐差异 + 字号 + 内容修饰 */
 .std-table { border-collapse: separate; border-spacing: 0; }   /* 宽度走全局 .grid 标准 */
 .std-table .mono { /* 原 font-family: var(--mono) 已删：--mono 从未定义，且全站设计是"数字与正文同字体"，等宽只靠 tabular-nums */ }
@@ -5681,7 +5543,6 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint, li.empty-hint {
 .std-table .num { text-align: right; }
 
 .std-table .num input { text-align: right; }   /* 金额列输入框右对齐（不再依赖尺寸类名） */
-.page-tip { color: var(--ty-text-3); font-size: var(--fs-md); margin: var(--sp-1) 0 var(--sp-3); line-height: var(--lh-base); }
 
 /* 【2026-10-31 删除】.sys-tabs / .sys-tab*（系统设置页旧横向 Tab 条）：
    该页四区块合并为单页滚动后改由 .set-group-title 分组标题承载，Tab 元素已不存在，
@@ -5743,8 +5604,7 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint, li.empty-hint {
 .set-switch .slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: var(--ty-white); border-radius: 50%; transition: .2s; }
 .set-switch input:checked + .slider { background: var(--ty-blue); }
 .set-switch input:checked + .slider::before { transform: translateX(20px); }
-.book-auto-bk { display: inline-flex; align-items: center; gap: var(--sp-1); cursor: pointer; }
-.book-auto-bk input { width: 15px; height: 15px; accent-color: var(--ty-blue); }
+
 /* 设置行辅助说明文字：统一字号/颜色/行高，段落上下留白由具体位置控制 */
 .set-hint { color: var(--ty-text-3); font-size: var(--fs-md); line-height: var(--lh-base); }
 .set-ctrl .set-hint { margin: 0 0 0 var(--sp-2); }
@@ -5829,8 +5689,10 @@ td.empty-hint, div.empty-hint, span.empty-hint, p.empty-hint, li.empty-hint {
    【2026-10-07】类名 .home-backup-tip → .home-tip：第二个使用者出现后，名字不该再绑定"备份"；
    动作/关闭按钮由 id 选择器（#btnBackupTipGo / #btnBackupTipClose）改为 .tip-go / .tip-close ——
    原先写死 id，新提醒没法复用同一套配色，只能复制一份样式。两条提醒同现时依次竖排，间距取下方 margin-top。 */
-/* 三条提醒的横向容器：桌面空间足够时排成一行；窄屏自动换行（优雅降级，不挤压） */
-.home-tips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); margin: 0 var(--sp-5) 0 var(--sp-5);
+/* 三条提醒的横向容器：桌面空间足够时排成一行；窄屏自动换行（优雅降级，不挤压）
+   【2026-11-24 基线统一】左右 margin 由 24px 改为 0：水平缩进统一交 .page.active（24px），
+   提醒条左缘与标签栏主页标签、财务卡片、其他页面内容同一条 24px 基线。 */
+.home-tips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); margin: 0;
   /* 固定「提示槽」高度 = 单行提示本身（约 26px）；上间距收敛为 0，不再额外叠加 12px 上间距导致整体占位过高。
      三条提醒全隐（display:none）时容器仍占此高，避免下方内容随提示有无而跳动。
      与 .home-tip 自然高度同源计算（字号×行高 + 上下 padding + 上下 border），与字号解耦。 */
@@ -5925,14 +5787,10 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .btn-sm { height: 26px; min-width: 60px; padding: 0 var(--sp-3); font-size: var(--fs-md); line-height: var(--lh-base); border-radius: 4px; cursor: pointer; }
 .btn-sm.btn-primary { background: var(--ty-btn); color: var(--ty-white); }
 
-
-
 /* ===================== 原始凭证（电子档案 / 附件管理，） ===================== */
 /* 注：#page-original / .orig-filter-fold / .orig-fold-* 已于 2026-10-04 删除 ——
    它们是「原始凭证」独立整页的样式，该页已并入资产页（表 id 为 assetGrid），
    全库（index.html 与 js/）对这些选择器 0 命中。下方 .orig-* 其余规则仍被资产页复用，勿一并删。 */
-
-
 
 .orig-btns { padding: var(--sp-3) var(--sp-3); border-bottom: 1px solid var(--ty-border); display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
 /* 高度交给 .btn 的统一值（原先此处强制 32px，比同期控件高出一截，是全站最明显的一处不齐） */
@@ -5992,16 +5850,9 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .pager-size .inp-sm { width: 72px; }
 
 
-/* 步骤二：年份导航 + 月份网格（复刻 .select-content） */
-.select-content { max-width: 640px; }
-.years { display: flex; align-items: center; justify-content: center; gap: var(--sp-4); margin-bottom: var(--sp-5); }
-.years .year-val { font-size: var(--fs-2xl); font-weight: 400; color: var(--ty-text); min-width: 64px; text-align: center; }
-.year-arrow { cursor: pointer; width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
-.year-arrow:hover { background: var(--ty-blue-2); }
 /* .tri / .tri-left / .tri-right 已删除：全站无任何引用（死规则） */
 
 /* （原 el-button / el-button--primary 为 Element UI 残留复刻，本项目未使用，已移除） */
-
 
 /* ============================================================
  * 费用明细表（期间范围 + 图表 + 树形多栏表）
@@ -6114,28 +5965,6 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
 .ty-period-cell.disabled { color: var(--ty-deco); background: var(--ty-content-bg); cursor: not-allowed; }
 .ty-period-cell.disabled:hover { border-color: var(--ty-border-2); color: var(--ty-deco); }
 
-/* ============ 浏览器存储模式横幅（防丢数据告警） ============ */
-.server-banner {
-  display: none;
-  padding: var(--sp-2) var(--sp-4);
-  font-size: var(--fs-md);
-  line-height: var(--lh-base);
-  background: var(--st-warn-bg);
-  color: var(--ty-text-2);
-  border-bottom: 1px solid var(--st-warn-bg);
-}
-.server-banner:not([hidden]) { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-.server-banner .banner-btn {
-  flex: none;
-  padding: var(--sp-1) var(--sp-3);
-  font-size: var(--fs-md);
-  color: var(--ty-white);
-  background: var(--ty-text-2);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.server-banner .banner-btn:hover { background: var(--ty-text-2); }
 
 /* ============ 运行期自检横幅（防算错告警） ============ */
 .selftest-banner {
@@ -6449,5 +6278,4 @@ tr.log-row-reopen td { color: var(--ty-red); font-weight: 500; }
   font-size: var(--fs-md);
   color: var(--ty-text-2);
 }
-
 

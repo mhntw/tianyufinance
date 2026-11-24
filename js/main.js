@@ -12,13 +12,13 @@ import {
   refreshAssets, refreshDas, refreshDad
 } from './pages/asset/Asset.js?v=dev';
 import {
-  refreshVoucherWord, refreshCashflowInit, refreshCashflowProject,
-  refreshBackup, refreshLogs, refreshBookManage, refreshSysEvents,
+  refreshCashflowInit, refreshCashflowProject,
+  refreshBackup, refreshLogs, refreshSysEvents,
   refreshParam, refreshSystemSettings
 } from './pages/settings/Settings.js?v=dev';
 import './pages/settle/Settle.js?v=dev';
 import './pages/settings/Opening.js?v=dev';
-import { refreshVoucher, refreshSum, refreshQuery, refreshRecycleBin } from './pages/voucher/Voucher.js?v=dev';
+import { refreshVoucher, refreshSum, refreshQuery } from './pages/voucher/Voucher.js?v=dev';
 import { refreshHome, setupHome } from './pages/home/Home.js?v=dev';
 import { refreshTools } from './pages/settings/Tools.js?v=dev';
 import { refreshCloudSync } from './pages/settings/CloudSync.js?v=dev';

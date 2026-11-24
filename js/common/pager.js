@@ -14,7 +14,7 @@
 //     旧 state 固死，翻第二页就失效。
 //   · 点击「当前页」不触发回调（el.__pagerPage 比对），避免无意义重渲染。
 
-export function pagerItems(page, total) {
+function pagerItems(page, total) {
   var t = Math.max(1, (total | 0));
   var p = Math.min(Math.max(1, (page | 0)), t);
   var items = [];

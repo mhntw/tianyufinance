@@ -386,7 +386,8 @@
        focusables(root)                          根内「可聚焦且可见」的控件（模态框自动聚焦/Tab 陷阱用）
        createHighlightList({list,itemSelector})  高亮式列表（焦点留在触发器，用 .active 标记）：搜索/账套下拉
        pushEsc(isOpen, close) / removeEsc(t)     全局 Esc 栈（多浮层叠加时只关最上层）
-       （2026-10-31 删除 bindRovingList：唯一用途是侧栏 hover 菜单的焦点漫游，该面板已随侧栏下线。）
+       （2026-10-31 删除 bindRovingList：唯一用途是侧栏 hover 菜单的焦点漫游，该面板已随侧栏下线；
+         2026-11-24 清掉最后一处残留调用，浮层键盘交互改由全局激活委托 + Esc 栈承担。）
      另有一条**全局激活委托**（模组加载时即生效，无需调用）：
        [data-kb-activate] 元素上 Enter/Space → click()，配合 tabindex="0" role="button" 使用，
        把「div/span/a(无href) 只绑了 click、键盘到不了」这类问题一次解决 */
@@ -430,10 +431,11 @@
         reset: reset, activate: activate
       };
     }
-    /* 【2026-10-31 删除】bindRovingList(container,{itemSelector})：
+    /* 【2026-10-31 删除，2026-11-24 清尾】bindRovingList(container,{itemSelector})：
        「焦点随项移动」，原用途只有侧栏 hover 弹出子菜单（popoverMenuWrapper）——该面板随侧栏移除。
-       全仓引用点仅三处：文件头文档、本定义、TYKeyboard 导出，**无任何调用**（对照 createHighlightList
-       仍被账套下拉 / 搜索下拉真调用）。删后 itemsOf 保留：createHighlightList 仍在用且已导出。 */
+       最后一处残留调用已清掉；浮层子项的 Enter/Space 由全局 [data-kb-activate] 委托覆盖，
+       Esc 由 TYKeyboard.pushEsc 栈覆盖（对照 createHighlightList 仍被账套下拉 / 搜索下拉真调用）。
+       删后 itemsOf 保留：createHighlightList 仍在用且已导出。 */
     /* 点外部关闭（popover / 下拉菜单的通用行为）：全站只保留这一种实现。
          opts = {
            el:      元素或返回元素的函数（浮层是动态创建的，用函数最省事）
@@ -537,11 +539,11 @@
   /* —— 行内操作链接（不带 href 的 <a>）键盘可达兜底 ——
      项目里大量行内操作写成不带 href 的 `<a class="link-*">`（编辑/删除/启用/穿透/还原…），
      只有 click 委托：**光标是手型，Tab 却到不了** —— 无 href 的 <a> 天生不可聚焦。
-     这类写法分散在资产/工资/设置/凭证等 5 个页面十几处，且随新页面不断出现，
+     这类写法分散在资产/设置/凭证等页面十几处，且随新页面不断出现，
      逐处补 tabindex 必漏，故这里统一兜底：
        · 初始扫描 + MutationObserver 增量扫描（内容都是运行时 innerHTML 渲染的，必须增量）
        · 补 tabindex="0" role="button" data-kb-activate（Enter/Space 由上面那条激活委托处理）
-       · 跳过 .disabled / aria-disabled="true"（如工资页「—」占位，本就不可操作）
+       · 跳过 .disabled / aria-disabled="true"（如资产页「—」占位，本就不可操作）
      注意：带 href 的 <a>（含 `href="javascript:;"` 那批工具条）原生可聚焦，这里不动。 */
   (function () {
     function fixOne(a) {
@@ -1079,7 +1081,7 @@
     if (btn) { e.preventDefault(); tyPrint(btn); }
   });
 
-  /* ---------- 内容区事件委托（标签页 / 钉住标签 / 「更多」菜单 / 首页按钮） ---------- */
+  /* ---------- 内容区事件委托（标签页 / 首页按钮） ---------- */
   (function () {
     var homePage = $('page-home');
     if (!homePage) return;
@@ -1119,7 +1121,7 @@
         return;
       }
       // 【2026-11-01】原此处说明「常用功能图标 / 新增凭证卡 / 自定义按钮已改原生 <button>」——
-      // 这三类元素随首页板块下线已不存在，只剩标签栏与「更多」菜单（都走上面的 click 委托）。
+      // 这三类元素随首页板块下线已不存在；此处只剩标签栏走上面的 click 委托。
     });
   })();
 
@@ -1446,20 +1448,12 @@
     }
   });
   // 单例浮层内的子菜单项点击：统一走 goPage
-  var _navPopKeyboardBound = false;   // 键盘/聚焦/Esc 栈只绑一次（ensureNavPop 创建时已绑 click）
+  var _navPopKeyboardBound = false;   // 聚焦/Esc 栈只绑一次（ensureNavPop 创建时已绑 click）
   function bindNavPopClick() {
     var pop = ensureNavPop();
     if (_navPopKeyboardBound) return;   // 防重复绑定（2159 懒加载与 hover 首次 showNavPopover 都可能触发）
     _navPopKeyboardBound = true;
-    // 键盘：浮层内子项 ↑/↓/Home/End 移动焦点，Enter/Space 激活，Esc 收起并回到当前标题
-    globalThis.TYKeyboard.bindRovingList(pop, {
-      itemSelector: '.nav-pop-item',
-      onEscape: function () {
-        var openTitle = document.querySelector('.nav-group.open .nav-group-title');
-        hideNavPopover();
-        if (openTitle) openTitle.focus();
-      }
-    });
+    // 子项 Enter/Space 走全局 [data-kb-activate] 委托（无 href 的 <a> 会被自动补属性），click 走 ensureNavPop 的委托
     // 焦点从浮层移到其它地方（Tab 离开）时收起
     pop.addEventListener('focusout', function (e) {
       var to = e.relatedTarget;

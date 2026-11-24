@@ -12,7 +12,7 @@
  *   规则二（改了要落盘）：js/pages/** 里直接改 `S.state.x = ...` 的，必须在附近调用 persist()；
  *       否则重启后改动消失（资产类别曾整页漏 persist，就是这条规则要防的）。
  *       例外须进 ALLOW_STATE_WRITES 并写明理由。
- *   ⚠ 已知局限：**就地改属性**（如 `var cat = S.assetCats()[i]; cat.enabled = false;`）静态扫不出来 ——
+ *   ⚠ 已知局限：**就地改属性**（如 `var row = S.state.fixedAssets[i]; row.enabled = false;`）静态扫不出来 ——
  *     那种写法改的仍是 state 里的同一份对象，但没有赋值语句可识别。改这类代码时请自觉补 persist()
  *     （Settle.js / Asset.js 两处就地修改都留了注释说明）。
  *
